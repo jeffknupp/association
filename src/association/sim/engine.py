@@ -33,18 +33,24 @@ degenerate (the tests' team that never shoots, or never misses).
 
 **Time.** The clock is kept in tenths of a second as an integer, so a
 team's five always account for exactly the period's seconds and two games
-sum alike. A possession's duration is a normal draw with mean
-``1440 / pace`` seconds (``2880`` seconds of game over the two teams'
-possessions, ``pace`` the mean of their possessions per 48 minutes) and
-standard deviation :data:`DURATION_SPREAD` of the mean, clipped to
-[:data:`POSSESSION_FLOOR_SECONDS`, :data:`SHOT_CLOCK_SECONDS`]; after an
-offensive rebound the put-back draw has mean :data:`PUTBACK_MEAN_SECONDS`
-and is capped at :data:`PUTBACK_CLOCK_SECONDS`. The offensive rebounds, the
-fouls that restart a possession and the clock a period's last possession
-leaves unused all sit on top of that mean, so the simulated pace runs under
-the input pace; ``scripts/sim_p5/sanity.py`` measures by how much, and the
-P3 upgrade (durations by start type from the possession table) replaces the
-draw.
+sum alike. A possession's duration is the time to its next USE, drawn from
+the league's histogram for the situation (``LeagueParams.durations`` by
+:data:`~association.sim.params.DURATION_KEYS`: how the possession started,
+or ``putback`` after an offensive rebound, or ``after_foul`` after a
+non-shooting foul that keeps the ball) - a whole second by inverse CDF plus
+a uniform tenth - times the offense's ``first_use_seconds`` relative to the
+league's (a team runs its offense 10% faster or slower than the mean,
+``scripts/sim_p9/results/durations.out``), capped at :data:`SHOT_CLOCK_SECONDS`
+(:data:`PUTBACK_CLOCK_SECONDS` for a put-back). A missed shot or free throw
+then spends its ``rebound`` / ``free_throw_rebound`` draw in the air and
+the scramble before the rebound is taken (no team factor on those). The
+histograms are measured from ``sim_possessions`` and ``sim_actions``
+(build-order step 9): 16.6 s after a period start, 15.8 after a made shot,
+14.3 after a made free throw, 13.5 after a dead-ball turnover, 9.1 after a
+defensive rebound, 6.5 after a live-ball turnover, 2.9 for a put-back, 9.5
+after a non-shooting foul, 2.4 from a miss to its rebound (2024-2026); the
+first draft without the rebound gap ran 112.5 possessions a team-game
+against 100.8. A league without histograms is refused, not approximated.
 
 **What `LeagueParams` does not hold yet** is a documented constant here,
 for the estimator to supply later: the heave make rate
@@ -77,13 +83,15 @@ plan names, in use until the rotation model (step 6) lands.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from itertools import accumulate
 from random import Random
 
 from association.sim import shrink
 from association.sim.events import BoxLine, Decision, SimEvent, SimGame, TeamTotals
-from association.sim.params import HEAVE, ZONES, LeagueParams, PlayerGameState, PlayerParams, RotationContext, RotationPolicy, TeamParams, value_of
+from association.sim.params import DURATION_BINS, HEAVE, ZONES, LeagueParams, PlayerGameState, PlayerParams, RotationContext, RotationPolicy, TeamParams, value_of
 from association.sim.plays import OVERTIME_PERIOD_SECONDS, REGULATION_PERIOD_SECONDS
 from association.sim.zones import HEAVE_SECONDS
 
@@ -221,46 +229,10 @@ until the league record holds it.
 .. versionadded:: 6.0.0
 """
 
-PACE_CALIBRATION = 0.980
-"""The factor on a possession's mean duration that makes the simulated
-possessions per game, by the box formula over the simulated box lines,
-match the real ones. The mean is derived from the teams' pace as if every
-possession were one draw, but offensive-rebound continuations, foul
-restarts and a period's unused last seconds add time on top, while the
-box formula counts a team offensive rebound as a possession not taken, so
-the two never agree by construction. Measured twice (2026-10-11): 0.956
-when every rebound was a player's (96.4 possessions a team-game against a
-real 100.8, ``scripts/sim_p8/results/validate_2025_from_2025-01-01_2026-10-11.md``),
-then 0.980 once :data:`FIELD_GOAL_REBOUNDS` made a quarter of the offensive
-rebounds the team's, which the formula counts as possessions (102.8
-against 100.3 on the first 150 held-out games at 0.956; 0.956 x 100.3 /
-102.8). An interim calibration until P3's possession table supplies
-durations by start type.
-
-.. versionadded:: 6.0.0
-"""
-
-DURATION_SPREAD = 0.4
-"""The standard deviation of a possession's duration as a share of its mean.
-
-.. versionadded:: 6.0.0
-"""
-
-POSSESSION_FLOOR_SECONDS = 3.0
-"""The shortest possession the duration draw allows (a put-back aside).
-
-.. versionadded:: 6.0.0
-"""
-
 SHOT_CLOCK_SECONDS = 24.0
-"""The longest possession the duration draw allows: the shot clock, as a cap
-on the draw rather than as state (D10 defers the clock to v2).
-
-.. versionadded:: 6.0.0
-"""
-
-PUTBACK_MEAN_SECONDS = 5.0
-"""The mean duration of the continuation after an offensive rebound.
+"""The longest time to a use the duration draw allows: the shot clock, as a
+cap on the draw rather than as state (D10 defers the clock to v2); the
+histograms' last bin is 24 seconds and more.
 
 .. versionadded:: 6.0.0
 """
@@ -280,6 +252,9 @@ _MADE_FREE_THROW = "made_free_throw"
 _DEFENSIVE_REBOUND = "defensive_rebound"
 _LIVE_TURNOVER = "live_turnover"
 _DEAD_BALL = "dead_ball"
+_AFTER_FOUL = "after_foul"
+_REBOUND = "rebound"
+_FREE_THROW_REBOUND = "free_throw_rebound"
 
 
 class EngineError(Exception):
@@ -528,6 +503,21 @@ class _Player:
         return self.zones[-1][1]
 
 
+def _cumulative_durations(league: LeagueParams) -> tuple[dict[str, list[float]], dict[str, float]]:
+    """Each duration histogram's cumulative shares (for the inverse-CDF draw)
+    and its mean in seconds; a histogram of the wrong length or not summing
+    to one is refused."""
+    cumulative: dict[str, list[float]] = {}
+    means: dict[str, float] = {}
+    for key, shares in league.durations.items():
+        if len(shares) != DURATION_BINS or abs(sum(shares) - 1.0) > 1e-6 or min(shares) < 0.0:
+            raise EngineError(f"the duration histogram for {key!r} must hold {DURATION_BINS} non-negative shares summing to one")
+        cumulative[key] = list(accumulate(shares))
+        cumulative[key][-1] = 1.0
+        means[key] = sum(i * share for i, share in enumerate(shares))
+    return cumulative, means
+
+
 class _Side:
     """One team's state for the game: its players, the five on the floor and
     the weights derived from them, its score, fouls and possessions."""
@@ -535,6 +525,9 @@ class _Side:
     def __init__(self, setup: TeamSetup, opponent: TeamParams, league: LeagueParams, multiplier: float) -> None:
         self.team_id = setup.team.team_id
         self.pace = setup.team.pace.value
+        # How fast this offense gets to its first use, relative to the league: unknown (zero) means the league's.
+        own, mean = setup.team.first_use_seconds.value, league.first_use_seconds
+        self.duration_factor = own / mean if own > 0.0 and mean > 0.0 else 1.0
         self.policy = setup.policy
         self.players = {athlete_id: _Player(params, opponent, league, multiplier) for athlete_id, params in setup.players.items()}
         self.roster = list(self.players.values())
@@ -578,12 +571,9 @@ class _Game:
         home_mult, away_mult = home_court_multipliers(setup.league)
         self.home = _Side(setup.home, setup.away.team, setup.league, home_mult)
         self.away = _Side(setup.away, setup.home.team, setup.league, away_mult)
-        # Possessions per game-second over the two teams: each team gets `pace` in 48 minutes, so a possession lasts
-        # 2880 / (pace_home + pace_away) seconds; the two sides' mean pace, as the plan's "scaled by both teams' pace".
-        mean_pace = (self.home.pace + self.away.pace) / 2.0
-        if mean_pace <= 0.0:
+        if min(self.home.pace, self.away.pace) <= 0.0:
             raise EngineError("a team's pace must be positive")
-        self.mean_duration = 1440.0 * _TENTHS / mean_pace * PACE_CALIBRATION
+        self.cumulative, self.duration_means = _cumulative_durations(setup.league)
         self.period = 0
         self.period_length = 0
         self.clock = 0
@@ -601,21 +591,22 @@ class _Game:
     def _advance(self, tenths: int) -> None:
         self.clock -= tenths
 
-    def _duration(self, put_back: bool) -> int:
-        """A possession's duration in tenths (module docstring)."""
-        mean = PUTBACK_MEAN_SECONDS * _TENTHS if put_back else self.mean_duration
-        cap = (PUTBACK_CLOCK_SECONDS if put_back else SHOT_CLOCK_SECONDS) * _TENTHS
-        floor = 1.0 if put_back else POSSESSION_FLOOR_SECONDS * _TENTHS
-        draw = self.rng.gauss(mean, DURATION_SPREAD * mean)
-        tenths = round(min(max(draw, floor), cap))
+    def _duration(self, key: str, offense: _Side) -> int:
+        """The tenths to the offense's next use in situation ``key``, or to
+        the rebound of its miss (module docstring): a whole second from the
+        league's histogram by inverse CDF, a uniform tenth within it, the
+        offense's factor (not on a rebound), the cap."""
+        cumulative = self.cumulative.get(key)
+        if cumulative is None:
+            raise EngineError(f"the league has no duration histogram for {key!r}: build sim_possessions (association sim build) and estimate again")
+        u = self.rng.random()
+        second = bisect_left(cumulative, u)
+        tenths = second * _TENTHS + (self.rng.randrange(_TENTHS) if second < DURATION_BINS - 1 else 0)
+        cap = (PUTBACK_CLOCK_SECONDS if key == _PUTBACK else SHOT_CLOCK_SECONDS) * _TENTHS
+        factor = 1.0 if key in (_REBOUND, _FREE_THROW_REBOUND) else offense.duration_factor
+        tenths = int(max(1, min(round(tenths * factor), cap)))
         if self.trace is not None:
-            self._note(
-                "duration",
-                f"{tenths / _TENTHS:.1f}s",
-                {},
-                draw / _TENTHS,
-                {"mean": mean / _TENTHS, "sd": DURATION_SPREAD * mean / _TENTHS, "floor": floor / _TENTHS, "cap": cap / _TENTHS, "put_back": 1.0 if put_back else 0.0},
-            )
+            self._note("duration", f"{tenths / _TENTHS:.1f}s {key}", {}, u, {"mean": self.duration_means[key], "factor": factor, "cap": cap / _TENTHS})
         return tenths
 
     # -- the trace -----------------------------------------------------------------
@@ -753,21 +744,21 @@ class _Game:
         period."""
         offense.possessions += 1
         self._emit("possession", offense.team_id, {}, outcome=start)
-        put_back = False
+        key = start
         while True:
-            duration = self._duration(put_back)
+            duration = self._duration(key, offense)
             if duration >= self.clock:
                 return self._last_action(offense, defense)
             fouled = self._non_shooting_foul(offense, defense, duration)
             if fouled in (_CONTINUE, _PUTBACK):
-                put_back = fouled == _PUTBACK
+                key = _PUTBACK if fouled == _PUTBACK else _AFTER_FOUL
                 continue
             if fouled is not None:
                 return fouled
             self._advance(duration)
             outcome = self._action(offense, defense, heave=False)
             if outcome is None:
-                put_back = True
+                key = _PUTBACK
                 continue
             return outcome
 
@@ -840,6 +831,7 @@ class _Game:
                 actors["blocker"] = blocker.id
                 outcome = "blocked"
         self._emit("shot", offense.team_id, actors, zone, outcome)
+        self._advance(min(self._duration(_REBOUND, offense), self.clock))
         return self._rebound(offense, defense, FIELD_GOAL_REBOUNDS)
 
     def _made(self, offense: _Side, defense: _Side, shooter: _Player, zone: str, points: int) -> str | None:
@@ -946,6 +938,7 @@ class _Game:
             else:
                 self._emit("free_throw", offense.team_id, {"shooter": shooter.id}, outcome="missed")
                 if attempt == count:
+                    self._advance(min(self._duration(_FREE_THROW_REBOUND, offense), self.clock))
                     return self._rebound(offense, defense, FREE_THROW_REBOUNDS)
         raise AssertionError("a trip has at least one free throw")
 

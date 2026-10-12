@@ -25,8 +25,8 @@ import duckdb
 import pyarrow as pa
 import pytest
 
-from association.sim import database, plays, rates, shrink
-from association.sim.params import ZONES, Window
+from association.sim import database, plays, possessions, rates, shrink
+from association.sim.params import DURATION_BINS, DURATION_KEYS, ZONES, Window
 
 SEASON = 2025
 AS_OF = dt.date(2025, 1, 12)
@@ -202,6 +202,7 @@ def con(tmp_path_factory: pytest.TempPathFactory) -> Iterator[duckdb.DuckDBPyCon
     wh.close()
     c = database.connect(root / "sim.duckdb", root / "nba.duckdb")
     plays.build_plays(c)
+    possessions.build_possessions(c)
     yield c
     c.close()
 
@@ -351,3 +352,15 @@ def test_the_totals_weight_an_earlier_season_by_the_windows_decay() -> None:
     assert dict(players) == {"fga": 40.0, "minutes": 30.0} and dict(teams) == {"poss": 25.0}
     # Equal weights leave the counts alone.
     assert dict(rates._totals(counts, Window(seasons=(2024, 2025, 2026), as_of=dt.date(2026, 4, 13), season_decay=1.0))["a1"]) == {"fga": 60, "minutes": 40}
+
+
+def test_the_duration_histograms_are_shares_over_the_bins_and_the_first_use_seconds_a_team_rate(estimates: rates.Estimates) -> None:
+    league = estimates.league
+    assert set(league.durations) <= set(DURATION_KEYS)
+    for key, shares in league.durations.items():
+        assert len(shares) == DURATION_BINS and sum(shares) == pytest.approx(1.0) and min(shares) >= 0.0, key
+    # The fixture's possessions give the league a mean time to the first use and every team a shrunk rate toward it.
+    assert league.first_use_seconds >= 0.0
+    for team in estimates.teams.values():
+        assert team.first_use_seconds.prior == pytest.approx(league.first_use_seconds)
+        assert 0.0 <= team.first_use_seconds.value <= 24.0 * 60

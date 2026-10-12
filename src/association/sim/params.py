@@ -242,6 +242,25 @@ class PlayerParams:
         return self.make_rate[zone]
 
 
+DURATION_KEYS: tuple[str, ...] = ("period_start", "made_shot", "made_free_throw", "defensive_rebound", "live_turnover", "dead_ball", "putback", "after_foul", "rebound", "free_throw_rebound")
+"""The situations a duration is drawn for: how the possession started (the
+engine's start types), how it continues - after an offensive rebound
+(``putback``) or after a non-shooting foul that keeps the ball
+(``after_foul``) - and the time a missed shot or a missed free throw spends
+in the air and the scramble before its rebound (``rebound``,
+``free_throw_rebound``).
+
+.. versionadded:: 6.0.0
+"""
+
+DURATION_BINS = 25
+"""A duration histogram's bins: whole seconds 0 to 23 and one bin for 24
+seconds and more (the shot clock).
+
+.. versionadded:: 6.0.0
+"""
+
+
 @dataclass(frozen=True)
 class TeamParams:
     """One team's rates: its pace and, in v1 (decision D6, option 1), its
@@ -258,6 +277,7 @@ class TeamParams:
     foul_rate: Rate  # opponent free-throw trips per opponent possession
     defensive_rebound_rate: Rate  # share of opponents' misses this team rebounds
     allowed_zone_mix: Mix  # where opponents shoot from against this defense
+    first_use_seconds: Rate = field(default_factory=lambda: Rate(0.0, 0.0, 0.0, 0.0))  # mean seconds from a possession's start to its first use, on offense; 0 means unknown
 
 
 @dataclass(frozen=True)
@@ -289,6 +309,8 @@ class LeagueParams:
     home_court: float  # points per game the home side is better by, applied as an efficiency multiplier
     strengths: Mapping[str, float] = field(default_factory=dict)
     per_minute: Mapping[str, float] = field(default_factory=dict)
+    durations: Mapping[str, tuple[float, ...]] = field(default_factory=dict)  # by DURATION_KEYS: DURATION_BINS shares of the seconds to the next use
+    first_use_seconds: float = 0.0  # the league's mean seconds from a possession's start to its first use (not period starts)
 
     def strength(self, name: str) -> float:
         """The fitted prior strength for ``name``, or :data:`DEFAULT_STRENGTH`."""

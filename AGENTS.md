@@ -127,11 +127,14 @@ was learned the hard way and is about the data, not the pipeline.
   throws at 0.371 per field-goal attempt against 0.240 - was fixed the same
   day (and-ones counted twice; three-shot trips at 40% instead of 3.5%),
   with the before and after reports side by side in `results/`.
-- **Seven validation runs so far** (`scripts/sim_p8/results/`): the
-  baseline, after the free-throw fix, with `engine.PACE_CALIBRATION`,
-  after the bonus-trip fix (`_trips`), two with team rebounds (`_teamreb`,
-  `_teamreb_odds`) and one with the season-weighted window
-  (`2026-10-12_weights`, the current state). The pace matches (100.5
+- **Eight validation runs so far** (`scripts/sim_p8/results/`): the
+  baseline, after the free-throw fix, with a pace constant, after the
+  bonus-trip fix (`_trips`), two with team rebounds (`_teamreb`,
+  `_teamreb_odds`), with the season-weighted window (`2026-10-12_weights`)
+  and with durations by situation (`2026-10-12_durations`, the current
+  state: possessions 101.4 against 100.8 with no constant, total +0.9,
+  Brier 0.2248 against the strength model's 0.2254). Before that run the
+  pace matched by a constant (100.5
   against 100.8 possessions), free throws are 0.246 against 0.240 per
   field-goal attempt, threes 0.415 against 0.420, points per 100
   possessions 112.8 against 113.5, rebounds per team-game 10.7 + 32.9
@@ -158,6 +161,15 @@ was learned the hard way and is about the data, not the pipeline.
   docstring, the plan's item 9 and `scripts/sim_p9/results/`. Read
   possessions by `poss_no`, actions by `seq`; an action with `poss_no NULL`
   is a technical free throw or foul, or an orphan scoring row with no team.
+- **Step 9, durations by situation done 2026-10-12:** the engine's duration
+  draw is a whole-second histogram per situation (`params.DURATION_KEYS`,
+  `LeagueParams.durations`, measured by `rates.estimate` from the
+  possession table; `scripts/sim_p9/durations.py` is the measurement) times
+  the offense's `first_use_seconds` over the league's, plus the 2.4 s a miss
+  spends before its rebound; the pace constant is gone and possessions
+  match without one. A league estimated without the possession tables is
+  refused by the engine. Remaining in step 9: usage per possession, on-court
+  defense (plan item 9).
   Possession points plus technical free throws equal the final on 100% of
   team-games in every season; the box formula over player lines runs 1.2
   possessions above the count from 2019 (team rebounds and team turnovers),
@@ -180,11 +192,13 @@ was learned the hard way and is about the data, not the pipeline.
   0.245 against 0.255, which is 2025's within-season drift (0.247 before
   January 1, 0.255 after) and needs a within-season weight or trend, not
   a season weight; threes 0.415 against 0.420 and free throws 2.5% high.
-  Then step 9's second half, the P4 upgrades on `sim_possessions` and
-  `sim_actions`: durations by start type (replacing the calibration
-  constant), per-player on-court defense, usage per possession - the
-  team-strength headroom to ESPN (0.024 of Brier) runs through better rates
-  and defense. Every one is a `sim validate` run with the report committed.
+  Then the rest of step 9's second half on `sim_possessions` and
+  `sim_actions`: usage as a share of lineup possessions, then per-player
+  on-court defense - the team-strength headroom to ESPN (0.024 of Brier)
+  runs through better rates and defense; and the simulated total's spread
+  within a game, 17.2 against the real 19.5 since the durations came from
+  the histograms (game-level pace variation the sim does not model). Every
+  one is a `sim validate` run with the report committed.
 - **Dispatching agents here:** make their worktrees by hand from the
   intended SHA (`git worktree add -b <branch> .claude/worktrees/<name>
   <sha>`); the Agent tool's own worktree isolation branched from master,

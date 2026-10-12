@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from association.sim.engine import GameSetup, StartersPolicy, TeamSetup
-from association.sim.params import ZONES, LeagueParams, Mix, PlayerParams, Rate, TeamParams, Window
+from association.sim.params import DURATION_BINS, ZONES, LeagueParams, Mix, PlayerParams, Rate, TeamParams, Window
 
 MAKE_RATE: Mapping[str, float] = {"restricted": 0.65, "paint": 0.42, "midrange": 0.41, "corner_three": 0.39, "above_break_three": 0.355}
 ZONE_MIX: Mapping[str, float] = {"restricted": 0.32, "paint": 0.16, "midrange": 0.12, "corner_three": 0.09, "above_break_three": 0.31}
@@ -55,6 +55,40 @@ def mix(probabilities: Mapping[str, float]) -> Mix:
     return Mix(probabilities=dict(probabilities), trials=1000.0, strength=100.0)
 
 
+FIRST_USE_SECONDS = 12.4
+# Means and spreads of the seconds to the next use, near the 2024-2026 measurement (scripts/sim_p9/results/durations.out).
+DURATION_SHAPES = {
+    "period_start": (16.6, 4.5),
+    "made_shot": (15.8, 5.4),
+    "made_free_throw": (14.3, 5.2),
+    "defensive_rebound": (9.1, 5.4),
+    "live_turnover": (6.5, 4.6),
+    "dead_ball": (13.5, 5.0),
+    "putback": (2.9, 3.5),
+    "after_foul": (9.5, 4.3),
+    "rebound": (2.4, 1.4),
+    "free_throw_rebound": (2.3, 1.3),
+}
+
+
+def histogram(mean: float, sd: float) -> tuple[float, ...]:
+    """A duration histogram (DURATION_BINS whole-second shares) from a normal
+    cut at zero and folded into the last bin at 24 and more."""
+    import math
+
+    def cdf(x: float) -> float:
+        return 0.5 * (1.0 + math.erf((x - mean) / (sd * math.sqrt(2.0))))
+
+    edges = [cdf(-0.5)] + [cdf(i + 0.5) for i in range(DURATION_BINS - 1)]
+    shares = [edges[i + 1] - edges[i] for i in range(DURATION_BINS - 1)] + [1.0 - edges[-1]]
+    shares[0] += edges[0]
+    total = sum(shares)
+    return tuple(s / total for s in shares)
+
+
+DURATIONS = {key: histogram(mean, sd) for key, (mean, sd) in DURATION_SHAPES.items()}
+
+
 def league(home_court: float = 2.5, pace: float = PACE) -> LeagueParams:
     """The toy league, near 2025-26."""
     return LeagueParams(
@@ -70,10 +104,21 @@ def league(home_court: float = 2.5, pace: float = PACE) -> LeagueParams:
         foul_rate=FOUL_RATE,
         offensive_rebound_rate=OREB_RATE,
         home_court=home_court,
+        durations=DURATIONS,
+        first_use_seconds=FIRST_USE_SECONDS,
     )
 
 
-def team(team_id: str, name: str, pace: float = PACE, defense: float = 1.0, forced_turnovers: float = TURNOVER_RATE, fouls: float = FOUL_RATE, dreb: float = 1 - OREB_RATE) -> TeamParams:
+def team(
+    team_id: str,
+    name: str,
+    pace: float = PACE,
+    defense: float = 1.0,
+    forced_turnovers: float = TURNOVER_RATE,
+    fouls: float = FOUL_RATE,
+    dreb: float = 1 - OREB_RATE,
+    first_use_seconds: float = FIRST_USE_SECONDS,
+) -> TeamParams:
     """A team whose defense allows the league's rates times ``defense``
     (under one is a better defense), with the league's zone mix."""
     return TeamParams(
@@ -85,6 +130,7 @@ def team(team_id: str, name: str, pace: float = PACE, defense: float = 1.0, forc
         foul_rate=rate(fouls),
         defensive_rebound_rate=rate(dreb),
         allowed_zone_mix=mix(ZONE_MIX),
+        first_use_seconds=rate(first_use_seconds),
     )
 
 
@@ -170,8 +216,10 @@ def never_shoots(team_id: str) -> dict[str, PlayerParams]:
 
 
 def low_scoring(team_id: str) -> dict[str, PlayerParams]:
-    """A team that scores about four points a game, so ties and overtime are common."""
-    return roster(team_id, shots=0.01, trips=0.0, turnovers=0.1, fouls=0.0)
+    """A team that scores about four points a game, so ties and overtime are
+    common (its possessions are mostly live turnovers, which the duration
+    histograms make quick: about 135 a game)."""
+    return roster(team_id, shots=0.003, trips=0.0, turnovers=0.1, fouls=0.0)
 
 
 def foul_prone(team_id: str, fouls: float = 0.18) -> dict[str, PlayerParams]:

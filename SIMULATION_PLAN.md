@@ -1005,6 +1005,32 @@ check measured on 2019-2026 and recorded in the module docstring:
    are the second half and remain next; `rates.estimate` still reads the
    box score.
 
+   **Durations by situation done 2026-10-12** (the first of the three P4
+   upgrades; `scripts/sim_p9/durations.py`, `results/durations.out`;
+   `params.DURATION_KEYS`, `LeagueParams.durations`, `first_use_seconds` on
+   the team and the league). The engine's draw is the time to the next USE
+   from a whole-second histogram per situation - 16.6 s after a period
+   start, 15.8 after a made shot, 14.3 after a made free throw, 13.5 after
+   a dead-ball turnover, 9.1 after a defensive rebound, 6.5 after a
+   live-ball turnover, 2.9 for a put-back, 9.5 after a non-shooting foul -
+   times the offense's mean time to its first use over the league's (teams
+   span 10.8-13.4 s a season), and a miss now spends 2.4 s in the air and
+   the scramble before its rebound (the first draft skipped that and ran
+   112.5 possessions a team-game against 100.8, points per 100 unchanged,
+   which is how the gap was found). `engine.PACE_CALIBRATION` and the
+   Gaussian draw are gone. Validation
+   (`results/validate_2025_from_2025-01-01_2026-10-12_durations.md`, 741
+   games, 5 refused): possessions 101.4 against 100.8 with no constant;
+   total error +0.9 from -2.1; points per 100 possessions 113.2 against
+   113.4; margin sd 16.7 against 16.4; Brier 0.2248 against the strength
+   model's 0.2254 (from 0.2226 - the per-game difference to the previous
+   run is 0.0021 with a standard error of 0.0017, inside the run noise;
+   accepted); coverage 0.742 / 0.786 / 0.857, minutes MAE 5.26. New miss:
+   the simulated total's spread within a game is 17.2 against the real
+   19.5 (was 18.6), the game-level pace variation the sim does not model.
+   Next in this item: usage as a share of lineup possessions, then
+   per-player on-court defense.
+
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.
 

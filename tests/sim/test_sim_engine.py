@@ -4,6 +4,7 @@ overtime - all from the toy parameters in ``toy.py``, offline."""
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -327,3 +328,33 @@ def test_team_rebounds_are_nobodys_at_the_measured_shares() -> None:
     game = simulate(toy.setup(), 3)
     credited = sum(1 for e in game.events if e.kind == "rebound" and "rebounder" in e.actors)
     assert credited == sum(line.oreb + line.dreb for line in game.lines) < sum(1 for e in game.events if e.kind == "rebound")
+
+
+def test_durations_come_from_the_leagues_histograms_and_the_offenses_factor() -> None:
+    # Each situation draws from its own histogram: period starts and made shots run long, live turnovers short.
+    traced = simulate(toy.setup(), seed=3, trace=True)
+    by_key: dict[str, list[float]] = {}
+    for d in traced.decisions:
+        if d.kind == "duration":
+            seconds, key = d.chosen.split("s ", 1)
+            by_key.setdefault(key, []).append(float(seconds))
+    assert {"period_start", "made_shot", "defensive_rebound", "live_turnover", "putback", "rebound"} <= set(by_key)
+    means = {k: sum(v) / len(v) for k, v in by_key.items()}
+    assert means["live_turnover"] < means["defensive_rebound"] < means["made_shot"]
+    assert means["putback"] < 5.0 and means["rebound"] < 4.0 and max(max(v) for v in by_key.values()) <= engine.SHOT_CLOCK_SECONDS
+    # A slower offense (first use later than the league's) gets fewer possessions.
+    slow = GameSetup(
+        home=toy.side("home", toy.roster("home"), team_params=toy.team("home", "Home Town", first_use_seconds=toy.FIRST_USE_SECONDS * 1.3)),
+        away=toy.with_players("away", toy.roster("away")),
+        league=toy.league(),
+    )
+    slow_poss = sum(simulate(slow, s).home.possessions for s in range(20))
+    even_poss = sum(simulate(toy.setup(), s).home.possessions for s in range(20))
+    assert slow_poss < 0.9 * even_poss
+    # No histograms: refused, not approximated.
+    bare = GameSetup(home=toy.with_players("home", toy.roster("home")), away=toy.with_players("away", toy.roster("away")), league=dataclasses.replace(toy.league(), durations={}))
+    with pytest.raises(EngineError, match="no duration histogram"):
+        simulate(bare, 1)
+    broken = dataclasses.replace(toy.league(), durations={**toy.DURATIONS, "made_shot": (0.5, 0.5)})
+    with pytest.raises(EngineError, match="shares summing to one"):
+        simulate(GameSetup(home=toy.with_players("home", toy.roster("home")), away=toy.with_players("away", toy.roster("away")), league=broken), 1)

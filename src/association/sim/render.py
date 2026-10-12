@@ -204,7 +204,7 @@ def _inputs_text(d: Decision) -> str:
     if d.kind == "make" and "player" in d.inputs:
         return f" = odds(player {d.inputs['player']:.3f} x defense {d.inputs['defense']:.3f} / league {d.inputs['league']:.3f}) x home {d.inputs['home']:.3f}"
     if d.kind == "duration":
-        return f" (mean {d.inputs['mean']:.1f}s, sd {d.inputs['sd']:.1f}s, clipped {d.inputs['floor']:.0f}-{d.inputs['cap']:.0f}s{', put-back' if d.inputs.get('put_back') else ''})"
+        return f" (histogram mean {d.inputs['mean']:.1f}s, team factor {d.inputs['factor']:.2f}, cap {d.inputs['cap']:.0f}s)"
     if d.inputs:
         return " (" + ", ".join(f"{k} {v:.3g}" for k, v in d.inputs.items()) + ")"
     return ""
@@ -219,7 +219,7 @@ def explain(d: Decision, names: Names) -> str:
     """
     draw = "" if d.draw != d.draw else f"; draw {d.draw:.3f}"  # nan has no draw to show
     if d.kind == "duration":
-        return f"duration {d.chosen}{_inputs_text(d)}; drew {d.draw:.1f}s"
+        return f"duration {d.chosen}{_inputs_text(d)}; u={d.draw:.3f}"
     if set(d.probabilities) == {"yes", "no"}:
         return f"{d.kind} p={d.probabilities['yes']:.3f}{_inputs_text(d)}{draw} -> {d.chosen}"
     ranked = sorted(d.probabilities.items(), key=lambda kv: -kv[1])

@@ -138,6 +138,7 @@ record and the output says so.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -147,7 +148,7 @@ import duckdb
 from association.nba.season import eastern_date_sql
 from association.sim import shrink, zones
 from association.sim.database import WAREHOUSE
-from association.sim.params import ZONES, LeagueParams, Mix, PlayerParams, Rate, TeamParams, Window
+from association.sim.params import DURATION_BINS, DURATION_KEYS, ZONES, LeagueParams, Mix, PlayerParams, Rate, TeamParams, Window
 
 TRIP_START_SQL = "(sp.type LIKE 'Free Throw - %1 of %' AND sp.type NOT LIKE '%1 of 1' AND sc.event_id IS NOT NULL)"
 """The first attempt of a free-throw trip DRAWN BY A SHOOTING FOUL ON A MISS
@@ -177,6 +178,8 @@ fouler, 0b 0.10, so the trip is matched on the clock, not the player).
 
 .. versionadded:: 6.0.0
 """
+
+logger = logging.getLogger(__name__)
 
 FREE_THROW_POSSESSION_WEIGHT = 0.44
 """The box formula's weight on free-throw attempts: ``FGA - OREB + TOV + 0.44
@@ -219,6 +222,7 @@ PLAYER_RATES: tuple[Spec, ...] = (
 
 TEAM_RATES: tuple[Spec, ...] = (
     ("pace", "poss", "games48"),
+    ("first_use_seconds", "use_seconds", "first_uses"),
     ("forced_turnover_rate", "opp_tov", "opp_poss"),
     ("foul_rate", "opp_trips", "opp_poss"),
     ("defensive_rebound_rate", "dreb", "opp_misses"),
@@ -448,6 +452,101 @@ def _read_allowed_shots(con: duckdb.DuckDBPyConnection, ctes: str, counts: Count
         _add(counts, (team, int(season), int(parity)), **{f"allowed_attempts.{zone}": attempts, f"allowed_makes.{zone}": makes})
 
 
+USE_KINDS_SQL = "('shot', 'turnover', 'foul_shooting', 'foul_personal', 'foul_offensive', 'foul_flagrant')"
+"""The ``sim_actions`` kinds that are a USE of the ball - what the engine's
+duration draw runs up to.
+
+.. versionadded:: 6.0.0
+"""
+
+DURATION_START_TYPES: Mapping[str, str] = {
+    "period_start": "period_start",
+    "after_made": "made_shot",
+    "after_ft": "made_free_throw",
+    "after_dreb": "defensive_rebound",
+    "after_live_turnover": "live_turnover",
+    "after_dead_turnover": "dead_ball",
+}
+"""``sim_possessions.start_type`` to the engine's start type
+(:data:`~association.sim.params.DURATION_KEYS`); ``after_other`` (a few
+hundred a season, mostly zero seconds) is left out.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def _has_table(con: duckdb.DuckDBPyConnection, name: str) -> bool:
+    return con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = ?", [name]).fetchone()[0] > 0  # type: ignore[index]
+
+
+def _duration_ctes(ctes: str, seasons: str) -> str:
+    """The window's possessions and, for every action in them, the next
+    action; ``first_uses`` is each possession's first use of the ball."""
+    return f"""{ctes},
+    poss AS (
+        SELECT p.event_id, p.season, p.period, p.poss_no, p.offense_team_id, p.start_type, p.start_elapsed
+        FROM sim_possessions p JOIN games g ON g.event_id = p.event_id AND g.season = p.season
+        WHERE p.season IN {seasons} AND p.poss_no IS NOT NULL
+    ),
+    acts AS (
+        SELECT a.event_id, a.season, a.period, a.poss_no, a.seq, a.elapsed, a.kind, a.team_id, a.dead_ball, a.made,
+               lead(a.kind) OVER w AS next_kind, lead(a.elapsed) OVER w AS next_elapsed, lead(a.dead_ball) OVER w AS next_dead
+        FROM sim_actions a JOIN poss USING (event_id, season, period, poss_no)
+        WINDOW w AS (PARTITION BY a.event_id, a.season, a.period, a.poss_no ORDER BY a.seq)
+    ),
+    first_uses AS (
+        SELECT * FROM (
+            SELECT a.season, a.elapsed, p.offense_team_id, p.event_id, p.start_type, p.start_elapsed,
+                   row_number() OVER (PARTITION BY a.event_id, a.season, a.period, a.poss_no ORDER BY a.seq) AS use_no
+            FROM acts a JOIN poss p USING (event_id, season, period, poss_no)
+            WHERE a.kind IN {USE_KINDS_SQL} AND NOT a.dead_ball
+        ) WHERE use_no = 1
+    )"""
+
+
+def _read_durations(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, window: Window) -> dict[str, tuple[float, ...]]:
+    """The league's duration histograms by :data:`~association.sim.params.DURATION_KEYS`:
+    whole seconds from a possession's start to its first use by start type,
+    from an offensive rebound or a non-shooting foul to the next use, and
+    from a missed shot or free throw to its rebound, each season's counts
+    weighted by :meth:`Window.weight`."""
+    bins = f"least(greatest(round({{}}), 0), {DURATION_BINS - 1})::INTEGER"
+    rows = con.execute(
+        f"""WITH {_duration_ctes(ctes, seasons)}
+        SELECT season, start_type, {bins.format("elapsed - start_elapsed")} AS s, count(*) FROM first_uses GROUP BY 1, 2, 3
+        UNION ALL
+        SELECT a.season, CASE WHEN a.kind = 'offensive_rebound' THEN 'putback' ELSE 'after_foul' END, {bins.format("a.next_elapsed - a.elapsed")}, count(*)
+        FROM acts a JOIN poss p USING (event_id, season, period, poss_no)
+        WHERE ((a.kind = 'offensive_rebound' AND NOT a.dead_ball) OR (a.kind = 'foul_personal' AND a.team_id <> p.offense_team_id))
+          AND a.next_kind IN {USE_KINDS_SQL} AND NOT a.next_dead
+        GROUP BY 1, 2, 3
+        UNION ALL
+        SELECT a.season, CASE WHEN a.kind = 'shot' THEN 'rebound' ELSE 'free_throw_rebound' END, {bins.format("a.next_elapsed - a.elapsed")}, count(*)
+        FROM acts a
+        WHERE a.kind IN ('shot', 'free_throw') AND NOT a.made AND a.next_kind IN ('offensive_rebound', 'defensive_rebound') AND NOT a.next_dead
+        GROUP BY 1, 2, 3"""
+    ).fetchall()
+    counts: dict[str, list[float]] = {}
+    for season, start_type, second, n in rows:
+        key = DURATION_START_TYPES.get(start_type, start_type)
+        if key in DURATION_KEYS:
+            counts.setdefault(key, [0.0] * DURATION_BINS)[int(second)] += n * window.weight(int(season))
+    return {key: tuple(c / sum(bucket) for c in bucket) for key, bucket in counts.items() if sum(bucket) > 0}
+
+
+def _read_first_uses(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts: Counts) -> None:
+    """Each team's seconds from a possession's start to its first use, summed
+    with the count, per team-season-parity (period starts left out)."""
+    rows = con.execute(
+        f"""WITH {_duration_ctes(ctes, seasons)}
+        SELECT f.offense_team_id, f.season, tp.parity, sum(f.elapsed - f.start_elapsed), count(*)
+        FROM first_uses f JOIN team_parity tp ON tp.team_id = f.offense_team_id AND tp.season = f.season AND tp.event_id = f.event_id
+        WHERE f.start_type <> 'period_start' GROUP BY 1, 2, 3"""
+    ).fetchall()
+    for team, season, parity, seconds, uses in rows:
+        _add(counts, (str(team), int(season), int(parity)), use_seconds=float(seconds), first_uses=uses)
+
+
 def _read_home_margin(con: duckdb.DuckDBPyConnection, ctes: str) -> tuple[float, int]:
     margin, games = con.execute(f"WITH {ctes} SELECT coalesce(avg(home_score - away_score), 0.0), count(*) FROM games").fetchone() or (0.0, 0)
     return float(margin), int(games)
@@ -544,6 +643,7 @@ def _team_record(team: str, name: str, c: Counter[str], means: Mapping[str, floa
         foul_rate=rates["foul_rate"],
         defensive_rebound_rate=rates["defensive_rebound_rate"],
         allowed_zone_mix=_mix(c, "allowed_attempts", zone_mu, strengths["allowed_zone_mix"]),
+        first_use_seconds=rates["first_use_seconds"],
     )
 
 
@@ -575,7 +675,14 @@ def _league_means(players: Counter[str], teams: Counter[str]) -> tuple[dict[str,
 
 
 def _league(
-    window: Window, players: Counter[str], teams: Counter[str], player_means: Mapping[str, float], team_means: Mapping[str, float], strengths: Mapping[str, float], home_court: float
+    window: Window,
+    players: Counter[str],
+    teams: Counter[str],
+    player_means: Mapping[str, float],
+    team_means: Mapping[str, float],
+    strengths: Mapping[str, float],
+    home_court: float,
+    durations: Mapping[str, tuple[float, ...]],
 ) -> LeagueParams:
     return LeagueParams(
         window=window,
@@ -592,6 +699,8 @@ def _league(
         home_court=home_court,
         strengths=dict(strengths),
         per_minute={name: player_means[name] for name in sorted(PER_MINUTE_RATES)},
+        durations=dict(durations),
+        first_use_seconds=_mean(teams, "use_seconds", "first_uses"),
     )
 
 
@@ -629,6 +738,12 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     team_counts: Counts = {}
     _read_team_games(con, ctes, seasons, team_counts)
     _read_allowed_shots(con, ctes, team_counts)
+    durations: dict[str, tuple[float, ...]] = {}
+    if _has_table(con, "sim_actions"):
+        durations = _read_durations(con, ctes, seasons, window)
+        _read_first_uses(con, ctes, seasons, team_counts)
+    else:
+        logger.warning("sim_possessions and sim_actions are not built (association sim build): no duration histograms, and the engine will refuse to play")
     identities, sat_out = _read_identities(con, ctes, team_ids)
     home_court, _ = _read_home_margin(con, ctes)
 
@@ -641,7 +756,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     strengths.update(_fit_rates(team_splits, TEAM_RATES, team_means))
     strengths["allowed_zone_mix"] = _fit_mix(team_splits, "allowed_attempts", zone_mu)
 
-    league = _league(window, player_total, team_total, player_means, team_means, strengths, home_court)
+    league = _league(window, player_total, team_total, player_means, team_means, strengths, home_court, durations)
     player_totals, team_totals = _totals(player_counts, window), _totals(team_counts, window)
     names = _team_names(con)
     teams = {t: _team_record(t, names.get(t, t), c, team_means, strengths, zone_mu) for t, c in team_totals.items() if team_ids is None or t in team_ids}
