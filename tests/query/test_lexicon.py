@@ -198,6 +198,25 @@ def test_a_span_whose_years_follow_is_one_season_not_a_range(question: str) -> N
     assert not span.is_range and span.season == span.first + 1
 
 
+@pytest.mark.parametrize(
+    ("question", "season"), [("lebron james stats in 2015 16", 2016), ("victor wembanyama 2024 25 stats", 2025), ("victor wembanyama 2025 26 stats", 2026), ("shaq 1999 00", 2000)]
+)
+def test_a_year_and_the_next_ones_last_two_digits_spaced_are_one_season(question: str, season: int) -> None:
+    """The feed's "2015 16" (ISSUES.md #382): the season both years span, where
+    the first year's season answered and the second number was unread."""
+    (span,) = season_spans(question)
+    assert not span.is_range and span.season == season
+    assert season_from_text(question) == season
+
+
+@pytest.mark.parametrize(("question", "season"), [("lebron 2025 26 points", 2025), ("games in 2024 25+ pts", 2024), ("knicks 2024 30", 2024), ("2024 30 point games", 2024)])
+def test_a_spaced_number_that_does_not_follow_or_that_a_line_reads_is_no_season(question: str, season: int) -> None:
+    """A number a line or a count reads, or one that does not follow the year,
+    leaves the year alone as the season it names."""
+    assert season_spans(question) == []
+    assert season_from_text(question) == season
+
+
 @pytest.mark.parametrize("question", ["on 2001-03-15", "2015-12 stats", "stats for 2030-35"])
 def test_a_four_digit_span_that_is_no_range_keeps_the_season_it_ends_in(question: str) -> None:
     """A date's pieces, a pair that descends, a year past the league's: kept

@@ -90,9 +90,20 @@ season's leaders.
 # other 5 names one ("kobe bryant 00-02" is a range, "Lebron 21-13" a line).
 # The boundaries keep out a date's pieces ("11/29/24" holds "29/24"), a clock
 # ("1:23-24"), a decimal and a percentage.
+# "2015 16", "2024 25": a year and the next year's last two digits with only
+# a space between them are the season they span too, and only where the
+# second follows the first - the feed writes it so three times ("lebron james
+# stats in 2015 16", "victor wembanyama 2024 25 stats", "... 2025 26 stats"),
+# every one a season, and each answered the first year's season (2015, 2024,
+# 2025) with the second number unread (ISSUES.md #382, the feed's unread
+# numbers). A number a line or a count reads ("2025 26 points", "2024 25+")
+# is not a season's.
 SEASON_SPAN = re.compile(
     r"\b(?P<start>(?:19|20)\d{2})\s*[-/]\s*(?P<end>(?:19|20)?\d{2})\b"
     r"|(?<![\d/.:-])\b(?P<short_start>\d{2})(?P<separator>[-/])(?P<short_end>\d{2})\b(?![-/:%]|\.\d)"
+    r"|\b(?P<spaced_start>(?:19|20)\d{2})[ \t]+(?P<spaced_end>\d{2})\b"
+    r"(?![-/:%+]|\.\d|\s*(?:\+|or\b|pts?\b|points?\b|games?\b|rebounds?\b|rebs?\b|assists?\b|asts?\b|threes?\b|3s\b|steals?\b|blocks?\b|minutes?\b|mins?\b|wins?\b|fga\b|fgm\b))",
+    re.IGNORECASE,
 )
 """A season written as the two calendar years it spans, or a range of
 seasons written as its first and last (:func:`season_spans`).
@@ -1082,6 +1093,10 @@ def _season_spans_years(match: re.Match[str]) -> tuple[int, int, bool] | None:
     """The first year and the season of one :data:`SEASON_SPAN` match, and
     whether it is a range, or None where a short pair is neither a season
     nor a range (:func:`season_spans`)."""
+    if match.group("spaced_start") is not None:
+        # A year and the next one's last two digits, and nothing else.
+        first = int(match.group("spaced_start"))
+        return (first, first + 1, False) if (int(match.group("spaced_end")) - first) % 100 == 1 else None
     if match.group("start") is not None:
         first, end = int(match.group("start")), match.group("end")
         if len(end) == 4:
