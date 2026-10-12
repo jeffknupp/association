@@ -59,6 +59,7 @@ from association.query.reading import (
     TEAM_MEETINGS,
     TEAM_PERIOD_TOTAL,
     TEAM_RECORD,
+    Aggregate,
     Companion,
     Cuts,
     Filtered,
@@ -5297,9 +5298,9 @@ def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_l
     tell this rule apart from the reader's own choice of measures."""
     con = narrowed_rebuilt_ctx.con
     scope = Reading(who=Who(kind="player", players=("Anthony Davis",)), cuts=Cuts(opponent="Los Angeles Lakers"))
-    assert compile_query(con, Query(**scope.filters(), skeleton="scalar", aggregate="line", measures=["points"])).rebuilt is True
-    assert compile_query(con, Query(**scope.filters(), skeleton="scalar", aggregate="line", measures=["fg_pct"])).rebuilt is False
-    assert compile_query(con, Query(**scope.filters(), skeleton="scalar", aggregate="line", measures=["points", "fg_pct"])).rebuilt is False
+    assert compile_query(con, Query(**scope.filters(), skeleton="scalar", aggregate=Aggregate.LINE, measures=["points"])).rebuilt is True
+    assert compile_query(con, Query(**scope.filters(), skeleton="scalar", aggregate=Aggregate.LINE, measures=["fg_pct"])).rebuilt is False
+    assert compile_query(con, Query(**scope.filters(), skeleton="scalar", aggregate=Aggregate.LINE, measures=["points", "fg_pct"])).rebuilt is False
     answer = player_stat(
         narrowed_rebuilt_ctx, Reading(who=Who(kind="player", players=("Anthony Davis",)), cuts=Cuts(opponent="Los Angeles Lakers"), measure=Measure(key="fieldGoalPct", as_typed="fieldGoalPct"))
     ).answer

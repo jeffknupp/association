@@ -34,7 +34,7 @@ import duckdb
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
-from association.query.reading import PLAYER_ASKS, Cause, ShapeDeclined
+from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose.plan import Planned, plan_point, refusal_result
@@ -233,6 +233,7 @@ class Agent:
         intent: str | None = None,
         data: dict[str, Any] | None = None,
         artifacts: list[Artifact] | None = None,
+        shape: PointShape | None = None,
     ) -> Answer:
         """Assemble the result, reading the timing off the run that just
         produced it. Every return point in _ask_inner goes through here so
@@ -252,6 +253,7 @@ class Agent:
             data=data,
             artifacts=list(artifacts or []),
             decisions=tuple(history.decisions),
+            shape=shape,
         )
 
     def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, Reply] | None:
@@ -477,7 +479,9 @@ class Agent:
             _note(composed, note)
         self._unmatched_fingerprint(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
-        history.log(f"  -> (compose) intent={reading.intent!r} point={point}")
+        shape = self.planned.shape
+        shaped = f"{shape.relation}/{shape.shape}/{shape.by}" if shape is not None else None
+        history.log(f"  -> (compose) intent={reading.intent!r} shape={shaped} point={point}")
         return composed
 
     def _unmatched_fingerprint(self, reading: Reading, composed: Reply) -> None:
@@ -508,7 +512,10 @@ class Agent:
         fast = self._try_fast_path(question, history)
         if fast is not None:
             intent, templated = fast
-            return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts)
+            # The planned point's shape, which the page renders the data by
+            # (Phase 4, step 1): the one the answer side chose its reader by.
+            shape = self.planned.shape if self.planned is not None else None
+            return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts, shape=shape)
         # Nothing read the question: the refusal names why, in the words the
         # parser or the compiler gave it up with (#129 - the
         # agent this replaced answered one such question in 23).

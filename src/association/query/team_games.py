@@ -85,6 +85,8 @@ from .measures import TEAM_PERIOD_COLUMNS as TEAM_PERIOD_COLUMNS
 # `season_text.MONTH_NAMES` now). `narrow_calendar` below still imports the
 # names it calls at call time.
 if TYPE_CHECKING:
+    import duckdb
+
     from .calendar import AlignmentNarrowing, CalendarNarrowing
 
 # One row per team per game, from that team's side, over every game that was
@@ -897,6 +899,49 @@ def period_games_sql(narrowed: TeamNarrowed, columns: tuple[str, ...]) -> tuple[
         ORDER BY qp.eastern_date
     """
     return sql, params
+
+
+def period_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, columns: tuple[str, ...]) -> list[tuple[Any, ...]]:
+    """A team's quarter or half, read: :func:`period_games_sql`'s rows - each
+    narrowed game's Eastern date, the period's points, ``columns``, the
+    opponent and the season the game was played in, in date order - run
+    through the compiler's one door
+    (:func:`~association.query.compose.core.values_of`).
+
+    .. versionadded:: 6.0.0
+       ``compose.periods._team_quarter_points_games``' read, moved to its
+       relation (Phase 4, step 5).
+    """
+    # At call time: the compiler imports this module, and the season line's
+    # `Statement` (the door's) imports it through the team-season relation.
+    from association.query.compose.core import values_of
+    from association.query.season_line import Statement
+
+    return values_of(con, Statement(*period_games_sql(narrowed, columns)))
+
+
+def unnarrowed_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, season_type: int) -> tuple[int, Any, Any]:
+    """How many of the team's games ``narrowed`` holds WITHOUT its
+    narrowing, and the first and last season among them (a postseason by
+    the calendar year it was played in) - which fact is missing when a
+    team's log found no row: the team's games in that span, or the match.
+    The discipline :func:`~association.query.player_relation.no_narrowed_games`
+    uses for a player. Run through the compiler's one door
+    (:func:`~association.query.compose.core.values_of`).
+
+    .. versionadded:: 6.0.0
+       ``compose.logs._team_log_none``'s read, moved to its relation
+       (Phase 4, step 5).
+    """
+    # At call time, as in `period_games`.
+    from association.query.compose.core import values_of
+    from association.query.season_line import Statement
+
+    where, params = narrowed.clauses(narrowed=False)
+    season_col = "year(tg.eastern_date)" if season_type == 3 else "tg.season"
+    found = values_of(con, Statement(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params))
+    total, first, last = found[0] if found else (0, None, None)
+    return total, first, last
 
 
 def season_game_counts_sql(scope: str, scope_params: list[Any], team_id: str) -> tuple[str, list[Any]]:

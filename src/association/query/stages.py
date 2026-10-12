@@ -41,6 +41,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -115,6 +116,10 @@ def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
         return value
     if isinstance(value, float):
         return value
+    if isinstance(value, Enum):
+        # A closed enum's member (``reading.Aggregate``) as its value: the
+        # text the field held before it was typed, so the record reads the same.
+        return plain(value.value, mask=mask)
     if isinstance(value, str):
         return _masked(value, mask)
     if isinstance(value, Decimal):
@@ -287,6 +292,8 @@ def snapshot(
             "text": _masked(answer.text, mask),
             "answered_by": answer.answered_by,
             "intent": answer.intent,
+            # The planned point's shape, which the page renders by (Phase 4, step 1).
+            "shape": plain(answer.shape, mask=mask),
             "artifacts": [artifact.kind for artifact in answer.artifacts],
             "unanswered": unanswered,
         },

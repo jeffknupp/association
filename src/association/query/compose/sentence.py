@@ -15,7 +15,7 @@ from typing import Any
 from association.query.measure import won
 from association.query.notes import decided, note
 from association.query.player_games import BOTH_SEASON_TYPES
-from association.query.reading import period_label
+from association.query.reading import Aggregate, period_label
 
 from .core import Query
 from .team import TeamQuery, TeamResult
@@ -194,15 +194,15 @@ def _scalar_sentence(q: Query, out: dict[str, Any]) -> str:
     span = _span_phrase(out["span"], out.get("player_seasons"))
     r = rows[0] if rows else {}
     games = r.get("games") or 0
-    if q.aggregate == "count":
+    if q.aggregate == Aggregate.COUNT:
         return f"{who} had {_games(games)}{_predicates(q)}{where} in the {span}."
-    if q.aggregate == "record":
+    if q.aggregate == Aggregate.RECORD:
         return f"{who}'s team went {r.get('wins', 0)}-{r.get('losses', 0)} in the {_games(games)}{_predicates(q)}{where} in the {span}."
     if not games:
         return f"No games for {who}{where} in the {span}."
     stats = ", ".join(f"{_fmt(r.get(m), m)} {LABELS.get(m, m)}" for m in q.measures)
-    how = "per game" if q.aggregate == "per_game" else q.aggregate
-    if q.aggregate == "per_game":
+    how = "per game" if q.aggregate == Aggregate.PER_GAME else q.aggregate
+    if q.aggregate == Aggregate.PER_GAME:
         return f"{who} averaged {stats} {how} over {_games(games)}{where} in the {span}."
     return f"{who}: {stats} ({how}) over {_games(games)}{where} in the {span}."
 
@@ -249,13 +249,13 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
         return _grouped_empty(q, who, where, span)
     head = f"{who}{where}, {span}{_predicates(q)}, by {q.group}"
     if q.measures:
-        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == 'per_game' else q.aggregate}" + _grouped_minimum(q) + ")"
+        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == Aggregate.PER_GAME else q.aggregate}" + _grouped_minimum(q) + ")"
     if q.group == "season" and q.limit and len(rows) >= q.limit:
         # The span names the whole career; the rows are its newest N (the
         # limit cut them - core._compile_grouped), which the heading says.
         head += f" - {'first' if q.direction == 'asc' else 'most recent'} {len(rows)} seasons"
     lines = [_grouped_line(q, r) for r in rows]
-    if q.aggregate == "count" and q.group == "player" and len(rows) > 1 and out.get("total") is not None:
+    if q.aggregate == Aggregate.COUNT and q.group == "player" and len(rows) > 1 and out.get("total") is not None:
         # A count by player is usually asked for its total too ("thunder
         # all-time triple doubles": 193, then who had them) - the whole
         # count, not the listed rows' (core._grouped_total).

@@ -9,6 +9,7 @@ import pytest
 from association.nba.season import current_season
 from association.query.calendar import AlignmentNarrowing
 from association.query.player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql
+from association.query.player_relation import log_total, narrowing_emptied
 
 
 @pytest.fixture
@@ -66,6 +67,34 @@ def test_the_aggregate_counts_exactly_the_rows_the_log_lists(con: duckdb.DuckDBP
         row = con.execute(counted, cparams).fetchone()
         assert row is not None
         assert row[0] == len(con.execute(listed, params).fetchall())
+
+
+def test_a_logs_total_counts_every_game_the_narrowing_keeps_before_the_window(con: duckdb.DuckDBPyConnection) -> None:
+    """The relation's read of how many games a log was cut from, and their
+    first and last season (Phase 4, step 5: ``compose.logs``' read until
+    then): the window comes off - the newest one game of a three-game
+    career is "1 of 3" - and the rebuilt line counts only when the read
+    counts it."""
+    narrowed = _career()
+    narrowed.window = ("recent", 1)
+    assert log_total(con, narrowed, rebuilt=False) == (3, 1994, current_season())
+    assert narrowed.window is None, "the window is off the narrowed games themselves, as whole_span always took it"
+    assert log_total(con, _career(), rebuilt=True) == (4, 1994, current_season())
+    nobody = Narrowed(base=["pgl.athlete_id = ?"], base_params=["nobody"])
+    assert log_total(con, nobody, rebuilt=False) == (0, None, None)
+
+
+def test_a_narrowing_that_emptied_the_games_is_told_from_a_span_that_held_none(con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 4, step 5: the relation's read (``compose.splits``' until then)
+    - the player has games once the opponent comes off, so it is the
+    opponent that left none; with no narrowing, or no games at all, it is
+    not."""
+    against = _career()
+    against.extra, against.extra_params = ["pgl.opponent_abbr = ?"], ["XYZ"]
+    assert narrowing_emptied(con, against)
+    assert not narrowing_emptied(con, _career()), "no narrowing to blame"
+    nobody = Narrowed(base=["pgl.athlete_id = ?"], base_params=["nobody"], extra=["pgl.opponent_abbr = ?"], extra_params=["XYZ"])
+    assert not narrowing_emptied(con, nobody), "no games under the base clauses either"
 
 
 def test_a_grouped_limit_applies_after_grouping_not_to_the_rows(con: duckdb.DuckDBPyConnection) -> None:

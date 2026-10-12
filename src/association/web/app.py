@@ -140,18 +140,35 @@ class AnswerNoteResponse(BaseModel):
     facts: dict[str, Any]
 
 
+class ShapeResponse(BaseModel):
+    """The planned point's shape, the wire form of
+    :class:`~association.query.reading.PointShape`: the relation it reads,
+    the shape (one of :data:`~association.query.reading.SHAPE`) and what it
+    is ``by``. The page renders an answer's ``data`` by it.
+
+    .. versionadded:: 6.0.0
+    """
+
+    relation: str
+    shape: str
+    by: str
+
+
 class AnswerResponse(BaseModel):
     """An answered question.
 
-    ``intent`` and ``data`` are null when ``answered_by`` is ``"refused"``:
-    only a template or the compiler produces them. A client must handle that
-    rather than assume a shape.
+    ``intent``, ``shape`` and ``data`` are null when ``answered_by`` is
+    ``"refused"``: only a reader or the compiler produces them. A client must
+    handle that rather than assume a shape.
 
     .. versionadded:: 2.0.0
 
     .. versionchanged:: 5.0.0
        ``answered_by`` is ``"fast"`` or ``"refused"``, never ``"agent"``: a
        question nothing here reads is refused naming why, in ``text``.
+
+    .. versionchanged:: 6.0.0
+       Adds ``shape``, the planned point's shape, which the page renders by.
 
     .. versionchanged:: 4.4.0
        Adds ``history_file``, the basename of the run this answer was recorded
@@ -181,6 +198,12 @@ class AnswerResponse(BaseModel):
     facts; the sentences are in ``text``.
 
     .. versionadded:: 5.0.0
+    """
+    shape: ShapeResponse | None = None
+    """The planned point's shape, which the page renders ``data`` by; null
+    where ``intent`` is, and where the words came to no point.
+
+    .. versionadded:: 6.0.0
     """
 
 
@@ -307,6 +330,7 @@ def as_response(answer: Answer, history_file: str | None = None) -> AnswerRespon
         history_file=history_file,
         decisions=[DecisionResponse(**d.as_dict()) for d in answer.decisions],
         notes=[AnswerNoteResponse(**n.as_dict()) for n in answer.notes],
+        shape=ShapeResponse(relation=answer.shape.relation, shape=answer.shape.shape, by=answer.shape.by) if answer.shape is not None else None,
     )
 
 

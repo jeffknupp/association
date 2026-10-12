@@ -1,15 +1,21 @@
-"""Guards the contract between the page's per-intent renderers and the
-templates that produce their data.
+"""Guards the contract between the page's renderers - one per shape a
+planned point is read and said as - and the readers that produce their data.
 
-The renderers live in JavaScript, in `web/static/index.html`, and read keys out
-of `Answer.data`. Nothing in Python or in the browser complains when a template
-renames one: the renderer's `needs` check fails, the answer falls back to text,
-and the page looks like it simply never had a table. That is this project's
-recurring failure shape - a fast, fluent answer that is quietly less than it
-was - so it gets a test rather than a convention.
+The renderers live in JavaScript, in `web/static/index.html`, keyed by the
+answer's planned shape (``Answer.shape``, Phase 4, step 1; by the retired
+label until then), and each draws the bodies its shape's readers say,
+reading keys out of `Answer.data`. Nothing in Python or in the browser
+complains when a reader renames one: the body's `needs` check fails, the
+answer falls back to text, and the page looks like it simply never had a
+table. That is this project's recurring failure shape - a fast, fluent answer
+that is quietly less than it was - so it gets a test rather than a
+convention.
 
-These tests read the `needs` lists out of the page itself, so there is one
-source for what each renderer depends on rather than a copy to keep in step.
+These tests read the renderers' bodies and `needs` lists out of the page
+itself, so there is one source for what each body depends on rather than a
+copy to keep in step; and where node is installed they run each renderer's
+own choice of body (its `of`) on the planned shape and the data a case is
+answered with, so a case is checked against the body the page would draw.
 """
 
 from __future__ import annotations
@@ -17,8 +23,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import duckdb
 import pytest
@@ -26,6 +33,7 @@ from routed import planned_answer as compose_answer
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext, Reply
+from association.query.compose.plan import plan_point
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.entities import names_of
 from association.query.parse import with_point
@@ -45,7 +53,6 @@ from association.query.reading import (
     PLAYER_SPLITS,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
-    SHAPE_NAMES,
     SHOT_DISTANCE,
     TEAM_LINE,
     TEAM_MEETINGS,
@@ -54,11 +61,13 @@ from association.query.reading import (
     TEAM_RANKING,
     TEAM_RECORD,
     Companion,
+    Cuts,
     Line,
     Measure,
     Period,
     PointShape,
     Reading,
+    Shape,
     Span,
     Window,
 )
@@ -66,54 +75,77 @@ from association.query.reading import Subject as Who
 from association.query.subject import read_subject
 from association.web.app import INDEX_HTML
 
-# One case per renderer - the key and the typed reading - chosen to produce the shape
-# the renderer expects rather than an empty or refusing one.
+_ADA = Who(kind="player", players=("Ada Star",))
+_ROCKETS = Who(kind="team", teams=("Rockets",))
+_PAIR = Who(kind="pair", players=("Ada Star", "Bo Wall"))
+_THIRTY = Line(measure="points", value=30, as_typed="30+ points", keyed=True)
+_POINTS = Measure(key="points", as_typed="points")
+
+# One case per body a shape's renderer draws, keyed "<shape>.<body>" - the key
+# the words ask and the typed reading - chosen to produce the body the
+# renderer draws rather than an empty or refusing one. A "compiled" case is a
+# point its reader steps aside for, which the compiler's own sentence answers.
 CASES: dict[str, tuple[PointShape, Reading]] = {
-    "leaderboard": (PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), window=Window(count=3))),
-    "threshold_count": (GAMES_COUNTED, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"))),
-    "single_game_high": (GAME_HIGHS, Reading(measure=Measure(key="points", as_typed="points"))),
-    "player_history": (SEASON_HISTORY, Reading(who=Who(kind="player", players=("Ada Star",)), measure=Measure(key="points", as_typed="points"))),
-    "player_compare": (PLAYER_COMPARISON, Reading(who=Who(kind="pair", players=("Ada Star", "Bo Wall")))),
-    "game_log": (PLAYER_LOG, Reading(who=Who(kind="player", players=("Ada Star",)), window=Window(count=3))),
-    "team_record": (TEAM_RECORD, Reading(who=Who(kind="team", teams=("Rockets",)), span=Span(season=2026))),
-    "player_stat": (PLAYER_LINE, Reading(who=Who(kind="player", players=("Ada Star",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))),
-    "player_netpoints": (NETPOINTS_RATINGS, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026))),
-    "shot_distance": (SHOT_DISTANCE, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026))),
-    "head_to_head": (TEAM_MEETINGS, Reading(who=Who(kind="teams", teams=("Rockets", "Mavericks")), span=Span(season=2026))),
-    "team_quarter_points": (TEAM_PERIOD_TOTAL, Reading(who=Who(kind="team", teams=("Rockets",)), span=Span(season=2026), period=Period(number=1))),
-    "period_split": (PERIOD_LOG, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026), period=Period(number=1))),
-    "period_leaderboard": (PERIOD_RANKING, Reading(span=Span(season=2026), period=Period(number=1))),
-    "player_splits": (PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026), split="wins_losses")),
-    "with_without": (PRESENCE_SPLIT, Reading(who=Who(kind="team", teams=("Rockets",)), companions=(Companion(player="Ada Star"),), span=Span(season=2026))),
-    "record_when": (
-        LINE_RECORD,
-        Reading(
-            who=Who(kind="player", players=("Ada Star",)),
-            lines=(Line(measure="points", value=32, as_typed="32 points", keyed=True),),
-            measure=Measure(key="points", as_typed="points"),
-            span=Span(season=2026),
-        ),
-    ),
-    "player_matchup": (PLAYER_MEETINGS, Reading(who=Who(kind="pair", players=("Ada Star", "Bo Wall")), span=Span(season=2026))),
-    "streak": (LINE_RUNS, Reading(who=Who(kind="team", teams=("Rockets",)), measure=Measure(won=True), span=Span(season=2026))),
-    "team_stat": (TEAM_LINE, Reading(who=Who(kind="team", teams=("Rockets",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))),
-    "team_leaderboard": (TEAM_RANKING, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season=2026))),
-    "team_outlook": (TEAM_OUTLOOK, Reading(who=Who(kind="team", teams=("Rockets",)), span=Span(season=2026))),
+    "ranking.leaders": (PLAYER_RANKING, Reading(measure=_POINTS, window=Window(count=3))),
+    "ranking.counts": (GAMES_COUNTED, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=_POINTS)),
+    "ranking.periods": (PERIOD_RANKING, Reading(span=Span(season=2026), period=Period(number=1))),
+    "ranking.teams": (TEAM_RANKING, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season=2026))),
+    "ranking.compiled": (PLAYER_RANKING, Reading(measure=_POINTS, cuts=Cuts(venue="home"), span=Span(season=2026))),
+    "rows.games": (PLAYER_LOG, Reading(who=_ADA, window=Window(count=3))),
+    "rows.highs": (GAME_HIGHS, Reading(measure=_POINTS)),
+    "rows.figures": (PERIOD_LOG, Reading(who=_ADA, span=Span(season=2026), period=Period(number=1))),
+    "rows.compiled": (GAMES_COUNTED, Reading(lines=(_THIRTY, Line(measure="rebounds", value=5, as_typed="5 rebounds", keyed=True)), measure=_POINTS)),
+    "scalar.line": (PLAYER_LINE, Reading(who=_ADA, measure=_POINTS, span=Span(season=2026))),
+    "scalar.team_line": (TEAM_LINE, Reading(who=_ROCKETS, measure=_POINTS, span=Span(season=2026))),
+    "scalar.record": (TEAM_RECORD, Reading(who=_ROCKETS, span=Span(season=2026))),
+    "scalar.projection": (TEAM_OUTLOOK, Reading(who=_ROCKETS, span=Span(season=2026))),
+    "scalar.figures": (TEAM_PERIOD_TOTAL, Reading(who=_ROCKETS, span=Span(season=2026), period=Period(number=1))),
+    "scalar.distance": (SHOT_DISTANCE, Reading(who=_ADA, span=Span(season=2026))),
+    "scalar.ratings": (NETPOINTS_RATINGS, Reading(who=_ADA, span=Span(season=2026))),
+    "scalar.compiled": (GAMES_COUNTED, Reading(who=_ADA, lines=(_THIRTY,), measure=_POINTS, cuts=Cuts(venue="home"), span=Span(season=2026))),
+    "comparison.subject": (PLAYER_COMPARISON, Reading(who=_PAIR)),
+    "comparison.met": (PLAYER_MEETINGS, Reading(who=_PAIR, span=Span(season=2026))),
+    "comparison.opponent": (TEAM_MEETINGS, Reading(who=Who(kind="teams", teams=("Rockets", "Mavericks")), span=Span(season=2026))),
+    "comparison.compiled": (PLAYER_MEETINGS, Reading(who=_PAIR, span=Span(both=True))),
+    "split.season": (SEASON_HISTORY, Reading(who=_ADA, measure=_POINTS)),
+    "split.splits": (PLAYER_SPLITS, Reading(who=_ADA, span=Span(season=2026), split="wins_losses")),
+    "split.presence": (PRESENCE_SPLIT, Reading(who=_ROCKETS, companions=(Companion(player="Ada Star"),), span=Span(season=2026))),
+    "split.line": (LINE_RECORD, Reading(who=_ADA, lines=(Line(measure="points", value=32, as_typed="32 points", keyed=True),), measure=_POINTS, span=Span(season=2026))),
+    "split.compiled": (SEASON_HISTORY, Reading(who=_ADA, measure=_POINTS, cuts=Cuts(opponent="Mavericks"))),
+    "runs.runs": (LINE_RUNS, Reading(who=_ROCKETS, measure=Measure(won=True), span=Span(season=2026))),
 }
 
 
-def _renderers() -> dict[str, list[str]]:
-    """intent -> the Answer.data keys its renderer reads, parsed from the page.
+def _renderer_blocks() -> dict[str, str]:
+    """shape -> its renderer's source, parsed from the page's RENDERERS table."""
+    page = INDEX_HTML.read_text()
+    table = re.search(r"const RENDERERS = \{(.*?)\n  \};", page, re.S)
+    assert table is not None, "could not find the RENDERERS table in index.html"
+    found = dict(re.findall(r"^    (\w+): \{\n(.*?)\n    \},$", table.group(1), re.M | re.S))
+    assert found, "found the RENDERERS table but no renderers in it"
+    return found
+
+
+def _renderers() -> dict[str, dict[str, list[str]]]:
+    """shape -> body -> the Answer.data keys the body reads, parsed from the page.
 
     Parsed rather than duplicated here: a hand-copied list would drift, and a
     drifted list would assert the wrong thing while looking maintained.
     """
-    page = INDEX_HTML.read_text()
-    block = re.search(r"const RENDERERS = \{(.*?)\n  \};", page, re.S)
-    assert block is not None, "could not find the RENDERERS table in index.html"
-    found = re.findall(r"^    (\w+): \{\n      needs: \[([^\]]*)\],", block.group(1), re.M)
-    assert found, "found the RENDERERS table but no renderers in it"
-    return {intent: re.findall(r'"([^"]+)"', needs) for intent, needs in found}
+    renderers = {}
+    for shape, block in _renderer_blocks().items():
+        bodies = re.findall(r"^        (\w+): \{ needs: \[([^\]]*)\], draw: \w+ \},$", block, re.M)
+        assert bodies, f"the {shape} renderer names no body"
+        renderers[shape] = {body: re.findall(r'"([^"]+)"', needs) for body, needs in bodies}
+    return renderers
+
+
+def test_the_page_has_one_renderer_per_shape() -> None:
+    """The page renders by the planned point's shape (Phase 4, step 1): one
+    renderer per :data:`~association.query.reading.Shape`, and none for a
+    label - a renderer keyed "leaderboards" would never fire, and nothing
+    else would ever say so."""
+    assert sorted(_renderers()) == sorted(get_args(Shape))
 
 
 def test_the_comparison_renderer_reads_netpoints_without_requiring_it() -> None:
@@ -121,10 +153,10 @@ def test_the_comparison_renderer_reads_netpoints_without_requiring_it() -> None:
     list the key in `needs`: NetPoints starts in 2019, and requiring it would
     drop the whole table back to plain text for every earlier season."""
     page = INDEX_HTML.read_text()
-    block = re.search(r"player_compare: \{(.*?)\n    \},", page, re.S)
-    assert block is not None, "could not find the player_compare renderer"
-    assert "d.netpoints" in block.group(1), "the renderer no longer reads the NetPoints summary"
-    assert '"netpoints"' not in block.group(1), "netpoints must stay out of `needs` - see the docstring"
+    block = re.search(r"function playersBody\(d, text\) \{(.*?)\n  \}\n", page, re.S)
+    assert block is not None, "could not find the comparison's players body"
+    assert "d.netpoints" in block.group(1), "the body no longer reads the NetPoints summary"
+    assert "netpoints" not in _renderers()["comparison"]["subject"], "netpoints must stay out of `needs` - see the docstring"
 
 
 def test_a_signed_cell_still_counts_as_a_number_for_alignment() -> None:
@@ -155,16 +187,12 @@ def test_the_pages_fraction_set_matches_the_compilers() -> None:
     assert page_fractions == set(_FRACTION_COLUMNS)
 
 
-def test_every_renderer_names_an_intent_that_actually_exists() -> None:
-    """A renderer keyed 'leaderboards' would never fire, and nothing else would
-    ever say so."""
-    unknown = sorted(set(_renderers()) - set(SHAPE_NAMES.values()))
-    assert unknown == [], f"renderers for intents that do not exist: {unknown}"
-
-
-def test_the_test_cases_here_cover_every_renderer() -> None:
-    """Otherwise adding a renderer silently adds nothing to the test below."""
-    assert sorted(_renderers()) == sorted(CASES)
+def test_the_test_cases_here_cover_every_body() -> None:
+    """Otherwise adding a body silently adds nothing to the tests below. A
+    chart's frames read the answer's artifacts, not its data, and need
+    nothing of it."""
+    bodies = {f"{shape}.{body}" for shape, each in _renderers().items() for body, needs in each.items() if needs}
+    assert sorted(CASES) == sorted(bodies)
 
 
 @pytest.fixture
@@ -346,34 +374,94 @@ def ctx(tmp_path: Path) -> AnswerContext:
     return AnswerContext(con=con, out_dir=tmp_path / "out")
 
 
-def _answered(ctx: AnswerContext, intent: str) -> Reply:
-    """The answer to the case of the renderer named ``intent``: the
+def _read(ctx: AnswerContext, case: str) -> tuple[PointShape | None, Reply]:
+    """The planned shape and the answer of the case named ``case``: the
     compiler's, over the key and the typed reading the case states, with no
-    question words to move its own point."""
-    asked, scope = CASES[intent]
-    result = compose_answer(ctx, with_point("", replace(scope, asked=asked, subject=read_subject(names_of(ctx.con), "", asked, scope))))
-    assert result is not None, f"the compiler has no reading of {intent}'s case"
-    return result
+    question words to move its own point - planned once, as ``Agent.ask``
+    plans a question's Reading."""
+    asked, scope = CASES[case]
+    reading = with_point("", replace(scope, asked=asked, subject=read_subject(names_of(ctx.con), "", asked, scope)))
+    result = compose_answer(ctx, reading)
+    assert result is not None, f"the compiler has no reading of {case}'s case"
+    return plan_point(reading).shape, result
 
 
-def test_every_key_a_renderer_reads_is_a_key_its_template_produces(ctx: AnswerContext, subtests: Any) -> None:
-    """The point of the whole file. A template that renames a key leaves the
+def test_each_case_is_planned_as_the_shape_whose_renderer_draws_it(ctx: AnswerContext, subtests: Any) -> None:
+    """A case under the wrong shape would check a body its answers never reach."""
+    for case in sorted(CASES):
+        with subtests.test(case=case):
+            shape, _ = _read(ctx, case)
+            assert shape is not None and shape.shape == case.split(".")[0], f"{case} is planned as {shape}"
+
+
+def test_every_key_a_body_reads_is_a_key_its_reader_produces(ctx: AnswerContext, subtests: Any) -> None:
+    """The point of the whole file. A reader that renames a key leaves the
     page silently falling back to text; this fails instead."""
-    for intent, needs in sorted(_renderers().items()):
-        with subtests.test(intent=intent):
-            result = _answered(ctx, intent)
-            missing = [key for key in needs if result.data.get(key) is None]
-            assert missing == [], f"{intent} no longer produces {missing} - the page's renderer would fall back to text"
+    renderers = _renderers()
+    for case in sorted(CASES):
+        with subtests.test(case=case):
+            shape, body = case.split(".")
+            data = _read(ctx, case)[1].data
+            missing = [key for key in renderers[shape][body] if data.get(key) is None]
+            assert missing == [], f"{case} no longer produces {missing} - the page's renderer would fall back to text"
 
 
-def test_the_data_a_renderer_reads_is_json_serializable_as_is(ctx: AnswerContext) -> None:
+def test_the_data_a_body_reads_is_json_serializable_as_is(ctx: AnswerContext) -> None:
     """It reaches the page over HTTP. Serialized with a `default=` fallback, a
     Decimal or a date would arrive as a *string*, and a column the renderer
     formats as a number would quietly become left-aligned text. So this
-    serializes strictly: anything needing a fallback raises here instead."""
-    for intent, needs in sorted(_renderers().items()):
-        data = _answered(ctx, intent).data
-        json.dumps({key: data[key] for key in needs})  # no default= on purpose
+    serializes strictly: anything needing a fallback raises here instead -
+    but a date, which the compiler's own rows carry as their ``day`` and the
+    API sends as its ISO string, a column the page draws as text either way."""
+
+    def dates_only(value: object) -> str:
+        if isinstance(value, date):
+            return value.isoformat()
+        raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+    renderers = _renderers()
+    for case in sorted(CASES):
+        shape, body = case.split(".")
+        data = _read(ctx, case)[1].data
+        json.dumps({key: data[key] for key in renderers[shape][body]}, default=dates_only)
+
+
+def _node() -> str:
+    """The node binary, or a skip: these are cheap extra guards, not the
+    reason the suite exists. Nothing they run reaches a network."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed - the page's JavaScript is not run here")
+    return node
+
+
+def test_each_renderer_chooses_the_body_its_case_names(ctx: AnswerContext) -> None:
+    """Each renderer chooses the body an answer's data carries by its planned
+    shape (`of`): run here, in node, on the shape and the data each case is
+    answered with, so a case is held to the body the page would draw - a
+    `by` the choice misreads draws nothing, and falls back to text."""
+    import subprocess
+
+    node = _node()
+    choosers = {}
+    for shape, block in _renderer_blocks().items():
+        chooser = re.search(r"^      of: (.*),$", block, re.M)
+        assert chooser is not None, f"the {shape} renderer has no `of`"
+        choosers[shape] = chooser.group(1)
+    answered = []
+    for case in sorted(CASES):
+        planned, result = _read(ctx, case)
+        assert planned is not None
+        answered.append({"case": case, "shape": {"relation": planned.relation, "shape": planned.shape, "by": planned.by}, "data": result.data})
+    script = "const OF = {" + ", ".join(f"{shape}: {chooser}" for shape, chooser in choosers.items()) + "};\n"
+    script += "const cases = " + json.dumps(answered, default=str) + ";\n"
+    script += "console.log(JSON.stringify(cases.map(c => [c.case, c.shape.shape + '.' + OF[c.shape.shape](c.data, c.shape)])));\n"
+    run = subprocess.run([node, "-e", script], capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    chosen = dict(json.loads(run.stdout))
+    assert {case: body for case, body in chosen.items() if case != body} == {}
 
 
 def test_the_pages_javascript_parses() -> None:

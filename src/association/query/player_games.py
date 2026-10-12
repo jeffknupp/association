@@ -1164,6 +1164,58 @@ def most_games_sql(narrowed: Narrowed, *, rebuilt: bool) -> tuple[str, list[Any]
     return grouped_sql(narrowed, "pgl.athlete_id", ["COUNT(*) AS games"], order="games DESC", limit=1, rebuilt=rebuilt)
 
 
+def _period_values(con: duckdb.DuckDBPyConnection, statement: tuple[str, list[Any]]) -> list[tuple[Any, ...]]:
+    """``statement`` - one of the league's period reads built above - run
+    through the compiler's one door
+    (:func:`~association.query.compose.core.values_of`), its rows by
+    position. At call time: the compiler imports this module, and so does
+    the season line, whose ``Statement`` the door takes."""
+    from association.query.compose.core import values_of
+    from association.query.season_line import Statement
+
+    sql, params = statement
+    return values_of(con, Statement(sql, params))
+
+
+def period_ranking(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, measure: str, *, minimum: int, limit: int, rebuilt: bool) -> list[tuple[Any, ...]]:
+    """The league's ranking by one quarter's or half's ``measure``, read:
+    (name, games, total, average) per player with ``minimum`` games or more
+    in the period-narrowed relation, best average first
+    (:func:`period_ranking_sql`).
+
+    .. versionadded:: 6.0.0
+       ``compose.periods.read_period_leaderboard``'s read, moved to its
+       relation (Phase 4, step 5).
+    """
+    return _period_values(con, period_ranking_sql(narrowed, measure, minimum=minimum, limit=limit, rebuilt=rebuilt))
+
+
+def period_quarter(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, minimum: int, rebuilt: bool) -> list[tuple[Any, ...]]:
+    """One quarter of the league's points-by-quarter table, read: (athlete,
+    name, games, average points) per player with ``minimum`` games or more
+    in the quarter-narrowed relation (:func:`period_quarter_sql`).
+
+    .. versionadded:: 6.0.0
+       ``compose.periods._period_leaderboard_by_quarter``'s read, moved to
+       its relation (Phase 4, step 5).
+    """
+    return _period_values(con, period_quarter_sql(narrowed, minimum=minimum, rebuilt=rebuilt))
+
+
+def most_games(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bool) -> int:
+    """The most games any one player has in the narrowed relation
+    (:func:`most_games_sql`), 0 where nobody has one - what a period
+    ranking's pool narrowed to an opponent or a venue sets its minimum as a
+    share of.
+
+    .. versionadded:: 6.0.0
+       ``compose.periods._period_leaderboard_minimum``'s read, moved to its
+       relation (Phase 4, step 5).
+    """
+    row = _period_values(con, most_games_sql(narrowed, rebuilt=rebuilt))
+    return int(row[0][0]) if row else 0
+
+
 def column(alias: str, name: str, box: BoxSource) -> str:
     """A box-score column as a reader may trust it: blanked on a rebuilt row
     when it is one the rebuild fills but was never measured for

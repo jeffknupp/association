@@ -26,7 +26,7 @@ from association.query.entities import names_of
 from association.query.grammar import settle
 from association.query.parse import read_route
 from association.query.player_relation import POSITION_CODES
-from association.query.reading import GAME_HIGHS, PLAYER_LINE, Cuts, Filtered, Reading, ScopeError, Span
+from association.query.reading import GAME_HIGHS, PLAYER_LINE, Aggregate, Cuts, Filtered, Reading, ScopeError, Span
 from association.query.reading import Subject as Who
 from association.query.subject import is_team_name, subject_claims, subject_named_in, team_named_in_text, team_words_in
 from association.query.team_relation import scoped_team
@@ -148,7 +148,7 @@ def test_the_claims_ride_the_reading(league: AnswerContext) -> None:  # noqa: F8
 
 
 def _total(ctx: AnswerContext, scope: Filtered, *, subject: str = "player", position: str | None = None) -> tuple[int, int]:
-    query = Query(**scope.filters(), skeleton="scalar", measures=["points"], aggregate="total", subject="everyone" if subject == "everyone" else "player", position=position)
+    query = Query(**scope.filters(), skeleton="scalar", measures=["points"], aggregate=Aggregate.TOTAL, subject="everyone" if subject == "everyone" else "player", position=position)
     (row,) = rows_of(ctx.con, compile_query(ctx.con, query))
     return int(row["games"]), int(row["points"] or 0)
 

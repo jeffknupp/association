@@ -30,7 +30,7 @@ from association.nba.season import eastern_date
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_relation import box_score_notes_read, narrowed_cells, no_narrowed_games
-from association.query.reading import Unsupported
+from association.query.reading import Aggregate, Unsupported
 from association.query.result import LineFacts, Narrowing, Part, Result, Rows, Scalar, Span, Unanswered
 from association.query.season_line import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, wanted_stats
 
@@ -95,12 +95,12 @@ def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.source != "games" or q.predicates:
+    if q.skeleton != "scalar" or q.aggregate != Aggregate.PER_GAME or q.subject != "player" or q.source != "games" or q.predicates:
         return None
     measures = _player_stat_measures(q)
     if measures is None:
         return None
-    compiled = compile_query(con, replace(q, aggregate="line", measures=measures))
+    compiled = compile_query(con, replace(q, aggregate=Aggregate.LINE, measures=measures))
     if compiled.player is None:
         return None
     (line,) = rows_of(con, compiled)
@@ -134,7 +134,7 @@ def _player_stat_meetings(con: duckdb.DuckDBPyConnection, q: Query, compiled: Co
     asking "vs X" is usually after. A per-game log is still ``game_log``'s,
     for a question that says log, each game or last N."""
     assert compiled.player is not None
-    meetings = replace(q, skeleton="rows", aggregate="none", measures=[*_MEETING_MEASURES, *compiled.measures], order="date", direction="desc", limit=RECENT_MEETINGS, offset=0)
+    meetings = replace(q, skeleton="rows", aggregate=Aggregate.NONE, measures=[*_MEETING_MEASURES, *compiled.measures], order="date", direction="desc", limit=RECENT_MEETINGS, offset=0)
     found = rows_of(con, _compile_rows(meetings, copy.deepcopy(compiled.narrowed), compiled.rebuilt, compiled.player, compiled.span))
     rows = tuple(
         {

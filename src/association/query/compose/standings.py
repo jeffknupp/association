@@ -10,7 +10,9 @@ and, for a season with a home/road split, a
 (iv): the retired ``team_record`` template's standings reads
 (``templates.teams._standings_season``, ``_standings_career``) moved here,
 their statements into the relation, their sentences to the sayer
-(:func:`association.query.compose.say.say_team_record`).
+(:func:`association.query.compose.say.say_team_record`); since Phase 4,
+step 5 the relation runs them too (:mod:`association.query.standings`), and
+this module reads only what it hands back.
 
 The standings are the authoritative source for a regular season's record:
 their "Home" and "Road" strings agree with a tally of the game list for
@@ -30,10 +32,9 @@ import duckdb
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.result import Grouped, Narrowing, Part, Result, Scalar, Span
+from association.query.standings import career_rows, first_season, season_games, season_row
 from association.query.team_metrics import FIRST_FULL_REGULAR_SEASON
-from association.query.team_seasons import games_played, record_text, standings_career, standings_first_season, standings_season
-
-from .core import values_of
+from association.query.team_seasons import record_text
 
 
 def _standings_short(con: duckdb.DuckDBPyConnection, team: Entity, seasons: list[tuple[int, int]]) -> list[Note]:
@@ -43,7 +44,7 @@ def _standings_short(con: duckdb.DuckDBPyConnection, team: Entity, seasons: list
     from the row."""
     if not seasons:
         return []
-    totals = dict(values_of(con, games_played(team.id, [s for s, _ in seasons])))
+    totals = season_games(con, team.id, [s for s, _ in seasons])
     short = [(s, g, int(totals[s])) for s, g in seasons if s in totals and totals[s] and g < int(totals[s])]
     if not short:
         return []
@@ -65,7 +66,7 @@ def read_standings_season(con: duckdb.DuckDBPyConnection, team: Entity, season: 
 
     .. versionadded:: 5.0.0
     """
-    found = values_of(con, standings_season(team.id, season))
+    found = season_row(con, team.id, season)
     span = Span(season=season, season_type=2, source="team_seasons")
     narrowing = Narrowing(venue=venue)
     if not found:
@@ -110,7 +111,7 @@ def read_standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: s
 
     .. versionadded:: 5.0.0
     """
-    rows = values_of(con, standings_career(team.id))
+    rows = career_rows(con, team.id)
     narrowing = Narrowing(venue=venue)
     if not rows:
         return Result(subject=team.name, relation="team", span=Span(season_type=2, career=True, source="team_seasons"), narrowing=narrowing, parts=(Part(body=Scalar(games=0, how="record")),))
@@ -121,7 +122,7 @@ def read_standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: s
     first, last = rows[0][0], rows[-1][0]
     # The start is the warehouse's, not the franchise's, and saying which is
     # the whole difference between an all-time record and a partial one.
-    notes = [Note("floor", {"table": "standings", "first": int(first)})] if first == min(r[0] for r in values_of(con, standings_first_season())) else []
+    notes = [Note("floor", {"table": "standings", "first": int(first)})] if first == first_season(con) else []
     notes += _standings_short(con, team, [(int(r[0]), int(r[1]) + int(r[2])) for r in rows])
     return Result(
         subject=team.name,
