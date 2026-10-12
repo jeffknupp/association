@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, get_args
 
 from association.query import lexicon
@@ -78,13 +79,34 @@ everyone, which Phase 3's step 2 retypes with the subject.
 .. versionadded:: 6.0.0
 """
 
-Aggregate = Literal["none", "per_game", "total", "count", "record"]
-"""How the rows are reduced. A single game's high is no aggregate: it is the
-``rows`` shape ordered by the measure; and a rate is the per-game one, a
-ratio of the games' sums (``compose.core.RATES``).
 
-.. versionadded:: 5.0.0
-"""
+class Aggregate(StrEnum):
+    """How the rows are reduced - a closed set, which the point reader and
+    the compiler's readers name by member and the compiler reads by member
+    (``compose.core``'s ``_agg`` and ``_scalar_selects``), so no reducer is
+    spelled as text on either side. A single game's high is no aggregate:
+    it is the ``rows`` shape ordered by the measure; and a rate is the
+    per-game one, a ratio of the games' sums (``compose.core.RATES``).
+    ``LINE`` is the compiler's alone: each measure per game with the sums a
+    player's line is said from (``compose.stats`` asks it of a planned
+    point, ``compose.core._line_selects``). A member is its own value as
+    text, so a record of one reads as the name it replaced.
+
+    .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       A closed enum where it was a ``Literal`` of names on the point and a
+       ``str`` on the compiler's ``Query`` (Phase 4, step 3), with ``LINE``
+       the compiler's sixth.
+    """
+
+    NONE = "none"
+    PER_GAME = "per_game"
+    TOTAL = "total"
+    COUNT = "count"
+    RECORD = "record"
+    LINE = "line"
+
 
 Group = Literal["none", "venue", "starter", "season", "season_type", "month", "month_of_year", "opponent", "won", "player", "presence", "period", "line"]
 """``"none"`` or a key of :data:`~association.query.compose.core.GROUPS` (a
@@ -1821,7 +1843,7 @@ class Reading(Filtered):
     on: PointRelation = "player_games"
     #: The measures the answer reads (box-score columns or derived measures).
     measures: list[str] = field(default_factory=list)
-    aggregate: Aggregate = "none"
+    aggregate: Aggregate = Aggregate.NONE
     group: Group = "none"
     #: Row predicates: ``(measure, op, value)``.
     predicates: list[tuple[str, str, Any]] = field(default_factory=list)

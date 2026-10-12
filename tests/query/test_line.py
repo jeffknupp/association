@@ -43,6 +43,7 @@ from association.query.reading import (
     PLAYER_SPLITS,
     PRESENCE_SPLIT,
     TEAM_RANKING,
+    Aggregate,
     Claim,
     Companion,
     Filtered,
@@ -278,7 +279,7 @@ def test_a_count_over_several_lines_reads_the_first_as_the_points_not_the_models
 
 
 def _games(ctx: AnswerContext, scope: Filtered) -> tuple[int, int]:
-    (row,) = rows_of(ctx.con, compile_query(ctx.con, Query(**scope.filters(), skeleton="scalar", measures=["points"], aggregate="total")))
+    (row,) = rows_of(ctx.con, compile_query(ctx.con, Query(**scope.filters(), skeleton="scalar", measures=["points"], aggregate=Aggregate.TOTAL)))
     return int(row["games"]), int(row["points"])
 
 

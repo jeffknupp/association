@@ -1327,10 +1327,13 @@ a shape:
   other reader in the sentence it had, taken beyond the relation by the
   ranking's and the team-season shapes' rows (`ShapeCells.taken`, through
   `Measure.CELLS`) and by the team compiler's own sum, declared in no
-  relation table (a unit narrows no games). The point's `measures` and
-  `aggregate` are still the compiler's names, derived from the `Measure`
-  through the catalog (`stat_measure`): retyping them is the `Query`'s, the
-  RUN stage's input. `query/window.py` is the window's tagger:
+  relation table (a unit narrows no games). The point's `aggregate` is a
+  closed enum (`reading.Aggregate`, Phase 4, step 3: `NONE`, `PER_GAME`,
+  `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`), on the point,
+  the `Query` and the `TeamQuery` alike, and a record writes a member as its
+  value (`stages.plain`); its `measures` are still the compiler's names,
+  derived from the `Measure` through the catalog (`stat_measure`): retyping
+  them is the `Query`'s, the RUN stage's input. `query/window.py` is the window's tagger:
   `read_window(question, WindowContext)` reads, and `point.window_under`
   keeps under the key, which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his

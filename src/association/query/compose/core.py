@@ -65,6 +65,7 @@ from association.query.player_relation import (
 )
 from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
     DEFAULT_NAMED_RUNS,
+    Aggregate,
     Companion,
     Cuts,
     Filtered,
@@ -337,10 +338,10 @@ class Query(Filtered):
     skeleton: str = "rows"
     #: The box-score columns (or derived measures) the point reads.
     measures: list[str] = field(default_factory=lambda: list(LINE))
-    #: ``"none"``, ``"per_game"``, ``"total"``, ``"count"``, ``"record"``,
-    #: or ``"line"`` - each measure per game with the sums a player's line is
-    #: said from (:func:`_line_selects`).
-    aggregate: str = "none"
+    #: How the rows are reduced (:class:`~association.query.reading.Aggregate`,
+    #: a closed enum since Phase 4, step 3): ``LINE`` is each measure per
+    #: game with the sums a player's line is said from (:func:`_line_selects`).
+    aggregate: Aggregate = Aggregate.NONE
     #: ``"none"`` or a key of :data:`GROUPS`.
     group: str = "none"
     #: Row predicates beyond a below/above line: ``(measure, op, value)``.
@@ -428,7 +429,7 @@ def measure_sql(name: str, *, rebuilt: bool = False) -> str:
 #: triple-doubles" counts games where the measure is true.
 
 
-def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
+def _agg(name: str, aggregate: Aggregate, *, rebuilt: bool = False) -> str:
     """One aggregate SELECT expression for ``name``, labeled with its own name.
 
     A boolean measure has no per-game average or total: it is a condition
@@ -442,15 +443,15 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
     expr = measure_sql(name, rebuilt=rebuilt)
     if name in LABEL_MEASURES:
         raise Unsupported(f"{name!r} names something about a game - it is listed, never averaged, summed or counted")
-    if name in BOOLEAN_MEASURES and aggregate in ("per_game", "total"):
+    if name in BOOLEAN_MEASURES and aggregate in (Aggregate.PER_GAME, Aggregate.TOTAL):
         raise Unsupported(f"{name!r} is a condition, not a quantity - it is counted, never averaged or summed")
-    if aggregate == "per_game":
+    if aggregate == Aggregate.PER_GAME:
         if name in RATES:
             return f'{_rate_sql(name, rebuilt=rebuilt)} AS "{name}"'
         return f'AVG({expr}) AS "{name}"'
-    if aggregate == "total":
+    if aggregate == Aggregate.TOTAL:
         return f'SUM({expr}) AS "{name}"'
-    raise Unsupported(f"aggregate {aggregate!r}")
+    raise Unsupported(f"aggregate {str(aggregate)!r}")
 
 
 def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_extra: frozenset[str] = frozenset()) -> None:
@@ -675,7 +676,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
                 raise Refused(rescoped)
             narrowed = rescoped
         return narrowed
-    if not (q.aggregate in ("count", "record") or q.skeleton in ("grouped", "run")):
+    if not (q.aggregate in (Aggregate.COUNT, Aggregate.RECORD) or q.skeleton in ("grouped", "run")):
         return narrowed
     team = resolved_team(con, team_text, season=scope.span.season)
     if isinstance(team, Unanswered):
@@ -699,12 +700,12 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
         # is planned (``RELATION_SCOPING_EXCLUDED``, point.DEFAULT_POINTS).
         narrowed.window = None
         return
-    if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.window.order is None:
+    if (q.aggregate in (Aggregate.COUNT, Aggregate.RECORD) or q.skeleton == "grouped") and scope.window.order is None:
         limit = scope.window.count
         # A limit on a grouped read by a SCOPE (season, month) is the number
         # of groups (grouped_sql applies it after grouping); on a split by
         # venue/starter or a record it can only mean a games window.
-        if q.aggregate != "count" and q.group not in ("season", "month", "season_type", "opponent", "player") and limit is not None and limit > 1:
+        if q.aggregate != Aggregate.COUNT and q.group not in ("season", "month", "season_type", "opponent", "player") and limit is not None and limit > 1:
             # The templates' rule (player_splits, record_when): a real limit
             # with no order is "his last N games" - a window they refuse
             # rather than answer for the whole span.
@@ -764,7 +765,7 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
         # a log or a top-games read carrying the default line never showed a
         # rebuilt game at all, since that line carries minutes.
         read = [m for m in read if m != "minutes"]
-    return box.rebuilt and ((q.skeleton == "grouped" or q.aggregate == "record") or (bool(read) and all(m in REBUILT_STATS for m in read)))
+    return box.rebuilt and ((q.skeleton == "grouped" or q.aggregate == Aggregate.RECORD) or (bool(read) and all(m in REBUILT_STATS for m in read)))
 
 
 def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: ResolvedSpan) -> Compiled:
@@ -840,18 +841,18 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
     reads no rebuilt line (:func:`unread_on_rebuilt`), the games it reads
     (``"<measure>_games"``)."""
     selects = ["COUNT(*) AS games"]
-    if q.aggregate == "record":
+    if q.aggregate == Aggregate.RECORD:
         selects += [
             "SUM(CASE WHEN g.winner_team_id = pgl.team_id THEN 1 ELSE 0 END) AS wins",
             "SUM(CASE WHEN g.winner_team_id IS NOT NULL AND g.winner_team_id <> pgl.team_id THEN 1 ELSE 0 END) AS losses",
         ]
-        selects += [_agg(m, "per_game", rebuilt=_blanks(q, rebuilt)) for m in q.measures]
-    elif q.aggregate == "line":
-        selects += [_agg(m, "per_game", rebuilt=_blanks(q, rebuilt)) for m in q.measures]
+        selects += [_agg(m, Aggregate.PER_GAME, rebuilt=_blanks(q, rebuilt)) for m in q.measures]
+    elif q.aggregate == Aggregate.LINE:
+        selects += [_agg(m, Aggregate.PER_GAME, rebuilt=_blanks(q, rebuilt)) for m in q.measures]
         selects += _line_selects(q, rebuilt)
-    elif q.aggregate != "count":
+    elif q.aggregate != Aggregate.COUNT:
         selects += [_agg(m, q.aggregate, rebuilt=_blanks(q, rebuilt)) for m in q.measures]
-    if q.aggregate != "count" and _blanks(q, rebuilt):
+    if q.aggregate != Aggregate.COUNT and _blanks(q, rebuilt):
         # Beside a measure that reads no rebuilt line, the games it does
         # read: "games" counts every game, the figure only the fetched ones.
         selects += [f'{_READ_ROWS} AS "{m}_games"' for m in q.measures if unread_on_rebuilt(m)]
@@ -945,7 +946,7 @@ def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity
     selects = _scalar_selects(q, rebuilt)
     key, sel = GROUPS[q.group]
     if q.order == "measure":
-        target = "games" if q.aggregate == "count" or not q.measures else f'"{q.measures[0]}"'
+        target = "games" if q.aggregate == Aggregate.COUNT or not q.measures else f'"{q.measures[0]}"'
         order = f"{target} {'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST, 1"
     elif q.group == "season":
         # A history by season in date order, newest first unless asked
@@ -1244,7 +1245,7 @@ def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: 
     all-time triple doubles" lists ten players and is asked for the 193,
     not the ten rows' 176. Read by re-running the grouped read with no
     limit and summing; None for any other point."""
-    if q.skeleton != "grouped" or q.aggregate != "count" or q.group != "player":
+    if q.skeleton != "grouped" or q.aggregate != Aggregate.COUNT or q.group != "player":
         return None
     if not q.limit or len(rows) < q.limit:
         return sum(int(r.get("games") or 0) for r in rows)

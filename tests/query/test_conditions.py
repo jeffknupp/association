@@ -46,6 +46,7 @@ from association.query.reading import (
     PRESENCE_SPLIT,
     SEASON_HISTORY,
     SPLIT_KINDS,
+    Aggregate,
     Companion,
     Cuts,
     Measure,
@@ -343,7 +344,7 @@ def _rate_ranking(minimum: int) -> Query:
         skeleton="grouped",
         subject="everyone",
         group="player",
-        aggregate="per_game",
+        aggregate=Aggregate.PER_GAME,
         measures=["fg_pct"],
         order="measure",
         minimum_games=minimum,
@@ -384,7 +385,11 @@ def test_a_named_players_grouped_read_says_the_rebuilt_games_once(rebuilt_league
     (``lines_rebuilt``, "shown"); where a measure could not read them, the
     one sentence says both rather than two saying the same games."""
     query = Query(
-        **(Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2))).filters(), skeleton="grouped", group="venue", aggregate="per_game", measures=["points", "fg_pct"]
+        **(Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2))).filters(),
+        skeleton="grouped",
+        group="venue",
+        aggregate=Aggregate.PER_GAME,
+        measures=["points", "fg_pct"],
     )
     out = run(rebuilt_league.con, query)
     home = next(row for row in out["rows"] if row["group"] == "home")

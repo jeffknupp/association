@@ -38,6 +38,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    Aggregate,
     Claim,
     Cuts,
     Minimum,
@@ -257,7 +258,8 @@ def _player_games(ctx: AnswerContext, window: Window) -> tuple[int, int]:
     ``window`` - an aggregate, since the relation cuts the window before the
     sum (``_windowed``); a rows read takes the point's own limit instead."""
     (row,) = rows_of(
-        ctx.con, compile_query(ctx.con, Query(**(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=window)).filters(), skeleton="scalar", measures=["points"], aggregate="total"))
+        ctx.con,
+        compile_query(ctx.con, Query(**(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=window)).filters(), skeleton="scalar", measures=["points"], aggregate=Aggregate.TOTAL)),
     )
     return int(row["games"]), int(row["points"])
 

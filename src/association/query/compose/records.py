@@ -30,7 +30,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
-from association.query.reading import CELL_ORDER, Filtered, PointShape, Unsupported, cell_facts, cell_set
+from association.query.reading import CELL_ORDER, Aggregate, Filtered, PointShape, Unsupported, cell_facts, cell_set
 from association.query.result import Grouped, Line, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import TEAM_RELATION_SCOPING_EXCLUDED, condition_team_no_games, team_games, team_span_label, team_where_in
@@ -60,7 +60,7 @@ def _own_line(q: Query) -> tuple[str, str, int] | None:
     threshold = threshold_of(scope)
     if stat is None or column is None or threshold is None or threshold < 1:
         return None
-    if q.skeleton != "scalar" or q.aggregate != "record" or q.subject != "player" or q.predicates != [(column, ">=", threshold)] or [m for m in q.measures if m != column]:
+    if q.skeleton != "scalar" or q.aggregate != Aggregate.RECORD or q.subject != "player" or q.predicates != [(column, ">=", threshold)] or [m for m in q.measures if m != column]:
         return None
     return stat, column, threshold
 

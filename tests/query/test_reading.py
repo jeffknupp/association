@@ -13,7 +13,7 @@ from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
 from association.query.point import default_point
-from association.query.reading import GAMES_COUNTED, Companion, Cuts, Line, Measure, Period, Reading, Span, Window
+from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, Line, Measure, Period, Reading, Span, Window
 from association.query.reading import Subject as Who
 
 
@@ -46,7 +46,7 @@ def test_the_planner_copies_and_never_decides() -> None:
         shape="ranking",
         by="player",
         measures=["points"],
-        aggregate="per_game",
+        aggregate=Aggregate.PER_GAME,
         group="player",
         predicates=[("won", "=", True)],
         order="measure",
@@ -80,7 +80,7 @@ def test_the_planner_copies_and_never_decides() -> None:
 
 def test_a_team_reading_plans_to_the_team_relation() -> None:
     reading = Reading(
-        **(Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026))).filters(), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team"
+        **(Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026))).filters(), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate=Aggregate.TOTAL, relation="team"
     )
     q = plan(reading)
     assert isinstance(q, TeamQuery)
@@ -105,7 +105,7 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
         **(Reading(who=Who(kind="player", players=("Joel Embiid",)), span=Span(season=2026))).filters(),
         shape="scalar",
         measures=[],
-        aggregate="count",
+        aggregate=Aggregate.COUNT,
         group="none",
         predicates=[("points", ">=", 30)],
         order="date",
