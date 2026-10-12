@@ -7,8 +7,10 @@ enough for a terminal and nothing else. These are the shapes any other caller
 being returned, plus the intent and structured data the fast path had already
 computed and thrown away, plus the files that were written.
 
-Nothing here imports the rest of the query package, so templates, renderers
-and the answering loop can all depend on it without a cycle.
+Nothing here imports the rest of the query package but the planned shape's
+type (:class:`~association.query.reading.PointShape`, from a module that
+imports none of the answer side), so readers, the sayer and the answering
+loop can all depend on it without a cycle.
 
 .. versionadded:: 2.0.0
 """
@@ -21,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from association.query.decisions import Decision
 from association.query.notes import Note
+from association.query.reading import PointShape
 
 if TYPE_CHECKING:
     import duckdb
@@ -162,9 +165,11 @@ class Answer:
     path only - the intent it was classified as and the structured data the
     template built its sentence from.
 
-    ``intent`` and ``data`` are None when ``answered_by`` is ``"refused"``,
-    since only a template or the compiler produces them. Callers must handle
-    that rather than assume a shape.
+    ``intent``, ``shape`` and ``data`` are None when ``answered_by`` is
+    ``"refused"``, since only a reader or the compiler produces them; ``shape``
+    is None on an answer too where the words came to no point (a refusal the
+    reading said, a name the question never held). Callers must handle that
+    rather than assume a shape.
 
     .. versionadded:: 2.0.0
 
@@ -203,3 +208,12 @@ class Answer:
     #:
     #: .. versionadded:: 5.0.0
     notes: tuple[Note, ...] = ()
+    #: The planned point's shape (:class:`~association.query.reading.PointShape`:
+    #: the relation it reads, the shape - ``scalar``, ``rows``, ``ranking``,
+    #: ``comparison``, ``split``, ``runs`` or ``chart`` - and what it is
+    #: ``by``), the one the answer side chose its reader by
+    #: (:attr:`Agent.planned <association.query.agent.Agent.planned>`). What
+    #: the page renders the answer's ``data`` by, where it read ``intent``.
+    #:
+    #: .. versionadded:: 6.0.0
+    shape: PointShape | None = None

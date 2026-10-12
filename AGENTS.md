@@ -2309,9 +2309,11 @@ everything about it is constrained by things measured elsewhere in this file.
   loaded ollama - so a type-only import of the query engine goes under
   `if TYPE_CHECKING:`. The whole suite still runs with no
   network and no ollama, and that has to stay true.
-- **Events carry trace lines verbatim.** Do not parse `"-> (router) intent=..."`
+- **Events carry trace lines verbatim.** Do not parse `"-> (compose) ... shape=..."`
   back into structured fields. Everything a client acts on — which path
-  answered, the intent, the timing, the artifacts — is on the `answer` event,
+  answered, the planned shape (`Answer.shape`, the `reading.PointShape` the
+  answer side chose its reader by: relation, shape, by; since Phase 4,
+  step 1), the intent, the timing, the artifacts — is on the `answer` event,
   as values, because Phase 0 put it there. Parsing prose back out is the exact
   move that phase removed.
 - **The page is one self-contained HTML file** with its CSS and JS inline, like
