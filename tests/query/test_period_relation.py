@@ -22,7 +22,7 @@ from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
-from association.query.reading import Period, Reading, Span, period_narrowing
+from association.query.reading import Measure, Period, Reading, Span, period_narrowing
 from association.query.reading import Subject as Who
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
@@ -410,7 +410,9 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
     """ "home team first half turnovers": the relation's rebuilt column, per
     game and averaged, and the season's measured agreement said beside it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(ctx, slots_reading({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    result = team_quarter_points(
+        ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
+    )
     assert (result.data["total"], result.data["stat"], [g["turnovers"] for g in result.data["games"]]) == (5, "turnovers", [5, 0])
     assert "averaged 2.5 turnovers in the 1st half" in (result.answer or "")
     listed = TEAM_PERIOD_AGREEMENT["turnovers"].get(SEASON)
@@ -420,7 +422,9 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
 def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "turnovers", {SEASON: 60.6})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(ctx, slots_reading({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    result = team_quarter_points(
+        ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
+    )
     assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.answer or "")
 
 
@@ -445,6 +449,9 @@ def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempt
 def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "freeThrowsAttempted", {SEASON: 70.0})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(ctx, slots_reading({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}))
+    result = team_quarter_points(
+        ctx,
+        Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="freeThrowPct", as_typed="freeThrowPct"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True)),
+    )
     assert "total" not in result.data
     assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.answer or "") and "free throws and free throw attempts match" in (result.answer or "")
