@@ -15,24 +15,24 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import asked, unhonored
 from slots import slots_reading
 from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
+from association.query.compose.plan import cells_unhonored
 from association.query.measure import measure_of
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import with_point
-from association.query.reading import Line, Measure, Reading, Span, SubjectKind, Unsupported, Window
+from association.query.reading import GAME_HIGHS, GAMES_COUNTED, PLAYER_RANKING, Line, Measure, PointShape, Reading, Span, SubjectKind, Unsupported, Window
 from association.query.reading import Subject as Who
 from association.query.subject import Subject
 
 
-def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
-    """``intent`` answered the way its retired template was called - a
+def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Reply]:
+    """The shape ``shape`` names answered the way its retired template was called - a
     Reading in, a Reply out, ``Unsupported`` with the
     reason where the compiler has no reading of the point - now that the
     compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
@@ -46,16 +46,16 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.who.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=asked(intent), subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
         if result is None:
-            raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+            raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
         return result
 
     return answered
 
 
-single_game_high = _compiled("single_game_high")
-threshold_count = _compiled("threshold_count")
+single_game_high = _compiled(GAME_HIGHS)
+threshold_count = _compiled(GAMES_COUNTED)
 
 _STATS_COLUMNS = (
     "athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER, avgPoints DOUBLE, "
@@ -239,12 +239,12 @@ def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: AnswerCo
         leaderboard(career_ctx, slots_reading(slots))
 
 
-@pytest.mark.parametrize("intent", ["leaderboard", "threshold_count", "single_game_high"])
-def test_a_career_span_is_honored_by_the_ranking_templates(intent: str) -> None:
+@pytest.mark.parametrize("shape", [PLAYER_RANKING, GAMES_COUNTED, GAME_HIGHS])
+def test_a_career_span_is_honored_by_the_ranking_templates(shape: PointShape) -> None:
     """A career is declared by what each reader's words state (its shape's
     row, ``compose.plan.cells_stated``), beside the relation, which honors
     a career for any named player."""
-    assert unhonored(intent, Reading(span=Span(career=True))) == []
+    assert cells_unhonored(Reading(span=Span(career=True)), shape) == []
 
 
 # ---------------- career counts and highs, from box scores ----------------
