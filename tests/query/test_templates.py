@@ -3567,11 +3567,11 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
 
 def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     # game_log is the compiler's (compose.COMPILED_INTENTS): its retired words state the slots.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"order": "recent", "date": "2026-04-12"}), PLAYER_LOG)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(cuts=Cuts(date="2026-04-12"), window=Window(order="recent")), PLAYER_LOG)] == []
     # shot_chart is the compiler's (the shot relation's reader): its retired words state the slot.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"order": "recent"}), SHOT_CHART)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(window=Window(order="recent")), SHOT_CHART)] == []
     # shot_distance is the compiler's (the shot relation's reader): its retired words state the slot.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"order": "first"}), SHOT_DISTANCE)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(window=Window(order="first")), SHOT_DISTANCE)] == []
 
 
 def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unstated() -> None:
@@ -3585,21 +3585,21 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     since an aggregate has no rows to interleave); the discipline for every
     other intent is the same as any other scoping slot - refuse rather than
     silently ignore."""
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"order": "recent", "limit": 5, "season_type_unstated": True}), PLAYER_LOG)] == []
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"season_type_unstated": True}), PointShape("player_games", "scalar", "line"))] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(span=Span(both=True), window=Window(order="recent", count=5)), PLAYER_LOG)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(span=Span(both=True)), PointShape("player_games", "scalar", "line"))] == []
     # threshold_count is the compiler's (compose.COMPILED_INTENTS): the
     # relation honors the slot for a named player, and the count's own words
     # state it (compose.plan.STATED_SCOPING).
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"season_type_unstated": True}), GAMES_COUNTED)] == []
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"season_type_unstated": True}), PLAYER_RANKING)] == ["both"]
+    assert [cell for cell, _ in cells_unhonored(Reading(span=Span(both=True)), GAMES_COUNTED)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(span=Span(both=True)), PLAYER_RANKING)] == ["both"]
     # single_game_high's words do not state it: its presenter steps aside and
     # the compiler's sentence, which does, answers.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"season_type_unstated": True}), GAME_HIGHS)] == ["both"]
+    assert [cell for cell, _ in cells_unhonored(Reading(span=Span(both=True)), GAME_HIGHS)] == ["both"]
 
 
 def test_scope_guard_ignores_absent_or_empty_slots() -> None:
-    assert [cell for cell, _ in cells_unhonored(slots_scope({}), PLAYER_RANKING)] == []
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"order": None, "date": ""}), PLAYER_RANKING)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(), PLAYER_RANKING)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(), PLAYER_RANKING)] == []
 
 
 def test_shot_distance_scopes_to_one_game(sc_ctx: AnswerContext) -> None:
@@ -3724,7 +3724,7 @@ def test_a_fingerprint_for_a_particular_date_still_says_it_cannot(fp_ctx: Answer
 def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: AnswerContext) -> None:
     # It handles them by refusing; the planner must therefore NOT decline the
     # request out from under it, for a refusal naming only the slot.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Shai", "order": "recent", "date": "2026-01-02"}), NETPOINTS_FINGERPRINT)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Shai",)), cuts=Cuts(date="2026-01-02"), window=Window(order="recent")), NETPOINTS_FINGERPRINT)] == []
     # The game-scoping pair specifically - the relation also carries an
     # opponent, a venue, a career and a teammate, none of which a
     # fingerprint can narrow to.
@@ -3809,16 +3809,29 @@ def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slo
 
 def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
     assert [
-        cell for cell, _ in cells_unhonored(slots_scope({"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"}), PLAYER_LOG)
+        cell
+        for cell, _ in cells_unhonored(
+            Reading(
+                who=Who(kind="player", players=("Jaylen Brown",)),
+                cuts=Cuts(opponent="Detroit Pistons", venue="home"),
+                companions=(Companion(player="x", predicate="absent"),),
+                span=Span(career=True),
+                window=Window(order="recent"),
+            ),
+            PLAYER_LOG,
+        )
     ] == []
     assert [
         cell
         for cell, _ in cells_unhonored(
-            slots_scope({"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"}), PointShape("player_games", "scalar", "line")
+            Reading(
+                who=Who(kind="player", players=("Evan Mobley",)), cuts=Cuts(opponent="Milwaukee Bucks", venue="away"), companions=(Companion(player="x", predicate="absent"),), span=Span(career=True)
+            ),
+            PointShape("player_games", "scalar", "line"),
         )
     ] == []
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Nikola Jokic", "span": "career"}), SEASON_HISTORY)] == []
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Jaylen Brown", "opponent": "Detroit Pistons"}), SHOT_DISTANCE)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Nikola Jokic",)), span=Span(career=True)), SEASON_HISTORY)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Jaylen Brown",)), cuts=Cuts(opponent="Detroit Pistons")), SHOT_DISTANCE)] == []
 
 
 def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: AnswerContext) -> None:
@@ -3842,7 +3855,7 @@ def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: An
 
 def test_team_quarter_points_still_honors_the_opponent_it_always_read() -> None:
     # The compiler's since Phase 2's slice (iv): its words state the opponent and the period.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"}), TEAM_PERIOD_TOTAL)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), cuts=Cuts(opponent="Boston Celtics"), period=Period(number=4)), TEAM_PERIOD_TOTAL)] == []
 
 
 def test_no_template_narrows_to_a_playoff_round() -> None:
@@ -3850,8 +3863,8 @@ def test_no_template_narrows_to_a_playoff_round() -> None:
     from association.query import compose
 
     assert not any("round" in cells_stated(shape) for shape in compose._ROUTES)
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"players": ["Jayson Tatum", "Jaylen Brown"], "round": "finals"}), PLAYER_COMPARISON)] == ["round"]
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Jayson Tatum", "round": "finals"}), PointShape("player_games", "scalar", "line"))] == ["round"]
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown")), cuts=Cuts(round="finals")), PLAYER_COMPARISON)] == ["round"]
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Jayson Tatum",)), cuts=Cuts(round="finals")), PointShape("player_games", "scalar", "line"))] == ["round"]
 
 
 def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con: AnswerContext) -> None:
@@ -4803,8 +4816,10 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
 
 def test_player_stat_honors_since_and_order(pg_ctx: AnswerContext) -> None:
 
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Brandin Podziemski", "since": 2024}), PointShape("player_games", "scalar", "line"))] == []
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Brandin Podziemski", "order": "recent", "limit": 3}), PointShape("player_games", "scalar", "line"))] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), span=Span(since=2024)), PointShape("player_games", "scalar", "line"))] == []
+    assert [
+        cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=Window(order="recent", count=3)), PointShape("player_games", "scalar", "line"))
+    ] == []
 
 
 def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_ctx: AnswerContext) -> None:
@@ -4927,7 +4942,12 @@ def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: Answ
     The template is retired: its words state the relation's set less its
     row's exclusions (``compose.plan.cells_stated``), and its point refuses a
     window outright."""
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]}), PLAYER_MEETINGS)] == []
+    assert [
+        cell
+        for cell, _ in cells_unhonored(
+            Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), companions=(Companion(player="Jaylen Brown", predicate="absent"),)), PLAYER_MEETINGS
+        )
+    ] == []
     assert "companion" in cells_stated(PLAYER_MEETINGS) and "venue" in cells_stated(PLAYER_MEETINGS)
     assert "order" not in cells_stated(PLAYER_MEETINGS)
     # The behavior itself is pinned on the league fixture in
@@ -5877,7 +5897,7 @@ def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(
     is in the reader's words (its shape's row of `RELATION_SCOPING_EXCLUDED`),
     the same as every other excluded cell here.
     """
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Stephen Curry", "period": 1, "span": "career"}), PERIOD_LOG)] == ["career"]
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1)), PERIOD_LOG)] == ["career"]
 
 
 def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param(period_ctx: AnswerContext) -> None:
@@ -6506,5 +6526,5 @@ def test_a_leaderboard_ranked_by_another_measure_refuses_to_the_compiler() -> No
     scoring triple doubles"; the leaderboard's words do not state it, so its
     reader steps aside and the compiler's boolean-game ranking answers. The
     bare count - the same slots without it - is untouched."""
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"stat": "triple_double", "limit": 10, "ranked_by": "points"}), PLAYER_RANKING)] == ["ranked_by"]
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"stat": "triple_double", "limit": 10}), PLAYER_RANKING)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(measure=Measure(key="triple_double", as_typed="triple_double"), window=Window(count=10, by="points")), PLAYER_RANKING)] == ["ranked_by"]
+    assert [cell for cell, _ in cells_unhonored(Reading(measure=Measure(key="triple_double", as_typed="triple_double"), window=Window(count=10)), PLAYER_RANKING)] == []
