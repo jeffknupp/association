@@ -20,17 +20,24 @@ between this reader and the sayer that writes the page.
 ``net_points_player_fingerprint`` (a :class:`~association.query.result.Scalar`
 and a :class:`~association.query.result.Grouped` by ``category``), or one
 game's from ``net_points_player_game``. The retired template's three
-statements are built here and executed through the compiler's one door
-(:func:`~association.query.compose.core.values_of`). The sayer
+statements are the NetPoints relation's (:mod:`association.query.netpoints`,
+since Phase 4, step 5), which builds them and executes them through the
+compiler's one door; this module reads what they return into the Result
+and runs no statement of its own. The sayer
 (:mod:`association.query.compose.say`) words each.
 
 Three tables, three encodings of the season type (``DATA.md``):
 ``net_points_player`` keeps its own STRING (``net_points_season_type``,
 "Regular Season"), the per-game tables the numeric 2/3, and the season
 fingerprint has none at all - filtering one with another's silently
-matches nothing.
+matches nothing. The relation keeps each straight.
 
 .. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   ``netpoints_totals_statement``, ``netpoints_fingerprint_statement`` and
+   ``netpoints_game_statement`` moved to the relation,
+   :mod:`association.query.netpoints`.
 """
 
 from __future__ import annotations
@@ -60,6 +67,7 @@ from association.query.fingerprint import (
     load_for_players,
 )
 from association.query.metrics import SEASON_TYPE_LABELS
+from association.query.netpoints import NETPOINTS_TOTALS, game_line, season_categories, season_totals
 from association.query.notes import Note
 from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
     Companion,
@@ -74,11 +82,9 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Unsupported,
 )
 from association.query.result import Chart, ChartFacts, Clarify, Decided, Grouped, NetPointsFacts, Part, Refusal, Result, Scalar, Span, Unanswered, Window
-from association.query.season_line import Statement, season_redirect
+from association.query.season_line import season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.shotchart import resolve_chart_player
-
-from .core import values_of
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -112,56 +118,6 @@ _NETPOINTS_GAMES = Availability("net_points_player_game")
 #: The fingerprint's play-type categories, the summary (``total``) aside: it
 #: is reported on the headline line rather than as a category row.
 _NETPOINTS_CATEGORIES = tuple(c for c in FINGERPRINT_CATEGORIES.values() if c != FINGERPRINT_SUMMARY_CATEGORY)
-
-#: ``net_points_player``'s season line, in the order the Result reads it.
-_NETPOINTS_TOTALS = ("overall", "offense", "defense", "overall_per_100_poss", "total_minutes", "games")
-
-
-def netpoints_totals_statement(athlete_id: str, season: int, season_type: int) -> Statement:
-    """One player's season NetPoints line (:data:`_NETPOINTS_TOTALS`).
-    ``net_points_player`` uses its OWN string season_type; filtering it with
-    the numeric one every other table uses silently matches nothing.
-
-    .. versionadded:: 5.0.0
-       ``templates.netpoints.player_netpoints``' first statement.
-    """
-    label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
-    return Statement(f"SELECT {', '.join(_NETPOINTS_TOTALS)} FROM net_points_player WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?", [athlete_id, season, label])
-
-
-def netpoints_fingerprint_statement(athlete_id: str, season: int) -> Statement:
-    """One player's season fingerprint: his possessions, then offense,
-    defense and total for each of :data:`_NETPOINTS_CATEGORIES` in turn. The
-    fingerprint table has no season_type column at all.
-
-    .. versionadded:: 5.0.0
-       ``templates.netpoints.player_netpoints``' second statement.
-    """
-    selected = ", ".join(f"{c}_o_net_pts, {c}_d_net_pts, {c}_t_net_pts" for c in _NETPOINTS_CATEGORIES)
-    return Statement(f"SELECT total_poss, {selected} FROM net_points_player_fingerprint WHERE athlete_id = ? AND season = ?", [athlete_id, season])
-
-
-def netpoints_game_statement(athlete_id: str, season: int, season_type: int, order: str) -> Statement:
-    """One player's first or most recent game's NetPoints, from
-    ``net_points_player_game`` - opt-in (``data pull
-    --include-net-points-daily``) and, unlike ``net_points_player``, on the
-    normal numeric season_type - dated from ``games``.
-
-    .. versionadded:: 5.0.0
-       ``templates.netpoints._single_game_netpoints``' statement.
-    """
-    return Statement(
-        "SELECT g.event_id, g.date, g.o_net_pts, g.d_net_pts, g.t_net_pts, g.o_poss, g.d_poss, g.t_wpa "
-        "FROM (SELECT npg.*, gm.date FROM net_points_player_game npg JOIN games gm ON gm.event_id = npg.event_id "
-        "      WHERE npg.athlete_id = ? AND npg.season = ? AND npg.season_type = ?) g "
-        f"ORDER BY g.date {'ASC' if order == 'first' else 'DESC'} LIMIT 1",
-        [athlete_id, season, season_type],
-    )
-
-
-def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
-    """A statement's first row, as ``fetchone`` gave the retired reads."""
-    return rows[0] if rows else None
 
 
 def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> Result | Unanswered | None:
@@ -218,8 +174,8 @@ def _netpoints_season(con: duckdb.DuckDBPyConnection, player: Entity, season: in
     :class:`Grouped` by ``category``, absent with no fingerprint row). With
     neither, an empty Result, and - where the season was defaulted, not
     asked for - the seasons the player IS on record for, as a decision."""
-    totals_row = _first(values_of(con, netpoints_totals_statement(player.id, season, season_type)))
-    fingerprint = _first(values_of(con, netpoints_fingerprint_statement(player.id, season)))
+    totals_row = season_totals(con, player.id, season, season_type)
+    fingerprint = season_categories(con, player.id, season, _NETPOINTS_CATEGORIES)
     # Per 100 possessions: the fingerprint is for comparing players, and
     # season totals mostly rank by playing time. Totals stay in each row, and
     # are what a season with no possession count is said in.
@@ -236,7 +192,7 @@ def _netpoints_season(con: duckdb.DuckDBPyConnection, player: Entity, season: in
     parts: list[Part] = []
     notes: list[Note] = []
     if totals_row is not None:
-        parts.append(Part(body=Scalar(games=int(totals_row[5]) if totals_row[5] else 0, values=dict(zip(_NETPOINTS_TOTALS, totals_row, strict=True)), how="per_100")))
+        parts.append(Part(body=Scalar(games=int(totals_row[5]) if totals_row[5] else 0, values=dict(zip(NETPOINTS_TOTALS, totals_row, strict=True)), how="per_100")))
     else:
         notes.append(Note("part_missing", {"what": "season_totals"}))
     if breakdown and season_type == 3:
@@ -308,7 +264,7 @@ def _netpoints_game(con: duckdb.DuckDBPyConnection, player: Entity, season: int,
     ``net_points_player_game_fingerprint``, which the ``fingerprint`` intent
     draws, and the answer says so."""
     try:
-        row = _first(values_of(con, netpoints_game_statement(player.id, season, season_type, order)))
+        row = game_line(con, player.id, season, season_type, order)
     except duckdb.Error as exc:
         # The table only exists if the daily NetPoints fetch was run. Saying
         # so beats a refusal that names only the intent.

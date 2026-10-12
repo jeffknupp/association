@@ -56,6 +56,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    Aggregate,
     Cause,
     Companion,
     Cuts,
@@ -514,9 +515,9 @@ def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx
     result = compose_answer(cx_ctx, PLAYER_SPLITS, scope, "Podziemski double-doubles career away")
     assert result is not None and "double-double" in result.answer
     with pytest.raises(Unsupported):
-        _agg("double_double", "per_game")
+        _agg("double_double", Aggregate.PER_GAME)
     with pytest.raises(Unsupported):
-        _agg("triple_double", "total")
+        _agg("triple_double", Aggregate.TOTAL)
 
 
 def test_career_scope_forces_a_career_span_only_when_nothing_else_scoped_it() -> None:

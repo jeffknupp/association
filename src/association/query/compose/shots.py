@@ -10,8 +10,10 @@ the games a narrowing or a window sends the read to taken from the
 player-games relation's own reader
 (:func:`~association.query.player_games.games_subquery`, through
 :func:`~association.query.player_relation.scoped_games`), and the shots
-read off ``shot_chart`` - every statement built here and executed through
-the compiler's one door (:func:`~association.query.compose.core.values_of`).
+read off ``shot_chart`` - every statement the shot relation's
+(:mod:`association.query.shots`, since Phase 4, step 5), which builds them
+and executes them through the compiler's one door; this module reads what
+they return into the Result and runs no statement of its own.
 The chart is a :class:`~association.query.result.Chart` - the marks, the
 counts drawn, the caption and the file name - which :func:`draw_shot_chart`
 writes to the output directory (``court.render_court_html``) before the
@@ -20,6 +22,11 @@ sayer names the file; the distance is a
 (:mod:`association.query.compose.say`) words both.
 
 .. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   Its three statements (the games a narrowing sends the read to, the
+   distance, the chart's shots) moved to the shot relation,
+   :mod:`association.query.shots`.
 """
 
 from __future__ import annotations
@@ -33,13 +40,13 @@ import duckdb
 from association.nba.coverage import COVERAGE
 from association.query import reading
 from association.query.conditions import box_source
-from association.query.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL, render_court_html
+from association.query.court import render_court_html
 from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, names_of, unmatched
 from association.query.game_label import game_label
 from association.query.lines import MeasureFilter, measure_filters
 from association.query.measure import keyed
 from association.query.notes import Note
-from association.query.player_games import Narrowed, games_subquery
+from association.query.player_games import Narrowed
 from association.query.player_relation import RELATION_SCOPING, ResolvedSpan, no_narrowed_games, scoped_games, scoped_player, settle_ordinal_season, span_of
 from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
     Companion,
@@ -55,11 +62,10 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     cell_set,
 )
 from association.query.result import Chart, Decided, Narrowing, OnDate, Part, Refusal, Result, Scalar, ShotValue, Span, Unanswered, Window
-from association.query.season_line import Statement, season_redirect, seasons_played
+from association.query.season_line import season_redirect, seasons_played
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
-from association.query.shotchart import DERIVED_SHOT_VALUES, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, resolve_chart_player
-
-from .core import values_of
+from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES, resolve_chart_player
+from association.query.shots import chart_shots, distance, narrowed_games
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -143,14 +149,13 @@ def _shots_has_narrowing(scope: Filtered, date: str | None, measures: list[Measu
 
 def _shots_narrowed_rows(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed) -> tuple[list[str], list[str]] | Unanswered:
     """The event ids (and their Eastern dates) an already-narrowed-and-windowed
-    ``narrowed`` draws from, read through the relation's own
-    :func:`~association.query.player_games.games_subquery` - or the
+    ``narrowed`` draws from, read by the shot relation through the
+    player-games relation's own reader (:func:`~association.query.shots.narrowed_games`) - or the
     refusal :func:`~association.query.player_relation.no_narrowed_games`
     names the missing fact with when nothing matches: his games in that
     span, a teammate, a match, or an empty box score."""
     box = box_source(con)
-    base_sql, base_params = games_subquery(narrowed, box)
-    rows = values_of(con, Statement(f"SELECT event_id, day FROM ({base_sql}) g", list(base_params)))
+    rows = narrowed_games(con, narrowed, box)
     if not rows:
         return replace(no_narrowed_games(con, player, span, narrowed, rebuilt=box.rebuilt), shown={"player": player.name})
     return [r[0] for r in rows], [str(r[1]) for r in rows]
@@ -186,30 +191,6 @@ def _shots_career_floor(con: duckdb.DuckDBPyConnection, player: Entity, season_t
 
 
 # ---------------- shot_distance ----------------
-
-
-def _shot_distance_statement(athlete_id: str, span: ResolvedSpan, shot_value: int | None, event_ids: list[str] | None) -> Statement:
-    """The distance read: the average distance from the rim, the shots and
-    the games they came from. No ``season = ?`` on a career span - the shot
-    table holds no rows before 2002, so leaving the column unfiltered sums
-    exactly the seasons on record. Free throws are excluded by value, not by
-    a missing position: from 2002 to 2018 they carry a fixed one under the
-    rim. ``event_ids`` pins the read to the games the relation narrowed to,
-    as an IN list even for one."""
-    where = ["athlete_id = ?"]
-    params: list[Any] = [athlete_id]
-    if span.season is not None:
-        where.append("season = ?")
-        params.append(span.season)
-    where += ["season_type = ?", HAS_POSITION_SQL, f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1"]
-    params.append(span.season_type)
-    if shot_value is not None:
-        where.append(f"{SHOT_VALUE_SQL} = ?")
-        params.append(shot_value)
-    if event_ids is not None:
-        where.append(f"event_id IN ({', '.join('?' for _ in event_ids)})")
-        params.extend(event_ids)
-    return Statement(f"SELECT AVG({SHOT_DISTANCE_SQL}), COUNT(*), COUNT(DISTINCT event_id) FROM shot_chart WHERE {' AND '.join(where)}", params)
 
 
 def _shot_distance_unseparable(player: Entity, span: ResolvedSpan, shot_value: int | None, period: str, kind: str) -> Refusal | None:
@@ -291,7 +272,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result |
         if isinstance(pinned, Unanswered):
             return pinned
         ids, narrowing, game = pinned
-    ((average, attempts, games),) = values_of(con, _shot_distance_statement(player.id, span, shot_value, ids))
+    average, attempts, games = distance(con, player.id, span, shot_value, ids)
     result = _shot_distance_result(con, player, span, shot_value, period, narrowing, game, average, attempts or 0, games or 0)
     if not attempts and ids is None and shot_value is None and span.defaulted and not span.career:
         # A defaulted season with no shots names the seasons he IS on record
@@ -409,41 +390,6 @@ def _shot_chart_refusal(shot_value: int | None, season: int | None, name: str) -
     return None
 
 
-def _shot_chart_statement(athlete_id: str, season: int | None, season_type: int | None, games: _ShotChartGames, shot_value: int | None) -> Statement:
-    """The shots a chart draws: one player's located shots in a season (and
-    its type), or in the games pinned. Free throws are left off - from 2002
-    to 2018 they carry a fixed position under the rim. Filtered to a shot
-    value, a shot NO value can be read for is kept, so it can be counted and
-    said rather than dropped where nobody would know."""
-    where = ["athlete_id = ?", HAS_POSITION_SQL]
-    params: list[Any] = [athlete_id]
-    if season is not None:
-        where.append("season = ?")
-        params.append(season)
-    if season_type is not None:
-        where.append("season_type = ?")
-        params.append(season_type)
-    # The games pinned, as an IN list even for one: these ids came FROM the
-    # relation, and a bare equality on the game is the shape the relation
-    # templates' source check forbids a reader to write.
-    pinned = (games.event_id,) if games.event_id is not None else games.event_ids
-    if pinned is not None:
-        where.append(f"event_id IN ({', '.join('?' for _ in pinned)})")
-        params.extend(pinned)
-    if shot_value is not None:
-        where.append(f"({SHOT_VALUE_SQL} = ? OR {SHOT_VALUE_SQL} IS NULL)")
-        params.append(shot_value)
-    else:
-        where.append(f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1")
-    # Ordered, so a chart's bytes are a function of its shots and nothing
-    # else (ISSUES.md #254: read with no ORDER BY, a multi-game chart's
-    # markup came out in whichever order the scan delivered the rows, and
-    # two draws of one chart differed as bytes while identical as sorted
-    # fragments). Every column of the key, so the order is total.
-    order = "ORDER BY event_id, period, clock, coordinate_x, coordinate_y, made, shot_type"
-    return Statement(f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id, season, {SHOT_VALUE_SQL} FROM shot_chart WHERE {' AND '.join(where)} {order}", params)
-
-
 def _shot_chart_notes(kept: list[tuple[Any, ...]], unknown: list[tuple[Any, ...]], shot_value: int | None) -> list[Note]:
     """What a shot-value filter left out or derived: shots no value can be
     read for (only across seasons - one unseparable season is refused), and
@@ -531,7 +477,11 @@ def _shot_chart_drawn(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     refused = _shot_chart_refusal(shot_value, season, player.name)
     if refused is not None:
         return Chart(kind="shot_chart", title=player.name), [], None, refused
-    rows = values_of(con, _shot_chart_statement(player.id, season, season_type, games, shot_value))
+    # The games pinned, as an IN list even for one: these ids came FROM the
+    # relation, and a bare equality on the game is the shape the relation
+    # templates' source check forbids a reader to write.
+    pinned = (games.event_id,) if games.event_id is not None else games.event_ids
+    rows = chart_shots(con, player.id, season, season_type, pinned, shot_value)
     kept = [r for r in rows if shot_value is None or r[8] == shot_value]
     unknown = [r for r in rows if shot_value is not None and r[8] is None]
     notes = _shot_chart_notes(kept, unknown, shot_value)

@@ -556,7 +556,7 @@
   // #71: what's actually answerable, per tier - read straight off the
   // response, never recomputed here. A tier with no `last_season` was never
   // loaded at all; one whose range holds a partial season is marked rather
-  // than shown as uniformly whole, which is the same distinction a template's
+  // than shown as uniformly whole, which is the same distinction a reader's
   // own refusal or caveat draws.
   const coverage = document.getElementById("coverage");
   fetch("/api/coverage").then(r => r.json()).then(c => {
@@ -701,18 +701,20 @@
   });
   form.addEventListener("submit", e => { e.preventDefault(); ask(); });
 
-  // ---- rendering an answer per intent -------------------------------------
+  // ---- rendering an answer by its shape -----------------------------------
   //
   // Answer.data is already structured - resolved names and numbers, no ids and
-  // no schema - so an intent that is a list or a set of side-by-side numbers
-  // can be a real table instead of fixed-width text. Everything else falls
-  // back to the text, which is always in the payload and is what the CLI
-  // prints. That fallback is the normal case, not a failure: an intent with no
-  // renderer here still answers correctly.
+  // no schema - so an answer that is a list or a set of side-by-side numbers
+  // can be a real table instead of fixed-width text. Which one is chosen by
+  // the planned point's shape (Answer.shape: the relation, the shape and what
+  // it is by), never by the retired label. Everything else falls back to the
+  // text, which is always in the payload and is what the CLI prints. That
+  // fallback is the normal case, not a failure: a body no renderer draws
+  // still answers correctly.
   //
-  // No renderer re-derives a sentence. The phrasing lives in the templates, in
+  // No renderer re-derives a sentence. The phrasing lives in the sayer, in
   // Python, once. What each renderer chooses is a *caption*, and it takes it
-  // either from a scope string the template already computed (leaderboard's
+  // either from a scope string the sayer already computed (a ranking's
   // `question_shape`) or from the answer's own first line - never by
   // reassembling one from the numbers.
 
@@ -904,9 +906,9 @@
   }
 
   // A player's game log: home or away as the sentence says it ("@ BOS" -
-  // every row used to read "vs"), the result, the columns the template chose
+  // every row used to read "vs"), the result, the columns the reader chose
   // (`columns`, when it names extra ones such as FGM/FGA), and the per-game
-  // line beneath when the template averaged the games.
+  // line beneath when the reader averaged the games.
   // Mirrors compose.logs.LOG_COLUMNS / LOG_PERCENTAGES (query/compose/logs.py):
   // a log header -> the key the game/averages dict stores it under. Player
   // logs always carry MIN/PTS/REB/AST (_LOG_BASE) and may name extra columns
@@ -952,7 +954,7 @@
   }
 
   function sparkline(points) {
-    // Chronological, left to right, which is the reverse of how the templates
+    // Chronological, left to right, which is the reverse of how the readers
     // order seasons (most recent first) - a line running backwards in time
     // would read as the opposite trend.
     const values = points.map(p => p.value);
@@ -1027,10 +1029,6 @@
     return kind === "month" ? group : GROUP_LABELS[group] || group;
   }
 
-  // intent -> {needs, render}. `needs` is the Answer.data keys the renderer
-  // reads; a Python test checks each one against what the template actually
-  // produces, because a renamed key would silently drop the table and fall
-  // back to text, which looks like nothing happened at all.
   // A line between two points is only ever a slope, not a trend - drawn from
   // three, a sparkline says something a reader could not already read off two
   // numbers. A body over this many rows folds under its own count rather than
@@ -1060,436 +1058,471 @@
     ["\u00a0\u00a0defense", "defense_per_100_poss"],
   ];
 
+  // ---- the bodies each shape's renderer draws ---------------------------
+  //
+  // One function per kind of body a reader's data carries, read off the
+  // data's own keys and drawn the same whichever reader said it. Each returns
+  // {caption, spark, body} or null, which falls back to the sentence.
+
+  // A ranked list of leaders: a season-line metric's (`display_name`,
+  // `value`, the columns beside it in `d.fields`).
+  function leadersBody(d, text) {
+    // Unlike a ranking in general, a single-leader question ("who leads the
+    // league in assists?", limit 1) still asks for a ranking - it is just a
+    // ranking of one - so it keeps its "#1" table instead of falling to the
+    // CLI text's monospace block (Jeff's finding, 2026-09-24).
+    const body = ranked(d.leaders, "display_name", "value", firstValueLabel(d, text), d.fields || [], { allowSingle: true });
+    return body && { caption: d.question_shape, body };
+  }
+
+  // Players ranked by a count of games over a line.
+  function countLeadersBody(d) {
+    const body = ranked(d.leaders, "player", "games", "G");
+    return body && { caption: d.question_shape, body };
+  }
+
+  // Players ranked by a quarter's or a half's figure per game.
+  function periodLeadersBody(d) {
+    const body = ranked(d.leaders, "player", "average", "PTS/G", ["games"]);
+    return body && { caption: null, body };
+  }
+
+  function teamRankingBody(d) {
+    if (d.teams.length < 2) return null;
+    return { caption: d.question_shape, body: table(["#", "team", "value"], d.teams.map(t => [t.rank, t.team, t.display])) };
+  }
+
+  function gameHighsBody(d) {
+    if (d.games.length < 2) return null;
+    return {
+      caption: d.question_shape,
+      body: table(["#", "player", label(d.stat), "date", "opponent"],
+        d.games.map((g, i) => [i + 1, g.player, num(g.value), g.date, g.opponent])),
+    };
+  }
+
+  // A log: a player's games (the columns the reader chose, `d.columns`, and
+  // the per-game line beneath) or a team's (the score for and against).
+  function gamesBody(d, text) {
+    if (!d.games.length) return null;
+    const team = d.games[0].team_score !== undefined;
+    // A game with no recorded winner is neither W nor L - 134 since 1994 -
+    // and the reader sends `won: null` for one rather than guessing.
+    const body = team
+      ? table(["date", "", "opponent", "for", "against"],
+          d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]))
+      : playerLog(d);
+    return { caption: firstLine(text), body };
+  }
+
+  // One figure per game - a player's quarter or half game by game, a team's
+  // - with the trend drawn above and the games folded beneath: a season's 82
+  // rows are not the answer to "1st quarter scoring this season", the total
+  // and the trend are (Jeff's finding, 2026-09-24: a 76-row table shown in
+  // full). A game whose side of the floor is on record says it.
+  function figureGamesBody(d, text) {
+    if (!d.games.length) return null;
+    const side = g => (g.home_away === undefined ? "" : g.home_away === "home" ? "vs " : "at ");
+    const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, side(g) + g.opponent, num(g.points)]));
+    return {
+      caption: firstLine(text),
+      spark: sparkPoints(d.games, g => ({ label: g.date, value: g.points })),
+      body: d.games.length > FOLD_GAMES_OVER ? folded(`${d.games.length} games`, games) : games,
+    };
+  }
+
+  function seasonsBody(d, text) {
+    const rows = d.seasons.slice().reverse();
+    const cols = Object.keys(d.seasons[0] || {}).filter(k => k !== "season");
+    const seasons = table(["season"].concat(cols.map(label)),
+      d.seasons.map(s => [s.season].concat(cols.map(c => num(s[c])))));
+    return {
+      caption: firstLine(text),
+      spark: sparkPoints(rows, s => ({ label: String(s.season), value: s[d.stat] })),
+      // A "career" or "past 20 years" question is still a long list once
+      // the sparkline has already said what it says - the same fold a long
+      // game log takes.
+      body: d.seasons.length > FOLD_GAMES_OVER ? folded(`${d.seasons.length} seasons`, seasons) : seasons,
+    };
+  }
+
+  function playersBody(d, text) {
+    const names = Object.keys(d.players);
+    const stats = [...new Set(names.flatMap(n => Object.keys(d.players[n])))];
+    // Deliberately not bolding a "winner" per row. More is not better for
+    // turnovers or fouls, and a table that quietly asserted otherwise would
+    // be exactly the confident-and-wrong answer this project guards against.
+    // Every stat here but `gamesPlayed` is a per-game average
+    // (PLAYER_STAT_COLUMNS' "avg" columns) - `avgFixed` rather than
+    // `num()` keeps a whole-number average ("4.0" turnovers) from losing
+    // its decimal beside a neighbor's "2.2" (Jeff's finding, 2026-09-24).
+    const rows = stats.map(s => [label(s)].concat(names.map(n => (s.startsWith("avg") ? avgFixed(d.players[n][s]) : num(d.players[n][s])))));
+    // The NetPoints summary, per 100 possessions, under the box-score line.
+    // Read off `netpoints` but NOT listed in `needs`: NetPoints starts in
+    // 2019 and is a separate opt-in fetch, so a comparison without it is
+    // complete rather than broken, and requiring the key would drop the
+    // whole table back to text for every earlier season.
+    const net = d.netpoints || {};
+    if (names.some(n => net[n] && Object.keys(net[n]).length)) {
+      for (const [rowLabel, column] of NETPOINTS_ROWS) {
+        rows.push([rowLabel].concat(names.map(n => signed((net[n] || {})[column]))));
+      }
+    }
+    // This table is transposed (a row is one stat, a column is one
+    // player), so table()'s own column-wide decimal pass would mix a
+    // count (games) with an average (points) in the same player's
+    // column - turned off here; every cell already carries the decimal
+    // its own row calls for.
+    return { caption: firstLine(text), body: table([""].concat(names), rows, { pad: false }) };
+  }
+
+  function matchupBody(d, text) {
+    // No meetings carries no "averages" key at all, so `needs` already falls
+    // back to text for that case; this guards only the shape, not a refusal.
+    if (!d.games.length) return null;
+    const [a, b] = Object.keys(d.averages);
+    // Every row but "games" is a per-game average (conditions._matchup_line) -
+    // `avgFixed` keeps a whole-number one ("4.0" games played is a count
+    // and stays "4", but a whole-number points-per-game average does not
+    // lose its decimal). This table is transposed like a comparison's
+    // (a row is one stat, a column is one player), so table()'s own
+    // column-wide pass is off for the same reason - it cannot tell "games"
+    // from "points" once they share a column.
+    const matchupCell = (k, n) => (k === "games" ? num(d.averages[n][k]) : k === "fg_pct" ? pct100(d.averages[n][k]) : avgFixed(d.averages[n][k]));
+    const summary = table(
+      ["", a, b],
+      ["games", "minutes", "points", "rebounds", "assists", "fg_pct"].map(k => [label(k), ...[a, b].map(n => matchupCell(k, n))]),
+      { pad: false },
+    );
+    const line = s => `${num(s.points)}/${num(s.rebounds)}/${num(s.assists)}`;
+    const log = table(
+      ["date", "result", a, b],
+      d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", line(g[a]), line(g[b])]),
+    );
+    const box = el("div");
+    box.appendChild(summary);
+    box.appendChild(el("div", "group-title", "Most recent meetings (points/rebounds/assists)"));
+    box.appendChild(log);
+    return { caption: firstLine(text), body: box };
+  }
+
+  function meetingsBody(d, text) {
+    // Zero meetings is a real answer, but a 0-0 card says nothing the
+    // sentence does not say better.
+    if (!d.games) return null;
+    const [a, b] = d.teams;
+    const side = name => {
+      const s = el("div", "side");
+      s.appendChild(el("span", "wins", num(d.wins[name] || 0)));
+      s.appendChild(el("span", "team", name));
+      return s;
+    };
+    const card = el("div", "h2h");
+    card.appendChild(side(a));
+    card.appendChild(el("span", "vs", `${d.games} game${d.games === 1 ? "" : "s"}`));
+    card.appendChild(side(b));
+    return { caption: firstLine(text), body: card };
+  }
+
+  function splitsBody(d, text) {
+    const kinds = Object.keys(d.splits);
+    if (!kinds.length) return null;
+    // Every kind's rows carry the same stat keys (conditions._PLAYER_LINE
+    // or _TEAM_LINE) - read off the first kind's first row rather than
+    // hard-coding either line here.
+    const statKeys = Object.keys(d.splits[kinds[0]][0] || {}).filter(k => !["group", "games", "wins", "losses"].includes(k));
+    const box = el("div");
+    for (const kind of kinds) {
+      if (kinds.length > 1) box.appendChild(el("div", "group-title", SPLIT_TITLES[kind] || kind));
+      box.appendChild(
+        table(
+          ["", "G", "W-L", ...statKeys.map(label)],
+          d.splits[kind].map(g => [groupLabel(kind, g.group), num(g.games), `${g.wins}-${g.losses}`, ...statKeys.map(k => (k === "fg_pct" ? pct100(g[k]) : num(g[k])))]),
+        ),
+      );
+    }
+    return { caption: firstLine(text), body: box };
+  }
+
+  // A row of a record split: the games, the W-L, its percentage and the
+  // average margin - shared by the with/without split and a line's record.
+  function recordRow(name, g) {
+    const winPct = g.games ? g.wins / g.games : null;
+    return [name, num(g.games), `${g.wins}-${g.losses}`, winPct == null ? "-" : winPct.toFixed(3).replace(/^0/, ""), signed(g.avg_margin, 1)];
+  }
+
+  function presenceBody(d, text) {
+    // Every refusal path (never on the same roster, time outside scope,
+    // ...) still carries "groups": [] - an empty table would repeat that
+    // refusal with nothing in it.
+    if (!d.groups.length) return null;
+    // The player columns are always in `groups` (conditions._with_without_group
+    // computes them whether or not a subject was named), but they read as
+    // zeroed noise when nobody was: gate on the same key the answer does.
+    const showPlayer = !!d.player;
+    const headers = ["", "G", "W-L", "Win%", "Margin"].concat(showPlayer ? ["MIN", "PTS", "REB", "AST", "FG%"] : []);
+    const rows = d.groups.map(g => {
+      const row = recordRow(`${g.team} – ${g.teammate_played ? "with" : "without"} ${d.teammate}`, g);
+      return showPlayer ? row.concat([num(g.minutes), num(g.points), num(g.rebounds), num(g.assists), pct100(g.fg_pct)]) : row;
+    });
+    return { caption: firstLine(text), body: table(headers, rows) };
+  }
+
+  function lineRecordBody(d, text) {
+    const unit = statUnit(d.stat || "");
+    return {
+      caption: firstLine(text),
+      body: table(["", "G", "W-L", "Win%", "Margin"], [recordRow(`${d.threshold}+ ${unit}`, d.reached), recordRow(`under ${d.threshold} ${unit}`, d.fell_short)]),
+    };
+  }
+
+  function runsBody(d, text) {
+    // "Never had one" is a real answer that carries "streaks": [].
+    if (!d.streaks.length) return null;
+    // The league-wide shape (one row per player or team-season) carries a
+    // "name" the single-subject shape does not - compose.say.say_run_listing
+    // vs say_one_run.
+    const league = "name" in d.streaks[0];
+    const row = (s, i) => {
+      const length = num(s.length) + (s.open ? " *" : "");
+      return league ? [i + 1, s.name, length, s.from, s.to] : [length, s.from, s.to];
+    };
+    const headers = league ? ["#", "name", "games", "from", "to"] : ["games", "from", "to"];
+    return { caption: firstLine(text), body: table(headers, d.streaks.map(row)) };
+  }
+
+  function statLineBody(d, text) {
+    const entries = Object.entries(d.stats);
+    // {} on the refusal path ("no numbers in the warehouse") - a stat
+    // grid with nothing on it would be a worse rendering of the same
+    // refusal the sentence already states.
+    if (!entries.length) return null;
+    // PLAYER_STAT_COLUMNS (query/season_line.py) reports a per-game
+    // average and its season total side by side under the SAME label
+    // ("PTS" for both avgPoints and points) - shown plain that read as
+    // two tiles both saying "PTS" (Jeff's finding, 2026-09-24: "26.9 PTS"
+    // beside "1,021 PTS"). Grouped per-game first (the more commonly
+    // asked-for figure, and what a reader sees first), and a total whose
+    // label collides with one already shown is marked so, from the keys
+    // themselves rather than a hard-coded avgX/X pairing.
+    const games = entries.filter(([k]) => k === "gamesPlayed");
+    const perGame = entries.filter(([k]) => k !== "gamesPlayed" && k.startsWith("avg"));
+    const totals = entries.filter(([k]) => k !== "gamesPlayed" && !k.startsWith("avg"));
+    const perGameLabels = new Set(perGame.map(([k]) => label(k)));
+    const items = [...games, ...perGame, ...totals].map(([k, v]) => {
+      const lbl = label(k);
+      const isTotal = totals.some(([tk]) => tk === k) && perGameLabels.has(lbl);
+      const value = k.startsWith("avg") ? avgFixed(v) : rateOrNum(v, lbl);
+      return { value, label: isTotal ? `${lbl} total` : lbl };
+    });
+    return { caption: firstLine(text), body: statGrid(items) };
+  }
+
+  function teamStatsBody(d, text) {
+    const entries = Object.entries(d.stats);
+    // {} on the "no stats for this team" refusal.
+    if (!entries.length) return null;
+    // Whether a metric is a percentage is not itself on the data - team_metrics.TEAM_METRICS
+    // marks it with `percent=True`, and every one of those labels
+    // happens to say "percentage" (field goal percentage, 3-point
+    // percentage, ...), which is a fact about that table, not a
+    // guess: no non-percent label contains the word.
+    const rows = entries.map(([lbl, e]) => {
+      const percent = /percentage/i.test(lbl);
+      const value = e.value == null ? "-" : percent ? e.value.toFixed(1) + "%" : num(e.value);
+      return [lbl, value, e.rank == null ? "-" : `${e.rank} of ${e.of}`];
+    });
+    return { caption: firstLine(text), body: table(["stat", "value", "rank"], rows) };
+  }
+
+  function recordBody(d) {
+    // Two forms: one record (wins/losses/win_pct), or a month-by-month
+    // split (`months`, one row per month - per season when a range was
+    // asked for), which used to fall back to the terminal table.
+    if (Array.isArray(d.months)) {
+      if (!d.months.length) return null;
+      const bySeason = "season" in d.months[0];
+      const headers = (bySeason ? ["season"] : []).concat(["month", "G", "W-L"]);
+      const rows = d.months.map(m => (bySeason ? [m.season] : []).concat([m.month || m.name, num(m.games), num(m.wins) + "-" + num(m.losses)]));
+      return { caption: null, body: table(headers, rows) };
+    }
+    if (d.wins === undefined || d.losses === undefined || typeof d.win_pct !== "number") return null;
+    const box = el("div");
+    const card = el("div", "record");
+    card.appendChild(el("span", "wl", `${num(d.wins)}–${num(d.losses)}`));
+    card.appendChild(el("span", "pct", d.win_pct.toFixed(3).replace(/^0/, "")));
+    box.appendChild(card);
+    // The seed/streak (already folded into `headline` when either is worth
+    // naming - compose/standings.py) plus the home/road split, last ten and
+    // games back sat only in the sentence: the card used to hold the whole
+    // thing as its `caption`, which printed the SAME "50-32 (.610)" a second
+    // time under the headline. These keys exist only on a season's own
+    // standings row; a venue, career or opponent/postseason record carries
+    // none of them, so the block is skipped rather than drawn empty.
+    const lines = [];
+    const split = [];
+    if (Array.isArray(d.home) && Array.isArray(d.road)) split.push(`Home ${num(d.home[0])}-${num(d.home[1])}, road ${num(d.road[0])}-${num(d.road[1])}`);
+    if (typeof d.last_ten === "string" && d.last_ten.trim()) split.push(`last 10: ${d.last_ten}`);
+    if (d.games_behind) split.push(`${num(d.games_behind)} games back`);
+    if (split.length) lines.push(split.join("; ") + ".");
+    if (typeof d.points_for === "number" && typeof d.points_against === "number") {
+      lines.push(`${d.points_for.toFixed(1)} points per game, ${d.points_against.toFixed(1)} allowed (${signed(d.points_for - d.points_against, 1)}).`);
+    }
+    if (lines.length) {
+      const detail = el("div", "notes");
+      for (const line of lines) detail.appendChild(el("p", null, line));
+      box.appendChild(detail);
+    }
+    return { caption: null, body: box };
+  }
+
+  function outlookBody(d) {
+    // No BPI means no rank either: "1 of 30" among thirty empty ratings says nothing.
+    const items = [{ value: d.bpi == null ? "–" : (d.bpi >= 0 ? "+" : "") + d.bpi.toFixed(1), label: d.bpi == null ? "BPI" : `BPI (${d.position} of ${d.teams_in_snapshot})` }];
+    if (d.wins != null && d.losses != null) items.push({ value: `${num(d.wins)}–${num(d.losses)}`, label: "record" });
+    if (d.projected_wins != null && d.projected_losses != null) items.push({ value: `${num(d.projected_wins)}–${num(d.projected_losses)}`, label: "projected" });
+    // A postseason snapshot's second record is the finished regular season, not a projection.
+    if (d.regular_season_wins != null && d.regular_season_losses != null) items.push({ value: `${num(d.regular_season_wins)}–${num(d.regular_season_losses)}`, label: "regular season" });
+    for (const [chanceLabel, value] of Object.entries(d.chances)) {
+      if (value != null) items.push({ value: value.toFixed(1) + "%", label: chanceLabel });
+    }
+    if (d.strength_of_schedule != null) items.push({ value: (d.strength_of_schedule * 100).toFixed(1) + "%", label: "strength of schedule" });
+    return { caption: `${d.snapshot} snapshot, updated ${d.updated}`, body: statGrid(items) };
+  }
+
+  function distanceBody(d, text) {
+    return {
+      caption: firstLine(text),
+      body: statGrid([
+        { value: d.avg_feet.toFixed(1) + " ft", label: "avg distance" },
+        { value: num(d.attempts), label: "attempts" },
+      ]),
+    };
+  }
+
+  function ratingsBody(d, text) {
+    const box = el("div");
+    // `totals` (net_points_player's season row) and `fingerprint` (the
+    // play-type breakdown) come from different tables and can each be
+    // empty on their own - compose/netpoints.py's own comment: "the two
+    // disagree about who they hold". Either alone is still worth a card.
+    if (d.totals) {
+      const items = [
+        { value: signed(d.totals.overall), label: "NetPoints" },
+        { value: signed(d.totals.offense), label: "offense" },
+        { value: signed(d.totals.defense), label: "defense" },
+      ];
+      if (d.totals.per_100 != null) items.push({ value: d.totals.per_100.toFixed(2), label: "per 100 poss" });
+      box.appendChild(statGrid(items));
+    }
+    // `partition` marks the six categories net_points_player_fingerprint
+    // itself sums to the season total (nba.netpoints.FINGERPRINT_PARTITION,
+    // carried onto each row rather than a second copy of that list here).
+    // The rest are overlapping play-type slices, shown separately so nobody
+    // sums them together.
+    const partition = d.fingerprint.filter(r => r.partition);
+    const detail = d.fingerprint.filter(r => !r.partition);
+    for (const [side, heading] of [["offense", "Offense"], ["defense", "Defense"]]) {
+      // Sorted by this side alone, like the CLI table - a category with a
+      // big offensive number and a near-zero defensive one would bury its
+      // own defense row under others if both sides shared one order.
+      const rows = partition.filter(r => r[side] !== null).sort((a, b) => Math.abs(b[side]) - Math.abs(a[side]));
+      if (!rows.length) continue;
+      box.appendChild(el("div", "group-title", heading));
+      box.appendChild(table(["category", "net pts"], rows.map(r => [r.category, signed(r[side])])));
+    }
+    if (detail.length) {
+      box.appendChild(el("div", "group-title", "Play-type detail"));
+      const rows = detail.slice().sort((a, b) => Math.abs(b.total || 0) - Math.abs(a.total || 0));
+      box.appendChild(table(["category", "O", "D"], rows.map(r => [r.category, signed(r.offense), signed(r.defense)])));
+    }
+    // Nothing built (a season row with no fingerprint at all, and no
+    // partition/detail rows either) - fall back to the sentence.
+    if (!box.children.length) return null;
+    return { caption: firstLine(text), body: box };
+  }
+
+  // shape -> {bodies, of}: the page's renderers, one per shape a planned
+  // point is read and said as (`Answer.shape`, the `reading.PointShape` the
+  // answer side chose its reader by - Phase 4, step 1, where 22 renderers
+  // were keyed by the retired label). `of(d, shape)` names the body the
+  // answer's data carries, by what one row is (`shape.by`), the relation
+  // where two readers of one `by` say different bodies, and the compiler's
+  // own body (`skeleton`) where no reader took the point; `bodies` names
+  // each body's draw and `needs`, the Answer.data keys it reads. A Python
+  // test checks each `needs` against what the readers produce, because a
+  // renamed key would silently drop the table and fall back to text, which
+  // looks like nothing happened at all. A chart's frame is chosen by its
+  // artifact's kind (`chartFrame`).
   const RENDERERS = {
-    leaderboard: {
-      needs: ["leaders", "question_shape"],
-      render: (d, text) => {
-        // Unlike a leaderboard in general, a single-leader question ("who
-        // leads the league in assists?", the router's own limit 1) still
-        // asks for a ranking - it is just a ranking of one - so it keeps its
-        // "#1" table instead of falling to the CLI text's monospace block
-        // (Jeff's finding, 2026-09-24).
-        const body = ranked(d.leaders, "display_name", "value", firstValueLabel(d, text), d.fields || [], { allowSingle: true });
-        return body && { caption: d.question_shape, body };
+    scalar: {
+      bodies: {
+        compiled: { needs: ["skeleton", "rows"], draw: compiledBody },
+        line: { needs: ["player", "stats"], draw: statLineBody },
+        team_line: { needs: ["stats"], draw: teamStatsBody },
+        record: { needs: ["team"], draw: recordBody },
+        projection: { needs: ["team", "season", "snapshot", "position", "chances"], draw: outlookBody },
+        figures: { needs: ["games", "total"], draw: figureGamesBody },
+        distance: { needs: ["avg_feet", "attempts"], draw: distanceBody },
+        ratings: { needs: ["fingerprint"], draw: ratingsBody },
       },
+      of: (d, shape) => (d.skeleton ? "compiled" : shape.by === "line" ? (shape.relation === "team_seasons" ? "team_line" : "line") : shape.by === "total" ? "figures" : shape.by),
     },
-    threshold_count: {
-      needs: ["leaders", "question_shape"],
-      render: d => {
-        const body = ranked(d.leaders, "player", "games", "G");
-        return body && { caption: d.question_shape, body };
+    rows: {
+      bodies: {
+        compiled: { needs: ["skeleton", "rows"], draw: compiledBody },
+        games: { needs: ["games"], draw: gamesBody },
+        figures: { needs: ["games", "total", "average"], draw: figureGamesBody },
+        highs: { needs: ["games", "stat", "question_shape"], draw: gameHighsBody },
       },
+      of: (d, shape) => (d.skeleton ? "compiled" : shape.by === "measure" ? "highs" : shape.relation === "player_periods" ? "figures" : "games"),
     },
-    single_game_high: {
-      needs: ["games", "stat", "question_shape"],
-      render: d => d.games.length < 2 ? null : ({
-        caption: d.question_shape,
-        body: table(["#", "player", label(d.stat), "date", "opponent"],
-          d.games.map((g, i) => [i + 1, g.player, num(g.value), g.date, g.opponent])),
-      }),
-    },
-    player_history: {
-      needs: ["seasons", "stat", "player"],
-      render: (d, text) => {
-        const rows = d.seasons.slice().reverse();
-        const cols = Object.keys(d.seasons[0] || {}).filter(k => k !== "season");
-        const seasons = table(["season"].concat(cols.map(label)),
-          d.seasons.map(s => [s.season].concat(cols.map(c => num(s[c])))));
-        return {
-          caption: firstLine(text),
-          spark: sparkPoints(rows, s => ({ label: String(s.season), value: s[d.stat] })),
-          // A "career" or "past 20 years" question is still a long list once
-          // the sparkline has already said what it says - the same fold
-          // team_quarter_points and period_split use for a long game log.
-          body: d.seasons.length > FOLD_GAMES_OVER ? folded(`${d.seasons.length} seasons`, seasons) : seasons,
-        };
+    ranking: {
+      bodies: {
+        compiled: { needs: ["skeleton", "rows"], draw: compiledBody },
+        leaders: { needs: ["leaders", "question_shape"], draw: leadersBody },
+        counts: { needs: ["leaders", "question_shape"], draw: countLeadersBody },
+        periods: { needs: ["leaders", "period"], draw: periodLeadersBody },
+        teams: { needs: ["teams"], draw: teamRankingBody },
       },
+      of: (d, shape) => (d.skeleton ? "compiled" : shape.by === "team" ? "teams" : shape.by === "count" ? "counts" : shape.relation === "player_periods" ? "periods" : "leaders"),
     },
-    player_compare: {
-      needs: ["players"],
-      render: (d, text) => {
-        const names = Object.keys(d.players);
-        const stats = [...new Set(names.flatMap(n => Object.keys(d.players[n])))];
-        // Deliberately not bolding a "winner" per row. More is not better for
-        // turnovers or fouls, and a table that quietly asserted otherwise would
-        // be exactly the confident-and-wrong answer this project guards against.
-        // Every stat here but `gamesPlayed` is a per-game average
-        // (PLAYER_STAT_COLUMNS' "avg" columns) - `avgFixed` rather than
-        // `num()` keeps a whole-number average ("4.0" turnovers) from losing
-        // its decimal beside a neighbor's "2.2" (Jeff's finding, 2026-09-24).
-        const rows = stats.map(s => [label(s)].concat(names.map(n => (s.startsWith("avg") ? avgFixed(d.players[n][s]) : num(d.players[n][s])))));
-        // The NetPoints summary, per 100 possessions, under the box-score line.
-        // Read off `netpoints` but NOT listed in `needs`: NetPoints starts in
-        // 2019 and is a separate opt-in fetch, so a comparison without it is
-        // complete rather than broken, and requiring the key would drop the
-        // whole table back to text for every earlier season.
-        const net = d.netpoints || {};
-        if (names.some(n => net[n] && Object.keys(net[n]).length)) {
-          for (const [rowLabel, column] of NETPOINTS_ROWS) {
-            rows.push([rowLabel].concat(names.map(n => signed((net[n] || {})[column]))));
-          }
-        }
-        // This table is transposed (a row is one stat, a column is one
-        // player), so table()'s own column-wide decimal pass would mix a
-        // count (games) with an average (points) in the same player's
-        // column - turned off here; every cell already carries the decimal
-        // its own row calls for.
-        return { caption: firstLine(text), body: table([""].concat(names), rows, { pad: false }) };
+    comparison: {
+      bodies: {
+        compiled: { needs: ["skeleton", "rows"], draw: compiledBody },
+        subject: { needs: ["players"], draw: playersBody },
+        met: { needs: ["averages", "games"], draw: matchupBody },
+        opponent: { needs: ["teams", "games", "wins"], draw: meetingsBody },
       },
+      of: (d, shape) => (d.skeleton ? "compiled" : shape.by),
     },
-    game_log: {
-      needs: ["games"],
-      render: (d, text) => {
-        if (!d.games.length) return null;
-        const team = d.games[0].team_score !== undefined;
-        // A game with no recorded winner is neither W nor L - 134 since 1994 -
-        // and the template sends `won: null` for one rather than guessing.
-        const body = team
-          ? table(["date", "", "opponent", "for", "against"],
-              d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "\u2013", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]))
-          : playerLog(d);
-        return { caption: firstLine(text), body };
+    split: {
+      bodies: {
+        compiled: { needs: ["skeleton", "rows"], draw: compiledBody },
+        season: { needs: ["seasons", "stat", "player"], draw: seasonsBody },
+        splits: { needs: ["splits"], draw: splitsBody },
+        presence: { needs: ["groups"], draw: presenceBody },
+        line: { needs: ["reached", "fell_short"], draw: lineRecordBody },
       },
+      of: (d, shape) => (d.skeleton ? "compiled" : shape.by),
     },
-    team_record: {
-      needs: ["team"],
-      render: (d, text) => {
-        // Two shapes: one record (wins/losses/win_pct), or a month-by-month
-        // split (`months`, one row per month - per season when a range was
-        // asked for), which used to fall back to the terminal table.
-        if (Array.isArray(d.months)) {
-          if (!d.months.length) return null;
-          const bySeason = "season" in d.months[0];
-          const headers = (bySeason ? ["season"] : []).concat(["month", "G", "W-L"]);
-          const rows = d.months.map(m => (bySeason ? [m.season] : []).concat([m.month || m.name, num(m.games), num(m.wins) + "-" + num(m.losses)]));
-          return { caption: null, body: table(headers, rows) };
-        }
-        if (d.wins === undefined || d.losses === undefined || typeof d.win_pct !== "number") return null;
-        const box = el("div");
-        const card = el("div", "record");
-        card.appendChild(el("span", "wl", `${num(d.wins)}\u2013${num(d.losses)}`));
-        card.appendChild(el("span", "pct", d.win_pct.toFixed(3).replace(/^0/, "")));
-        box.appendChild(card);
-        // The seed/streak (already folded into `headline` when either is
-        // worth naming - templates/teams.py's own _standings_season) plus the
-        // home/road split, last ten and games back sat only in the sentence:
-        // the card used to hold the whole thing as its `caption`, which
-        // printed the SAME "50-32 (.610)" a second time under the headline
-        // (ISSUES.md, "team_record's standings/games-record card renderer
-        // always duplicates its own caption"). These keys exist only on a
-        // season's own standings row (_standings_season); a venue, career or
-        // opponent/postseason record carries none of them, so the block is
-        // skipped rather than drawn empty.
-        const lines = [];
-        const split = [];
-        if (Array.isArray(d.home) && Array.isArray(d.road)) split.push(`Home ${num(d.home[0])}-${num(d.home[1])}, road ${num(d.road[0])}-${num(d.road[1])}`);
-        if (typeof d.last_ten === "string" && d.last_ten.trim()) split.push(`last 10: ${d.last_ten}`);
-        if (d.games_behind) split.push(`${num(d.games_behind)} games back`);
-        if (split.length) lines.push(split.join("; ") + ".");
-        if (typeof d.points_for === "number" && typeof d.points_against === "number") {
-          lines.push(`${d.points_for.toFixed(1)} points per game, ${d.points_against.toFixed(1)} allowed (${signed(d.points_for - d.points_against, 1)}).`);
-        }
-        if (lines.length) {
-          const detail = el("div", "notes");
-          for (const line of lines) detail.appendChild(el("p", null, line));
-          box.appendChild(detail);
-        }
-        return { caption: null, body: box };
+    runs: {
+      bodies: {
+        runs: { needs: ["streaks"], draw: runsBody },
       },
+      of: () => "runs",
     },
-    player_stat: {
-      needs: ["player", "stats"],
-      render: (d, text) => {
-        const entries = Object.entries(d.stats);
-        // {} on the refusal path ("no numbers in the warehouse") - a stat
-        // grid with nothing on it would be a worse rendering of the same
-        // refusal the sentence already states.
-        if (!entries.length) return null;
-        // PLAYER_STAT_COLUMNS (query/season_line.py) reports a per-game
-        // average and its season total side by side under the SAME label
-        // ("PTS" for both avgPoints and points) - shown plain that read as
-        // two tiles both saying "PTS" (Jeff's finding, 2026-09-24: "26.9 PTS"
-        // beside "1,021 PTS"). Grouped per-game first (the more commonly
-        // asked-for figure, and what a reader sees first), and a total whose
-        // label collides with one already shown is marked so, from the keys
-        // themselves rather than a hard-coded avgX/X pairing.
-        const games = entries.filter(([k]) => k === "gamesPlayed");
-        const perGame = entries.filter(([k]) => k !== "gamesPlayed" && k.startsWith("avg"));
-        const totals = entries.filter(([k]) => k !== "gamesPlayed" && !k.startsWith("avg"));
-        const perGameLabels = new Set(perGame.map(([k]) => label(k)));
-        const items = [...games, ...perGame, ...totals].map(([k, v]) => {
-          const lbl = label(k);
-          const isTotal = totals.some(([tk]) => tk === k) && perGameLabels.has(lbl);
-          const value = k.startsWith("avg") ? avgFixed(v) : rateOrNum(v, lbl);
-          return { value, label: isTotal ? `${lbl} total` : lbl };
-        });
-        return { caption: firstLine(text), body: statGrid(items) };
+    chart: {
+      bodies: {
+        frames: { needs: [], draw: framesBody },
       },
-    },
-    shot_distance: {
-      needs: ["avg_feet", "attempts"],
-      render: (d, text) => ({
-        caption: firstLine(text),
-        body: statGrid([
-          { value: d.avg_feet.toFixed(1) + " ft", label: "avg distance" },
-          { value: num(d.attempts), label: "attempts" },
-        ]),
-      }),
-    },
-    player_netpoints: {
-      needs: ["fingerprint"],
-      render: (d, text) => {
-        const box = el("div");
-        // `totals` (net_points_player's season row) and `fingerprint` (the
-        // play-type breakdown) come from different tables and can each be
-        // empty on their own - compose/netpoints.py's own comment: "the two
-        // disagree about who they hold". Either alone is still worth a card.
-        if (d.totals) {
-          const items = [
-            { value: signed(d.totals.overall), label: "NetPoints" },
-            { value: signed(d.totals.offense), label: "offense" },
-            { value: signed(d.totals.defense), label: "defense" },
-          ];
-          if (d.totals.per_100 != null) items.push({ value: d.totals.per_100.toFixed(2), label: "per 100 poss" });
-          box.appendChild(statGrid(items));
-        }
-        // `partition` marks the six categories net_points_player_fingerprint
-        // itself sums to the season total (nba.netpoints.FINGERPRINT_PARTITION,
-        // carried onto each row rather than a second copy of that list here -
-        // see `_netpoints_breakdown`'s own comment). The rest are overlapping
-        // play-type slices, shown separately so nobody sums them together.
-        const partition = d.fingerprint.filter(r => r.partition);
-        const detail = d.fingerprint.filter(r => !r.partition);
-        for (const [side, heading] of [["offense", "Offense"], ["defense", "Defense"]]) {
-          // Sorted by this side alone, like the CLI table - a category with a
-          // big offensive number and a near-zero defensive one would bury its
-          // own defense row under others if both sides shared one order.
-          const rows = partition.filter(r => r[side] !== null).sort((a, b) => Math.abs(b[side]) - Math.abs(a[side]));
-          if (!rows.length) continue;
-          box.appendChild(el("div", "group-title", heading));
-          box.appendChild(table(["category", "net pts"], rows.map(r => [r.category, signed(r[side])])));
-        }
-        if (detail.length) {
-          box.appendChild(el("div", "group-title", "Play-type detail"));
-          const rows = detail.slice().sort((a, b) => Math.abs(b.total || 0) - Math.abs(a.total || 0));
-          box.appendChild(table(["category", "O", "D"], rows.map(r => [r.category, signed(r.offense), signed(r.defense)])));
-        }
-        // Nothing built (a season row with no fingerprint at all, and no
-        // partition/detail rows either) - fall back to the sentence.
-        if (!box.children.length) return null;
-        return { caption: firstLine(text), body: box };
-      },
-    },
-    head_to_head: {
-      needs: ["teams", "games", "wins"],
-      render: (d, text) => {
-        // Zero meetings is a real answer, but a 0-0 card says nothing the
-        // sentence does not say better.
-        if (!d.games) return null;
-        const [a, b] = d.teams;
-        const side = name => {
-          const s = el("div", "side");
-          s.appendChild(el("span", "wins", num(d.wins[name] || 0)));
-          s.appendChild(el("span", "team", name));
-          return s;
-        };
-        const card = el("div", "h2h");
-        card.appendChild(side(a));
-        card.appendChild(el("span", "vs", `${d.games} game${d.games === 1 ? "" : "s"}`));
-        card.appendChild(side(b));
-        return { caption: firstLine(text), body: card };
-      },
-    },
-    team_quarter_points: {
-      needs: ["games", "total"],
-      render: (d, text) => {
-        if (!d.games.length) return null;
-        // A season's 82 rows are not the answer to "2nd half scoring this
-        // season" - the total and the trend are; the games fold away beneath.
-        const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, g.opponent, num(g.points)]));
-        return {
-          caption: null,
-          spark: sparkPoints(d.games, g => ({ label: g.date, value: g.points })),
-          body: d.games.length > FOLD_GAMES_OVER ? folded(`${d.games.length} games`, games) : games,
-        };
-      },
-    },
-    period_leaderboard: {
-      needs: ["leaders", "period"],
-      render: (d, text) => {
-        const body = ranked(d.leaders, "player", "average", "PTS/G", ["games"]);
-        return body && { caption: null, body };
-      },
-    },
-    period_split: {
-      needs: ["games", "total", "average"],
-      render: (d, text) => {
-        if (!d.games.length) return null;
-        // A season's worth of per-game rows is not the answer to "1st
-        // quarter scoring this season" any more than team_quarter_points'
-        // is - the total and the trend are - so it folds the same way
-        // (Jeff's finding, 2026-09-24: a 76-row table shown in full).
-        const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, (g.home_away === "home" ? "vs " : "at ") + g.opponent, num(g.points)]));
-        return {
-          caption: firstLine(text),
-          spark: sparkPoints(d.games, g => ({ label: g.date, value: g.points })),
-          body: d.games.length > FOLD_GAMES_OVER ? folded(`${d.games.length} games`, games) : games,
-        };
-      },
-    },
-    player_splits: {
-      needs: ["splits"],
-      render: (d, text) => {
-        const kinds = Object.keys(d.splits);
-        if (!kinds.length) return null;
-        // Every kind's rows carry the same stat keys (conditions._PLAYER_LINE
-        // or _TEAM_LINE) - read off the first kind's first row rather than
-        // hard-coding either line here.
-        const statKeys = Object.keys(d.splits[kinds[0]][0] || {}).filter(k => !["group", "games", "wins", "losses"].includes(k));
-        const box = el("div");
-        for (const kind of kinds) {
-          if (kinds.length > 1) box.appendChild(el("div", "group-title", SPLIT_TITLES[kind] || kind));
-          box.appendChild(
-            table(
-              ["", "G", "W-L", ...statKeys.map(label)],
-              d.splits[kind].map(g => [groupLabel(kind, g.group), num(g.games), `${g.wins}-${g.losses}`, ...statKeys.map(k => (k === "fg_pct" ? pct100(g[k]) : num(g[k])))]),
-            ),
-          );
-        }
-        return { caption: firstLine(text), body: box };
-      },
-    },
-    with_without: {
-      needs: ["groups"],
-      render: (d, text) => {
-        // Every refusal path (never on the same roster, time outside scope,
-        // ...) still carries "groups": [] - an empty table would repeat that
-        // refusal with nothing in it.
-        if (!d.groups.length) return null;
-        // The player columns are always in `groups` (conditions._with_without_group
-        // computes them whether or not a subject was named), but they read as
-        // zeroed noise when nobody was: gate on the same key the answer does.
-        const showPlayer = !!d.player;
-        const headers = ["", "G", "W-L", "Win%", "Margin"].concat(showPlayer ? ["MIN", "PTS", "REB", "AST", "FG%"] : []);
-        const rows = d.groups.map(g => {
-          const winPct = g.games ? g.wins / g.games : null;
-          const row = [`${g.team} – ${g.teammate_played ? "with" : "without"} ${d.teammate}`, num(g.games), `${g.wins}-${g.losses}`, winPct == null ? "-" : winPct.toFixed(3).replace(/^0/, ""), signed(g.avg_margin, 1)];
-          return showPlayer ? row.concat([num(g.minutes), num(g.points), num(g.rebounds), num(g.assists), pct100(g.fg_pct)]) : row;
-        });
-        return { caption: firstLine(text), body: table(headers, rows) };
-      },
-    },
-    record_when: {
-      needs: ["reached", "fell_short"],
-      render: (d, text) => {
-        const unit = statUnit(d.stat || "");
-        const row = (name, g) => {
-          const winPct = g.games ? g.wins / g.games : null;
-          return [name, num(g.games), `${g.wins}-${g.losses}`, winPct == null ? "-" : winPct.toFixed(3).replace(/^0/, ""), signed(g.avg_margin, 1)];
-        };
-        return {
-          caption: firstLine(text),
-          body: table(["", "G", "W-L", "Win%", "Margin"], [row(`${d.threshold}+ ${unit}`, d.reached), row(`under ${d.threshold} ${unit}`, d.fell_short)]),
-        };
-      },
-    },
-    player_matchup: {
-      needs: ["averages", "games"],
-      render: (d, text) => {
-        // No meetings carries no "averages" key at all (see _player_matchup_no_meetings),
-        // so `needs` already falls back to text for that case; this guards
-        // only the shape, not a refusal.
-        if (!d.games.length) return null;
-        const [a, b] = Object.keys(d.averages);
-        // Every row but "games" is a per-game average (conditions._matchup_line) -
-        // `avgFixed` keeps a whole-number one ("4.0" games played is a count
-        // and stays "4", but a whole-number points-per-game average does not
-        // lose its decimal). This table is transposed like player_compare's
-        // (a row is one stat, a column is one player), so table()'s own
-        // column-wide pass is off for the same reason - it cannot tell "games"
-        // from "points" once they share a column.
-        const matchupCell = (k, n) => (k === "games" ? num(d.averages[n][k]) : k === "fg_pct" ? pct100(d.averages[n][k]) : avgFixed(d.averages[n][k]));
-        const summary = table(
-          ["", a, b],
-          ["games", "minutes", "points", "rebounds", "assists", "fg_pct"].map(k => [label(k), ...[a, b].map(n => matchupCell(k, n))]),
-          { pad: false },
-        );
-        const line = s => `${num(s.points)}/${num(s.rebounds)}/${num(s.assists)}`;
-        const log = table(
-          ["date", "result", a, b],
-          d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", line(g[a]), line(g[b])]),
-        );
-        const box = el("div");
-        box.appendChild(summary);
-        box.appendChild(el("div", "group-title", "Most recent meetings (points/rebounds/assists)"));
-        box.appendChild(log);
-        return { caption: firstLine(text), body: box };
-      },
-    },
-    streak: {
-      needs: ["streaks"],
-      render: (d, text) => {
-        // "Never had one" is a real answer that carries "streaks": [].
-        if (!d.streaks.length) return null;
-        // The league-wide shape (one row per player or team-season) carries a
-        // "name" the single-subject shape does not - compose.say.say_run_listing
-        // vs say_one_run.
-        const league = "name" in d.streaks[0];
-        const row = (s, i) => {
-          const length = num(s.length) + (s.open ? " *" : "");
-          return league ? [i + 1, s.name, length, s.from, s.to] : [length, s.from, s.to];
-        };
-        const headers = league ? ["#", "name", "games", "from", "to"] : ["games", "from", "to"];
-        return { caption: firstLine(text), body: table(headers, d.streaks.map(row)) };
-      },
-    },
-    team_stat: {
-      needs: ["stats"],
-      render: (d, text) => {
-        const entries = Object.entries(d.stats);
-        // {} on the "no stats for this team" refusal.
-        if (!entries.length) return null;
-        // Whether a metric is a percentage is not itself on the data - team_metrics.TEAM_METRICS
-        // marks it with `percent=True`, and every one of those labels
-        // happens to say "percentage" (field goal percentage, 3-point
-        // percentage, ...), which is a fact about that table, not a
-        // guess: no non-percent label contains the word.
-        const rows = entries.map(([lbl, e]) => {
-          const percent = /percentage/i.test(lbl);
-          const value = e.value == null ? "-" : percent ? e.value.toFixed(1) + "%" : num(e.value);
-          return [lbl, value, e.rank == null ? "-" : `${e.rank} of ${e.of}`];
-        });
-        return { caption: firstLine(text), body: table(["stat", "value", "rank"], rows) };
-      },
-    },
-    team_leaderboard: {
-      needs: ["teams"],
-      render: d => {
-        if (d.teams.length < 2) return null;
-        return { caption: d.question_shape, body: table(["#", "team", "value"], d.teams.map(t => [t.rank, t.team, t.display])) };
-      },
-    },
-    team_outlook: {
-      needs: ["team", "season", "snapshot", "position", "chances"],
-      render: d => {
-        // No BPI means no rank either: "1 of 30" among thirty empty ratings says nothing.
-        const items = [{ value: d.bpi == null ? "–" : (d.bpi >= 0 ? "+" : "") + d.bpi.toFixed(1), label: d.bpi == null ? "BPI" : `BPI (${d.position} of ${d.teams_in_snapshot})` }];
-        if (d.wins != null && d.losses != null) items.push({ value: `${num(d.wins)}–${num(d.losses)}`, label: "record" });
-        if (d.projected_wins != null && d.projected_losses != null) items.push({ value: `${num(d.projected_wins)}–${num(d.projected_losses)}`, label: "projected" });
-        // A postseason snapshot's second record is the finished regular season, not a projection.
-        if (d.regular_season_wins != null && d.regular_season_losses != null) items.push({ value: `${num(d.regular_season_wins)}–${num(d.regular_season_losses)}`, label: "regular season" });
-        for (const [chanceLabel, value] of Object.entries(d.chances)) {
-          if (value != null) items.push({ value: value.toFixed(1) + "%", label: chanceLabel });
-        }
-        if (d.strength_of_schedule != null) items.push({ value: (d.strength_of_schedule * 100).toFixed(1) + "%", label: "strength of schedule" });
-        return { caption: `${d.snapshot} snapshot, updated ${d.updated}`, body: statGrid(items) };
-      },
+      of: () => "frames",
     },
   };
 
   function firstValueLabel(d, text) {
     // leaderboard's own words for what it ranked by, e.g. "assists per game",
-    // taken from the scope string the template already built rather than
+    // taken from the scope string the reader already built rather than
     // reassembled from the slots.
     const shape = String(d.question_shape || "");
     return shape.split(",")[0] || firstLine(text);
@@ -1576,13 +1609,11 @@
   }
 
   function renderAnswer(a) {
-    // Charts and a rendered body are independent: an answer can have either,
-    // both, or neither. Every way the body can decline - no renderer, a key the
-    // template stopped producing, a shape not worth a table - still leaves the
-    // charts, which are the part a sentence cannot substitute for.
-    const charts = (a.artifacts || []).map(chartFrame);
+    // A body drawn from `data` (a table, a card), or a chart's frames - the
+    // chart shape's body - each under the headline; null when nothing drew,
+    // and the page shows the sentence.
     const out = renderBody(a);
-    if (!out && !charts.length) return null;
+    if (!out) return null;
     const box = el("div");
     // The sentence first, at reading size, whether or not anything else
     // rendered: a chart-only answer (fingerprint, shot_chart) used to show
@@ -1595,32 +1626,30 @@
     const source = (a.data && typeof a.data.message === "string") ? a.data.message : a.text;
     const headline = (a.data && a.data.headline) || stripArtifactPath(firstLine(source).replace(/\s+Next:.*$/, ""));
     if (headline) box.appendChild(el("div", "headline", headline));
-    if (out) {
-      if (out.caption && !isRedundantCaption(out.caption, headline)) box.appendChild(el("div", "caption", out.caption));
-      if (out.spark) box.appendChild(sparkline(out.spark));
-      box.appendChild(out.body);
-    }
+    if (out.caption && !isRedundantCaption(out.caption, headline)) box.appendChild(el("div", "caption", out.caption));
+    if (out.spark) box.appendChild(sparkline(out.spark));
+    if (out.body) box.appendChild(out.body);
     // Notes fall back to parsing the sentence's own lines only when nothing
     // rendered a structured body from `data` - a body built from `data` and a
     // note re-derived from the SAME sentence say the same thing twice
     // (Jeff's finding, 2026-09-24: team_outlook's stat card, with every line
     // under it repeated below as a "note"). See ISSUES.md - "Template data
-    // the page cannot render from" - for the templates this costs until
+    // the page cannot render from" - for the readers this costs until
     // `data.notes` covers what the fallback used to catch.
-    const notes = answerNotes(a, { fallback: !out });
+    const notes = answerNotes(a, { fallback: !out.body });
     if (notes.length) {
       const list = el("div", "notes");
       for (const note of notes) list.appendChild(el("p", null, note));
       box.appendChild(list);
     }
-    for (const chart of charts) box.appendChild(chart);
+    for (const chart of out.charts || []) box.appendChild(chart);
     return box;
   }
 
   // The lines of an answer that are prose rather than its table: what a
-  // template says after the rows (the meaning of a "*", how many games have
+  // reader says after the rows (the meaning of a "*", how many games have
   // no box score, how a bare surname was read). Preferred from
-  // `data.notes`, which the templates and agent.py fill as they attach
+  // `data.notes`, which the sayer and agent.py fill as they attach
   // them; otherwise read off the text - a table's line holds a run of
   // spaces between its columns or ends in ":", and a note does neither.
   // `fallback` (default true) gates the text-parsing path: a renderer that
@@ -1654,29 +1683,39 @@
     return box;
   }
 
+  // The answer's body drawn by its shape's renderer (RENDERERS), or null. An
+  // answer with no planned shape - a refusal the words came to, one kept by
+  // this browser from before the page read the shape - is its sentence.
   function renderBody(a) {
-    if (!a.data) return null;
-    // A composed answer carries the compiler's own shape - `skeleton`, `rows`,
-    // `measures` - whatever intent the router filed, so it is drawn by the
-    // skeleton, not the intent: one renderer for every point on a relation.
-    if (a.data.skeleton && Array.isArray(a.data.rows)) {
-      try { return renderComposed(a.data, a.text) || null; } catch (err) { return null; }
-    }
-    const spec = a.intent && RENDERERS[a.intent];
+    if (!a.data || !a.shape) return null;
+    const spec = RENDERERS[a.shape.shape];
     if (!spec) return null;
-    // A key the template stopped producing means this renderer is looking at a
+    const name = spec.of(a.data, a.shape);
+    const body = name && spec.bodies[name];
+    if (!body) return null;
+    // A key the reader stopped producing means this body is looking at a
     // shape that no longer exists. Fall back rather than render half a table.
-    if (spec.needs.some(k => a.data[k] === undefined || a.data[k] === null)) return null;
+    if (body.needs.some(k => a.data[k] === undefined || a.data[k] === null)) return null;
     try {
-      return spec.render(a.data, a.text) || null;
+      return body.draw(a.data, a.text, a) || null;
     } catch (err) {
       return null;  // never let a rendering bug swallow an answer that is fine
     }
   }
 
-  // The compiler's three skeletons (association.query.compose): rows are
-  // games (a log, or the top games by a measure), grouped rows are per
-  // player or per season, a scalar is one line of figures.
+  // A chart's body is its frames: the artifacts the reader drew, each framed
+  // by its kind (chartFrame) - a chart is drawn, never tabled. A chart that
+  // drew nothing (no shots matched) is its sentence.
+  function framesBody(d, text, a) {
+    const charts = (a.artifacts || []).map(chartFrame);
+    return charts.length ? { caption: null, charts } : null;
+  }
+
+  // The compiler's own body, where no reader took the point and the compiler's
+  // sentence answered (association.query.compose): its three skeletons -
+  // rows are games (a log, or the top games by a measure), grouped rows are
+  // per player or per season, a scalar is one line of figures - drawn by
+  // the skeleton the data carries, under whichever shape planned it.
   const MEASURE_LABELS = {points: "PTS", rebounds: "REB", assists: "AST", minutes: "MIN", steals: "STL", blocks: "BLK", turnovers: "TOV", fouls: "PF",
     fieldGoalsMade: "FGM", fieldGoalsAttempted: "FGA", threePointFieldGoalsMade: "3PM", threePointFieldGoalsAttempted: "3PA", freeThrowsMade: "FTM", freeThrowsAttempted: "FTA",
     plusMinus: "+/-", ts_pct: "TS%", efg_pct: "eFG%", fg_pct: "FG%", three_pct: "3P%", ft_pct: "FT%", usage_pct: "USG%", game_score: "game score", pra: "PRA"};
@@ -1693,7 +1732,7 @@
     if (typeof v === "number" && /_pct$/.test(m)) return v.toFixed(1) + "%";
     return num(v);
   }
-  function renderComposed(d, text) {
+  function compiledBody(d) {
     const measures = d.measures || [];
     const labels = measures.map(m => MEASURE_LABELS[m] || m);
     if (d.skeleton === "rows") {
@@ -1877,7 +1916,7 @@
 
     const answer = newTurn(question);
     // The trace is the answer until there is one: what the normalizer
-    // returned, what the parser read, which template or compiled point
+    // returned, what the parser read, which reader or compiled point
     // answered - so a refusal's cause is on screen before the refusal is.
     const trace = el("pre", "trace", "asking…");
     answer.appendChild(trace);
@@ -1923,6 +1962,12 @@
     source.addEventListener("answer", finish);
   }
 
+  // The planned shape in words for the meta line: "ranking by player, player
+  // seasons" - what one row is, and the relation it was read from.
+  function shapeWords(shape) {
+    return (shape.by ? shape.shape + " by " + shape.by : shape.shape) + ", " + shape.relation.replace(/_/g, " ");
+  }
+
   // One turn's balloon and its answer box, appended to the thread; the box
   // is returned for the trace, the answer or a stored answer to fill.
   function newTurn(question) {
@@ -1941,21 +1986,23 @@
   // one path for a live answer and for one restored from this browser.
   function showAnswer(answer, a, lines) {
       answer.innerHTML = "";
-      // A rendered form when this intent has one, the text otherwise.
+      // A rendered form when this answer's shape draws one, the text otherwise.
       const rendered = renderAnswer(a);
       answer.appendChild(rendered || prose(a));
 
       const meta = el("div", "meta");
-      const badge = el("span", "badge " + a.answered_by, a.answered_by === "fast" ? "template" : "refused");
+      const badge = el("span", "badge " + a.answered_by, a.answered_by === "fast" ? "answered" : "refused");
       // Whether anything read the question is the most useful thing a reader
-      // can know about an answer: a template or the compiler built this
+      // can know about an answer: a reader or the compiler built this
       // sentence from code, or nothing here had a reading and the text says
       // what was missing. Never hidden.
       badge.title = a.answered_by === "fast"
-        ? "Answered deterministically by a template" + (a.intent ? " (" + a.intent + ")" : "")
+        ? "Answered deterministically" + (a.shape ? " (" + shapeWords(a.shape) + ")" : "")
         : "Refused: nothing here had a reading of the question - the text says why";
       meta.appendChild(badge);
-      if (a.intent) meta.appendChild(el("span", null, a.intent));
+      // What the answer was read and said as - the planned shape, never the
+      // retired label.
+      if (a.shape) meta.appendChild(el("span", null, shapeWords(a.shape)));
       meta.appendChild(el("span", null, a.timing.total_seconds.toFixed(2) + "s"));
 
       // The text is never lost when a table replaced it - it is the same

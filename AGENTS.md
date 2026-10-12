@@ -73,11 +73,13 @@ this tree:
   is made on the report.
 
 - **New shapes are frozen** (decision D4). No new shape the words can ask,
-  template, presenter, scoping table or per-intent renderer.
+  template, presenter, scoping table or renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 shapes the grammar can
   name (the grammar's keys, `reading.PointShape` as relation, shape and
   `by`, since Phase 3, step 4 - the 25 intents' names until then, a freeze
-  retired with the intent), the page's 22 renderers and the 4 scoping
+  retired with the intent), the page's 7 renderers (one per
+  `reading.Shape`, since Phase 4, step 1 - 22 keyed by the label until
+  then) and the 4 scoping
   declarations left in `src` (by module and name, read from the source),
   none of which is added; and that `templates/`,
   `compose/present.py` and `compose/adapt.py` do not come back as source
@@ -124,7 +126,10 @@ this tree:
   2026-10-05 - counted per module because a listed module could grow
   statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
   package's own string-SQL helpers since 2026-10-03, when a statement
-  through `entities._read_table` counted as none; and since 2026-10-05
+  through `entities._read_table` counted as none (each found by its body
+  since 2026-10-12 - a function that runs the SQL it is handed - and its
+  own call of that SQL no longer counted beside its callers', which read
+  the name index's two loads as three); and since 2026-10-05
   every `core.rows_of`/`core.values_of` call over a statement the compiler
   did not build, in the module making the call, and every call of a
   function that only hands its parameter to one, such as
@@ -562,7 +567,11 @@ gets turned off.
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py` and the
-    standings' reads beside it, `standings.py` - each relation module runs
+    standings' reads beside it, `standings.py`, and the two declared
+    relations' own since Phase 4, step 5: `netpoints.py`, the NetPoints
+    relation, which builds and runs every statement the NetPoints reader
+    and the fingerprint read, and `shots.py`, the shot relation, every
+    statement its chart and distance read - each relation module runs
     its own statements, and `compose/` runs only what the compiler built
     or a relation hands it, Phase 4, step 5), the
     compiler's readers and the sayer (`compose/`), the coverage
@@ -1330,10 +1339,13 @@ a shape:
   other reader in the sentence it had, taken beyond the relation by the
   ranking's and the team-season shapes' rows (`ShapeCells.taken`, through
   `Measure.CELLS`) and by the team compiler's own sum, declared in no
-  relation table (a unit narrows no games). The point's `measures` and
-  `aggregate` are still the compiler's names, derived from the `Measure`
-  through the catalog (`stat_measure`): retyping them is the `Query`'s, the
-  RUN stage's input. `query/window.py` is the window's tagger:
+  relation table (a unit narrows no games). The point's `aggregate` is a
+  closed enum (`reading.Aggregate`, Phase 4, step 3: `NONE`, `PER_GAME`,
+  `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`), on the point,
+  the `Query` and the `TeamQuery` alike, and a record writes a member as its
+  value (`stages.plain`); its `measures` are still the compiler's names,
+  derived from the `Measure` through the catalog (`stat_measure`): retyping
+  them is the `Query`'s, the RUN stage's input. `query/window.py` is the window's tagger:
   `read_window(question, WindowContext)` reads, and `point.window_under`
   keeps under the key, which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his
@@ -1553,7 +1565,8 @@ a shape:
     "player_compare: the seasons since 2022-23 cannot be read here - ...",
     the page's label before it), ONE
     table keyed by the shape - the asked key for the label, the planned key
-    for a decline - which Phase 4 deletes with the renderers; `coverage.SOURCES`
+    for a decline - which Phase 4, step 2 deletes (the page renders by the
+    planned shape since step 1, not by the label); `coverage.SOURCES`
     is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
     and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
     sayer from the headline body's type and the one field that says what
@@ -1564,8 +1577,9 @@ a shape:
     reader since Phase 3, step 4: the grammar names what the words ask as
     a `PointShape` (`Reading.asked`, below, "An intent comes from the
     question's own words"), the point reader and the taggers key on it,
-    and `Reading.intent` is the page's label alone (`Answer.intent`,
-    written from `SHAPE_NAMES`, Phase 4's to delete). A cause carries the
+    and `Reading.intent` is a label alone (`Answer.intent`, written from
+    `SHAPE_NAMES`, Phase 4, step 2's to delete; the page renders by
+    `Answer.shape` since step 1). A cause carries the
     key, never the label (its `shape` fact, since the Phase 3 review's
     cleanup (b)2): the sayer's phrase tables are keyed by the `PointShape`
     (`say._LINE_SHAPES`, `_STAT_FOR`, `_REACHING`), and a sentence or a
@@ -1808,10 +1822,16 @@ a shape:
   `DECLARED_RELATIONS`, read as their default
   points on the declared `netpoints` relation and planned as
   `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
-  per the decision "Charts are declared shapes": `read_player_netpoints`
-  builds its statements and runs them through `core.values_of`;
-  `read_fingerprint` reads through `query/fingerprint.py`'s loaders (the
-  percentile pool and the polygons from one read) into a `Chart`, which
+  per the decision "Charts are declared shapes", over the NetPoints
+  relation (`query/netpoints.py`, since Phase 4, step 5: every statement
+  the two read is built and run there, through `core.values_of`, and
+  `compose/netpoints.py` and `fingerprint.py` run none):
+  `read_player_netpoints` reads a season's line, its categories or one
+  game's through it (`netpoints.season_totals`, `season_categories`,
+  `game_line`); `read_fingerprint` reads through `query/fingerprint.py`'s
+  loaders (the percentile pool and the polygons from one read, the
+  relation's `season_fingerprints`, `game_fingerprints` and
+  `fingerprint_game_of`) into a `Chart`, which
   `compose.netpoints.draw_fingerprint` writes with `query/radar.py` before
   `compose.say.say_fingerprint` words it - a reader reads and names no file
   that does not exist yet, and the sayer takes the Result and nothing
@@ -1826,8 +1846,15 @@ a shape:
   beyond what its retired template's words state, its shape's row of
   `RELATION_SCOPING_EXCLUDED`)
   is read the same way: `read_shot_chart` and `read_shot_distance` are the
-  retired templates' statements moved whole (`shotchart.render_for_player`'s
-  with them), executed through `core.values_of`, and said by the sayer - a
+  retired templates' reads moved whole (`shotchart.render_for_player`'s
+  with them), their statements the shot relation's since Phase 4, step 5
+  (`query/shots.py`: `narrowed_games`, the games a narrowing sends a shot
+  read to through the player-games relation's `games_subquery`;
+  `distance`; `chart_shots`), executed through `core.values_of` there,
+  over `shotchart.SHOT_VALUE_SQL` and the court's `HAS_POSITION_SQL` and
+  `SHOT_DISTANCE_SQL` - fragments kept where they are, since the
+  player-games relation's period rebuild reads the value too and the
+  drawing the court's geometry - and said by the sayer - a
   shot chart's `Chart` (the marks, the counts drawn, the caption, the file
   name) drawn first by `compose.shots.draw_shot_chart` over
   `court.render_court_html`, between the read and the sayer, as the
@@ -1979,7 +2006,8 @@ a shape:
   (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`),
   each the label table's (`reading.SHAPE_NAMES`, which names it back as
   the page's `Answer.intent`: `Reading.intent` is that label, filled from
-  the key and held to it, read for the page, the trace and the records -
+  the key and held to it, read for the API's `intent`, the trace and the
+  records (the page reads `Answer.shape` since Phase 4, step 1) -
   and, until Phase 4 keys them on the `PointShape`, as a cause fact four of
   the sayer's refusal phrase tables choose their words by, the Phase 3
   review's finding, 2026-10-11). The kind is no part of the key: it is the subject reading's,
@@ -2332,9 +2360,11 @@ everything about it is constrained by things measured elsewhere in this file.
   loaded ollama - so a type-only import of the query engine goes under
   `if TYPE_CHECKING:`. The whole suite still runs with no
   network and no ollama, and that has to stay true.
-- **Events carry trace lines verbatim.** Do not parse `"-> (router) intent=..."`
+- **Events carry trace lines verbatim.** Do not parse `"-> (compose) ... shape=..."`
   back into structured fields. Everything a client acts on — which path
-  answered, the intent, the timing, the artifacts — is on the `answer` event,
+  answered, the planned shape (`Answer.shape`, the `reading.PointShape` the
+  answer side chose its reader by: relation, shape, by; since Phase 4,
+  step 1), the intent, the timing, the artifacts — is on the `answer` event,
   as values, because Phase 0 put it there. Parsing prose back out is the exact
   move that phase removed.
 - **The page is one self-contained HTML file** with its CSS and JS inline, like
@@ -2358,9 +2388,27 @@ everything about it is constrained by things measured elsewhere in this file.
   script and a test asserts they still do not; if one ever needs to, the frame
   stops working and that test says why. `allow-same-origin` is load-bearing
   separately - it is how the page reads the chart's height to size the frame.
+- **The page renders an answer by its planned shape, never by its label.**
+  `static/index.html`'s `RENDERERS` holds one renderer per `reading.Shape`
+  (`scalar`, `rows`, `ranking`, `comparison`, `split`, `runs`, `chart`;
+  Phase 4, step 1, where 22 were keyed by `Answer.intent`), read off
+  `Answer.shape`. Each names the bodies its shape's readers say (`bodies`:
+  a draw and the `Answer.data` keys it `needs`) and chooses one by the
+  shape's `by`, the relation where two readers of one `by` say different
+  bodies, and the compiler's own body (`skeleton`) where no reader took the
+  point (`of`); a chart's body is its artifacts' frames, each framed by its
+  kind (`chartFrame`). An answer with no shape - a refusal, a turn this
+  browser kept from before - is its sentence. The bodies still read each
+  reader's own `data` keys, since the API's data is the sayer's per-reader
+  dict and not the typed body (ISSUES.md, "No future template gets a
+  renderer for free"). A change to a renderer is proven by rendering every
+  recorded answer through the page before and after
+  (`~/association-research/stages/page_renders.py`, Chromium, the stage
+  snapshots' records, seconds): step 1 drew 2,709 of 2,710 identically.
 - **The page's JavaScript has one behavioral check, and it is not a gate.**
   pytest can only read `static/index.html` as text: `test_renderers.py` parses
-  the renderer table out of it and syntax-checks the script with
+  the renderer table out of it, runs each renderer's choice of body in node
+  on every case's planned shape and data, and syntax-checks the script with
   `node --check`. Anything that is a key event, a caret position or a
   clipboard needs a browser, so `scripts/check_web_ui.py` drives the real page
   in Chromium with real key presses - `uv run --with playwright python

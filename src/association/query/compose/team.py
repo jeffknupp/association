@@ -67,6 +67,7 @@ from association.query.measure import won
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
     DEFAULT_STREAK_LIMIT,
+    Aggregate,
     Companion,
     Cuts,
     Filtered,
@@ -225,9 +226,10 @@ class TeamQuery(Filtered):
     #: A key of :data:`GAME_MEASURES` and/or :data:`SEASON_MEASURES`: what
     #: the team compiler sums (``measure`` until Phase 3, step 4, slice (b)).
     metric: str = "points"
-    #: ``"total"`` (the only aggregate this module computes today) or
-    #: ``"record"`` (wins/losses, over the narrowed or season games).
-    aggregate: str = "total"
+    #: How the point reduces its games (:class:`~association.query.reading.Aggregate`):
+    #: ``TOTAL``, a sum, where none is named; ``RECORD``, wins and losses
+    #: over the narrowed or season games.
+    aggregate: Aggregate = Aggregate.TOTAL
     #: ``"scalar"`` (a sum, this module's own readers), ``"rows"`` (the
     #: team's games listed - ``game_log``'s team half), ``"grouped"`` (its
     #: splits - ``player_splits``' team half) or ``"run"`` (its longest run
@@ -290,7 +292,7 @@ class TeamResult:
     team: Entity | None
     span: ResolvedSpan
     measure: str
-    aggregate: str
+    aggregate: Aggregate
     value: float | None
     games: int
     wins: int | None = None

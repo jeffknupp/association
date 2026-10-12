@@ -48,7 +48,13 @@ def _read_table(con: duckdb.DuckDBPyConnection, sql: str) -> tuple[list[tuple[st
     """One table's columns (name and type), rows and - instead of raising it
     - the error reading it raised: a partial warehouse with no ``teams``
     still names players, and each lookup raises the error where its own SQL
-    used to (:func:`_player_index`, :func:`_team_index`)."""
+    used to (:func:`_player_index`, :func:`_team_index`).
+
+    The two statements it runs (:func:`_read_players`, :func:`_read_teams`)
+    stay here, beside the lookups the index answers: they are what the
+    index is built from - :mod:`association.query.names` runs no statement,
+    it is handed these readers - and no relation owns a name (``ROADMAP.md``,
+    Phase 4, step 5)."""
     try:
         cursor = con.execute(sql)
         described = [(str(column[0]), str(column[1])) for column in cursor.description or []]
@@ -1056,7 +1062,11 @@ def _available_ids(con: duckdb.DuckDBPyConnection, ids: list[str] | None, source
     """The ``athlete_id`` of every player with a row in one of ``sources`` -
     among ``ids``, or among everyone where ``ids`` is None (the players
     active in a season, :func:`active_of`) - for ``season``, or up to
-    ``through``: the one statement :func:`narrow_to_available` runs."""
+    ``through``: the one statement :func:`narrow_to_available` runs. It
+    stays the resolver's (``ROADMAP.md``, Phase 4, step 5): its tables are
+    the callers' - the box scores, the season line, the shots, the NetPoints
+    tables - and what it reads is which candidates cannot be the answer,
+    never an answer."""
     conditions: list[str] = []
     params: list[Any] = []
     if ids is not None:

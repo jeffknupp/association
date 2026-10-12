@@ -39,6 +39,7 @@ from association.query.reading import (
     SHOT_DISTANCE,
     TEAM_LINE,
     TEAM_RECORD,
+    Aggregate,
     Claim,
     Companion,
     Cuts,
@@ -208,7 +209,8 @@ def _player_games(ctx: AnswerContext, cuts: Cuts, span: Span | None = None) -> t
     (row,) = rows_of(
         ctx.con,
         compile_query(
-            ctx.con, Query(**(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=cuts, span=span or Span())).filters(), skeleton="scalar", measures=["points"], aggregate="total")
+            ctx.con,
+            Query(**(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=cuts, span=span or Span())).filters(), skeleton="scalar", measures=["points"], aggregate=Aggregate.TOTAL),
         ),
     )
     return int(row["games"] or 0), int(row["points"] or 0)

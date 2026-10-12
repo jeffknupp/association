@@ -39,7 +39,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
-from association.query.reading import Unsupported
+from association.query.reading import Aggregate, Unsupported
 from association.query.result import CountFacts, Grouped, Line, Narrowing, Part, Result, Scalar, Span, Unanswered
 from association.query.season_line import seasons_on_record
 
@@ -57,8 +57,8 @@ def _threshold_count_is_own_point(q: Query, column: str) -> bool:
     if q.predicates not in (counted, []) or q.position:
         return False
     if q.subject == "player":
-        return q.skeleton == "scalar" and q.aggregate == "count"
-    return q.skeleton == "grouped" and q.aggregate == "count" and q.group == "player"
+        return q.skeleton == "scalar" and q.aggregate == Aggregate.COUNT
+    return q.skeleton == "grouped" and q.aggregate == Aggregate.COUNT and q.group == "player"
 
 
 def box_score_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, player: Entity | None) -> tuple[Span, list[Note]]:
