@@ -62,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** `ABOVE` reads no number after "per" or "last"/"final"; "per N minutes" is a unit the measure tagger reads (`Measure.unit`, beside "per 100" and "per 90", `lexicon.PER_90`) which the season-line ranking refuses by name (`ranking_unit`) and the line readers decline as the `rate` cell; "the last N minutes of a game" a situation nothing reads (`Reading.unsupported`). The 4 feed answers enumerated.
 - **Priority:** P1 - a different figure answered fluently.
 - **Source:** ours.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 3 - "jamal crawford lou williams per 36" (their 2026 lines, a table of dashes), "jamal crawford lou williams career per36" (refused "cannot honor ['span']"), "quentin grimes stats per 36 when playing with Luka"; and "highest 3pt% with over 3 3pa per 36" (a minimum per 36, the ranking's own minimum answered).
 - **GitHub:** #388
 
 ### A team's "last N seasons" is read as a log of its last N games: "raptors record last 10 season" answers the Raptors' last 10 games, 6-4
@@ -115,6 +116,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent answer to a broader question - every game, or a ranking - with the number the question gave set aside.
 - **Next step:** one at a time, each with the feed's moves enumerated: a bare "N stat" after "games with" on a log or a line ("2 threes in games ... played" as games with 2+ threes); "how many N point games ... without X" as a count beside the companion (the count's child grammar, not the with/without split); "most N point games in nba history" a count of players' games under the league subject, not the team ranking; "exactly N" as an equality line. The pair grammar's own false pairs stay out ("2pt percentage", "top 20 rebound leaders" read as lines by `lexicon.threshold_pairs`; a test per wording).
 - **Priority:** P1 - a broader question answered fluently; 1 of the 628, 9 of the 2,082.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 16 questions hold the unread number of a single line on a game a non-line reader leaves unread - "jalen suggs game log 15+ fga" (2), "steph curry games with 15 field goals attempted" (2), "lebron james points per game when taking 15 shots" (2), "Towns over 9 rebound", "games with 13+ free throw attempts by the 76ers" (2, a team's), "rodman games with 0 field goal attempts", "knicks record in playoff games when Mitchell Robinson shoots 4 ft", "most 50 point games with only 1 fta" (a count's second line, #358), "warriors' record last season when committing 10 or fewer turnovers" (3 wordings, #325), "fewest field goal misses ... at least 92 fgm + opp fgm"; every one answered `fast` without the line.
 - **GitHub:** #357
 
 ### A line on a percentage, or stated "more than"/"exactly", is read by nothing and the whole log answers: "kobe bryant career games with more than 40 field goal percentage" lists his last 10 of 1,331 games
@@ -123,6 +125,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent log of every game where the games over (or at) a line were asked for.
 - **Next step:** the lines tagger reads "more than N stat" / "above N stat" as a line over N, "exactly N stat" as an equality (`LineOp` "=", which the period condition already writes), and a percentage line over the made/attempted ratio the relation derives; each wording a test, the feed's 12 enumerated before and after. Until then the planner could refuse a log whose words hold an unread number beside "games with".
 - **Priority:** P1 - a broader question answered fluently; 12 of the 2,082, none of the 628.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 23 questions hold the unread number of a line on a percentage or stated "exactly"/"=" - "kobe bryant career games with more than 40 field goal percentage" (and 7 more wordings of it), "kobe bryant games with a field goal percentage under40.0%" (3, the number glued to "under"), "LeBron James PPG in games with exactly 25 field goal attempts", "LeBron James stats in games with FGA = 25", "players who made exactly 129 three pointers in the NBA in 2025-26", "nba players with seasons with a 4% 3pt" (3 wordings), "josh hart 3% 2024"; every one answered `fast` with the whole log, line or ranking. <!-- codespell:ignore hart - a surname -->
 - **GitHub:** #371
 
 ### A count's second and later bare lines are dropped: "most games with 20 pts, 10 reb, 5 ast last season" answers the most 20+ point games
@@ -338,6 +341,7 @@ those were found.
 - **User sees:** a wrong answer - his scoring line where his threes were asked.
 - **Next step:** read "3's" (and "3’s", folded since #259) as threes made in `MEASURE_GRAMMAR`; a case in `tests/query/test_parser.py`.
 - **Source:** ours.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 3 - "Gabe Vincent 3’s as a laker", "Jarred 3’s as a laker" (a team's line), "steph curry 3's per season" (his points line).
 - **GitHub:** #270
 
 ### A date written as numbers is not read: "sga game log on 2026-01-02" lists his last 10 games, "sga fingerprint on 2026-01-02" draws his season
@@ -355,6 +359,7 @@ those were found.
 - **Next step:** the cuts tagger reads a `DateRange(from, to)` of two calendar dates with years (the draft's `DateRange`, across seasons; `CALENDAR_DATE` already reads each date) and hands the span both years, as `NUMERIC_DATE_RANGE` hands one (`CutsRead.dated_since`); together with #353 (a worded since-date with a year). Every moved feed answer named in its commit.
 - **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 16 questions hold an unread day or year of a range of calendar dates - "which player averaged the most ppg from december 1st 2020 to november 28th 2021 ..." and 9 more "from <month> <day> <year> to <month> <day> <year>" wordings, "Scottie Barnes averages Feb 28th to April 14th 2026" (2, answered the one game on 2026-02-28), "james harden ts playoffs from january 1 2015 to june 2 2021", "Sacramento kings record between October 10 2016 and february 19 2017", "how many 20 point games did curry have from april 16th 2022 to may 22nd 2022", and the numeric "11/29/24 Al Horford" (#323's).
 - **GitHub:** #345
 
 ### A conference or division the players or teams belong to is answered as the whole league, or as games against it
@@ -429,6 +434,7 @@ those were found.
 - **Next step:** read a word after "last/past N" that is one edit from "game(s)" (the entity index's edit budget, rapidfuzz's Damerau-Levenshtein) as "games" in the lexicon's one place the three readers take it from, so the grammar, the window and the span read it alike; "match(es)" beside it as a synonym. A test per wording; the 5 feed answers enumerated before and after.
 - **Priority:** P1 - a different question answered fluently; 5 of the 2,082.
 - **Source:** ours.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 23 questions hold an unread number a window would read - beside the misspelled "games" ("lat 5 games", "last 10 gamea", "lasst 5 games", "last 5 away hames", "last 5 matchs" twice), a window with no "games" at all ("jalen brunson stats last 5 away", "Sengun last 5 stats vs knicks", "bradley beal 15 games", "hield ast 5 games") and one this entry's fix would not reach ("How many threes did Pritchard make 2 games ago", "ja morant last 10 first quarters against nets", "anthony davis 2020 playoff first 3 rounds", "warriors fir 10 game redorn evry season"); 19 answered `fast` with the season's line or this season's meetings, 4 refused. <!-- codespell:ignore matchs,evry - the feed's questions as typed -->
 - **GitHub:** #369
 
 ### "who scored 40 points the most times" is a ranking by points per game, not a count of 40-point games
@@ -439,6 +445,60 @@ those were found.
 - **Priority:** P1 - a different question answered fluently; 0 of the 2,710.
 - **Source:** ours.
 - **GitHub:** #370
+
+### A fact the warehouse holds no column for is answered with the league's default ranking: "3rd nba overall draft picks", "players that wear number 5 jersey active", "6 ft 6 inches nba players" each answer the 2026 points leaders
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5, reading the feed's unread numbers one by one (`claims_ledger.py run --feed` on `4c595b8`).
+- **Evidence:** 24 of the 2,082 feed questions name a fact no table holds and are answered `fast` with a ranking or a line the words did not ask for: a draft position (6: "1st Overall draft picks for the past 25 seasons", "3rd nba overall draft picks", "4thd ...", "most points scored by a player drafted 58th/59th/60th in the nba draft" - the last three "Luka Doncic led the league in points per game ..."), a jersey number (3: "players with 78 jersey", "nba players that wear number 5 jersey active", ...), a height (3: "6 ft 6 inches nba players", "6'10 chicago bulls forwards 2010-2019" - every Bulls forward of the decade), a birth date ("NBA players with birth date 8/1"), a team's leads or 4-point plays ("How many 10+ point leads did the Sacramento Kings have last season" refused for a rate; "nba most 4 point plays" the teams' points per game), overtime points (5: "most 3ot points in a game by a team nba" - the teams' points per game, #2312's period), an opponent's win total ("luka doncic stats against 50 win teams in the 2026 season" - his whole line), a role ("highest scoring 2nd options in the nba this year"), a century ("21st century nba players highest win% games"). Each number is unread because nothing reads the fact it names; the words around it fall to the parent grammar's default (`leaderboard`'s points per game).
+- **User sees:** a wrong answer, fluently: a points ranking where draft picks, jersey numbers or heights were asked.
+- **Next step:** the lexicon's words for each absent fact (draft/drafted/pick, jersey/wear number, ft/inches/height, born/birth, lead(s), 4-point play, Nth overtime as points, N-win teams) read into a `reading.Cause` that names the missing fact (`refused`, before any point), as `no_coach_table` does - #201's shape, these its commonest cases; each wording a test, the moved answers enumerated.
+- **Priority:** P1 - 24 of the 2,082 answered as a different question.
+- **Source:** ours (the warehouse holds none of these; `DATA.md` "No conference, division or birth-date data anywhere" for the birth date).
+- **GitHub:** #389
+
+### A season average stated as a line on the league is read by nothing: "How many players averaged 30 ppg in 2026" answers the unfiltered points ranking
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** 20 of the 2,082 feed questions state a line on a player's SEASON average (or career total) and are answered with the ranking unfiltered, the number unread: "How many players averaged 30 ppg in 2026", "how many players average 25+ in 2005 NBA", "nba players who averaged 25 ppg in 2001" (and 2002, 2003), "players to average 16 points 10 rebounds", "nba players who average 18 ppg 3.5 assists and shot 54% or better 2026 season" (the assists leaders), "nba all-time ast/to leaders with > 5 apg", "least amount of fga per game to score 18 points per game by a guard" (2), "highest true shooting percentage in a playoff run minimum 10 games and average 10 ppg", "nba player with 10000 points and 4000 assists in career", "career points lower than 8000 by a point guard", "highest single season 3pt percent max 5000 attempts" (2, a maximum), and "nba players who averaged a minimum of 20 points per game and less than 4 rebounds ..." where the two "less than" lines ARE read (on the games relation, per game) and the season-average floor is not. The lines tagger reads a line on a GAME's figure (`reading.Line` narrows the games); a season-line ranking has no cell for a line on the season's average (`ShapeCells` of `PLAYER_RANKING` on `player_seasons`).
+- **User sees:** a wrong answer: the top of the ranking, which holds the players over the line only by accident of order, and no count where "how many" was asked.
+- **Next step:** a season-line line - the typed `Line` with a `per="season"` facet read where the words say "average(d)"/"ppg"/"in career" beside the number - honored by the season-line ranking as a HAVING on the season's figure, and a count of the players over it where "how many" stands; refused by name until then (a `Cause`), each wording a test.
+- **Priority:** P1 - 20 of the 2,082 answered as a different question.
+- **Source:** ours.
+- **GitHub:** #390
+
+### A count of seasons over a line has no shape: "most seasons averaging 30 ppg" answers the 2026 points ranking
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** 7 of the 2,082 feed questions count a player's SEASONS over a line and are answered with one season's ranking: "most seasons averaging 30 ppg", "most seasons averaging 10 rebounds" (2 wordings), "Players with most 25 point season" (2), "nba player with most seasons with a per of 30 or more while playing at least 60 games a season", "most 60 win seasons nba players". `threshold_count` counts GAMES over a line; no shape counts season lines.
+- **User sees:** a wrong answer: "Luka Doncic led the league in points per game in the 2026 regular season ..." where the players with the most 30-ppg seasons were asked.
+- **Next step:** refuse by a cause naming the count of seasons until a season-line count exists (the ranking over `player_season_stats_deduped` grouped by player, counting the seasons over the line - the line entry above's typed season line).
+- **Priority:** P1 - 7 of the 2,082.
+- **Source:** ours.
+- **GitHub:** #391
+
+### A player's first or last N seasons is read by nothing: "lebron james stats through their first 9 seasons" answers his 2026 line
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** 3 of the 2,082 feed questions: "lebron james stats through their first 9 seasons" (his 2026 line), "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons" (their 2026 lines), "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?" (his line since 2018 - "last 9 seasons" read as the relative "past N seasons" of the league's calendar, `span._relative_since`, and "first 9" by nothing). The window tagger excludes a count of seasons from its own ends (`lexicon.COUNTED_END`'s `(?!\s+(?:seasons?|years?))`), and the span reads "last N seasons" as the calendar's, never the player's own.
+- **User sees:** a wrong answer: one season's line where the first nine of his career were asked.
+- **Next step:** an end of a player's OWN seasons ("his first/last N seasons", "through their first N") read as a span over the seasons on record for him (`season_line.seasons_on_record`), the comparison's per player; refused by a cause until then.
+- **Priority:** P1 - 3 of the 2,082.
+- **Source:** ours.
+- **GitHub:** #392
+
+### A two-digit year, a decade written short, and a year glued to a word are read by nothing, and the current season answers: "who averaged the most points per game in the nba between 03 to 25" answers 2026
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** 12 of the 2,082 feed questions hold a season the span does not read: "who averaged the most points per game in the nba between 03 to 25" and "most pts in the 80s" (the 2026 leaders; `lexicon.DECADE` reads "the 1980s" and "the 2010s" only, `RANGE_BETWEEN` four-digit years only), "How many players averaged 30 ppg in the 80s" (the same), "Gilbert arenas 06 playoffs numbers" ("no 2026 postseason numbers"), "Shaquille O neal 01" (the points ranking; the name too), and typos nothing could read ("202r", "20222-23", "29025%3F", "the 201", "2024playoff", "2019 20most"); two restate a season that is read ("kawhi leonard 2012- 2013": 2013; "tmac 2001 to 2001-02": the span's 2002, the bare year before it left as its test holds).
+- **User sees:** a wrong answer for the first five: the current season where 2003-2025, the 1980s or 2006 was asked.
+- **Next step:** "between YY to YY"/"YY to YY" read as a range only where both are two-digit years the league played and "between"/"from" opens it; "the 80s"/"the '90s" as the decade 19x0 where "the" stands before it and no percentage word follows ("shooting in the 90s from the line" is a free-throw percentage); "'06"/"06 playoffs" as season 2006 only beside a season-type word. Measure each on both corpora before writing it; the moved answers enumerated.
+- **Priority:** P1 - 5 of the 2,082 answered for the wrong seasons.
+- **Source:** ours.
+- **GitHub:** #393
+
+### A count of N-point games with no subject is read as a team ranking, and a count beside a teammate's absence as the with/without split: "most 40 point games in nba history" is refused "team_leaderboard cannot honor ['span']"
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** "most 40 point games in nba history" (and 50, 60) are read under the team ranking key (`asked` `team_seasons`/`ranking`/`team`, the kind `everyone`), and refused "Nothing here answers this question: team_leaderboard: team_leaderboard cannot honor ['span'] ..."; "most 0 point games in nba team history" answers the teams' points per game; "most 30 point triple doubles in the last 3 years" ranks single games with a triple-double by points (top 3), the 30 unread; "nba most fga with 0 fgm single game" the teams' field goals made (#303's). And "how many 30 point games did maxey have without embiid" is read under the with/without split (`team_games`/`split`/`presence`), answering his line with and without Embiid, the 30-point count unread - the count's child grammar (`subject.child_named`) never sees it, since the parent named the split.
+- **User sees:** a refusal naming the wrong cause for the three league counts (the league's 40-point-game leaders are `threshold_count`'s, which answers "most 40 point games since 2000"); a different question answered for Maxey (his averages, not his count of 30-point games without Embiid).
+- **Next step:** the parent grammar's team-ranking row should not take "N point games" (a line the lines tagger reads, `lexicon.LINE_MARK_*`) with no team word; the count's row should stand over the split's where a line and "how many" are read beside a companion's absence (the count honors the companion cell, `RELATION_SCOPING`). A test per wording, the feed's moves enumerated.
+- **Priority:** P1 - 7 of the 2,082 answered or refused as a different question (an eighth, "harden 61 points", is the feed's input: with no model names "harden" alone is read as nobody).
+- **Source:** ours.
+- **GitHub:** #394
 
 ## P2: misleading or incomplete
 
@@ -2596,6 +2656,7 @@ those were found.
   stated heave rule, reading `SHOT_VALUE_SQL`. Reword the refusal meanwhile:
   "shot distance is answered for one player, not ranked across the league yet".
 - **Source:** ours, not ESPN's.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 3 - "best nba shooting percentages from farther than 30 feet" (refused as a team metric), "best shooting percentage from beyond 30 feet in the last 5 years" (the points ranking), "tyrese haliburton shot chart from 30+ feet" (the whole chart's refusal).
 - **GitHub:** #189
 
 ### Foul-out counts: check which column they read - the season table undercounts
@@ -2723,6 +2784,7 @@ those were found.
   game, minimum 20 games): Kevin Durant 28.0 ...") - the award unread. (The
   range was dropped too until `_resolve_everyone` read `since`/`until`,
   the fix for the retired #207.)
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 4 - "nba players with exactly 2 all star appearances" (2 wordings, the 2026 points ranking), "players with 5 or more nba all stars and 5 or more all nba teams since 2000" (2 wordings, refused as the team relation's question - the wrong cause).
 - **GitHub:** #146
 
 ### `_subject_named_in`'s original grammar reads a bare noun as a subject on four corpus questions
@@ -2948,11 +3010,11 @@ those were found.
 - **Priority:** P3 - tooling.
 - **GitHub:** #380
 
-### The feed's 183 unread numbers are held but not yet read one by one
+### The feed's 91 questions whose Reading and deletion disagree are held but not read one by one
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 9).
-- **Evidence:** `claims_ledger.py run --feed`: 183 of the 2,082 feed questions hold an unread number (191 on `4de1801`, 203 on `87cc782`), and the Reading's `unread` and the deletion disagree on 91. Since the cleanup's (b)5 both are held (`scripts/ledger_held.json`: the questions by text, `report` exits 1 on a new one or a grown count), so a step cannot grow either unseen; the numbers themselves are not yet classified.
-- **User sees:** nothing directly; the shapes the number rule finds.
-- **Next step:** read the 183 one by one as the 628's nine were in step 3: a number restating what was read, a `Line`, `Window` or `Minimum` the reader missed, or a refusal.
+- **Evidence:** `claims_ledger.py run --feed`: the Reading's `unread` and the deletion disagree on 91 of the 2,082 feed questions (the 628's 3 are `HELD_DISAGREEMENTS`, each with its reason). Since the cleanup's (b)5 (2026-10-12) they are held by question (`scripts/ledger_held.json`; `report` exits 1 on a new one or a held one gone), with the unread words (3,660) and the 177 questions holding an unread number - which (b)5 read one by one: 6 fixed there (a span "to" a bare year, "2015 16"), the rest filed by shape (the five P1 entries of 2026-10-12 above, and the "Feed numbers" lines on #369, #371, #357, #345, #270, #388, #189 and #146) or not bugs (a typo nothing reads, a number restating a season read, a refusal whose number the refusal needs no reading of: "finals", "27 years old").
+- **User sees:** nothing directly; a disagreement is a claim over a word the reading does not depend on, or a word read without a claim.
+- **Next step:** read the 91 as step 3 read the 628's: each a subject-reading claim declared and never probed (`ROADMAP-TYPES.md`, Still open 16), or a rule reading a word it does not claim - fix the second kind, and give each held one its reason as `HELD_DISAGREEMENTS` does.
 - **Priority:** P3 - a check whose population is too small to see the shapes it is for.
 - **GitHub:** #382
 

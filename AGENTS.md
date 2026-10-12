@@ -269,8 +269,9 @@ this tree:
   step 4's slice (c) (2026-10-11): twelve words a window read as the typed
   window no longer needs ("games" after "last 10 ..."), left unread by
   Jeff's ruling to keep that slice's moves; on the 2,082 feed questions
-  (`claims_ledger.py run --feed`) 3,666 words are unread, 183 questions
-  hold an unread number (191 at the Phase 3 review) and 91 disagree
+  (`claims_ledger.py run --feed`) 3,660 words are unread, 177 questions
+  hold an unread number (191 at the Phase 3 review; read one by one in
+  the cleanup's (b)5, six fixed and the rest filed by shape) and 91 disagree
   between the Reading's list and the deletion. Since the review's cleanup
   (b)5 (2026-10-12) both populations are HELD, in
   `scripts/ledger_held.json`, as the ratchets are: the unread words by
