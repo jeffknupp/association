@@ -18,7 +18,7 @@ from typing import Any
 import duckdb
 import pytest
 from shapes import asked
-from slots import companion_from_slot, line_from_period_slot, slots_reading, slots_scope
+from slots import companion_from_slot, line_from_period_slot
 from test_conditions import BROWN, TATUM, league, with_without  # noqa: F401 - the league fixture and the split's reader, imported by name
 from test_period_relation import SEASON as PERIOD_SEASON
 from test_period_relation import con as period_con  # noqa: F401 - the plays fixture, imported by name
@@ -36,15 +36,20 @@ from association.query.player_games import Narrowed, aggregate_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, _apply_period_condition, period_lines
 from association.query.point import THRESHOLD_ASKS, lines_under
 from association.query.reading import (
+    GAMES_COUNTED,
+    LINE_RECORD,
+    PLAYER_LOG,
     Claim,
     Companion,
     Filtered,
     Line,
+    Measure,
     Period,
     PointRefused,
     PointShape,
     Reading,
     ScopeError,
+    Span,
     cell_facts,
     cell_set,
     unhonored_cells,
@@ -122,7 +127,7 @@ def test_the_words_read_as_lines(question: str, intent: str, expected: list[tupl
 
 def test_the_tagger_claims_the_characters_of_each_line_once() -> None:
     question = "most 20+ point 5+ assist games with under 14 fta"
-    read = lines_under(asked("threshold_count"), read_lines(question))
+    read = lines_under(GAMES_COUNTED, read_lines(question))
     assert len(read.claims) == len(read.lines) == 3
     assert all(claim.what == "line" and question[claim.start : claim.end].casefold() == line.as_typed for claim, line in zip(read.claims, read.lines, strict=True))
     assert [c.start for c in read.claims] == sorted(c.start for c in read.claims)
@@ -156,11 +161,11 @@ def test_the_door_types_the_splits_teammates_and_a_role_beside_them() -> None:
     absent is held typed - where the slot-era writer wrote the split's
     ``with_player`` only with nobody absent (ISSUES.md, "A teammate who
     played beside an absent one on the with/without split is dropped")."""
-    scope = slots_scope({"with_player": ["Jayson Tatum", "Jaylen Brown"]})
+    scope = Reading(companions=(Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown")))
     assert scope.companions == (Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown"))
-    both = slots_scope({"with_player": ["Jayson Tatum"], "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]})
+    both = Reading(companions=(Companion(player="Jayson Tatum", predicate="started"), Companion(player="Jayson Tatum")))
     assert sorted((c.player, c.predicate) for c in both.companions) == [("Jayson Tatum", "played"), ("Jayson Tatum", "started")]
-    absent = slots_scope({"with_player": ["Jaylen Brown"], "without": ["Jayson Tatum"]})
+    absent = Reading(companions=(Companion(player="Jayson Tatum", predicate="absent"), Companion(player="Jaylen Brown")))
     assert sorted((c.player, c.predicate) for c in absent.companions) == [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")]
     # What a decline names: each companion by his name, side and role.
     assert cell_facts(absent, "companion")["companions"] == [
@@ -189,21 +194,21 @@ def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_doo
 
 def test_the_cells_and_what_a_decline_says_of_them() -> None:
     assert {"line", "period_line"} == Line.CELLS and {"companion"} == Companion.CELLS
-    keyed = slots_scope({"stat": "points", "threshold": 30})
+    keyed = Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"))
     assert keyed.cells() == frozenset() and threshold_of(keyed) == 30 and _shape(threshold_line(keyed) or Line(measure=None))[4]  # the shape's own line sets no cell, as the threshold slot never did
-    below = slots_scope({"below": ["under 14 fta"]})
+    below = Reading(lines=(Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="under 14 fta", narrows=True),))
     assert below.cells() == {"line"} and cell_set(below, "line") and unhonored_cells(below, frozenset()) == ["line"]
     assert unhonored_cells(below, frozenset({"line"})) == []
-    above = slots_scope({"above": ["with 25 minutes"], "below": ["under 14 fta"]})
+    above = Reading(lines=(Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="under 14 fta", narrows=True), Line(measure="minutes", value=25, as_typed="with 25 minutes", narrows=True)))
     assert unhonored_cells(above, frozenset()) == ["line"] and [line["op"] for line in cell_facts(above, "line")["lines"]] == ["<", ">="]
-    quarter = slots_scope({"period_condition": {"stat": "points", "threshold": 10, "period": 1}})
+    quarter = Reading(lines=(Line(measure="points", value=10, period=Period(number=1)),))
     assert quarter.cells() == {"period_line"} and unhonored_cells(quarter, frozenset()) == ["period_line"] and period_lines(quarter) == list(quarter.lines)
     assert cell_facts(quarter, "period_line")["lines"][0]["period"] == {"number": 1, "half": False}
-    without = slots_scope({"without": ["Jayson Tatum"]})
+    without = Reading(companions=(Companion(player="Jayson Tatum", predicate="absent"),))
     assert without.cells() == {"companion"} and unhonored_cells(without, frozenset()) == ["companion"]
-    started = slots_scope({"conditions": [{"player": "Joel Embiid", "predicate": "started"}], "without": ["Paul George"]})
+    started = Reading(companions=(Companion(player="Joel Embiid", predicate="started"), Companion(player="Paul George", predicate="absent")))
     assert unhonored_cells(started, frozenset({"companion"})) == []
-    assert unhonored_cells(slots_scope({"below": ["under 14 fta"], "split": "home_away"}), frozenset()) == ["line", "split"]
+    assert unhonored_cells(Reading(lines=(Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="under 14 fta", narrows=True),), split="home_away"), frozenset()) == ["line", "split"]
 
 
 def test_the_relation_tables_declare_the_cells_once_and_by_the_cell_names() -> None:
@@ -226,13 +231,20 @@ def test_the_relation_tables_declare_the_cells_once_and_by_the_cell_names() -> N
 
 
 def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
-    scope = slots_scope({"stat": "points", "threshold": 30, "above": ["with 25 minutes"], "below": ["under 14 fta"]})
+    scope = Reading(
+        lines=(
+            Line(measure="points", value=30, as_typed="30 points", keyed=True),
+            Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="under 14 fta", narrows=True),
+            Line(measure="minutes", value=25, as_typed="with 25 minutes", narrows=True),
+        ),
+        measure=Measure(key="points", as_typed="points"),
+    )
     assert [line.as_typed for line in relation_lines(scope)] == ["under 14 fta", "with 25 minutes"]
     assert [(f.column, f.op, f.value, f.label) for f in measure_filters(scope)] == [("freeThrowsAttempted", "<", 14, "under 14 free throw attempts"), ("minutes", ">=", 25, "at least 25 minutes")]
-    pairs = lines_under(asked("threshold_count"), read_lines("most 20+ point 5+ assist games"))
+    pairs = lines_under(GAMES_COUNTED, read_lines("most 20+ point 5+ assist games"))
     assert [line.as_typed for line in relation_lines(Reading(lines=pairs.lines))] == ["20+ point", "5+ assist"] and threshold_of(Reading(lines=pairs.lines)) == 20
     with pytest.raises(PointRefused, match="names no box-score stat"):
-        measure_filters(slots_scope({"below": ["under 25 years old"]}))
+        measure_filters(Reading(lines=(Line(measure=None, op="<", value=25, as_typed="under 25 years old", narrows=True),)))
 
 
 # ---------------- the companions: one reader, with its claims ----------------
@@ -240,13 +252,13 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
 
 def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     question = "jaylen brown game log without jayson tatum this season"
-    subject = read_subject(names_of(league.con), question, asked("game_log"), Reading(who=Who(kind="player", players=("Jaylen Brown",))))
+    subject = read_subject(names_of(league.con), question, PLAYER_LOG, Reading(who=Who(kind="player", players=("Jaylen Brown",))))
     assert subject.conditions == (Companion(player="Jayson Tatum", predicate="absent"),)
     # The phrase's claim cut to the words the companion reader needed (Phase 3, step 3,
     # span.needed): either of "jayson" and "tatum" names him alone, so the keyword is the one
     # word it cannot do without; and the season the names are settled in is the reading's too.
     assert [(c.what, question[c.start : c.end]) for c in subject.claims] == [("companion", "without"), ("season", "season")]
-    reached = read_subject(names_of(league.con), "celtics record when jayson tatum scores 20+ points", asked("record_when"), Reading(who=Who(kind="team", teams=("Boston Celtics",))))
+    reached = read_subject(names_of(league.con), "celtics record when jayson tatum scores 20+ points", LINE_RECORD, Reading(who=Who(kind="team", teams=("Boston Celtics",))))
     assert reached.conditions == (Companion(player="Jayson Tatum", predicate="reached", line=Line(measure="points", value=20, as_typed="20+ points")),)
     # The companions reach the Reading typed, through the one writer, and ride the route's claims.
     route = read_route(names_of(league.con), question, ["Jaylen Brown", "Jayson Tatum"], "")
@@ -280,7 +292,7 @@ def test_the_line_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerCont
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)))) == (3, 45)  # e1 (30 min, 10), e2 (32, 20), e3 (28, 15)
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("with 30 minutes", below=False),))) == (2, 30)
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("under 30 minutes", below=True),))) == (1, 15)
-    pairs = lines_under(asked("game_log"), read_lines("20+ point 5+ assist games")).lines
+    pairs = lines_under(PLAYER_LOG, read_lines("20+ point 5+ assist games")).lines
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=pairs)) == (1, 20)  # e2 alone holds both
 
 
@@ -309,7 +321,7 @@ def test_the_companion_cell_changes_what_the_player_relation_reads(league: Answe
 
 
 def test_the_companion_cell_changes_what_the_team_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    split = with_without(league, slots_reading({"team": "Boston Celtics", "season_type": 2, "with_player": ["Jayson Tatum"]}, asked=asked("with_without")))
+    split = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season_type=2), asked=asked("with_without")))
     assert not isinstance(split, str)
     groups = {row["group"]: row for row in split.data["splits"]["presence"]} if "presence" in split.data.get("splits", {}) else None
     assert "with" in split.answer.lower() and "without" in split.answer.lower()
