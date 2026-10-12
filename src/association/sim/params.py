@@ -135,23 +135,53 @@ class Mix:
         return self.probabilities.get(category, 0.0)
 
 
+SEASON_DECAY = 0.5
+"""The default weight each season back in a window carries relative to the
+one after it: the latest season counts in full, the one before it half, the
+one before that a quarter. Measured 2026-10-11
+(``scripts/sim_p8/season_weights.py``): several league rates trend a point
+a season (the offensive-rebound share, threes per attempt), and against the
+held-out rates of 2024-2026 from January 1 the mean relative error of an
+equal-weighted three-season window is 1.89%, of decays 0.5 / 0.35 / 0.25
+1.61% / 1.55% / 1.59%, of the latest season alone 2.09%; 0.5 is in the
+flat minimum and keeps the most of a player's sample.
+
+.. versionadded:: 6.0.0
+"""
+
+
 @dataclass(frozen=True)
 class Window:
     """Which games a rate was estimated from: those strictly before ``as_of``
-    in the seasons listed (decision D5, point-in-time). A replay passes the
-    replayed game's date; a "fun" simulation the end of the latest season.
+    in the seasons listed (decision D5, point-in-time), each season's counts
+    weighted ``season_decay`` to the power of its distance from the latest
+    season, so the latest counts in full and each season back counts less
+    (:data:`SEASON_DECAY` by default; ``1.0`` weights them equally). A replay
+    passes the replayed game's date; a "fun" simulation the end of the
+    latest season.
 
     .. versionadded:: 6.0.0
     """
 
     seasons: tuple[int, ...]
     as_of: dt.date
+    season_decay: float = SEASON_DECAY
+
+    def weight(self, season: int) -> float:
+        """The weight on ``season``'s counts: ``season_decay ** (latest -
+        season)``; ``1.0`` for the latest season."""
+        return self.season_decay ** (max(self.seasons) - season)
 
     def describe(self) -> str:
-        """``"2024-2026 through 2026-04-13"``, for the output."""
+        """``"2024-2026 through 2026-04-13, weighted 0.25 / 0.5 / 1"``, for
+        the output; a one-season or equal-weighted window says nothing of
+        weights."""
         first, last = min(self.seasons), max(self.seasons)
         span = str(first) if first == last else f"{first}-{last}"
-        return f"{span} through {self.as_of.isoformat()}"
+        text = f"{span} through {self.as_of.isoformat()}"
+        if first != last and self.season_decay != 1.0:
+            text += ", weighted " + " / ".join(f"{self.weight(s):g}" for s in sorted(set(self.seasons)))
+        return text
 
 
 @dataclass(frozen=True)

@@ -430,6 +430,19 @@ offensive share rises a point a season - 0.2325 (2022), 0.2402, 0.2424,
 an equal-weighted three-season window estimates the current season's share
 about 0.01 low.
 
+**0.13 Season weights (2026-10-12, `scripts/sim_p8/season_weights.py`).**
+Weights `decay ** (latest - season)` on a three-season point-in-time window,
+scored on nine league rates from player box lines (offensive-rebound share,
+threes and free throws per attempt, the three shooting percentages,
+turnovers, points and possessions per 48) against the held-out rates of
+2024, 2025 and 2026 from January 1: mean relative error 1.89% at equal
+weights, 1.74% at 0.7, 1.61% at 0.5, 1.55% at 0.35, 1.59% at 0.25, 1.78% at
+0.1, 2.09% for the latest season alone. The worst single rate at every
+decay is 2024's free-throw rate (9-10%: the whistle changed within that
+season). The 2025 offensive-rebound share is 0.247 before January 1 and
+0.255 after it, so the validation's gap on that rate is within-season
+drift that season weights cannot reach.
+
 **0.9 Shot positions (for P4.1).** From 2015, 99.95-100% of charted field
 goals carry a position; 2022's `points_attempted` is 0 on 96% of shots
 (`SHOT_VALUE_SQL` handles it); and from 2019 the shot chart holds exactly
@@ -857,6 +870,28 @@ check measured on 2019-2026 and recorded in the module docstring:
    coverage 0.740 and assists 0.851 against 0.800; minutes MAE 5.3; threes
    0.409 against 0.420 per attempt and free throws 4% high; the strength
    model 0.002 ahead on Brier, ESPN 0.028.
+
+   **With season weights** (`params.SEASON_DECAY` = 0.5 on the window's
+   seasons, measured in 0b item 0.13;
+   `results/validate_2025_from_2025-01-01_2026-10-12_weights.md`, 741 games,
+   5 refused): Brier 0.2226 (strength 0.2250, home rate 0.2486, ESPN 0.1984
+   on the same games) - the first run ahead of the strength model, by a
+   little more than the 0.002 run noise; margin sd 16.8 against 16.4, PIT
+   0.066-0.121; threes 0.415 per attempt against 0.420 (from 0.409); FTA
+   per FGA 0.246 against 0.240 (from 0.250); offensive-rebound share 0.245
+   against 0.255 (from 0.243 - the remaining gap is 2025's within-season
+   drift, 0.13); points per 100 possessions 112.8 against 113.5;
+   possessions 100.5 against 100.8; total -2.1 (1.2 field-goal attempts a
+   team-game short, from the rebound share); coverage 0.744 / 0.786 /
+   0.857; minutes MAE 5.26. Standing misses after seven runs, in order:
+   the rotation (minutes MAE 5.3 unchanged by every rates fix, points
+   coverage 0.744 against 0.800, substitutions nineteen seconds into a
+   game, eight-man rosters fouling out) - to be sized by a minutes-given
+   replay diagnostic before tuning; the offensive-rebound share's
+   within-season drift (a within-season weighting, or the current season's
+   own trend); the strength model's remaining headroom to ESPN, 0.024 of
+   Brier, which is team-strength estimation; threes 0.415 against 0.420;
+   free throws 2.5% high.
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is

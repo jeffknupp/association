@@ -15,7 +15,13 @@ seconds (below).
 (``nba.season.eastern_date_sql``, the one rule the project dates games by)
 is strictly before ``as_of``. A replay passes the replayed game's date and
 cannot see that evening's games; a season simulation passes the day after
-its last game.
+its last game. Each season's counts are weighted ``Window.weight``
+(``season_decay`` to the power of the seasons back, 0.5 by default -
+``params.SEASON_DECAY`` has the measurement) before they are summed for a
+player, a team or the league, so a rate is the weighted mean and its
+``trials`` the weighted count, which the shrinkage treats as the sample;
+the prior strengths are fitted within each season (odd games against even)
+and so need no weight.
 
 **What each rate is read from.** A player's minutes, shots, free throws,
 turnovers, assists, rebounds, steals, blocks and fouls are the box score's
@@ -447,11 +453,16 @@ def _read_home_margin(con: duckdb.DuckDBPyConnection, ctes: str) -> tuple[float,
     return float(margin), int(games)
 
 
-def _totals(counts: Counts) -> dict[str, Counter[str]]:
-    """Each id's counts summed over its seasons and parities."""
+def _weighted(c: Counter[str], weight: float) -> Counter[str]:
+    return c if weight == 1.0 else Counter({k: v * weight for k, v in c.items()})
+
+
+def _totals(counts: Counts, window: Window) -> dict[str, Counter[str]]:
+    """Each id's counts summed over its seasons and parities, each season's
+    weighted by :meth:`Window.weight`."""
     totals: dict[str, Counter[str]] = defaultdict(Counter)
-    for (owner, _, _), c in counts.items():
-        totals[owner].update(c)
+    for (owner, season, _), c in counts.items():
+        totals[owner].update(_weighted(c, window.weight(season)))
     return dict(totals)
 
 
@@ -540,13 +551,14 @@ def _team_names(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
     return dict(con.execute(f"SELECT team_id, display_name FROM {WAREHOUSE}.teams").fetchall())
 
 
-def _league_totals(player_counts: Counts, team_counts: Counts) -> tuple[Counter[str], Counter[str]]:
+def _league_totals(player_counts: Counts, team_counts: Counts, window: Window) -> tuple[Counter[str], Counter[str]]:
+    """Everyone's counts summed, each season's weighted by :meth:`Window.weight`."""
     players: Counter[str] = Counter()
-    for c in player_counts.values():
-        players.update(c)
+    for (_, season, _), c in player_counts.items():
+        players.update(_weighted(c, window.weight(season)))
     teams: Counter[str] = Counter()
-    for c in team_counts.values():
-        teams.update(c)
+    for (_, season, _), c in team_counts.items():
+        teams.update(_weighted(c, window.weight(season)))
     return players, teams
 
 
@@ -620,7 +632,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     identities, sat_out = _read_identities(con, ctes, team_ids)
     home_court, _ = _read_home_margin(con, ctes)
 
-    player_total, team_total = _league_totals(player_counts, team_counts)
+    player_total, team_total = _league_totals(player_counts, team_counts, window)
     player_means, team_means = _league_means(player_total, team_total)
     zone_mu = _league_mix(player_total, "attempts")
     player_splits, team_splits = _splits(player_counts), _splits(team_counts)
@@ -630,7 +642,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     strengths["allowed_zone_mix"] = _fit_mix(team_splits, "allowed_attempts", zone_mu)
 
     league = _league(window, player_total, team_total, player_means, team_means, strengths, home_court)
-    player_totals, team_totals = _totals(player_counts), _totals(team_counts)
+    player_totals, team_totals = _totals(player_counts, window), _totals(team_counts, window)
     names = _team_names(con)
     teams = {t: _team_record(t, names.get(t, t), c, team_means, strengths, zone_mu) for t, c in team_totals.items() if team_ids is None or t in team_ids}
     players = {a: _player_record(a, identities[a], player_totals[a], player_means, strengths, zone_mu) for a in sorted(_selected(identities, team_ids, athlete_ids))}

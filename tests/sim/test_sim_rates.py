@@ -17,6 +17,7 @@ takes 100 shots nobody should count.
 from __future__ import annotations
 
 import datetime as dt
+from collections import Counter
 from collections.abc import Iterator
 from typing import Any
 
@@ -338,3 +339,15 @@ def test_as_of_after_is_the_day_after_the_last_eastern_game_date(con: duckdb.Duc
     assert rates.as_of_after(con, SEASON) == dt.date(2025, 1, 13)  # 603 is 19:00Z on the 12th, the 12th in the East
     with pytest.raises(ValueError, match="no games"):
         rates.as_of_after(con, 1999)
+
+
+def test_the_totals_weight_an_earlier_season_by_the_windows_decay() -> None:
+    counts: rates.Counts = {("a1", 2026, 0): Counter(fga=10, minutes=20), ("a1", 2026, 1): Counter(fga=10), ("a1", 2025, 0): Counter(fga=40, minutes=20), ("t", 2024, 1): Counter(poss=100)}
+    window = Window(seasons=(2024, 2025, 2026), as_of=dt.date(2026, 4, 13))
+    totals = rates._totals(counts, window)
+    assert dict(totals["a1"]) == {"fga": 40.0, "minutes": 30.0}  # 20 + 0.5 * 40, 20 + 0.5 * 20
+    assert dict(totals["t"]) == {"poss": 25.0}
+    players, teams = rates._league_totals({k: v for k, v in counts.items() if k[0] == "a1"}, {k: v for k, v in counts.items() if k[0] == "t"}, window)
+    assert dict(players) == {"fga": 40.0, "minutes": 30.0} and dict(teams) == {"poss": 25.0}
+    # Equal weights leave the counts alone.
+    assert dict(rates._totals(counts, Window(seasons=(2024, 2025, 2026), as_of=dt.date(2026, 4, 13), season_decay=1.0))["a1"]) == {"fga": 60, "minutes": 40}

@@ -54,8 +54,17 @@ def test_a_mix_answers_for_a_category_it_lacks_with_zero() -> None:
 
 
 def test_the_window_describes_itself() -> None:
-    assert params.Window((2024, 2025, 2026), dt.date(2026, 4, 13)).describe() == "2024-2026 through 2026-04-13"
+    assert params.Window((2024, 2025, 2026), dt.date(2026, 4, 13)).describe() == "2024-2026 through 2026-04-13, weighted 0.25 / 0.5 / 1"
+    assert params.Window((2024, 2025, 2026), dt.date(2026, 4, 13), season_decay=1.0).describe() == "2024-2026 through 2026-04-13"
     assert params.Window((2026,), dt.date(2026, 1, 1)).describe() == "2026 through 2026-01-01"
+
+
+def test_the_window_weights_each_season_back_by_the_decay() -> None:
+    window = params.Window((2024, 2025, 2026), dt.date(2026, 4, 13))
+    assert window.season_decay == params.SEASON_DECAY == 0.5
+    assert [window.weight(s) for s in (2024, 2025, 2026)] == [0.25, 0.5, 1.0]
+    assert params.Window((2025, 2026), dt.date(2026, 4, 13), season_decay=0.35).weight(2025) == 0.35
+    assert params.Window((2026,), dt.date(2026, 4, 13)).weight(2026) == 1.0
 
 
 def test_a_player_record_is_frozen_and_reports_near_prior_from_his_shots() -> None:
