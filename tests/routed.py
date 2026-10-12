@@ -183,15 +183,6 @@ class Staged:
         return asked_label(self.asked)
 
 
-def handed(question: str, slots: Mapping[str, Any]) -> tuple[Subject, str | None]:
-    """Who the subject reading hands the grammar's rules for ``question``,
-    from the names a test's slot dict carries: the typed subject they name
-    (``reading.Subject.from_slots``) and the opponent."""
-    names = {key: slots[key] for key in ("player", "players", "team", "teams") if key in slots}
-    opponent = slots.get("opponent")
-    return Subject.from_slots(names), opponent if isinstance(opponent, str) and opponent.strip() else None
-
-
 def staged(
     asked: PointShape | str | None,
     question: str | Mapping[str, Any],
