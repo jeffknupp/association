@@ -21,7 +21,12 @@ step 9) or, when that is unknown, ``shots_per_minute +
 free_throw_trips_per_minute + turnovers_per_minute``, either way normalized
 over the five. What he does with it is his own mix of the three per-minute
 rates, which is a probability per USE (a shot, a trip or a turnover; a possession holds one use
-plus one more per offensive rebound). The defense moves the turnover and the
+plus one more per offensive rebound). The defense is the FIVE on the floor
+(D6 option 2, step 9): each factor - make rate by zone, turnovers forced,
+trips given, the rebound share of misses - is the known defenders' log-odds
+deviations from the league averaged (:func:`~association.sim.shrink.combine_defenders`),
+recomputed at every lineup change, and the team's own rate where none of
+the five was seen defending in the window. It moves the turnover and the
 foul-draw probabilities through :func:`~association.sim.shrink.combine`
 against the league's per-possession ``turnover_rate`` and ``foul_rate``:
 since the defense enters only as the odds ratio ``odds(d) / odds(l)``, both
@@ -399,9 +404,12 @@ def _pick_or_any(rng: Random, players: Sequence[_Player], weights: Sequence[floa
 
 
 class _Player:
-    """One player's state for the game: his rates as plain floats against the
-    opponent's defense (fixed for the game, so combined once), his box
-    counters, his time and his fouls."""
+    """One player's state for the game: his rates as plain floats, his
+    on-court defensive factors (``None`` when unknown), his box counters,
+    his time and his fouls. The defense he faces is the five on the floor,
+    so his make and action probabilities are combined at the moment of the
+    action (:meth:`make`, :meth:`mix`); only his zone mix is combined once,
+    against the opponent team's allowed mix."""
 
     __slots__ = (
         "and_one",
@@ -411,6 +419,10 @@ class _Player:
         "available",
         "blk",
         "blk_w",
+        "def_dreb",
+        "def_make",
+        "def_tov",
+        "def_trip",
         "dreb",
         "dreb_w",
         "entered_at",
@@ -425,14 +437,11 @@ class _Player:
         "ftm",
         "id",
         "live",
-        "make",
-        "make_inputs",
+        "make_rate",
+        "multiplier",
         "on_floor",
         "oreb",
         "oreb_w",
-        "p_shot",
-        "p_to",
-        "p_trip",
         "pf",
         "played",
         "plus_minus",
@@ -440,8 +449,10 @@ class _Player:
         "stl",
         "stl_w",
         "tov",
+        "tov_share",
         "tpa",
         "tpm",
+        "trip_share",
         "trips_pm",
         "usage",
         "zones",
@@ -455,18 +466,17 @@ class _Player:
         self.usage = params.usage_share.value if params.usage_share.value > 0.0 else per_minute
         self.trips_pm = trips
         self.fouls_pm = params.fouls_per_minute.value
-        # The user's own mix per use, the turnover and the foul draw moved by the defense (module docstring).
-        if per_minute > 0.0:
-            p_to = adjusted(turnovers / per_minute, defense.forced_turnover_rate.value, league.turnover_rate)
-            p_trip = adjusted(trips / per_minute, defense.foul_rate.value, league.foul_rate)
-        else:
-            p_to, p_trip = 0.0, 0.0  # a player with no usage shoots if he is somehow chosen (the fallback below)
-        scale = max(p_to + p_trip, 1.0)  # the two adjusted probabilities may sum past one; the shot takes the rest
-        self.p_to, self.p_trip = p_to / scale, p_trip / scale
-        self.p_shot = max(0.0, 1.0 - self.p_to - self.p_trip)
+        # His own mix per use (the defense moves it at the moment of the action, :meth:`mix`) and his raw make rates.
+        self.tov_share = turnovers / per_minute if per_minute > 0.0 else 0.0
+        self.trip_share = trips / per_minute if per_minute > 0.0 else 0.0
+        self.make_rate = {z: params.make_rate[z].value for z in ZONES}
+        self.multiplier = multiplier
         self.zones = self._zones(params, defense, league)
-        self.make = {z: _clamp01(adjusted(params.make_rate[z].value, defense.allowed_make_rate[z].value, league.make_rate[z]) * multiplier) for z in ZONES}
-        self.make_inputs = {z: {"player": params.make_rate[z].value, "defense": defense.allowed_make_rate[z].value, "league": league.make_rate[z], "home": multiplier} for z in ZONES}
+        # On-court defense (D6 option 2): known when the window saw him defend; the team's rate stands in otherwise.
+        self.def_make = {z: params.defended_make_rate[z].value for z in ZONES} if all(z in params.defended_make_rate and params.defended_make_rate[z].trials > 0 for z in ZONES) else None
+        self.def_tov = params.defended_turnover_rate.value if params.defended_turnover_rate.trials > 0 else None
+        self.def_trip = params.defended_trip_rate.value if params.defended_trip_rate.trials > 0 else None
+        self.def_dreb = params.defended_rebound_rate.value if params.defended_rebound_rate.trials > 0 else None
         self.ft = _clamp01(params.free_throw_rate.value * multiplier)
         self.and_one, self.assisted, self.live = params.and_one_rate.value, params.assisted_rate.value, params.live_ball_share.value
         self.ast_w, self.oreb_w, self.dreb_w = params.assists_per_minute.value, params.offensive_rebounds_per_minute.value, params.defensive_rebounds_per_minute.value
@@ -498,6 +508,25 @@ class _Player:
             cumulative.append((running, zone))
         return cumulative
 
+    def mix(self, defense: _LineupDefense, league: LeagueParams) -> tuple[float, float, float]:
+        """His turnover, trip and shot probabilities per use against the five
+        defending (module docstring): the two adjusted probabilities may sum
+        past one, in which case they are scaled and the shot takes the rest."""
+        p_to = adjusted(self.tov_share, defense.forced_turnover, league.turnover_rate)
+        p_trip = adjusted(self.trip_share, defense.foul, league.foul_rate)
+        scale = max(p_to + p_trip, 1.0)
+        p_to, p_trip = p_to / scale, p_trip / scale
+        return p_to, p_trip, max(0.0, 1.0 - p_to - p_trip)
+
+    def make(self, zone: str, defense: _LineupDefense, league: LeagueParams) -> float:
+        """His make probability in ``zone`` against the five defending, with
+        his side's home-court multiplier."""
+        return _clamp01(adjusted(self.make_rate[zone], defense.make[zone], league.make_rate[zone]) * self.multiplier)
+
+    def make_inputs(self, zone: str, defense: _LineupDefense, league: LeagueParams) -> dict[str, float]:
+        """The make draw's inputs, for the trace."""
+        return {"player": self.make_rate[zone], "defense": defense.make[zone], "league": league.make_rate[zone], "home": self.multiplier}
+
     def zone(self, rng: Random) -> str:
         """A zone drawn from the player's mix against this defense."""
         draw = rng.random()
@@ -505,6 +534,40 @@ class _Player:
             if draw < threshold:
                 return zone
         return self.zones[-1][1]
+
+
+@dataclass(frozen=True)
+class _LineupDefense:
+    """What the five on the floor allow, as rates the offense's draws are
+    combined against: make rate by zone, turnovers forced and trips given
+    per possession, and the offense's rebound share of its misses."""
+
+    make: Mapping[str, float]
+    forced_turnover: float
+    foul: float
+    oreb_against: float
+
+
+def _lineup_defense(floor: Sequence[_Player], team: TeamParams, league: LeagueParams) -> _LineupDefense:
+    """The five's defense: each factor is the known defenders' log-odds
+    deviations from the league averaged (:func:`~association.sim.shrink.combine_defenders`,
+    the deviations measured against the league mean of the possession
+    table's statistic and applied to the engine's league rate), the team's
+    own rate when none of the five is known."""
+
+    def _combined(values: list[float], league_rate: float, team_rate: float, name: str) -> float:
+        # The defenders' rates were counted in the possession table's unit; their deviations are taken from the league
+        # mean in that unit (LeagueParams.defended) and applied to the league rate in the engine's unit.
+        return shrink.combine_defenders(values, league_rate, league.defended.get(name)) if values else team_rate
+
+    make = {z: _combined([p.def_make[z] for p in floor if p.def_make is not None], league.make_rate[z], team.allowed_make_rate[z].value, f"defended_make_rate.{z}") for z in ZONES}
+    forced = _combined([p.def_tov for p in floor if p.def_tov is not None], league.turnover_rate, team.forced_turnover_rate.value, "defended_turnover_rate")
+    foul = _combined([p.def_trip for p in floor if p.def_trip is not None], league.foul_rate, team.foul_rate.value, "defended_trip_rate")
+    dreb = _combined([p.def_dreb for p in floor if p.def_dreb is not None], 1.0 - league.offensive_rebound_rate, team.defensive_rebound_rate.value, "defended_rebound_rate")
+    # The offense's rebound against this defense, as the plan writes it: the league's offensive rate moved by the share of
+    # misses this defense does NOT rebound, which is that share exactly.
+    oreb_against = shrink.combine(league.offensive_rebound_rate, 1.0 - dreb, league.offensive_rebound_rate)
+    return _LineupDefense(make, forced, foul, oreb_against)
 
 
 def _cumulative_durations(league: LeagueParams) -> tuple[dict[str, list[float]], dict[str, float]]:
@@ -528,6 +591,8 @@ class _Side:
 
     def __init__(self, setup: TeamSetup, opponent: TeamParams, league: LeagueParams, multiplier: float) -> None:
         self.team_id = setup.team.team_id
+        self.team = setup.team
+        self.league = league
         self.pace = setup.team.pace.value
         # How fast this offense gets to its first use, relative to the league: unknown (zero) means the league's.
         own, mean = setup.team.first_use_seconds.value, league.first_use_seconds
@@ -538,9 +603,6 @@ class _Side:
         self.score = 0
         self.possessions = 0
         self.team_fouls: list[int] = []
-        # The offense's rebound against this side's defense, as the plan writes it: the league's offensive rate
-        # moved by the share of misses this defense does NOT rebound, which is that share exactly.
-        self.oreb_against = shrink.combine(league.offensive_rebound_rate, 1.0 - opponent.defensive_rebound_rate.value, league.offensive_rebound_rate)
         starters = list(dict.fromkeys(setup.starters))
         if len(starters) != 5 or any(s not in self.players for s in starters):
             raise EngineError(f"team {self.team_id} needs five distinct rostered starters, got {list(setup.starters)}")
@@ -550,13 +612,16 @@ class _Side:
         self.usage: list[float] = []
         self.fouls_pm = 0.0
         self.trips_pm = 0.0
+        self.defense = _lineup_defense(self.floor, self.team, self.league)
         self.refresh()
 
     def refresh(self) -> None:
-        """Recompute what depends on the five on the floor."""
+        """Recompute what depends on the five on the floor: the usage weights,
+        the foul and trip rates, and the defense the opponents face."""
         self.usage = [p.usage for p in self.floor]
         self.fouls_pm = sum(p.fouls_pm for p in self.floor)
         self.trips_pm = sum(p.trips_pm for p in self.floor)
+        self.defense = _lineup_defense(self.floor, self.team, self.league)
 
     def available(self) -> int:
         """How many of the roster can still play."""
@@ -808,9 +873,10 @@ class _Game:
         """The user and what he does; ``None`` when the possession goes on."""
         user = self._pick_noted("user", offense.floor, offense.usage, or_any=True)
         assert user is not None
+        p_to, p_trip, p_shot = user.mix(defense.defense, self.league)
         draw = self.rng.random()
-        chosen = "turnover" if draw < user.p_to else ("trip" if draw < user.p_to + user.p_trip else "shot")
-        self._note("action", chosen, {"shot": user.p_shot, "trip": user.p_trip, "turnover": user.p_to}, draw)
+        chosen = "turnover" if draw < p_to else ("trip" if draw < p_to + p_trip else "shot")
+        self._note("action", chosen, {"shot": p_shot, "trip": p_trip, "turnover": p_to}, draw)
         if chosen == "turnover":
             return self._turnover(offense, defense, user)
         if chosen == "trip":
@@ -819,12 +885,13 @@ class _Game:
 
     def _shot(self, offense: _Side, defense: _Side, shooter: _Player, heave: bool) -> str | None:
         zone = HEAVE if heave else self._zone_noted(shooter)
-        make = HEAVE_MAKE_RATE if heave else shooter.make[zone]
+        make = HEAVE_MAKE_RATE if heave else shooter.make(zone, defense.defense, self.league)
         points = value_of(zone)
         shooter.fga += 1
         if points == 3:
             shooter.tpa += 1
-        if self._chance("make", make, {"heave": 1.0} if heave else shooter.make_inputs[zone]):
+        inputs = {"heave": 1.0} if heave else (shooter.make_inputs(zone, defense.defense, self.league) if self.trace is not None else {})
+        if self._chance("make", make, inputs):
             return self._made(offense, defense, shooter, zone, points)
         actors = {"shooter": shooter.id}
         outcome = "missed"
@@ -865,8 +932,8 @@ class _Game:
         omit - and ``split``'s team shares of each side's rebounds are the
         team's, credited to nobody; a side whose five carry no rebound weight
         takes a team rebound too."""
-        retention = split.retention(defense.oreb_against)
-        if self._chance("offensive_rebound", retention, {"player_lines": defense.oreb_against, "league": self.league.offensive_rebound_rate, "odds": split.odds}):
+        retention = split.retention(defense.defense.oreb_against)
+        if self._chance("offensive_rebound", retention, {"player_lines": defense.defense.oreb_against, "league": self.league.offensive_rebound_rate, "odds": split.odds}):
             self._credit_rebound(offense, "offensive", split.team_offensive)
             return None
         self._credit_rebound(defense, "defensive", split.team_defensive)

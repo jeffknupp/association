@@ -142,6 +142,7 @@ import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import duckdb
 
@@ -230,6 +231,20 @@ TEAM_RATES: tuple[Spec, ...] = (
     *((f"allowed_make_rate.{zone}", f"allowed_makes.{zone}", f"allowed_attempts.{zone}") for zone in ZONES),
 )
 """Every team rate, as :data:`PLAYER_RATES`.
+
+.. versionadded:: 6.0.0
+"""
+
+DEFENSE_RATES: tuple[Spec, ...] = (
+    ("defended_turnover_rate", "def_tov", "def_poss"),
+    ("defended_trip_rate", "def_trips", "def_poss"),
+    ("defended_rebound_rate", "def_dreb", "def_misses"),
+    *((f"defended_make_rate.{zone}", f"def_makes.{zone}", f"def_attempts.{zone}") for zone in ZONES),
+)
+"""Every player on-court defensive rate (D6 option 2), as :data:`PLAYER_RATES`,
+counted over the opponent possessions he defended (he was in the defending
+lineup of the segment the possession started in). Shrunk toward his team's
+rate, with a strength fitted against the league's.
 
 .. versionadded:: 6.0.0
 """
@@ -581,6 +596,71 @@ def _read_uses(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts: 
         _add(counts, (str(athlete), int(season), int(parity)), uses=uses, lineup_uses=lineup_uses)
 
 
+def _read_defended(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts: Counts, team_counts: Counts) -> None:
+    """What opponents did per possession each player defended (D6 option 2),
+    per player-season-parity: possessions, turnovers, two- and three-shot
+    trips, the rebounds of their misses, and their shots and makes by zone
+    (``scripts/sim_p9/defense.py`` is the measurement); the same per
+    team-season-parity (every possession the team defended), the priors the
+    players shrink toward, in the same unit."""
+    zone_counts = ", ".join(f"count(*) FILTER (WHERE a.kind = 'shot' AND a.zone = '{z}') AS att_{z}, count(*) FILTER (WHERE a.kind = 'shot' AND a.zone = '{z}' AND a.made) AS made_{z}" for z in ZONES)
+    zone_sums = ", ".join(f"sum(f.att_{z}), sum(f.made_{z})" for z in ZONES)
+    rows = con.execute(
+        f"""WITH {ctes},
+        defended AS (
+            SELECT p.event_id, p.season, p.period, p.poss_no,
+                   unnest(CASE WHEN p.offense_team_id = g.home_team_id THEN s.away_lineup ELSE s.home_lineup END) AS defender
+            FROM sim_possessions p JOIN games g ON g.event_id = p.event_id AND g.season = p.season
+            JOIN sim_segments s ON s.event_id = p.event_id AND s.season = p.season AND s.period = p.period AND s.segment_no = p.segment_no AND s.resolved
+            WHERE p.season IN {seasons} AND p.poss_no IS NOT NULL
+        ),
+        facts AS (
+            SELECT a.event_id, a.season, a.period, a.poss_no,
+                   count(*) FILTER (WHERE a.kind = 'turnover') AS tov,
+                   count(*) FILTER (WHERE a.kind = 'free_throw' AND a.ft_kind = 'regular' AND a.ft_number = 1 AND a.ft_of >= 2) AS trips,
+                   count(*) FILTER (WHERE a.kind = 'offensive_rebound' AND NOT a.dead_ball) AS oreb,
+                   count(*) FILTER (WHERE a.kind = 'defensive_rebound') AS dreb,
+                   {zone_counts}
+            FROM sim_actions a WHERE a.season IN {seasons} AND a.poss_no IS NOT NULL GROUP BY 1, 2, 3, 4
+        )
+        SELECT pg.athlete_id, pg.season, pg.parity, count(*), sum(f.tov), sum(f.trips), sum(f.oreb), sum(f.dreb), {zone_sums}
+        FROM defended d JOIN facts f USING (event_id, season, period, poss_no)
+        JOIN player_games pg ON pg.athlete_id = d.defender AND pg.season = d.season AND pg.event_id = d.event_id
+        GROUP BY 1, 2, 3"""
+    ).fetchall()
+    _add_defended(counts, rows)
+    team_rows = con.execute(
+        f"""WITH {ctes},
+        defended AS (
+            SELECT p.event_id, p.season, p.period, p.poss_no, CASE WHEN p.offense_team_id = g.home_team_id THEN g.away_team_id ELSE g.home_team_id END AS team_id
+            FROM sim_possessions p JOIN games g ON g.event_id = p.event_id AND g.season = p.season
+            WHERE p.season IN {seasons} AND p.poss_no IS NOT NULL
+        ),
+        facts AS (
+            SELECT a.event_id, a.season, a.period, a.poss_no,
+                   count(*) FILTER (WHERE a.kind = 'turnover') AS tov,
+                   count(*) FILTER (WHERE a.kind = 'free_throw' AND a.ft_kind = 'regular' AND a.ft_number = 1 AND a.ft_of >= 2) AS trips,
+                   count(*) FILTER (WHERE a.kind = 'offensive_rebound' AND NOT a.dead_ball) AS oreb,
+                   count(*) FILTER (WHERE a.kind = 'defensive_rebound') AS dreb,
+                   {zone_counts}
+            FROM sim_actions a WHERE a.season IN {seasons} AND a.poss_no IS NOT NULL GROUP BY 1, 2, 3, 4
+        )
+        SELECT d.team_id, d.season, tp.parity, count(*), sum(f.tov), sum(f.trips), sum(f.oreb), sum(f.dreb), {zone_sums}
+        FROM defended d JOIN facts f USING (event_id, season, period, poss_no)
+        JOIN team_parity tp ON tp.team_id = d.team_id AND tp.season = d.season AND tp.event_id = d.event_id
+        GROUP BY 1, 2, 3"""
+    ).fetchall()
+    _add_defended(team_counts, team_rows)
+
+
+def _add_defended(counts: Counts, rows: list[tuple[Any, ...]]) -> None:
+    for owner, season, parity, poss, tov, trips, oreb, dreb, *shot_sums in rows:
+        by_zone = {}
+        for i, zone in enumerate(ZONES):
+            by_zone[f"def_attempts.{zone}"], by_zone[f"def_makes.{zone}"] = shot_sums[2 * i], shot_sums[2 * i + 1]
+        _add(counts, (str(owner), int(season), int(parity)), def_poss=poss, def_tov=tov, def_trips=trips, def_oreb=oreb, def_dreb=dreb, def_misses=oreb + dreb, **by_zone)
+
+
 def _read_home_margin(con: duckdb.DuckDBPyConnection, ctes: str) -> tuple[float, int]:
     margin, games = con.execute(f"WITH {ctes} SELECT coalesce(avg(home_score - away_score), 0.0), count(*) FROM games").fetchone() or (0.0, 0)
     return float(margin), int(games)
@@ -640,13 +720,26 @@ def _league_mix(total: Counter[str], prefix: str) -> dict[str, float]:
     return {zone: (v / n if n > 0 else 1 / len(ZONES)) for zone, v in counts.items()}
 
 
-def _player_record(athlete: str, identity: tuple[str, str], c: Counter[str], means: Mapping[str, float], strengths: Mapping[str, float], zone_mu: Mapping[str, float]) -> PlayerParams:
+def _defended(c: Counter[str], team: Counter[str] | None, means: Mapping[str, float], strengths: Mapping[str, float]) -> dict[str, Rate]:
+    """The player's on-court defensive rates, each shrunk toward his team's
+    rate over every possession it defended (the league's when his team has
+    none), in the possession table's unit, with the fitted strength; zero
+    trials leaves the prior with ``trials`` 0, which the engine reads as
+    unknown."""
+    priors = {name: (_mean(team, s, t) if team is not None and team[t] > 0 else means[name]) for name, s, t in DEFENSE_RATES}
+    return {name: Rate(value=shrink.shrink(c[s], c[t], priors[name], strengths[name]), trials=c[t], prior=priors[name], strength=strengths[name]) for name, s, t in DEFENSE_RATES}
+
+
+def _player_record(
+    athlete: str, identity: tuple[str, str], c: Counter[str], means: Mapping[str, float], strengths: Mapping[str, float], zone_mu: Mapping[str, float], team: Counter[str] | None = None
+) -> PlayerParams:
     rates = {spec[0]: _rate(c, spec, means, strengths) for spec in PLAYER_RATES}
-    team, name = identity
+    defended = _defended(c, team, means, strengths)
+    team_id, name = identity
     return PlayerParams(
         athlete_id=athlete,
         name=name,
-        team_id=team,
+        team_id=team_id,
         minutes=c["minutes"],
         shots_per_minute=rates["shots_per_minute"],
         free_throw_trips_per_minute=rates["free_throw_trips_per_minute"],
@@ -664,6 +757,10 @@ def _player_record(athlete: str, identity: tuple[str, str], c: Counter[str], mea
         blocks_per_minute=rates["blocks_per_minute"],
         fouls_per_minute=rates["fouls_per_minute"],
         usage_share=rates["usage_share"],
+        defended_make_rate={zone: defended[f"defended_make_rate.{zone}"] for zone in ZONES},
+        defended_turnover_rate=defended["defended_turnover_rate"],
+        defended_trip_rate=defended["defended_trip_rate"],
+        defended_rebound_rate=defended["defended_rebound_rate"],
     )
 
 
@@ -736,6 +833,7 @@ def _league(
         per_minute={name: player_means[name] for name in sorted(PER_MINUTE_RATES)},
         durations=dict(durations),
         first_use_seconds=_mean(teams, "use_seconds", "first_uses"),
+        defended={name: player_means[name] for name, _, _ in DEFENSE_RATES},
     )
 
 
@@ -779,6 +877,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
         _read_first_uses(con, ctes, seasons, team_counts)
         if _has_table(con, "sim_segments"):
             _read_uses(con, ctes, seasons, player_counts)
+            _read_defended(con, ctes, seasons, player_counts, team_counts)
     else:
         logger.warning("sim_possessions and sim_actions are not built (association sim build): no duration histograms, and the engine will refuse to play")
     identities, sat_out = _read_identities(con, ctes, team_ids)
@@ -789,6 +888,8 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     zone_mu = _league_mix(player_total, "attempts")
     player_splits, team_splits = _splits(player_counts), _splits(team_counts)
     strengths = _fit_rates(player_splits, PLAYER_RATES, player_means)
+    player_means.update({name: _mean(player_total, s, t) for name, s, t in DEFENSE_RATES})
+    strengths.update(_fit_rates(player_splits, DEFENSE_RATES, player_means))
     strengths["zone_mix"] = _fit_mix(player_splits, "attempts", zone_mu)
     strengths.update(_fit_rates(team_splits, TEAM_RATES, team_means))
     strengths["allowed_zone_mix"] = _fit_mix(team_splits, "allowed_attempts", zone_mu)
@@ -797,7 +898,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     player_totals, team_totals = _totals(player_counts, window), _totals(team_counts, window)
     names = _team_names(con)
     teams = {t: _team_record(t, names.get(t, t), c, team_means, strengths, zone_mu) for t, c in team_totals.items() if team_ids is None or t in team_ids}
-    players = {a: _player_record(a, identities[a], player_totals[a], player_means, strengths, zone_mu) for a in sorted(_selected(identities, team_ids, athlete_ids))}
+    players = {a: _player_record(a, identities[a], player_totals[a], player_means, strengths, zone_mu, team_totals.get(identities[a][0])) for a in sorted(_selected(identities, team_ids, athlete_ids))}
     missing = {t for t in (team_ids or ()) if t not in team_totals} | sat_out | {a for a in (athlete_ids or ()) if a not in identities}
     return Estimates(league=league, teams=teams, players=players, missing=frozenset(missing))
 

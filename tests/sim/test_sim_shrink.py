@@ -110,3 +110,15 @@ def test_logit_and_expit_invert_and_the_clamp_keeps_odds_finite() -> None:
         assert shrink.expit(shrink.logit(p)) == pytest.approx(p)
     assert math.isfinite(shrink.logit(0.0)) and math.isfinite(shrink.logit(1.0))
     assert shrink.clamp(-3.0) == shrink.EPSILON and shrink.clamp(2.0) == 1 - shrink.EPSILON
+
+
+def test_combine_defenders_takes_deviations_from_the_measured_mean_and_anchors_on_the_league() -> None:
+    from association.sim.shrink import combine_defenders, expit, logit
+
+    # Five defenders exactly at the measured mean leave the league rate alone, whatever the unit gap.
+    assert combine_defenders([0.142] * 5, 0.130, measured=0.142) == pytest.approx(0.130)
+    # One deviation of +0.2 log-odds among five moves the anchor by a fifth of it.
+    one = expit(logit(0.142) + 0.2)
+    assert combine_defenders([one, 0.142, 0.142, 0.142, 0.142], 0.130, measured=0.142) == pytest.approx(expit(logit(0.130) + 0.04))
+    # Without a measured mean the league rate is the base, as before.
+    assert combine_defenders([0.142] * 5, 0.130) == pytest.approx(0.142)

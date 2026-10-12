@@ -189,14 +189,18 @@ def combine(offense: float, defense: float, league: float) -> float:
     return expit(logit(offense) + logit(defense) - logit(league))
 
 
-def combine_defenders(allowed: Sequence[float], league: float) -> float:
+def combine_defenders(allowed: Sequence[float], league: float, measured: float | None = None) -> float:
     """The rate five defenders allow together: the league rate moved by the
-    mean of their log-odds deviations from it. An empty sequence is the
+    mean of their log-odds deviations. The deviations are taken from
+    ``measured``, the league mean of the statistic the defenders' rates were
+    counted in (the possession table's unit), when it differs from
+    ``league``, the rate the result stands in for (the box score's unit);
+    with ``measured`` omitted the two are the same. An empty sequence is the
     league rate.
 
     .. versionadded:: 6.0.0
     """
     if not allowed:
         return league
-    base = logit(league)
-    return expit(base + sum(logit(d) - base for d in allowed) / len(allowed))
+    base = logit(league if measured is None else measured)
+    return expit(logit(league) + sum(logit(d) - base for d in allowed) / len(allowed))

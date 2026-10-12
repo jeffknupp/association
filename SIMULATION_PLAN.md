@@ -37,7 +37,7 @@ D15"), with the Phase 0 measurements and the section 0c review folded in.
 | D14 | Refetch for `scoreValue`, `wallclock`, served position | none | deferred; do it only if a P3 sibling check needs it |
 | D15 | Build order | all | engine and rotation on box-score and shot-chart rates FIRST; the possession table (P3) and on-court defense are the fidelity upgrade after a first validated game (section 3, "Build order") |
 | D5 | Which games a rate is estimated from | P4 | one `as_of` parameter, point-in-time |
-| D6 | How defense is modeled | P4 | v1: team-level defense (option 1) plus player-level steal, block and rebound weights; option 2 after P3 |
+| D6 | How defense is modeled | P4 | v1: team-level defense (option 1) plus player-level steal, block and rebound weights; option 2 after P3 - done 2026-10-12 (item 9) |
 | D7 | What a rate shrinks toward | P4 | league mean |
 | D8 | Aging and injuries | P4 | out of scope |
 | D9 | numpy | P5 | not in v1 |
@@ -1054,8 +1054,30 @@ check measured on 2019-2026 and recorded in the module docstring:
    correlation predicted; kept as the right unit. The player points
    coverage splits 0.59 for players who really scored 20+ and 0.66 under
    5: the intervals miss at both tails, a rotation-and-minutes question.
-   Next in this item: per-player on-court defense (0b 0.15 measures the
-   signal).
+   **Per-player on-court defense done 2026-10-12** (D6 option 2;
+   `PlayerParams.defended_make_rate` / `defended_turnover_rate` /
+   `defended_trip_rate` / `defended_rebound_rate`, `rates.DEFENSE_RATES`,
+   `LeagueParams.defended`; `shrink.combine_defenders` with a measured mean;
+   `scripts/sim_p9/defense.py`, `results/defense.out`, 0b 0.15). The
+   defense an action meets is the five on the floor, recomputed at every
+   substitution: each factor is the known defenders' log-odds deviations
+   from the league mean of the possession table's statistic, averaged and
+   applied to the engine's league rate, the team's own rate where none of
+   the five is known; the players shrink toward their team's rate over
+   every possession it defended, in the same unit, with fitted strengths
+   (516 possessions for turnovers forced, 498 rim attempts, a thousand for
+   trips and rebounds, a million for threes allowed, which carry no
+   signal). The first run had every lineup allowing more than the league
+   because the possession table's unit (bonus trips and team rebounds
+   included) was compared against box-score league rates; the measured
+   mean fixed it. Validation
+   (`results/validate_2025_from_2025-01-01_2026-10-12_defense.md`, 735
+   games, 11 refused): Brier 0.2214 against the strength model's 0.2259
+   and ESPN's 0.1999 - a per-game gain of 0.0040 (standard error 0.0021)
+   on the usage run, the largest of any change so far - and the spread of
+   simulated margins between games 6.1 from 5.1; every league rate
+   unchanged, margin sd 16.6 against 16.4, total +0.9, coverage 0.745 /
+   0.789 / 0.858, minutes MAE 5.26. **Step 9 is complete.**
 
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.

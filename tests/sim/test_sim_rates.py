@@ -250,7 +250,10 @@ def test_the_league_means_are_the_fixtures_sums(estimates: rates.Estimates) -> N
     assert league.assisted_rate == pytest.approx(2 / 7)
     assert league.live_ball_share == pytest.approx(1 / 2)  # a1's bad pass and traveling
     assert league.home_court == pytest.approx(((8 - 1) + (3 - 6)) / 2)
-    assert set(league.strengths) == {name for name, _, _ in rates.PLAYER_RATES} | {name for name, _, _ in rates.TEAM_RATES} | {"zone_mix", "allowed_zone_mix"}
+    assert set(league.strengths) == {name for name, _, _ in rates.PLAYER_RATES} | {name for name, _, _ in rates.TEAM_RATES} | {name for name, _, _ in rates.DEFENSE_RATES} | {
+        "zone_mix",
+        "allowed_zone_mix",
+    }
 
 
 def test_a_players_rates_are_his_counts_shrunk_toward_the_league(estimates: rates.Estimates) -> None:
@@ -369,3 +372,13 @@ def test_the_duration_histograms_are_shares_over_the_bins_and_the_first_use_seco
 def test_the_usage_share_is_unknown_without_segments(estimates: rates.Estimates) -> None:
     # The fixture builds plays and possessions but no segments, so no lineup can be read: every share is zero and the engine falls back to the per-minute sum.
     assert all(p.usage_share.value == 0.0 and p.usage_share.trials == 0 for p in estimates.players.values())
+
+
+def test_the_defended_rates_are_unknown_without_segments_and_shrink_toward_the_team(estimates: rates.Estimates) -> None:
+    # Without segments nothing was defended on record: every rate is unknown (zero trials) and its prior, the team's rate over the
+    # possessions it defended in the possession table's unit, is zero like the league's; the engine then uses the team's box rates.
+    for p in estimates.players.values():
+        assert p.defended_turnover_rate.trials == 0 and p.defended_turnover_rate.prior == 0.0
+        assert p.defended_trip_rate.trials == 0 and p.defended_rebound_rate.trials == 0
+        assert set(p.defended_make_rate) == set(ZONES) and all(p.defended_make_rate[z].trials == 0 for z in ZONES)
+    assert set(estimates.league.defended) == {name for name, _, _ in rates.DEFENSE_RATES}

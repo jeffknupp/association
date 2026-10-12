@@ -18,7 +18,7 @@ import toy
 from association.sim import engine, shrink
 from association.sim.engine import EngineError, GameSetup, InvariantError, StartersPolicy, TeamSetup, simulate
 from association.sim.events import EVENT_KINDS, SimGame
-from association.sim.params import HEAVE, PlayerGameState, RotationContext
+from association.sim.params import HEAVE, ZONES, PlayerGameState, PlayerParams, RotationContext
 from association.sim.plays import OVERTIME_PERIOD_SECONDS, REGULATION_PERIOD_SECONDS
 
 
@@ -379,3 +379,45 @@ def test_a_usage_share_from_the_possession_table_outranks_the_per_minute_sum() -
     # No share (zero): the per-minute sum decides, as before.
     plain = toy.roster("home")
     assert all(p.usage_share.value == 0.0 for p in plain.values())
+
+
+def _with_defense(players: dict[str, PlayerParams], make_factor: float, known: int = 5) -> dict[str, PlayerParams]:
+    """The first ``known`` players carry on-court defensive rates: the league's make rates times ``make_factor``, the league's other rates."""
+    league = toy.league()
+    out = dict(players)
+    for pid in list(players)[:known]:
+        out[pid] = dataclasses.replace(
+            players[pid],
+            defended_make_rate={z: toy.rate(league.make_rate[z] * make_factor) for z in ZONES},
+            defended_turnover_rate=toy.rate(league.turnover_rate),
+            defended_trip_rate=toy.rate(league.foul_rate),
+            defended_rebound_rate=toy.rate(1 - league.offensive_rebound_rate),
+        )
+    return out
+
+
+def test_the_defense_is_the_five_on_the_floor_and_the_team_when_unknown() -> None:
+    league = toy.league()
+    # Unknown defenders: the team's allowed rate is what the shooter faces (the toy home side allows 0.97 of the league).
+    traced = simulate(toy.setup(), 2, trace=True)
+    makes = [d for d in traced.decisions if d.kind == "make" and "player" in d.inputs]
+    away_shots = {d.inputs["defense"] / league.make_rate[traced.events[d.event_index].zone] for d in makes if traced.events[d.event_index].team == "away"}
+    assert away_shots and all(factor == pytest.approx(0.97) for factor in away_shots)
+    # Five known defenders at 0.8 of the league: the shooter faces exactly their combination.
+    tough = GameSetup(home=toy.with_players("home", toy.roster("home")), away=toy.with_players("away", _with_defense(toy.roster("away"), 0.8)), league=league)
+    traced = simulate(tough, 2, trace=True)
+    for d in traced.decisions:
+        if d.kind == "make" and "player" in d.inputs and traced.events[d.event_index].team == "home":
+            zone = traced.events[d.event_index].zone
+            assert d.inputs["defense"] == pytest.approx(shrink.combine_defenders([league.make_rate[zone] * 0.8] * 5, league.make_rate[zone]))
+    # And the home side makes fewer shots over many games.
+    plain_fgm = sum(simulate(toy.setup(), s).home.fgm for s in range(30))
+    tough_fgm = sum(simulate(tough, s).home.fgm for s in range(30))
+    assert tough_fgm < 0.93 * plain_fgm
+    # Two known of five: their deviations alone are averaged; the three unknown do not pull toward the team.
+    mixed = GameSetup(home=toy.with_players("home", toy.roster("home")), away=toy.with_players("away", _with_defense(toy.roster("away"), 0.8, known=2)), league=league)
+    traced = simulate(mixed, 2, trace=True)
+    seen = {
+        d.inputs["defense"] / league.make_rate[traced.events[d.event_index].zone] for d in traced.decisions if d.kind == "make" and "player" in d.inputs and traced.events[d.event_index].team == "home"
+    }
+    assert all(0.79 < f < 0.98 for f in seen) and len(seen) >= 2

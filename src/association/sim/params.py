@@ -194,7 +194,12 @@ class PlayerParams:
     possession table; the engine normalizes the five's shares to choose who
     uses a possession, and his shots, trips and turnovers per minute (the
     box score's) say how. Without a share (zero), the per-minute sum is the
-    usage weight, as before step 9. Shooting: the zone mix given a shot, the
+    usage weight, as before step 9. Defense (D6 option 2, step 9): what
+    opponents did per possession he defended - make rate by zone,
+    turnovers, trips, the share of their misses his team rebounded - each
+    shrunk toward his team's rate; the engine averages the five defenders'
+    log-odds deviations (:func:`~association.sim.shrink.combine_defenders`)
+    and falls back to the team's rate when none of the five is known. Shooting: the zone mix given a shot, the
     make rate by zone, the and-one and assisted rates on a make, the
     free-throw rate. Rebounding, assisting, stealing and blocking as weights
     per minute, normalized among the players on the floor when the event
@@ -223,6 +228,11 @@ class PlayerParams:
     blocks_per_minute: Rate
     fouls_per_minute: Rate
     usage_share: Rate = field(default_factory=lambda: Rate(0.0, 0.0, 0.0, 0.0))  # his uses over his lineups' uses while on the floor (P4.2); 0 is unknown: the per-minute sum is used
+    # On-court defense (D6 option 2): what opponents did per possession he defended, shrunk toward his TEAM's rate; zero trials is unknown and the team's rate stands in.
+    defended_make_rate: Mapping[str, Rate] = field(default_factory=dict)  # opponents' make rate by zone while he defended
+    defended_turnover_rate: Rate = field(default_factory=lambda: Rate(0.0, 0.0, 0.0, 0.0))  # opponent turnovers per possession he defended
+    defended_trip_rate: Rate = field(default_factory=lambda: Rate(0.0, 0.0, 0.0, 0.0))  # opponent two- and three-shot trips per possession he defended
+    defended_rebound_rate: Rate = field(default_factory=lambda: Rate(0.0, 0.0, 0.0, 0.0))  # his team's share of opponents' misses while he defended
 
     @property
     def near_prior(self) -> bool:
@@ -314,6 +324,7 @@ class LeagueParams:
     strengths: Mapping[str, float] = field(default_factory=dict)
     per_minute: Mapping[str, float] = field(default_factory=dict)
     durations: Mapping[str, tuple[float, ...]] = field(default_factory=dict)  # by DURATION_KEYS: DURATION_BINS shares of the seconds to the next use
+    defended: Mapping[str, float] = field(default_factory=dict)  # league means of the players' on-court defensive rates, in the possession table's unit (rates.DEFENSE_RATES names)
     first_use_seconds: float = 0.0  # the league's mean seconds from a possession's start to its first use (not period starts)
 
     def strength(self, name: str) -> float:
