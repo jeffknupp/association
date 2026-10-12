@@ -268,9 +268,19 @@ this tree:
   slice, 690 after Phase 3, step 3 - and 702 of 2,411 in 405 questions since
   step 4's slice (c) (2026-10-11): twelve words a window read as the typed
   window no longer needs ("games" after "last 10 ..."), left unread by
-  Jeff's ruling to keep that slice's moves; on the 2,082 feed questions 191
-  hold an unread number and 91 disagree between the Reading's list and the
-  deletion, held by nothing yet (`ISSUES.md`, the Phase 3 review) - step 3
+  Jeff's ruling to keep that slice's moves; on the 2,082 feed questions
+  (`claims_ledger.py run --feed`) 3,666 words are unread, 183 questions
+  hold an unread number (191 at the Phase 3 review) and 91 disagree
+  between the Reading's list and the deletion. Since the review's cleanup
+  (b)5 (2026-10-12) both populations are HELD, in
+  `scripts/ledger_held.json`, as the ratchets are: the unread words by
+  count and the questions holding an unread number by question, each
+  population's, and the feed's disagreements by question and its joins by
+  kind (`situation+date` 4, #354). `run` writes which population it read
+  on its first line, and `report` exits 1 on a grown count or a question
+  new to a list, and - on a run of the whole population - on one that fell
+  or left it, until `report --shrink` lowers the file with the change (it
+  only removes and lowers) - step 3
   being where "18-year-old" and the twelve
   words of "since 2000-01, how many games have players recorded 33 points,
   13 rebounds, 10 assists, 2 blocks, and 2 steals?" came to be read (689)
@@ -282,8 +292,8 @@ this tree:
   possessions" (the rate reads per 100 from "per possessions" alone, so the
   number restates it), the "2" of "in 2 hours", which nothing can read, and
   the "2" of "2 threes in games Jamal Murray played" (`ISSUES.md` #357).
-  After a reader change, run it and read the unread numbers first; the
-  count may not grow. It is blind to a word only the model could have
+  After a reader change, run it on both populations and read the unread
+  numbers first; the counts may not grow, and `report` says so. It is blind to a word only the model could have
   dropped, and a word a rule matched and did not need ("games" in "last 10
   games") is unread in both measures, since the claims are cut to the
   words each rule needed. Since Phase 3, step 3 the Reading states the same list

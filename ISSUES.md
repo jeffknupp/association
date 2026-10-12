@@ -2948,11 +2948,11 @@ those were found.
 - **Priority:** P3 - tooling.
 - **GitHub:** #380
 
-### The claims ledger's agreement and unread-number checks hold on the 628 alone: on the 2,082 the Reading's unread and the deletion disagree on 91 questions, and 191 hold an unread number
+### The feed's 183 unread numbers are held but not yet read one by one
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 9).
-- **Evidence:** `claims_ledger.py run --recorded stages/feed_recorded.jsonl` on `4de1801` (the review's `data/ledger-feed-4de1801.jsonl.gz` and its report): the Reading's `unread` and the deletion disagree on 91 of 2,082 (`report` exits 1 there); 191 feed questions hold an unread number (203 on `87cc782`). The "N or more minutes", the stated minimum and the "per 50 possessions" entries above are among them.
-- **User sees:** nothing directly; the entries above are what the number rule would have found.
-- **Next step:** held counts for the feed as `HELD_JOINS` holds the joins (a disagreement count and an unread-number count the report exits 1 on growing), then the 191 numbers read one by one as the 628's nine were in step 3.
+- **Evidence:** `claims_ledger.py run --feed`: 183 of the 2,082 feed questions hold an unread number (191 on `4de1801`, 203 on `87cc782`), and the Reading's `unread` and the deletion disagree on 91. Since the cleanup's (b)5 both are held (`scripts/ledger_held.json`: the questions by text, `report` exits 1 on a new one or a grown count), so a step cannot grow either unseen; the numbers themselves are not yet classified.
+- **User sees:** nothing directly; the shapes the number rule finds.
+- **Next step:** read the 183 one by one as the 628's nine were in step 3: a number restating what was read, a `Line`, `Window` or `Minimum` the reader missed, or a refusal.
 - **Priority:** P3 - a check whose population is too small to see the shapes it is for.
 - **GitHub:** #382
 

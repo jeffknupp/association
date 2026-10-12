@@ -169,7 +169,10 @@ builtin = "clear,rare,en-GB_to_en-US"
 # wording; a spelling corrected there would be a different case.
 # tests/names/*.json are the warehouse's players and teams tables, names and
 # ids alone: a surname is no misspelling.
-skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,completions/*,tests/query/reader_cases.json,tests/names/*.json"
+# scripts/ledger_held.json holds the claims ledger's questions by their text,
+# the feed's typos included: the report matches them
+# exactly, so a corrected spelling would be a question the ledger never read.
+skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,completions/*,tests/query/reader_cases.json,tests/names/*.json,scripts/ledger_held.json"
 # Basketball and ESPN tokens, not misspellings: OT (overtime), IST (the
 # In-Season Tournament), PlayIn (ESPN's play-in season-type label). "alltime"
 # is the yardstick-v2 F111 question's own spelling ("alperen şengün alltime

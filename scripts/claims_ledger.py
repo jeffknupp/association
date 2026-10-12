@@ -61,6 +61,41 @@ from typing import Any
 RECORDED_DIR = Path.home() / "association-research" / "parser-greenfield"
 DEFAULT_RECORDED = tuple(RECORDED_DIR / name for name in ("normalizer_qwen2.5_3b.jsonl", "normalizer_corpus_qwen2.5_3b.jsonl", "normalizer_paraphrases_qwen2.5_3b.jsonl"))
 DEFAULT_TODAY = "2026-09-30"
+FEED_RECORDED = Path.home() / "association-research" / "stages" / "feed_recorded.jsonl"
+HELD_PATH = Path(__file__).resolve().with_name("ledger_held.json")
+"""The counts the report holds each whole population to (``corpus``, the
+628 recorded questions; ``feed``, the 2,082 the feed's answered population
+reads, ``scripts/stage_snapshots.py run --feed``): the unread content words,
+the questions holding an unread NUMBER (a word with a digit), and for the
+feed the questions whose Reading states other unread words than the
+deletion finds and the joined claims by kind - the 628's are
+:data:`HELD_DISAGREEMENTS` and :data:`HELD_JOINS`, each held with Jeff's
+ruling. A count that grows, or a question new to a list, fails the report;
+one that fell or left a list fails it too, on a run of the whole
+population, until ``report --shrink`` lowers the file with the change (it
+only removes and lowers, as ``scripts/check_ratchets.py --shrink``)."""
+POPULATIONS = {"corpus": 628, "feed": 2082}
+"""How many questions each held population holds: a run of fewer is part
+of one (``--match``) and is held only to what it can show grew."""
+
+
+def population_of(recorded: list[Path], match: list[str] | None) -> str:
+    """Which population a run reads: ``corpus`` (the three recorded files),
+    ``feed`` (:data:`FEED_RECORDED`), or ``other`` - which nothing holds."""
+    if match:
+        return "other"
+    paths = [path.resolve() for path in recorded]
+    if paths == [path.resolve() for path in DEFAULT_RECORDED]:
+        return "corpus"
+    return "feed" if paths == [FEED_RECORDED.resolve()] else "other"
+
+
+def has_number(word: str) -> bool:
+    """A word holding a digit - "30", "2nd", "11/29/24", "under40.0%": an
+    unread one is a number the reading does not depend on, which is a bug
+    unless it restates what the words already read ("100" of "per 100
+    possessions")."""
+    return any(char.isdigit() for char in word)
 
 
 def without(question: str, start: int, end: int) -> str:
@@ -164,9 +199,20 @@ def run(args: argparse.Namespace) -> int:
             row = json.loads(line)
             replies.setdefault(row["q"], row["out"])
     read = _reader(args.db_path)
-    print(json.dumps({"code": str(Path(association.__file__).resolve()), "db": str(args.db_path.resolve()), "today": args.today, "questions": len(replies)}), flush=True)
+    meta = {
+        "code": str(Path(association.__file__).resolve()),
+        "db": str(args.db_path.resolve()),
+        "today": args.today,
+        "questions": len(replies),
+        "population": population_of(args.recorded, args.match),
+    }
+    print(json.dumps(meta), flush=True)
     started = time.monotonic()
     with args.out.open("w") as out:
+        # The population the ledger was read over, which the report holds
+        # it to (HELD_PATH): the 628 recorded questions, the 2,082 feed
+        # questions, or neither.
+        out.write(json.dumps({"meta": meta}) + "\n")
         for index, (question, reply) in enumerate(replies.items(), 1):
             if "error" in reply or (args.match and not any(word.lower() in question.lower() for word in args.match)):
                 continue
@@ -190,19 +236,132 @@ def run(args: argparse.Namespace) -> int:
 
 
 def report(args: argparse.Namespace) -> int:
-    """The count of unread content words, and the most common ones."""
-    rows = [json.loads(line) for line in args.ledger.read_text().splitlines()]
+    """The count of unread content words, and the most common ones; 1 where a
+    disagreement, a join or a held count (:data:`HELD_PATH`) fails."""
+    lines = [json.loads(line) for line in args.ledger.read_text().splitlines()]
+    meta = next((line["meta"] for line in lines if "meta" in line), {})
+    rows = [line for line in lines if "meta" not in line]
+    population = meta.get("population", "other")
+    _print_unread(rows, args.top, args.show)
+    # The held counts first: under --shrink they lower the file, and the
+    # feed's held lists below are read from it as lowered.
+    counts = _report_held(rows, population, shrink=getattr(args, "shrink", False))
+    if population == "feed":
+        held = _held().get("feed", {})
+        disagreements = _report_held_disagreements(rows, held)
+        joins = _report_joins(rows, held.get("joins", {}), POPULATIONS["feed"])
+    else:
+        disagreements = _report_disagreements(rows)
+        joins = _report_joins(rows)
+    return 1 if disagreements or joins or counts else 0
+
+
+def _print_unread(rows: list[dict[str, Any]], top: int, show: int) -> None:
+    """The unread content words, the most common of them, and the questions
+    holding an unread number, with ``show`` of each listed."""
     content = sum(len(row["content_words"]) for row in rows)
     unread = Counter(word for row in rows for word in row["unread"])
     with_unread = sum(1 for row in rows if row["unread"])
     print(f"{len(rows)} questions, {content} content words: {sum(unread.values())} unread ({sum(unread.values()) / max(content, 1):.1%}) in {with_unread} questions")
-    print("most common: " + ", ".join(f"{word} {count}" for word, count in unread.most_common(args.top)))
-    for row in rows[: args.show] if args.show else []:
+    print("most common: " + ", ".join(f"{word} {count}" for word, count in unread.most_common(top)))
+    for row in rows[:show] if show else []:
         if row["unread"]:
             print(f"  {row['question']}  ->  {' '.join(row['unread'])}")
-    disagreements = _report_disagreements(rows)
-    joins = _report_joins(rows)
-    return 1 if disagreements or joins else 0
+    numbers = [row for row in rows if any(has_number(word) for word in row["unread"])]
+    print(f"questions with an unread number: {len(numbers)}")
+    for row in numbers[:show] if show else []:
+        print(f"  {row['question']}  ->  {[word for word in row['unread'] if has_number(word)]}")
+
+
+def _held() -> dict[str, Any]:
+    """The held counts by population (:data:`HELD_PATH`)."""
+    return dict(json.loads(HELD_PATH.read_text())) if HELD_PATH.exists() else {}
+
+
+def _held_questions(rows: list[dict[str, Any]], what: str, now: set[str], held: set[str], *, whole: bool) -> tuple[int, int, set[str]]:
+    """``now`` (the questions of a list found in this run) against ``held``:
+    whether a question is new to the list, whether one held that this run
+    asked is off it now (it leaves the list with its fix), and the list as
+    it may be lowered to."""
+    asked = {row["question"] for row in rows}
+    new = sorted(now - held)
+    gone = sorted((held & asked) - now)
+    for question in new:
+        print(f"  NEW {what}: {question!r}")
+    for question in gone:
+        print(f"  GONE {what}: {question!r} - remove it with the change that cleared it (report --shrink)")
+    return (1 if new else 0), (1 if gone else 0), (held - set(gone) if whole else held)
+
+
+def _report_held(rows: list[dict[str, Any]], population: str, *, shrink: bool = False) -> int:
+    """A whole population's unread words and unread-number questions
+    against :data:`HELD_PATH`: 1 on a grown count or a new question, and -
+    on a run of the whole population - on a count that fell or a question
+    gone, until ``--shrink`` lowers the file (it never raises a count, and
+    a growth still fails under it)."""
+    if population not in POPULATIONS:
+        return 0
+    held_file = _held()
+    held = held_file.get(population, {})
+    whole = len(rows) >= POPULATIONS[population]
+    unread = sum(len(row["unread"]) for row in rows)
+    held_unread = int(held.get("unread_words", 0))
+    grew, fell = _held_count(f"held ({population}): unread words", unread, held_unread, whole=whole)
+    numbers = {row["question"] for row in rows if any(has_number(word) for word in row["unread"])}
+    print(f"held ({population}): questions with an unread number {len(numbers)} (held {len(held.get('unread_numbers', []))})")
+    new, gone, numbers_lowered = _held_questions(rows, "unread number", numbers, set(held.get("unread_numbers", [])), whole=whole)
+    grew, fell = grew | new, fell | gone
+    lowered = {**held, "unread_words": min(unread, held_unread) if whole else held_unread, "unread_numbers": sorted(numbers_lowered)}
+    if population == "feed" and whole:
+        # The feed's disagreements and joins are reported (and fail) beside
+        # this; here they are only lowered with the rest under --shrink.
+        lowered.update(_feed_lowered(rows, held))
+    if not shrink:
+        return grew | fell
+    if not whole:
+        print(f"  --shrink needs a run of the whole population ({POPULATIONS[population]} questions); nothing written")
+        return 1
+    held_file[population] = lowered
+    HELD_PATH.write_text(json.dumps(held_file, indent=1, sort_keys=True) + "\n")
+    print(f"  wrote {HELD_PATH.name}: {population} lowered to this run where it fell")
+    return grew
+
+
+def _held_count(what: str, now: int, held: int, *, whole: bool) -> tuple[int, int]:
+    """A held count against this run's: whether it grew, and - on a run of
+    the whole population - whether it fell (lowered with the change)."""
+    print(f"{what} {now} (held {held})")
+    if now > held:
+        print(f"  GREW: {what.split(': ', 1)[-1]} {held} -> {now}")
+        return 1, 0
+    if now < held and whole:
+        print(f"  FELL: {what.split(': ', 1)[-1]} {held} -> {now} - lower it with the change (report --shrink)")
+        return 0, 1
+    return 0, 0
+
+
+def _feed_lowered(rows: list[dict[str, Any]], held: dict[str, Any]) -> dict[str, Any]:
+    """The feed's held disagreements and joins as a whole run lowers them:
+    a held question still differing, a held kind's count at most this run's."""
+    differ = {row["question"] for row in rows if "reading_unread" in row and row["reading_unread"] != row["unread"]}
+    joins = Counter(what for row in rows for what in row.get("joined", []))
+    return {
+        "disagreements": sorted(set(held.get("disagreements", [])) & differ),
+        "joins": {what: min(count, joins[what]) for what, count in held.get("joins", {}).items() if joins.get(what)},
+    }
+
+
+def _report_held_disagreements(rows: list[dict[str, Any]], held: dict[str, Any]) -> int:
+    """The feed's questions whose Reading states other unread words than
+    the deletion finds, against the held list (:data:`HELD_PATH`): the
+    subject reading's claims are declared, never probed (``ROADMAP-TYPES.md``,
+    "Still open" 16), and the feed's disagreements were measured, not
+    examined one by one - so they are held by question, and one new fails."""
+    stated = [row for row in rows if "reading_unread" in row]
+    differ = {row["question"] for row in stated if row["reading_unread"] != row["unread"]}
+    print(f"the Reading's own unread words: {len(stated) - len(differ)} of {len(stated)} questions agree with the deletion, {len(differ)} differ (held {len(held.get('disagreements', []))})")
+    new, gone, _ = _held_questions(rows, "disagreement", differ, set(held.get("disagreements", [])), whole=len(rows) >= POPULATIONS["feed"])
+    return new | gone
 
 
 #: The questions whose Reading states other unread words than the deletion
@@ -282,27 +441,29 @@ HELD_JOINS_QUESTIONS = 628
 HELD_JOINS: dict[str, int] = {}
 
 
-def _report_joins(rows: list[dict[str, Any]]) -> int:
-    """The joined claims by kind against :data:`HELD_JOINS`, and 1 on a new
-    kind, a grown count, or - on a run of every recorded question - a count
-    that fell or a kind gone (lowered or removed here with the change); 0
-    where the ledger was run on a tree that records none."""
+def _report_joins(rows: list[dict[str, Any]], table: dict[str, int] | None = None, questions: int | None = None) -> int:
+    """The joined claims by kind against :data:`HELD_JOINS` (or the feed's
+    held table, ``table`` over ``questions``), and 1 on a new kind, a grown
+    count, or - on a run of every question held - a count that fell or a
+    kind gone (lowered or removed with the change); 0 where the ledger was
+    run on a tree that records none."""
     if not any("joined" in row for row in rows):
         return 0
+    held_joins = HELD_JOINS if table is None else table
     # A run of part of the corpus (``--match``, a test's) can grow a count
     # and cannot vouch for one that fell: only a run of every recorded
     # question is held to the table's falls.
-    whole = len(rows) >= HELD_JOINS_QUESTIONS
+    whole = len(rows) >= (HELD_JOINS_QUESTIONS if questions is None else questions)
     found = Counter(what for row in rows for what in row.get("joined", []))
     print("joined claims: " + (", ".join(f"{what} {count}" for what, count in found.most_common()) or "none"))
     failed = 0
-    for what in sorted(set(found) | set(HELD_JOINS)):
-        held, now = HELD_JOINS.get(what, 0), found.get(what, 0)
+    for what in sorted(set(found) | set(held_joins)):
+        held, now = held_joins.get(what, 0), found.get(what, 0)
         if now > held:
             print(f"  {'NEW' if not held else 'GREW'}: {what} {held} -> {now}")
             failed = 1
         elif now < held and whole:
-            print(f"  {'GONE' if not now else 'FELL'}: {what} {held} -> {now} - lower HELD_JOINS with the change")
+            print(f"  {'GONE' if not now else 'FELL'}: {what} {held} -> {now} - lower the held joins with the change")
             failed = 1
     return failed
 
@@ -317,11 +478,13 @@ def main() -> int:
     run_parser.add_argument("--db-path", type=Path, default=Path("nba.duckdb"))
     run_parser.add_argument("--today", default=DEFAULT_TODAY, help="the date the run reads as (ASSOCIATION_TODAY)")
     run_parser.add_argument("--match", action="append", help="only questions containing this text (repeatable)")
+    run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"read the 2,082 feed questions instead ({FEED_RECORDED})")
     run_parser.set_defaults(func=run)
     report_parser = commands.add_parser("report", help="print the count of unread content words and the most common")
     report_parser.add_argument("ledger", type=Path)
     report_parser.add_argument("--top", type=int, default=40)
     report_parser.add_argument("--show", type=int, default=0, help="also print this many questions with their unread words")
+    report_parser.add_argument("--shrink", action="store_true", help=f"lower {HELD_PATH.name} to a whole population's run where a count fell or a question left a list; never raises one")
     report_parser.set_defaults(func=report)
     args = parser.parse_args()
     return int(args.func(args))
