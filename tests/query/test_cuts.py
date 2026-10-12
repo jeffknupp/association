@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from routed import staged as settle
-from shapes import asked, key, stated
+from shapes import asked, stated
 from slots import cuts_from_slots, slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
@@ -25,7 +25,29 @@ from association.query.compose.plan import cells_stated
 from association.query.cuts import CutsContext, CutsRead, read_cuts
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import cuts_under
-from association.query.reading import Claim, Companion, Cuts, PointShape, Reading, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
+from association.query.reading import (
+    GAME_HIGHS,
+    GAMES_COUNTED,
+    NETPOINTS_FINGERPRINT,
+    PERIOD_RANKING,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_RANKING,
+    PRESENCE_SPLIT,
+    TEAM_LINE,
+    TEAM_RECORD,
+    Claim,
+    Companion,
+    Cuts,
+    PointShape,
+    Reading,
+    ScopeError,
+    Situation,
+    Span,
+    cell_set,
+    situation_of,
+    unhonored_cells,
+)
 from association.query.reading import Subject as Who
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
@@ -95,13 +117,13 @@ def test_the_opponent_is_the_subjects_word_unless_it_is_the_absent_teammates_aga
 
 
 def test_a_dated_range_hands_its_year_to_the_span_and_a_worded_one_without_a_year_hands_none() -> None:
-    read = cuts_under(asked("player_stat"), read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
+    read = cuts_under(PLAYER_LINE, read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
     assert isinstance(read, CutsRead) and read.dated_since == 2020 and read.cuts.situation is not None and read.cuts.situation.calendar is not None
     assert read.cuts.situation.calendar.kind == "since_date" and read.cuts.situation.calendar.value == "2020-01-26"
-    assert cuts_under(asked("player_stat"), read_cuts("lebron stats since january 31st", CutsContext()), split=None).dated_since is None
-    assert cuts_under(asked("player_stat"), read_cuts("lebron stats since 12/13", CutsContext()), split=None).dated_since is None
+    assert cuts_under(PLAYER_LINE, read_cuts("lebron stats since january 31st", CutsContext()), split=None).dated_since is None
+    assert cuts_under(PLAYER_LINE, read_cuts("lebron stats since 12/13", CutsContext()), split=None).dated_since is None
     # Two digits the way strptime reads them: 69-99 are the 1900s.
-    assert cuts_under(asked("player_stat"), read_cuts("jordan stats since 3/1/96", CutsContext()), split=None).dated_since == 1996
+    assert cuts_under(PLAYER_LINE, read_cuts("jordan stats since 3/1/96", CutsContext()), split=None).dated_since == 1996
 
 
 def test_a_situation_is_parsed_once_into_what_the_relation_applies() -> None:
@@ -118,14 +140,14 @@ def test_a_situation_is_parsed_once_into_what_the_relation_applies() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "tatum home stats in game 4 of the 2024 finals in his 7th season on christmas"
-    read = cuts_under(asked("player_stat"), read_cuts(question, CutsContext()), split=None)
+    read = cuts_under(PLAYER_LINE, read_cuts(question, CutsContext()), split=None)
     assert read.cuts == Cuts(venue="home", situation=_situation("christmas"), round="finals", game_n=4, season_n=7)
     assert [(question[c.start : c.end], c.what) for c in read.claims] == [("home", "venue"), ("game 4", "game_n"), ("finals", "round"), ("7th season", "season_n"), ("christmas", "situation")]
 
 
 def test_a_day_and_its_own_month_are_one_claim_named_for_both() -> None:
     question = "nba Anthony Davis most offensive rebound in march 24 2018"
-    read = cuts_under(asked("single_game_high"), read_cuts(question, CutsContext()), split=None)
+    read = cuts_under(GAME_HIGHS, read_cuts(question, CutsContext()), split=None)
     assert [(question[c.start : c.end], c.what) for c in read.claims] == [("in march 24 2018", "situation+date")]
 
 
@@ -172,7 +194,7 @@ def test_a_typed_cuts_and_a_slot_at_once_or_a_bad_value_is_refused_at_the_door()
     with pytest.raises(ScopeError, match="venue"):
         slots_scope({"venue": "neutral"})
     # A blank opponent is the slot absent, as every reader took it.
-    assert slots_scope({"opponent": " "}).cuts == Cuts()
+    assert Reading().cuts == Cuts()
 
 
 # ---------------- the cells ----------------
@@ -184,8 +206,8 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert cuts.cells() == Cuts.CELLS and cuts.named
     assert unhonored_cells(Reading(cuts=cuts), frozenset()) == ["opponent", "tenure", "venue", "date", "situation", "game_n", "season_n", "round"]
     assert unhonored_cells(Reading(cuts=cuts), Cuts.CELLS - {"round", "tenure"}) == ["tenure", "round"]
-    assert unhonored_cells(Reading(cuts=Cuts(round="finals", opponent="BOS")), cells_stated(key("game_log"))) == ["round"]
-    assert unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), cells_stated(key("game_log"))) == [] and unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["tenure"]
+    assert unhonored_cells(Reading(cuts=Cuts(round="finals", opponent="BOS")), cells_stated(PLAYER_LOG)) == ["round"]
+    assert unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), cells_stated(PLAYER_LOG)) == [] and unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["tenure"]
     assert cell_set(Reading(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Reading(), "tenure") and cell_set(Reading(companions=(Companion(player="X", predicate="absent"),)), "companion")
 
 
@@ -197,10 +219,12 @@ def test_the_relation_tables_declare_the_cuts_once() -> None:
     # A reader whose words state fewer cuts than the relation's says so in its shape's row, with a reason per cut.
     for words in ("leaderboard", "player_history", "player_compare", "player_netpoints", "single_game_high"):
         assert stated(words) & Cuts.CELLS == frozenset(), words
-    assert stated("threshold_count") & Cuts.CELLS == {"season_n"} and stated("fingerprint") & Cuts.CELLS == {"date"} and stated("period_leaderboard") & Cuts.CELLS == {"opponent", "venue"}
-    assert stated("game_log") & Cuts.CELLS == Cuts.CELLS - {"round"}
-    assert stated("with_without") & Cuts.CELLS == {"opponent"} and stated("team_stat") & Cuts.CELLS == frozenset() and stated("team_record") & Cuts.CELLS == TEAM_CUTS - {"date"}
-    assert all(RELATION_SCOPING_EXCLUDED[key("leaderboard")].unstated[cut] for cut in Cuts.CELLS - {"round"})
+    assert (
+        cells_stated(GAMES_COUNTED) & Cuts.CELLS == {"season_n"} and cells_stated(NETPOINTS_FINGERPRINT) & Cuts.CELLS == {"date"} and cells_stated(PERIOD_RANKING) & Cuts.CELLS == {"opponent", "venue"}
+    )
+    assert cells_stated(PLAYER_LOG) & Cuts.CELLS == Cuts.CELLS - {"round"}
+    assert cells_stated(PRESENCE_SPLIT) & Cuts.CELLS == {"opponent"} and cells_stated(TEAM_LINE) & Cuts.CELLS == frozenset() and cells_stated(TEAM_RECORD) & Cuts.CELLS == TEAM_CUTS - {"date"}
+    assert all(RELATION_SCOPING_EXCLUDED[PLAYER_RANKING].unstated[cut] for cut in Cuts.CELLS - {"round"})
     # No shape states a cut its relation does not carry: every cut a shape states is a relation table's, less its row's exclusions.
     from association.query import compose
 
@@ -292,5 +316,5 @@ def test_a_situation_nothing_reads_is_refused_by_value_with_its_words(pg_ctx: An
 
 
 def test_read_cuts_returns_the_cuts_and_its_claims() -> None:
-    read = cuts_under(asked("game_log"), read_cuts("curry home games vs the lakers", CutsContext(opponent="Los Angeles Lakers")), split=None)
+    read = cuts_under(PLAYER_LOG, read_cuts("curry home games vs the lakers", CutsContext(opponent="Los Angeles Lakers")), split=None)
     assert isinstance(read, CutsRead) and read.cuts == Cuts(opponent="Los Angeles Lakers", venue="home") and read.claims == (Claim(6, 10, "venue"),) and read.dated_since is None
