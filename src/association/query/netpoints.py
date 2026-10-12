@@ -8,8 +8,11 @@ player's season line, the categories behind it, one game's) and the three
 the fingerprint's loaders ran (:mod:`association.query.fingerprint`, the
 season's pool, the per-game pool, a player's first or last game) moved
 here whole, text-identical, with the parameters each took. The readers keep
-their words and the fingerprint its pool and drawing; nothing outside this
-module writes a NetPoints statement.
+their words and the fingerprint its pool and drawing, and run no statement
+of their own. Not yet every statement over these tables: the season line
+reads ``net_points_player`` for a comparison's NetPoints rows and ranks its
+NetPoints metrics (:mod:`association.query.season_line`), and the name
+resolver reads which players have a row (``entities.narrow_to_available``).
 
 Four tables, three encodings of the season type (``DATA.md``):
 ``net_points_player`` keeps its own STRING (``net_points_season_type``,

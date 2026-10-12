@@ -7,8 +7,11 @@ the shot relation's reader ran (:mod:`association.query.compose.shots`: the
 games a narrowing sends a shot read to, a player's average shot distance,
 the shots a chart draws) moved here whole, text-identical, with the
 parameters each took. The reader keeps its words and the chart its drawing
-(``compose.shots.draw_shot_chart``); nothing outside this module writes a
-statement over ``shot_chart``.
+(``compose.shots.draw_shot_chart``), and runs no statement of its own. Not
+every read of ``shot_chart`` is this relation's: the period relations
+rebuild a quarter's points from it (:mod:`association.query.player_games`,
+:mod:`association.query.team_games`), a join inside their own statements,
+and the name resolver reads who has a row (``entities.narrow_to_available``).
 
 What a shot is worth is read by :data:`~association.query.shotchart.SHOT_VALUE_SQL`,
 never ``points_attempted`` (0 there means unlabeled, not zero points;

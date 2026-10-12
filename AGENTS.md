@@ -566,9 +566,9 @@ gets turned off.
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py`, and the
     two declared relations' own since Phase 4, step 5: `netpoints.py`,
-    the NetPoints relation, which builds and runs every statement over
-    the NetPoints tables, and `shots.py`, the shot relation, every
-    statement over `shot_chart`), the
+    the NetPoints relation, which builds and runs every statement the
+    NetPoints reader and the fingerprint read, and `shots.py`, the shot
+    relation, every statement its chart and distance read), the
     compiler's readers and the sayer (`compose/`), the coverage
     declaration (`coverage.py`), renderers, the answering loop
     (`agent.py`). `web/` - the local web interface.
@@ -1794,8 +1794,8 @@ a shape:
   `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
   per the decision "Charts are declared shapes", over the NetPoints
   relation (`query/netpoints.py`, since Phase 4, step 5: every statement
-  over the NetPoints tables is built and run there, through
-  `core.values_of`, and `compose/` and `fingerprint.py` run none):
+  the two read is built and run there, through `core.values_of`, and
+  `compose/netpoints.py` and `fingerprint.py` run none):
   `read_player_netpoints` reads a season's line, its categories or one
   game's through it (`netpoints.season_totals`, `season_categories`,
   `game_line`); `read_fingerprint` reads through `query/fingerprint.py`'s
