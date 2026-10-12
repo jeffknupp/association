@@ -36,6 +36,8 @@ from test_templates import player_stat  # the compiler's, player_stat's template
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
+from association.query.reading import Measure, Reading
+from association.query.reading import Subject as Who
 
 SEASON = current_season()
 
@@ -130,7 +132,7 @@ def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_
     used to answer the season line (24.0 in 4 games) with Embiid nowhere in
     it. Also pins the unnarrowed season line, so a future change cannot make
     this pass by coincidence (both branches reading the same number)."""
-    season = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points"}))
+    season = player_stat(pstat_conditions_ctx, Reading(who=Who(kind="player", players=("Tyrese Maxey",)), measure=Measure(key="points", as_typed="points")))
     assert season.answer == f"Tyrese Maxey averaged 24 points per game in 4 games in the {SEASON} regular season. That is 96 in total."
 
     started = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]}))
