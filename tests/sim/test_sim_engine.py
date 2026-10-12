@@ -358,3 +358,24 @@ def test_durations_come_from_the_leagues_histograms_and_the_offenses_factor() ->
     broken = dataclasses.replace(toy.league(), durations={**toy.DURATIONS, "made_shot": (0.5, 0.5)})
     with pytest.raises(EngineError, match="shares summing to one"):
         simulate(GameSetup(home=toy.with_players("home", toy.roster("home")), away=toy.with_players("away", toy.roster("away")), league=broken), 1)
+
+
+def test_a_usage_share_from_the_possession_table_outranks_the_per_minute_sum() -> None:
+    # Five identical players, but one carries a usage share of 0.4 against the others' 0.15: he takes about 40% of the uses.
+    players = toy.roster("home")
+    ids = list(players)
+    shares = {ids[0]: 0.4, ids[1]: 0.15, ids[2]: 0.15, ids[3]: 0.15, ids[4]: 0.15}
+    with_shares = {pid: dataclasses.replace(p, usage_share=toy.rate(shares.get(pid, 0.2))) for pid, p in players.items()}
+    setup = GameSetup(home=toy.with_players("home", with_shares), away=toy.with_players("away", toy.roster("away")), league=toy.league())
+    uses: Counter[str] = Counter()
+    for seed in range(40):
+        for e in simulate(setup, seed).events:
+            if e.team == "home" and e.kind in ("shot", "turnover") and e.outcome not in ("putback",):
+                actor = e.actors.get("shooter") or e.actors.get("player")
+                if actor in shares:
+                    uses[actor] += 1
+    starters = sum(uses[i] for i in ids[:5])
+    assert uses[ids[0]] / starters == pytest.approx(0.4, abs=0.03)
+    # No share (zero): the per-minute sum decides, as before.
+    plain = toy.roster("home")
+    assert all(p.usage_share.value == 0.0 for p in plain.values())

@@ -14,11 +14,13 @@ records and box lines and renders nothing (D11); step 7 writes the text.
 Pure Python over ``random.Random(seed)`` (D9): the same seed and inputs give
 an equal :class:`~association.sim.events.SimGame`, field for field.
 
-**How the per-minute inputs drive a possession.** Who uses a possession is
-drawn from the five's usage weights, ``shots_per_minute +
-free_throw_trips_per_minute + turnovers_per_minute``; units cancel in the
-normalization. What he does with it is his own mix of the three, which is a
-probability per USE (a shot, a trip or a turnover; a possession holds one use
+**How the inputs drive a possession.** Who uses a possession is drawn
+from the five's usage weights: each player's ``usage_share`` (his uses over
+his lineups' uses while he was on the floor, from the possession table;
+step 9) or, when that is unknown, ``shots_per_minute +
+free_throw_trips_per_minute + turnovers_per_minute``, either way normalized
+over the five. What he does with it is his own mix of the three per-minute
+rates, which is a probability per USE (a shot, a trip or a turnover; a possession holds one use
 plus one more per offensive rebound). The defense moves the turnover and the
 foul-draw probabilities through :func:`~association.sim.shrink.combine`
 against the league's per-possession ``turnover_rate`` and ``foul_rate``:
@@ -448,13 +450,15 @@ class _Player:
     def __init__(self, params: PlayerParams, defense: TeamParams, league: LeagueParams, multiplier: float) -> None:
         self.id = params.athlete_id
         shots, trips, turnovers = params.shots_per_minute.value, params.free_throw_trips_per_minute.value, params.turnovers_per_minute.value
-        self.usage = shots + trips + turnovers
+        per_minute = shots + trips + turnovers
+        # The share of his lineups' uses from the possession table (step 9); the per-minute sum when the share is unknown.
+        self.usage = params.usage_share.value if params.usage_share.value > 0.0 else per_minute
         self.trips_pm = trips
         self.fouls_pm = params.fouls_per_minute.value
         # The user's own mix per use, the turnover and the foul draw moved by the defense (module docstring).
-        if self.usage > 0.0:
-            p_to = adjusted(turnovers / self.usage, defense.forced_turnover_rate.value, league.turnover_rate)
-            p_trip = adjusted(trips / self.usage, defense.foul_rate.value, league.foul_rate)
+        if per_minute > 0.0:
+            p_to = adjusted(turnovers / per_minute, defense.forced_turnover_rate.value, league.turnover_rate)
+            p_trip = adjusted(trips / per_minute, defense.foul_rate.value, league.foul_rate)
         else:
             p_to, p_trip = 0.0, 0.0  # a player with no usage shoots if he is somehow chosen (the fallback below)
         scale = max(p_to + p_trip, 1.0)  # the two adjusted probabilities may sum past one; the shot takes the rest

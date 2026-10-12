@@ -1,0 +1,20 @@
+Regular seasons 2024-2026: 823,802 uses by a player on the floor of a resolved segment, 4,146,435 on-floor rows; league share 0.1987 (one fifth by construction)
+
+Most uses, with the share of the lineup's uses and the box-score proxy (FGA + TOV per minute, as a share of the lineup's five at the league's mean minutes):
+player                          uses   lineup   share  per-min proxy
+Shai Gilgeous-Alexander         5772    17320   0.333          0.315
+Anthony Edwards                 5627    17790   0.316          0.307
+Luka Doncic                     5532    15378   0.360          0.342
+Jalen Brunson                   5412    17730   0.305          0.300
+Nikola Jokic                    5182    17660   0.293          0.287
+Kevin Durant                    5116    18244   0.280          0.275
+Devin Booker                    5104    17104   0.298          0.288
+Cade Cunningham                 4971    15905   0.313          0.321
+Jaylen Brown                    4955    15889   0.312          0.306
+Tyrese Maxey                    4848    16786   0.289          0.287
+Donovan Mitchell                4755    15239   0.312          0.312
+De'Aaron Fox                    4741    16917   0.280          0.283
+
+Share against the per-minute proxy over 545 players with 500+ minutes: correlation 0.989
+Ratio share / proxy, quantiles 5-25-50-75-95: 0.934 0.960 0.984 1.011 1.058
+A ratio above one is a player whose lineups play slower than the league (his minutes hold fewer uses) or who uses more of them than his minutes say.

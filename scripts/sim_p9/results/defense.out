@@ -1,0 +1,11 @@
+Regular seasons 2024-2026: 3,645,680 defender-possessions, 801 defenders
+
+factor                         league  n(2000+)   sd raw  sd noise  signal sd  odd/even r
+opp turnovers / possession     0.1425       464   0.0123    0.0048     0.0113       0.692
+opp trips / possession         0.0951       464   0.0085    0.0040     0.0075       0.534
+opp FG% allowed                0.4701       464   0.0132    0.0072     0.0111       0.496
+opp rim FG% allowed            0.6787       464   0.0238    0.0131     0.0198       0.396
+opp 3P% allowed                0.3602       464   0.0118    0.0107     0.0050       0.130
+opp OREB share of misses       0.2941       464   0.0174    0.0088     0.0150       0.501
+
+signal sd is sqrt(sd raw^2 - sd noise^2): the spread of true on-court rates among regulars; odd/even r is the correlation of a player-season's two halves (1500+ possessions each).

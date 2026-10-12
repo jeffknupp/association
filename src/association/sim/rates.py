@@ -211,6 +211,7 @@ PLAYER_RATES: tuple[Spec, ...] = (
     ("steals_per_minute", "stl", "minutes"),
     ("blocks_per_minute", "blk", "minutes"),
     ("fouls_per_minute", "pf", "minutes"),
+    ("usage_share", "uses", "lineup_uses"),
     *((f"make_rate.{zone}", f"makes.{zone}", f"attempts.{zone}") for zone in ZONES),
 )
 """Every binomial or per-minute player rate: its field name on
@@ -547,6 +548,39 @@ def _read_first_uses(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, co
         _add(counts, (str(team), int(season), int(parity)), use_seconds=float(seconds), first_uses=uses)
 
 
+USES_SQL = "(a.kind IN ('shot', 'turnover') OR (a.kind = 'free_throw' AND a.ft_kind = 'regular' AND a.ft_number = 1 AND a.ft_of >= 2))"
+"""A USE of the ball in ``sim_actions`` for the usage share: a shot, a
+turnover, or the first free throw of a two- or three-shot trip (an and-one's
+free throw belongs to its shot).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def _read_uses(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts: Counts) -> None:
+    """Each player's uses and his lineups' uses while he was on the floor of
+    a resolved segment, per player-season-parity (``scripts/sim_p9/usage.py``
+    is the measurement)."""
+    rows = con.execute(
+        f"""WITH {ctes},
+        uses AS (
+            SELECT a.event_id, a.season, a.period, a.segment_no, a.team_id, a.athlete_id
+            FROM sim_actions a JOIN games g ON g.event_id = a.event_id AND g.season = a.season
+            WHERE a.season IN {seasons} AND a.poss_no IS NOT NULL AND {USES_SQL}
+        ),
+        on_floor AS (
+            SELECT u.event_id, u.season, u.athlete_id, unnest(CASE WHEN u.team_id = g.home_team_id THEN s.home_lineup ELSE s.away_lineup END) AS on_id
+            FROM uses u JOIN games g ON g.event_id = u.event_id AND g.season = u.season
+            JOIN sim_segments s ON s.event_id = u.event_id AND s.season = u.season AND s.period = u.period AND s.segment_no = u.segment_no AND s.resolved
+        )
+        SELECT pg.athlete_id, pg.season, pg.parity, count(*) FILTER (WHERE o.athlete_id = o.on_id), count(*)
+        FROM on_floor o JOIN player_games pg ON pg.athlete_id = o.on_id AND pg.season = o.season AND pg.event_id = o.event_id
+        GROUP BY 1, 2, 3"""
+    ).fetchall()
+    for athlete, season, parity, uses, lineup_uses in rows:
+        _add(counts, (str(athlete), int(season), int(parity)), uses=uses, lineup_uses=lineup_uses)
+
+
 def _read_home_margin(con: duckdb.DuckDBPyConnection, ctes: str) -> tuple[float, int]:
     margin, games = con.execute(f"WITH {ctes} SELECT coalesce(avg(home_score - away_score), 0.0), count(*) FROM games").fetchone() or (0.0, 0)
     return float(margin), int(games)
@@ -629,6 +663,7 @@ def _player_record(athlete: str, identity: tuple[str, str], c: Counter[str], mea
         steals_per_minute=rates["steals_per_minute"],
         blocks_per_minute=rates["blocks_per_minute"],
         fouls_per_minute=rates["fouls_per_minute"],
+        usage_share=rates["usage_share"],
     )
 
 
@@ -742,6 +777,8 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     if _has_table(con, "sim_actions"):
         durations = _read_durations(con, ctes, seasons, window)
         _read_first_uses(con, ctes, seasons, team_counts)
+        if _has_table(con, "sim_segments"):
+            _read_uses(con, ctes, seasons, player_counts)
     else:
         logger.warning("sim_possessions and sim_actions are not built (association sim build): no duration histograms, and the engine will refuse to play")
     identities, sat_out = _read_identities(con, ctes, team_ids)

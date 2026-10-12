@@ -127,13 +127,14 @@ was learned the hard way and is about the data, not the pipeline.
   throws at 0.371 per field-goal attempt against 0.240 - was fixed the same
   day (and-ones counted twice; three-shot trips at 40% instead of 3.5%),
   with the before and after reports side by side in `results/`.
-- **Eight validation runs so far** (`scripts/sim_p8/results/`): the
+- **Nine validation runs so far** (`scripts/sim_p8/results/`): the
   baseline, after the free-throw fix, with a pace constant, after the
   bonus-trip fix (`_trips`), two with team rebounds (`_teamreb`,
-  `_teamreb_odds`), with the season-weighted window (`2026-10-12_weights`)
-  and with durations by situation (`2026-10-12_durations`, the current
-  state: possessions 101.4 against 100.8 with no constant, total +0.9,
-  Brier 0.2248 against the strength model's 0.2254). Before that run the
+  `_teamreb_odds`), with the season-weighted window (`2026-10-12_weights`),
+  with durations by situation (`2026-10-12_durations`) and with usage
+  shares (`2026-10-12_usage`, the current state: possessions 101.4 against
+  100.8 with no constant, total +0.8, Brier 0.2258 against the strength
+  model's 0.2255). Before that run the
   pace matched by a constant (100.5
   against 100.8 possessions), free throws are 0.246 against 0.240 per
   field-goal attempt, threes 0.415 against 0.420, points per 100
@@ -168,8 +169,11 @@ was learned the hard way and is about the data, not the pipeline.
   the offense's `first_use_seconds` over the league's, plus the 2.4 s a miss
   spends before its rebound; the pace constant is gone and possessions
   match without one. A league estimated without the possession tables is
-  refused by the engine. Remaining in step 9: usage per possession, on-court
-  defense (plan item 9).
+  refused by the engine. **Usage shares done 2026-10-12** too
+  (`PlayerParams.usage_share`, zero means unknown and the per-minute sum
+  is used): validated neutral, kept as the right unit. Remaining in step 9:
+  per-player on-court defense (plan item 9; the signal is measured in 0b
+  0.15 by `scripts/sim_p9/defense.py`).
   Possession points plus technical free throws equal the final on 100% of
   team-games in every season; the box formula over player lines runs 1.2
   possessions above the count from 2019 (team rebounds and team turnovers),
@@ -193,9 +197,8 @@ was learned the hard way and is about the data, not the pipeline.
   January 1, 0.255 after) and needs a within-season weight or trend, not
   a season weight; threes 0.415 against 0.420 and free throws 2.5% high.
   Then the rest of step 9's second half on `sim_possessions` and
-  `sim_actions`: usage as a share of lineup possessions, then per-player
-  on-court defense - the team-strength headroom to ESPN (0.024 of Brier)
-  runs through better rates and defense; and the simulated total's spread
+  `sim_actions`: per-player on-court defense - the team-strength headroom
+  to ESPN (0.024 of Brier) runs through better rates and defense; and the simulated total's spread
   within a game, 17.2 against the real 19.5 since the durations came from
   the histograms (game-level pace variation the sim does not model). Every
   one is a `sim validate` run with the report committed.

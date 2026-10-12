@@ -189,9 +189,12 @@ class PlayerParams:
     """One player's rates for the engine, estimated per minute on the floor
     (v1) and shrunk toward the league (:class:`LeagueParams`).
 
-    Usage: shots, free-throw trips (shooting fouls drawn) and turnovers per
-    minute; the engine normalizes them over the five on the floor to choose
-    who uses a possession and how. Shooting: the zone mix given a shot, the
+    Usage: ``usage_share``, his uses (shots, turnovers, two- and three-shot
+    trips) over his lineups' uses while he was on the floor, from the
+    possession table; the engine normalizes the five's shares to choose who
+    uses a possession, and his shots, trips and turnovers per minute (the
+    box score's) say how. Without a share (zero), the per-minute sum is the
+    usage weight, as before step 9. Shooting: the zone mix given a shot, the
     make rate by zone, the and-one and assisted rates on a make, the
     free-throw rate. Rebounding, assisting, stealing and blocking as weights
     per minute, normalized among the players on the floor when the event
@@ -219,6 +222,7 @@ class PlayerParams:
     steals_per_minute: Rate
     blocks_per_minute: Rate
     fouls_per_minute: Rate
+    usage_share: Rate = field(default_factory=lambda: Rate(0.0, 0.0, 0.0, 0.0))  # his uses over his lineups' uses while on the floor (P4.2); 0 is unknown: the per-minute sum is used
 
     @property
     def near_prior(self) -> bool:

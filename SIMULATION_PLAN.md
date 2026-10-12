@@ -468,6 +468,20 @@ turnover row is the possession's ending. ESPN logs a team rebound after a
 jump ball (205 in 2025) and after a shot-clock or traveling turnover (13),
 with no miss to rebound.
 
+**0.15 On-court defense has signal (2026-10-12, `scripts/sim_p9/defense.py`,
+2024-2026 regular seasons, 3.65 million defender-possessions).** Over the
+464 defenders with 2,000+ possessions, the spread of true on-court rates
+(the raw spread less sampling noise) and the odd/even reliability of a
+player-season's two halves: opponent turnovers a possession sd 0.011 of a
+league 0.143, r 0.69; trips drawn 0.0075 of 0.095, r 0.53; field-goal
+percentage allowed 0.011 of 0.470, r 0.50; at the rim 0.020 of 0.679, r
+0.40; offensive-rebound share allowed 0.015 of 0.294, r 0.50; threes
+allowed 0.005 of 0.360, r 0.13 - the three-point factor is mostly noise and
+the shrinkage should take it to the league. These rates carry the team's
+defense as well as the player's (he defends beside the same teammates), so
+five defenders' deviations averaged (P4.4) is the team's defense recovered
+from its parts, plus who is on the floor.
+
 **0.9 Shot positions (for P4.1).** From 2015, 99.95-100% of charted field
 goals carry a position; 2022's `points_attempted` is 0 on 96% of shots
 (`SHOT_VALUE_SQL` handles it); and from 2019 the shot chart holds exactly
@@ -1028,8 +1042,20 @@ check measured on 2019-2026 and recorded in the module docstring:
    accepted); coverage 0.742 / 0.786 / 0.857, minutes MAE 5.26. New miss:
    the simulated total's spread within a game is 17.2 against the real
    19.5 (was 18.6), the game-level pace variation the sim does not model.
-   Next in this item: usage as a share of lineup possessions, then
-   per-player on-court defense.
+   **Usage as a share of the lineup's uses done 2026-10-12**
+   (`PlayerParams.usage_share`, `rates.USES_SQL`; `scripts/sim_p9/usage.py`,
+   `results/usage.out`: 823,802 uses in 2024-2026, correlation 0.989 with
+   the per-minute proxy, the ratio of the two within 0.93-1.06 for nine
+   players in ten). Validation
+   (`results/validate_2025_from_2025-01-01_2026-10-12_usage.md`, 739 games):
+   nothing moved beyond noise (Brier 0.2258 against the strength model's
+   0.2255, a per-game difference of 0.0006 with a standard error of 0.0009
+   to the durations run; coverage 0.744 / 0.789 / 0.858), as the
+   correlation predicted; kept as the right unit. The player points
+   coverage splits 0.59 for players who really scored 20+ and 0.66 under
+   5: the intervals miss at both tails, a rotation-and-minutes question.
+   Next in this item: per-player on-court defense (0b 0.15 measures the
+   signal).
 
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.

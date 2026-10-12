@@ -364,3 +364,8 @@ def test_the_duration_histograms_are_shares_over_the_bins_and_the_first_use_seco
     for team in estimates.teams.values():
         assert team.first_use_seconds.prior == pytest.approx(league.first_use_seconds)
         assert 0.0 <= team.first_use_seconds.value <= 24.0 * 60
+
+
+def test_the_usage_share_is_unknown_without_segments(estimates: rates.Estimates) -> None:
+    # The fixture builds plays and possessions but no segments, so no lineup can be read: every share is zero and the engine falls back to the per-minute sum.
+    assert all(p.usage_share.value == 0.0 and p.usage_share.trials == 0 for p in estimates.players.values())
