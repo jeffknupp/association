@@ -2251,7 +2251,12 @@ def test_a_condition_the_relation_cannot_read_refuses(league: AnswerContext) -> 
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
     # A history's words state no condition (its shape's row, compose.plan.cells_unhonored):
     # its presenter steps aside, and the compiler's sentence says what it read.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), SEASON_HISTORY)] == ["companion"]
+    assert [
+        cell
+        for cell, _ in cells_unhonored(
+            Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum"),), measure=Measure(key="points", as_typed="points")), SEASON_HISTORY
+        )
+    ] == ["companion"]
 
 
 def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: AnswerContext) -> None:
