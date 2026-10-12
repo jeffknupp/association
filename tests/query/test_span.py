@@ -71,6 +71,12 @@ def _read(question: str, intent: str = "player_stat", **context: Any) -> Span:
         ("knicks record in 2020 and 2024", Span(season_type=2)),
         # A second year that opens a season span is the span's ("2001-02" is 2002).
         ("tmac 2001 to 2001-02", Span(season=2002, season_type=2)),
+        # A span to a bare year is the range to the season the year names (ISSUES.md #382,
+        # the feed's unread numbers): the year was read by nothing, and the span's season answered.
+        ("curry playoff stats 2014-15 to 2017", Span(season_type=3, since=2015, until=2017)),
+        ("how many games did miami heat play 2008-09 to 2025", Span(season_type=2, since=2009, until=2025)),
+        ("kobe stats 1999-00 through 2002", Span(season_type=2, since=2000, until=2002)),
+        ("curry stats 2015-18 to 2020", Span(season_type=2, since=2015, until=2020)),
         ("players with 33 point games since 2000-01", Span(season_type=2, since=2001)),
         ("maxey games vs boston in the past two seasons", Span(season_type=2, since=S - 1)),
         # A range beside a named season: the range wins (the season is dropped).

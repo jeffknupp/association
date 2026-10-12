@@ -289,11 +289,32 @@ def _validate_range_to(question: str) -> tuple[int, int, list[Claim]] | None:
     are :func:`~association.query.lexicon.season_spans`', so each end is
     the season it names alone, or a range's own first and last ("1999-00 to
     2001-06" ends in 2006)."""
-    for left, right in itertools.pairwise(lexicon.season_spans(question)):
+    spans = lexicon.season_spans(question)
+    for left, right in itertools.pairwise(spans):
         if lexicon.RANGE_TO_WORDS.fullmatch(question, left.end, right.start):
             first = left.first if left.is_range else left.season
             claim = [Claim(left.start, right.end, "range")]
             return (first, right.season, claim) if first <= right.season else (right.season, first, claim)
+    return _validate_range_to_year(question, spans)
+
+
+def _validate_range_to_year(question: str, spans: list[lexicon.SeasonSpan]) -> tuple[int, int, list[Claim]] | None:
+    """A season written as a span, then "to" or "through" and a bare year -
+    "2014-15 to 2017", "2008-09 to 2025", "1999-00 to 2002": the range from
+    the span's season to the season the year names (a bare year is a season
+    number, as "since 2020" and "from 2002 to 2004" read it). Until the
+    Phase 3 review's cleanup the bare year was read by nothing, and the span
+    alone answered one season (ISSUES.md #382, the feed's unread numbers).
+    A bare year BEFORE a span ("tmac 2001 to 2001-02") is not read so: the
+    span is the season the words settle on."""
+    for span in spans:
+        joined = lexicon.RANGE_TO_WORDS.match(question, span.end)
+        year = lexicon.YEAR.match(question, joined.end()) if joined is not None else None
+        if year is None or any(other.start <= year.start() < other.end for other in spans):
+            continue
+        first, last = span.first if span.is_range else span.season, int(year.group(1))
+        claim = [Claim(span.start, year.end(), "range")]
+        return (first, last, claim) if first <= last else (last, first, claim)
     return None
 
 
