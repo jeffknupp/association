@@ -30,7 +30,7 @@ _TIMING = Timing(total_seconds=0.0, model_seconds=0.0, model_calls=0, tool_secon
 
 def _reading() -> Reading:
     scope = Reading(who=Who(kind="player", players=("Nikola Jokic",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=2026))
-    point = Reading(**scope.filters(), shape="scalar", measures=["points"], aggregate=Aggregate.TOTAL, asked=PLAYER_LINE)
+    point = Reading(**scope.filters(), shape="scalar", measures=(Measure(key="points"),), aggregate=Aggregate.TOTAL, asked=PLAYER_LINE)
     subject = Subject(kind="player", players=("Nikola Jokic",), opponent="Boston Celtics", evidence=("'jokic' names one player",))
     return Reading(**scope.filters(), asked=PLAYER_LINE, subject=subject, point=point, decisions=(Decision("subject", "kind", None, "player", ""),))
 
@@ -52,7 +52,7 @@ def test_a_snapshot_holds_the_four_stages_as_json() -> None:
     assert record["reading"]["intent"] == "player_stat" and record["reading"]["asked"] == {"relation": "player_seasons", "shape": "scalar", "by": "line"}
     assert (record["reading"]["who"]["players"], record["reading"]["cuts"]["opponent"], record["reading"]["span"]["season"]) == (["Nikola Jokic"], "Boston Celtics", 2026)
     assert record["reading"]["decisions"] == [{"stage": "subject", "field": "kind", "before": None, "after": "player", "reason": ""}]
-    assert record["reading"]["point"]["shape"] == "scalar" and record["reading"]["point"]["measures"] == ["points"]
+    assert record["reading"]["point"]["shape"] == "scalar" and [m["key"] for m in record["reading"]["point"]["measures"]] == ["points"]
     # The query stage is what the PLANNER built from that point, not the point again.
     assert record["query"]["relation"] == "player" and record["query"]["skeleton"] == "scalar" and record["query"]["measures"] == ["points"] and record["query"]["cuts"]["opponent"] == "Boston Celtics"
     assert record["result"]["value"] == 53 and record["answer"]["answered_by"] == "fast"

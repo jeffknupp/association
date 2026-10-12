@@ -385,6 +385,29 @@ def measure_name(measure: Measure | None) -> str | None:
     return spec.measure if spec is not None and measure is not None and measure.whose == "own" else None
 
 
+_BY_MEASURE_NAME: dict[str, str] = {spec.measure: key for key, spec in CATALOG.items() if spec.measure is not None}
+# The catalog's keys by their compiler name over the games relation: one key
+# each (a test holds the names distinct), so a name reads back to one Measure.
+
+
+def measured(name: str) -> Measure:
+    """The catalog's :class:`~association.query.reading.Measure` the
+    compiler names ``name`` over the games relation (:func:`measure_name`'s
+    inverse: ``"fg_pct"`` is ``fieldGoalPct``, ``"won"`` is ``wins``, a
+    box-score column its own key) - how the point reader states the measures
+    its point reads, typed, from the words and lines it reads them by
+    (``Reading.measures``, Phase 4, step 3). A name no key reads by
+    (``"margin"``, a label of a game) raises: a point reads only what a
+    question can ask about.
+
+    .. versionadded:: 6.0.0
+    """
+    key = _BY_MEASURE_NAME.get(name)
+    if key is None:
+        raise KeyError(f"no catalog measure is read as {name!r} on the games relation")
+    return Measure(key=key)
+
+
 def column_name(measure: Measure | None) -> str | None:
     """The stored game-log column ``measure`` is read from, or None
     (``stat_column`` until Phase 3, step 2).

@@ -638,7 +638,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
                         )
                     ).filters(),
                     shape="scalar",
-                    measures=[],
+                    measures=(),
                     aggregate=Aggregate.COUNT,
                     group="none",
                     predicates=[("points", ">=", 30)],

@@ -1012,14 +1012,14 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
 
     def team_point(shape: str, **cells: Any) -> Reading:
         by, skeleton = {"rows": ("date", "rows"), "scalar": ("", "scalar"), "runs": ("won", "runs"), "split": ("splits", "split")}[shape]
-        aggregate = "none" if shape in ("rows", "runs") else ("record" if shape == "split" else "total")
+        aggregate = Aggregate.NONE if shape in ("rows", "runs") else (Aggregate.RECORD if shape == "split" else Aggregate.TOTAL)
         return Reading(
             relation="team",
             shape=skeleton,  # type: ignore[arg-type]
             by=by,
             on="team_games",
-            measures=["points"],
-            aggregate=aggregate,  # type: ignore[arg-type]
+            measures=(Measure(key="points"),),
+            aggregate=aggregate,
             group="venue" if shape == "split" else "none",
             who=Who(kind="team", teams=("Orlando Magic",)),
             **cells,

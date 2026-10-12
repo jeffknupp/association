@@ -1331,9 +1331,13 @@ a shape:
   closed enum (`reading.Aggregate`, Phase 4, step 3: `NONE`, `PER_GAME`,
   `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`), on the point,
   the `Query` and the `TeamQuery` alike, and a record writes a member as its
-  value (`stages.plain`); its `measures` are still the compiler's names,
-  derived from the `Measure` through the catalog (`stat_measure`): retyping
-  them is the `Query`'s, the RUN stage's input. `query/window.py` is the window's tagger:
+  value (`stages.plain`); its `measures` are typed too
+  (`tuple[Measure, ...]`, each the catalog's key, stated through
+  `measure.measured` from the names the point reader reads a measure by),
+  and the compilers' names are built once, where the planner hands the
+  point over (`compose.core.measure_names`, `compose.team.team_metric`).
+  The `Query`'s `measures` are still those names: retyping them is the
+  answer side's, whose readers test and replace them by name. `query/window.py` is the window's tagger:
   `read_window(question, WindowContext)` reads, and `point.window_under`
   keeps under the key, which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his
