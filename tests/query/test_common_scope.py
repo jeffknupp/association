@@ -8,9 +8,8 @@ since (``tests/slots.py``), and that test went with it.
 
 from __future__ import annotations
 
-from slots import slots_scope
-
 from association.query.coverage import sources_for
+from association.query.measure import measure_of
 from association.query.reading import Measure, PointShape, Reading, Span
 from association.query.reading import Subject as Who
 
@@ -31,4 +30,5 @@ def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_p
         "team_season_stats",
     )
     for stat in (None, "point differential", "points allowed", "defensive rating"):
-        assert sources_for(line, slots_scope({"team": "Philadelphia 76ers", "stat": stat, "season": 2001, "season_type": 3})) == ("team_season_stats", "games"), stat
+        scope = Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), measure=measure_of(stat) if stat else None, span=Span(season=2001, season_type=3))
+        assert sources_for(line, scope) == ("team_season_stats", "games"), stat
