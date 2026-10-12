@@ -1702,7 +1702,10 @@ a shape:
     The season line's reads are the first (`season_line.season_row` and
     the five beside it), the team seasons' the second (`team_seasons`'
     `read_team_lines`, `read_team_records` and the five beside them, the
-    team compiler's season total among them).
+    team compiler's season total among them), and the team-games
+    relation's shared steps hold the three a team reader ran over the
+    games (`team_relation.team_season_game_counts`, `team_game_list_gaps`,
+    `team_games_total`).
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body

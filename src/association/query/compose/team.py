@@ -86,7 +86,7 @@ from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import grouped_sql as team_grouped_sql
 from association.query.team_games import named as team_named
 from association.query.team_games import rows_sql as team_rows_sql
-from association.query.team_relation import league_team_narrowed, scoped_team
+from association.query.team_relation import league_team_narrowed, scoped_team, team_games_total
 from association.query.team_relation import team_games as narrow_team_games
 from association.query.team_seasons import read_team_season_total
 
@@ -493,9 +493,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
         return _compile_team_games_mixed(con, q)
     narrowed, team, span = _team_games_narrowed(con, q)
     column = GAME_MEASURES[q.metric]
-    selects = [f"SUM({column}) AS total", "COUNT(*) AS games", "SUM(tg.won::INT) AS wins", "SUM((NOT tg.won)::INT) AS losses"]
-    sql, params = team_aggregate_sql(narrowed, selects)
-    row = con.execute(sql, params).fetchone()
+    row = team_games_total(con, narrowed, column)
     total, games, wins, losses = row if row else (None, 0, 0, 0)
     return TeamResult(
         team=team,
