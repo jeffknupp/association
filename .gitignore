@@ -16,3 +16,4 @@ query_output/
 # Coverage data from a coverage-informed dead-code pass (pytest-cov, coverage run).
 .coverage
 .coverage.*
+.claude/worktrees/
