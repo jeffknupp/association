@@ -289,18 +289,21 @@ def sim() -> None:
 def sim_build(seasons: str | None, db_path: str, sim_path: str, log_level: str) -> None:
     """(Re)create the simulator's derived tables from the warehouse.
 
-    Phase 1 today: ``sim_plays``, every play of every real game classified,
-    ordered and timed, with a per-season report of what was kept and how it
-    checks against the final score. Later phases add their tables here.
+    ``sim_plays`` (Phase 1: every play of every real game classified, ordered
+    and timed), ``sim_segments`` and ``sim_team_periods`` (Phase 2: who was
+    on the floor), ``sim_possessions`` and ``sim_actions`` (Phase 3: every
+    possession and the events inside it), each with its per-season sibling
+    checks printed.
     """
     _configure_logging(log_level)
-    from association.sim import database, plays, segments
+    from association.sim import database, plays, possessions, segments
 
     wanted = _parse_seasons(seasons) if seasons else None
     con = database.connect(Path(sim_path), Path(db_path))
     try:
         reports = plays.build_plays(con, wanted)
         segment_reports = segments.build_segments(con, wanted)
+        possession_reports = possessions.build_possessions(con, wanted)
         database.write_meta(con, seasons=[r.season for r in reports], warehouse_path=Path(db_path))
     finally:
         con.close()
@@ -315,6 +318,17 @@ def sim_build(seasons: str | None, db_path: str, sim_path: str, log_level: str) 
     for s in segment_reports:
         shares = f"{100 * s.resolved_share:>9.2f}% {100 * s.starters_share:>8.2f}% {s.player_games:>12} {100 * s.minutes_share:>11.2f}% {100 * s.plus_minus_share:>8.2f}%"
         click.echo(f"{s.season:>6} {s.games:>6} {shares} {s.phantom_touches:>8} {s.one_id_subs:>6} {s.inconsistent_subs:>9} {s.unrostered_touches:>10}")
+    click.echo("sim_possessions (points vs the final; possessions vs the box formula FGA - OREB + TOV + 0.44 FTA; player stats from actions vs the box, exact)")
+    click.echo(
+        f"{'season':>6} {'games':>6} {'excl':>5} {'poss/tg':>8} {'score ok':>9} {'box diff':>9} {'signed':>7} {'periods':>8} "
+        f"{'FGA':>7} {'FTA':>7} {'OREB':>7} {'DREB':>7} {'AST':>7} {'TOV':>7} {'and-1':>6} {'lone 1/1':>8} {'implied':>7} {'sides':>6}"
+    )
+    for p in possession_reports:
+        players = " ".join(f"{100 * p.player_share(stat):>6.2f}%" for stat in ("fga", "fta", "oreb", "dreb", "ast", "tov"))
+        click.echo(
+            f"{p.season:>6} {p.games:>6} {p.games_excluded:>5} {p.possessions_per_team_game:>8.1f} {100 * p.score_share:>8.2f}% {p.box_mean_abs_diff:>9.2f} {p.box_mean_diff:>+7.2f} "
+            f"{100 * p.within_periods_share:>7.2f}% {players} {p.and_ones:>6} {p.lone_one_of_ones:>8} {p.implied:>7} {p.side_disagreements:>6}"
+        )
     click.echo(f"wrote {sim_path}")
 
 

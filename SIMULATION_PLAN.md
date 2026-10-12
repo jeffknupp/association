@@ -443,6 +443,31 @@ season). The 2025 offensive-rebound share is 0.247 before January 1 and
 0.255 after it, so the validation's gap on that rate is within-season
 drift that season weights cannot reach.
 
+**0.14 What P3's boundaries met (2026-10-12, read from `sim_plays` on this
+checkout's files; the rules are in `sim/possessions.py`, the build in
+`scripts/sim_p9/`).** A jump ball's `team_id` is the gainer's team on
+100% of three-participant rows in 2007-2012 and 2018-2026 but on 49-52% in
+2013-2017 (2013: 1,107 of 2,244), so the gainer is the THIRD participant
+and his team is read from the deduped box roster; 2007-2010 also carry
+700-800 one-participant "X jump ball" rows a season that name no gainer.
+When the defense wins a held ball, ESPN logs a turnover and a steal by the
+team that lost it next in two of three cases (2025: 238 of the 348 jump
+balls whose gainer was not the offense), so a jump ball must not end a
+possession itself. A `1 of 1` follows a made shot by the same team at the
+same clock on 95.6% of rows (2025: 5,894 of 6,168); the rest are
+away-from-play, inbound and transition take fouls, after which the SAME
+team's next event follows (2025, made: 190 same against 13 other; missed:
+44 of 47 followed by a dead-ball team rebound), so a lone one-of-one ends
+nothing. A flagrant or clear-path trip keeps the ball (2025: the same team
+shoots next after all 41 made `Flagrant 2 of 2`; a miss is followed by a
+dead-ball team rebound, 30 of 32). A missed technical free throw is followed
+by a team rebound logged as offensive (149) or DEFENSIVE for the other team
+(49), both dead balls. 99.5-99.9% of `foul_offensive` rows carry their
+`Offensive Foul Turnover` row at the same clock in every season; the
+turnover row is the possession's ending. ESPN logs a team rebound after a
+jump ball (205 in 2025) and after a shot-clock or traveling turnover (13),
+with no miss to rebound.
+
 **0.9 Shot positions (for P4.1).** From 2015, 99.95-100% of charted field
 goals carry a position; 2022's `points_attempted` is 0 on 96% of shots
 (`SHOT_VALUE_SQL` handles it); and from 2019 the shot chart holds exactly
@@ -922,7 +947,63 @@ check measured on 2019-2026 and recorded in the module docstring:
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is
-   accepted only if P8's metrics do not get worse.
+   accepted only if P8's metrics do not get worse. **First half done
+   2026-10-12** (`sim/possessions.py`; `scripts/sim_p9/`, output in
+   `results/build_2026-10-12.out`): `association sim build` now writes
+   `sim_possessions` (the P3.1 columns plus `actions`, the count of events
+   in it) and `sim_actions` (one row per shot, free throw, rebound,
+   turnover, foul, jump ball and violation: the possession key, `seq`,
+   `kind` and ESPN's `type`, the team and the actor, the second participant
+   with his role - `assist`, `block`, `steal`, `fouled`, `gains_possession`
+   - the zone from the shot chart through `zones.zone_sql`, the shot value,
+   `made`, `points`, the free throw's kind and place in its trip (`ft_kind`
+   regular / flagrant / clear_path / technical, `ft_number` of `ft_of`),
+   `team_play`, `live_ball` on a turnover, `dead_ball` on the rebound ESPN
+   logs after a missed free throw that is not the last, `ends_possession`,
+   and the segment current at the action), 2007-2026 in 128 seconds after
+   plays and segments. A Python state machine walks each game in `seq`
+   order (`possessions.GameWalk`); a game whose plays do not sum to the
+   final for both teams is excluded and counted (0-7 a season from 2019
+   except 2022's 62; 410 of 1,314 in 2013 and 658 of 1,315 in 2016). The
+   checks, per season (the module docstring has the 2019-2026 table):
+
+   | check | 2019-2026 | 2007-2018 |
+   | --- | --- | --- |
+   | possession points + technical free throws = final, per team-game | 100% every season | 100% every season |
+   | possessions vs `FGA - OREB + TOV + 0.44 FTA` over player lines, mean abs difference | 1.83-1.97 (signed -1.1 to -1.3) | 1.65-1.98 (signed -0.6 to -1.5) |
+   | the two teams' counts within the number of periods | 100% | 100% |
+   | player FGA / FTA / OREB / DREB / AST / TOV from actions = box, player-games | 99.3-99.7 / 99.9+ / 99.3-99.8 / 99.2-99.7 / 99.7-99.9 / 99.5-99.8% | 98.7-99.9% but 2016 FGA 97.0, 2017 DREB 97.1 |
+   | possessions closed as `implied` (a change the plays never logged) | 101-205 a season, 0.03-0.06 a team-game | 335-1,214 |
+
+   Possessions a team-game: 99.7 in 2025 (99.2 per 48 team-minutes against
+   NBA.com's 98.8), 93-94 in 2007-2012. The formula over player lines runs
+   1.2 above the count from 2019 because it subtracts no team offensive
+   rebound (5.5-6.4 live ones a team-game) and adds no team turnover
+   (0.6-0.8). 2026's FGA share is 95.8% because ESPN's box does not count a
+   typed heave as an attempt (99.3% with the 1,149 heaves left out). What
+   the data settled differently from the text above, each measured first
+   (0b, 0.14): a jump ball ends nothing itself (ESPN logs a turnover and a
+   steal next in two of three held balls the defense wins; otherwise the
+   gainer's next touch closes the possession as `jump_ball`), and its
+   gainer is the third participant read against the roster because
+   `team_id` is a coin flip in 2013-2017; a lone `1 of 1` (no made shot at
+   its clock, 4.4% of them) and a flagrant or clear-path trip keep the
+   ball; a TEAM rebound's side is its label because its `team_id` is the
+   shooter's through 2012; a made putback's offensive rebound is logged
+   after the putback in 2007-2017 and is absorbed; a technical free throw
+   and a technical foul belong to no possession; a scoring row with no team
+   (one in 2016) is an orphan action. A change of possession the state did
+   not expect closes the possession before the play that shows it, as
+   `offensive_foul` when its last action was a personal or flagrant foul by
+   the offense, `jump_ball` when a jump ball this team gained, else
+   `implied`; the start types are read from the previous end (`made_shot`
+   -> `after_made`, `made_ft` -> `after_ft`, `dreb_shot` / `dreb_ft` ->
+   `after_dreb`, the two turnovers, else `after_other`). End types a
+   team-game, 2025: made shot 39.3, defensive rebound after a shot 33.2,
+   made free throw 9.2, live turnover 8.3, dead turnover 6.0, defensive
+   rebound after a free throw 2.1, period end 1.8. The P4 upgrades above
+   are the second half and remain next; `rates.estimate` still reads the
+   box score.
 
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.

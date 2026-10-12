@@ -1,0 +1,93 @@
+warehouse /home/jeff/code/association-simulator/nba.duckdb; sim /home/jeff/code/association-simulator/.claude/worktrees/sim-step9/sim.duckdb; seasons 2007-2026
+timing: plays 10s, segments 34s, possessions 128s
+
+sim_possessions (points vs the final; possessions vs the box formula FGA - OREB + TOV + 0.44 FTA over player lines; player stats from actions vs the box, exact share of player-games)
+season  games  excl  poss/tg  score ok  box diff  signed  periods     FGA     FTA    OREB    DREB     AST     TOV  and-1 lone 1/1 implied  jump off foul  sides team ids no-miss reb dropped teamless
+  2007   1282    19     93.7   100.00%      1.66   -0.69  100.00%  99.37%  99.88%  99.85%  99.83%  99.62%  98.40%   6298      297     553     4       37     34     6109        5053     560       12
+  2008   1290    24     93.8   100.00%      1.65   -0.63  100.00%  99.38%  99.95%  99.84%  99.82%  99.83%  98.83%   5779      289     577     2       72     34     5747        4802     469        5
+  2009   1314     1     93.4   100.00%      1.66   -0.67  100.00%  99.81%  99.99%  99.90%  99.89%  99.85%  99.18%   6035      293     596     7       82     49     5861        5197     566        9
+  2010   1307     5     94.1   100.00%      1.74   -0.73  100.00%  99.76%  99.98%  99.85%  99.62%  99.73%  99.07%   6190      335     672    11      100     53     5207        5788     463        6
+  2011   1298    13     93.5   100.00%      1.77   -0.87  100.00%  99.86%  99.98%  99.93%  99.84%  99.72%  99.92%   5964      191     470     9       92     54     5615        5570     526        9
+  2012   1067     7     92.9   100.00%      1.70   -0.78  100.00%  99.76% 100.00%  99.91%  99.89%  99.77%  99.89%   4261      124     425     5       79     42     4812        4744     492       13
+  2013    904   410     93.3   100.00%      1.76   -1.07  100.00%  98.66%  99.78%  99.03%  99.05%  99.45%  99.11%   3548       21    1214     8      247     60      100        4111    1084       25
+  2014   1299    20     95.0   100.00%      1.88   -1.23  100.00%  99.73% 100.00%  99.79%  99.81%  99.53%  99.81%   5524       30     335     9       37     60      130        5746    1658        8
+  2015   1277    34     95.2   100.00%      1.91   -1.27  100.00%  99.50%  99.99%  99.64%  99.83%  99.73%  99.80%   5091       28     358     6       26     64      126        5505    1582       12
+  2016    657   658     96.7   100.00%      1.87   -1.22  100.00%  97.00% 100.00%  99.63%  99.58%  99.65%  98.69%   2815       17     372     2       27     36       85        2829     739        5
+  2017   1277    32     97.2   100.00%      1.98   -1.48  100.00%  98.67%  99.99%  98.71%  97.06%  98.97%  99.05%   5762      105     406     6       27     81      140        4781    1362        7
+  2018   1293    19     98.3   100.00%      1.85   -1.08  100.00%  99.27%  99.93%  99.45%  99.15%  99.67%  99.17%   5781      191     659     6       67    142      184         493     825        6
+  2019   1307     5    101.2   100.00%      1.94   -1.27  100.00%  99.46%  99.94%  99.28%  99.15%  99.70%  99.48%   6183      156     205     0       33     38      162         299     344        4
+  2020   1141     1    101.3   100.00%      1.95   -1.29  100.00%  99.63%  99.93%  99.58%  99.43%  99.86%  99.51%   5480      118     103     5       21     10       57         128     318        9
+  2021   1165     0    100.1   100.00%      1.83   -1.10  100.00%  99.61%  99.98%  99.71%  99.55%  99.88%  99.58%   5296       77     139    15       20     13       39         115     345        5
+  2022   1255    62     99.1   100.00%      1.89   -1.18  100.00%  99.62%  99.98%  99.59%  99.52%  99.83%  99.63%   5902       96     130    10       18     12       37         127     340        6
+  2023   1308     6    100.2   100.00%      1.93   -1.25  100.00%  99.63%  99.94%  99.80%  99.69%  99.74%  99.81%   6942      337     148     6       30     15       54         119     530        5
+  2024   1306     7     99.2   100.00%      1.90   -1.21  100.00%  99.71%  99.98%  99.72%  99.62%  99.80%  99.73%   6333      254     103     5       22     13       31         120     505        9
+  2025   1313     2     99.7   100.00%      1.94   -1.21  100.00%  99.66%  99.97%  99.79%  99.50%  99.71%  99.74%   5922      252     101     3       26      7       36         126     575        7
+  2026   1313     3    100.5   100.00%      1.97   -1.15  100.00%  95.79%  99.95%  99.72%  99.55%  99.70%  99.73%   6282      280     113     5       30     12       41         127     299        9
+
+possessions a team-game: all games kept, regulation-only games, and NBA.com-style per 48 team-minutes (possessions / (segments seconds / 2880))
+  2007    93.68    92.92    92.85
+  2008     93.8     93.3    93.24
+  2009    93.35    92.71    92.65
+  2010    94.13    93.69    93.52
+  2011     93.5    92.76    92.75
+  2012     92.9     92.3    92.16
+  2013     93.3    92.59    92.52
+  2014    95.05    94.37    94.26
+  2015    95.24    94.49    94.44
+  2016     96.7    96.21    96.08
+  2017    97.24    96.66     96.6
+  2018    98.29    97.78    97.73
+  2019   101.16    100.5   100.44
+  2020   101.33    100.7   100.58
+  2021   100.09    99.56     99.5
+  2022    99.08     98.6    98.55
+  2023   100.18    99.53    99.46
+  2024    99.22    98.74    98.67
+  2025    99.74    99.26     99.2
+  2026   100.45    100.0    99.92
+
+end types per team-game (2019-2026)
+  2019: made_shot 38.55, dreb_shot 34.68, made_ft 9.57, live_turnover 7.68, dead_turnover 6.35, dreb_ft 2.33, period_end 1.92, implied 0.06, offensive_foul 0.01
+  2020: made_shot 38.32, dreb_shot 34.69, made_ft 9.55, live_turnover 7.71, dead_turnover 6.79, dreb_ft 2.32, period_end 1.91, implied 0.03, offensive_foul 0.01, jump_ball 0.0
+  2021: made_shot 38.86, dreb_shot 34.31, made_ft 9.1, live_turnover 7.61, dead_turnover 6.11, dreb_ft 2.14, period_end 1.9, implied 0.04, jump_ball 0.01, offensive_foul 0.01
+  2022: made_shot 38.08, dreb_shot 33.97, made_ft 9.16, live_turnover 7.69, dead_turnover 6.09, dreb_ft 2.13, period_end 1.9, implied 0.04, offensive_foul 0.01, jump_ball 0.0
+  2023: made_shot 39.19, dreb_shot 32.93, made_ft 9.9, live_turnover 7.36, dead_turnover 6.64, dreb_ft 2.25, period_end 1.85, implied 0.04, offensive_foul 0.01, jump_ball 0.0
+  2024: made_shot 39.55, dreb_shot 33.03, made_ft 9.18, live_turnover 7.5, dead_turnover 6.02, dreb_ft 2.07, period_end 1.84, implied 0.03, offensive_foul 0.01, jump_ball 0.0
+  2025: made_shot 39.25, dreb_shot 33.15, made_ft 9.15, live_turnover 8.3, dead_turnover 5.97, dreb_ft 2.07, period_end 1.82, implied 0.03, offensive_foul 0.01, jump_ball 0.0
+  2026: made_shot 39.34, dreb_shot 32.58, made_ft 9.88, live_turnover 8.5, dead_turnover 5.99, dreb_ft 2.18, period_end 1.92, implied 0.03, offensive_foul 0.01, jump_ball 0.0
+start types per team-game (2019-2026)
+  2019: after_made 38.47, after_dreb 36.99, after_ft 9.56, after_live_turnover 7.67, after_dead_turnover 6.35, period_start 2.03, after_other 0.09
+  2020: after_made 38.23, after_dreb 36.98, after_ft 9.55, after_live_turnover 7.7, after_dead_turnover 6.78, period_start 2.04, after_other 0.06
+  2021: after_made 38.77, after_dreb 36.42, after_ft 9.1, after_live_turnover 7.59, after_dead_turnover 6.1, period_start 2.03, after_other 0.07
+  2022: after_made 38.0, after_dreb 36.08, after_ft 9.16, after_live_turnover 7.67, after_dead_turnover 6.08, period_start 2.03, after_other 0.06
+  2023: after_made 39.08, after_dreb 35.13, after_ft 9.89, after_live_turnover 7.35, after_dead_turnover 6.63, period_start 2.03, after_other 0.07
+  2024: after_made 39.45, after_dreb 35.04, after_ft 9.17, after_live_turnover 7.48, after_dead_turnover 6.0, period_start 2.03, after_other 0.05
+  2025: after_made 39.13, after_dreb 35.16, after_ft 9.14, after_live_turnover 8.28, after_dead_turnover 5.96, period_start 2.03, after_other 0.05
+  2026: after_made 39.26, after_dreb 34.75, after_ft 9.88, after_live_turnover 8.49, after_dead_turnover 5.99, period_start 2.03, after_other 0.06
+
+implied changes 2019-2026: the closed possession's last action -> the new possession's first action (top 12)
+     offensive_rebound -> shot               203
+           (no action) -> shot               203
+         foul_shooting -> free_throw         56
+     offensive_rebound -> turnover           44
+           (no action) -> turnover           40
+            free_throw -> shot               35
+            free_throw -> turnover           28
+             jump_ball -> turnover           22
+                  shot -> shot               20
+         foul_shooting -> turnover           20
+                  shot -> turnover           17
+        foul_offensive -> turnover           13
+
+actions 2019-2026 per team-game: shots, free throws (regular / flagrant+clear path / technical), rebounds player / team live / team dead, turnovers player / team, fouls, jump balls, violations
+    2019   89.08   22.48    0.14    0.56   45.17    5.66    2.72   13.48    0.55   21.58    0.87    0.86
+    2020   88.54   22.44    0.19    0.55   44.71    5.75    2.59   13.87    0.63   21.43    0.89    0.85
+    2021    88.3   21.18     0.2    0.48   44.23    5.35    2.42    13.1    0.62   19.88    0.93    0.79
+    2022    87.8   21.13    0.22    0.58    44.3    5.51    2.48   13.07    0.71   20.38     0.9    0.85
+    2023   88.23   22.64    0.18    0.57   43.42    5.54    2.51   13.34    0.67   20.53    0.85    0.94
+    2024   88.61   20.93    0.13    0.59   43.42    5.57    2.32    12.8    0.71   19.39    0.85    0.86
+    2025    89.0   21.22    0.15    0.43   44.01    5.88     2.4   13.47     0.8    19.2     0.9    0.84
+    2026   89.29   22.91    0.23    0.43    43.7     6.4    2.59   13.77    0.73   20.48    0.94    0.85
+
+actions whose segment is unknown (segment_no NULL), by season: [(2007, 0), (2008, 0), (2009, 0), (2010, 0), (2011, 0), (2012, 0), (2013, 0), (2014, 0), (2015, 0), (2016, 0), (2017, 0), (2018, 0), (2019, 0), (2020, 0), (2021, 0), (2022, 0), (2023, 0), (2024, 0), (2025, 0), (2026, 0)]
+possessions whose offense is unknown, by season: []

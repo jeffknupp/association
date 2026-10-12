@@ -149,6 +149,24 @@ was learned the hard way and is about the data, not the pipeline.
   formula counts. The window weights seasons `params.SEASON_DECAY` = 0.5
   (`Window.weight`; `scripts/sim_p8/season_weights.py` is the measurement)
   and every output names the weights.
+- **Step 9, first half (P3) done 2026-10-12:** `association sim build` also
+  writes `sim_possessions` and `sim_actions` (`association.sim.possessions`:
+  `build_possessions`, `check_possessions`, `GameWalk`, `walk_game`,
+  `free_throw_shape`, `START_TYPES`, `END_TYPES`), 2007-2026 in about two
+  minutes after plays and segments; the acceptance table is in the module
+  docstring, the plan's item 9 and `scripts/sim_p9/results/`. Read
+  possessions by `poss_no`, actions by `seq`; an action with `poss_no NULL`
+  is a technical free throw or foul, or an orphan scoring row with no team.
+  Possession points plus technical free throws equal the final on 100% of
+  team-games in every season; the box formula over player lines runs 1.2
+  possessions above the count from 2019 (team rebounds and team turnovers),
+  and 2026's FGA check is 95.8% because the box does not count a typed heave.
+  Rules the data forced, each measured first (plan 0b, 0.14): a jump ball
+  ends nothing (the turnover ESPN logs next does), a lone `1 of 1` and a
+  flagrant trip keep the ball, a team rebound's side is its label (its
+  `team_id` is the shooter's through 2012), a putback's rebound is logged
+  after the putback in 2007-2017. `rates.estimate` still reads the box
+  score; the P4 upgrades on these tables are the second half.
 - **Next**, in the order the last run ranks them: first a minutes-given
   replay diagnostic (a rotation policy that follows the real game's
   resolved segments, a flag on `sim replay` and `sim validate`, both
@@ -161,11 +179,11 @@ was learned the hard way and is about the data, not the pipeline.
   0.245 against 0.255, which is 2025's within-season drift (0.247 before
   January 1, 0.255 after) and needs a within-season weight or trend, not
   a season weight; threes 0.415 against 0.420 and free throws 2.5% high.
-  Then step 9, P3 (possessions and actions) and the upgrades that need it:
-  durations by start type (replacing the calibration constant), per-player
-  on-court defense, usage per possession - the team-strength headroom to
-  ESPN (0.024 of Brier) runs through better rates and defense. Every one
-  is a `sim validate` run with the report committed.
+  Then step 9's second half, the P4 upgrades on `sim_possessions` and
+  `sim_actions`: durations by start type (replacing the calibration
+  constant), per-player on-court defense, usage per possession - the
+  team-strength headroom to ESPN (0.024 of Brier) runs through better rates
+  and defense. Every one is a `sim validate` run with the report committed.
 - **Dispatching agents here:** make their worktrees by hand from the
   intended SHA (`git worktree add -b <branch> .claude/worktrees/<name>
   <sha>`); the Agent tool's own worktree isolation branched from master,
