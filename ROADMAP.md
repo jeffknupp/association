@@ -568,6 +568,34 @@ done here, but for a CI check per pushed commit of the CHANGES rule. The
 write-up Jeff reads is the Claude doc "Phase 3 Review"
 (https://claude.ai/artifact/9atyGSudKEabTWit7ZNDHM).
 
+**The cleanup, worked (Jeff, 2026-10-11: "work the cleanup list in order,
+(a) first").** (a) done the same night. (a)3 by the lead: `fb7f988`, the
+`regex_in_the_reader` ratchet (point 12, parse 5, line 1; #381). (a)1 and
+(a)2 by one Opus agent on the reader seam, nine commits merged at `32e1c13`
+and re-verified by the lead against a fresh run of master: `d332e08` a floor
+of minutes "N or more", "playing N", "over N" is read (#374; a strict line
+was silently dropped before it); `6ba9f05` a stated minimum is a typed field
+on the Reading, `reading.Minimum`, the tenth filter, read by the window
+tagger, applied by the season-line and game-level rankings and refused by
+name where a ranking cannot qualify by the unit asked (#377; the
+`_AT_LEAST` pattern deleted with it, and the new ratchet's first GONE:
+point 12 -> 11, `abcef4a`); `98c214f` "percent" spelled out names the
+percentage; `45393bd` a season type or venue between a count's line and
+"games" (#375); `7fe3697` both ends of the games named at once refused by a
+cause (#378); `0c597b2` a window of games in each season refused by a cause
+(#379); `957c5a6` a count's line beside a floor at the same number on
+another stat kept; `199d84e` a record over a lone floor of minutes keyed on
+it. Across `ae9e7d2 -> abcef4a`: 628 of 628 recorded questions identical
+and 2,060 of 2,082 feed answers, 21 answers and one reading moved - exactly
+the commits' enumerations - with `Reading.minimum` ignored at its three
+record paths and its 14 values listed; the 2,710 readings 2,688 identical,
+the same 22 moved; the ledger 702 of 2,411 in 405 line for line, the feed's
+3,704 -> 3,666; the ratchets at the shrunk count. Filed by the agent: #387
+("stats by season" with no stat named answers one season's line, P1) and
+#388 ("per 36 minutes" read as a floor of 36 minutes, P1); #350 rewritten
+to its "worst" half. (b) and (c)'s CI check next, one agent at a time on the
+seam.
+
 **Phase 4 - Close out.** `Answer.intent` removed and the web page's
 renderers keyed by shape (22 become one per shape); the browser check run;
 `docs/architecture.rst` rewritten. `AGENTS.md` is updated with each slice,
