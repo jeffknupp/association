@@ -14,7 +14,7 @@ import itertools
 from typing import Any
 
 import pytest
-from shapes import asked, stated
+from shapes import asked
 from slots import slots_scope, window_from_slots
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
@@ -24,7 +24,24 @@ from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_window
 from association.query.point import ORDER_ASKS, minimum_under, span_under, window_under
-from association.query.reading import Claim, Cuts, Minimum, PointShape, Reading, ScopeError, Span, Window, unhonored_cells
+from association.query.reading import (
+    GAME_HIGHS,
+    LINE_RUNS,
+    PLAYER_LOG,
+    PLAYER_RANKING,
+    SEASON_HISTORY,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Claim,
+    Cuts,
+    Minimum,
+    PointShape,
+    Reading,
+    ScopeError,
+    Span,
+    Window,
+    unhonored_cells,
+)
 from association.query.reading import Subject as Who
 from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
@@ -147,14 +164,14 @@ def test_a_team_rankings_end_and_a_boolean_rankings_measure() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "jokic stats in his last 5 playoff games"
-    read = window_under(asked("game_log"), read_window(question, WindowContext()))
+    read = window_under(PLAYER_LOG, read_window(question, WindowContext()))
     assert read.claims == (Claim(19, 39, "window"),)
     assert question[19:39] == "last 5 playoff games"
-    ranked = window_under(asked("leaderboard"), read_window("players with the highest scoring triple doubles", WindowContext(boolean_stat=True)))
+    ranked = window_under(PLAYER_RANKING, read_window("players with the highest scoring triple doubles", WindowContext(boolean_stat=True)))
     assert [c.what for c in ranked.claims] == ["ranked_by"] and ranked.claims[0].start == 17
-    history = window_under(asked("player_history"), read_window("sga's 2pt percentage for the past 5 years", WindowContext()))
+    history = window_under(SEASON_HISTORY, read_window("sga's 2pt percentage for the past 5 years", WindowContext()))
     assert history.claims == (Claim(29, 41, "window"),)
-    rank = window_under(asked("team_leaderboard"), read_window("nba team with least playoff wins", WindowContext()))
+    rank = window_under(TEAM_RANKING, read_window("nba team with least playoff wins", WindowContext()))
     assert rank.claims == (Claim(14, 19, "rank"),)
 
 
@@ -225,8 +242,8 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
 
 def test_the_relation_tables_declare_the_window_cell_once() -> None:
     assert Window.CELLS <= RELATION_SCOPING and "window" in TEAM_RELATION_SCOPING
-    assert stated("game_log") >= Window.CELLS and "window" not in stated("streak")
-    assert "window" not in stated("team_record") and "window" in cells_stated(PointShape("team_games", "rows", "date"))
+    assert cells_stated(PLAYER_LOG) >= Window.CELLS and "window" not in cells_stated(LINE_RUNS)
+    assert "window" not in cells_stated(TEAM_RECORD) and "window" in cells_stated(PointShape("team_games", "rows", "date"))
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
         assert all("order" not in row.unstated and "limit" not in row.unstated for row in table.values())
     assert {asked(name) for name in ("fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points")} >= ORDER_ASKS
@@ -285,7 +302,7 @@ def test_the_window_cell_changes_what_the_team_relation_reads(team_cells_con: An
 
 
 def test_read_window_returns_the_window_and_its_claims() -> None:
-    read = window_under(asked("game_log"), read_window("curry last 3 games", WindowContext()))
+    read = window_under(PLAYER_LOG, read_window("curry last 3 games", WindowContext()))
     assert isinstance(read, WindowRead) and read.window == Window(order="recent", count=3) and len(read.claims) == 1
 
 
@@ -319,9 +336,9 @@ def test_the_words_read_as_a_stated_minimum(question: str, expected: Minimum | N
 
 def test_a_stated_minimum_stands_on_a_players_ranking_alone() -> None:
     read = read_minimum("most points per game minimum 70 games")
-    assert minimum_under(asked("leaderboard"), read).minimum == Minimum(count=70, unit="games", word="games")
-    assert minimum_under(asked("single_game_high"), read) == MinimumRead(None)
-    assert minimum_under(asked("game_log"), read) == MinimumRead(None)
+    assert minimum_under(PLAYER_RANKING, read).minimum == Minimum(count=70, unit="games", word="games")
+    assert minimum_under(GAME_HIGHS, read) == MinimumRead(None)
+    assert minimum_under(PLAYER_LOG, read) == MinimumRead(None)
 
 
 @pytest.mark.parametrize(
