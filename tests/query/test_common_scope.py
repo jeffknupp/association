@@ -3,7 +3,7 @@
 (:class:`~association.query.reading.Filtered`). The three coverage checks
 took a slot dict too until Phase 3, step 4, slice (b), and a test held them
 to answer a scope and its slot dict alike; the slot door is the tests' own
-since (``tests/slots.py``), and that test went with it.
+since (``tests/slots.py``, until Phase 4, step 0 deleted it), and that test went with it.
 """
 
 from __future__ import annotations

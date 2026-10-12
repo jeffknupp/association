@@ -306,8 +306,9 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Filtered, missing: str, *
 
     .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
-       is still taken, through the slot door (``tests/slots.py``),
-       until every caller passes ``reading``.
+       was taken until every caller passed ``reading``, the tests last,
+       through their slot door (``tests/slots.py``, deleted in Phase 4,
+       step 0).
     """
     seasons = span_of(span if span is not None else scope.span, "games")
     if scope.who.team is None:
@@ -401,8 +402,9 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
 
     .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
-       is still taken, through the slot door (``tests/slots.py``),
-       until every caller passes ``reading``.
+       was taken until every caller passed ``reading``, the tests last,
+       through their slot door (``tests/slots.py``, deleted in Phase 4,
+       step 0).
 
     .. versionchanged:: 5.0.0
        Honors ``period``/``half``: every read then sees that part of each

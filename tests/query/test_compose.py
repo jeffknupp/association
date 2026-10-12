@@ -22,9 +22,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import default_query, reading_of, slots_route, with_subject
-from shapes import asked
-from slots import slots_scope
+from routed import Routed, planned_query, reading_of, with_subject
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -39,10 +37,9 @@ from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
 from association.query.entities import names_of
-from association.query.line import read_lines
 from association.query.notes import collect
 from association.query.parse import with_point
-from association.query.point import _asc_or_desc, lines_under, minimum_under, read_point, team_read_point
+from association.query.point import _asc_or_desc, default_point, minimum_under, read_point, team_read_point
 from association.query.reading import (
     GAME_HIGHS,
     GAMES_COUNTED,
@@ -52,17 +49,27 @@ from association.query.reading import (
     PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_RANKING,
+    PLAYER_SPLITS,
     PRESENCE_SPLIT,
+    SEASON_HISTORY,
+    TEAM_LINE,
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
     Cause,
+    Companion,
+    Cuts,
     Filtered,
+    Line,
     Measure,
+    Period,
     PointRefused,
+    PointShape,
     Reading,
     Span,
+    Window,
     _career_scope,
+    situation_of,
 )
 from association.query.reading import Subject as Who
 from association.query.result import Refusal
@@ -70,48 +77,41 @@ from association.query.subject import Subject, read_subject
 from association.query.window import read_minimum
 
 
-def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Reading:
-    """A test's slot dict as the Reading the parser hands the compiler (5.0.0:
-    the package takes the Reading alone): the typed scope, and the subject
-    read from the question the way ``point`` read it for a caller
-    with none - never applied to the slots, so a case says what it did. A
-    qualifier the words state ("with at least 2 games") is read from them
-    as the parser reads it (ISSUES.md #377)."""
-    scope = replace(_scope(intent, slots, question), minimum=minimum_under(asked(intent), read_minimum(question)).minimum)
-    return Reading(**scope.filters(), asked=asked(intent), subject=subject or read_subject(names_of(con), question, asked(intent), slots_scope(dict(slots))))
+def _reading(con: duckdb.DuckDBPyConnection, asked: PointShape | None, scope: Filtered, question: str, subject: Subject | None = None) -> Reading:
+    """A test's typed reading as the Reading the parser hands the compiler
+    (5.0.0: the package takes the Reading alone): the key the words ask,
+    the filters the case states, and the subject read from the question the
+    way ``point`` read it for a caller with none - never applied to the
+    scope, so a case says what it did. A qualifier the words state ("with at
+    least 2 games") is read from them as the parser reads it (ISSUES.md
+    #377). Until Phase 4, step 0 it took a retired label and a slot dict,
+    and read the lines from the question's words where the dict held a
+    model-era ``threshold``: a case states the lines the words read now."""
+    stated = replace(scope, minimum=minimum_under(asked, read_minimum(question)).minimum)
+    return Reading(**stated.filters(), asked=asked, subject=subject or read_subject(names_of(con), question, asked, scope))
 
 
-def _scope(intent: str, slots: dict[str, Any], question: str) -> Filtered:
-    """``slots`` as the typed scope, the lines read from the question's own
-    words as the stages read them (Phase 3, step 2: a model-era ``threshold``
-    is dropped at the stages' door and the lines tagger reads the words) -
-    unless the case hands a line of its own as a slot, which the door builds."""
-    if any(key in slots for key in ("above", "below", "period_condition", "lines")):
-        return slots_scope(slots)
-    read = lines_under(asked(intent), read_lines(question))
-    if not any(line.keyed for line in read.lines):
-        return slots_scope(slots)  # a line the case hands as a slot, where the words carry none
-    return slots_scope({**{k: v for k, v in slots.items() if k != "threshold"}, "lines": read.lines})
-
-
-def compose_answer(ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> Reply | None:
-    """``compose.answer`` over the point ``question`` moves for ``slots``."""
-    reading = with_point(question, _reading(ctx.con, intent, slots, question, subject))
+def compose_answer(ctx: AnswerContext, asked: PointShape | None, scope: Filtered, question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> Reply | None:
+    """``compose.answer`` over the point ``question`` moves for the case's
+    typed reading under the key ``asked``."""
+    reading = with_point(question, _reading(ctx.con, asked, scope, question, subject))
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
 
 
-def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
-    """The point ``question`` moves for ``slots``, planned - raising the
-    compiler's own ``Unsupported``/``Refused`` as the reader does."""
-    return plan(read_point(_reading(con, intent, slots, question, subject), question))
+def move_point(
+    con: duckdb.DuckDBPyConnection, asked: PointShape | None, scope: Filtered, question: str, subject: Subject | None = None
+) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
+    """The point ``question`` moves for the case's typed reading, planned -
+    raising the compiler's own ``Unsupported``/``Refused`` as the reader
+    does."""
+    return plan(read_point(_reading(con, asked, scope, question, subject), question))
 
 
-def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> TeamQuery | None:
-    """``point.team_read_point`` over ``slots``' scope and the subject read
-    from the question, planned - the team's point as the team compiler runs
-    it, or ``None`` where the team is not the subject."""
-    scope = slots_scope(slots)
-    reading = team_read_point(scope, question, read_subject(names_of(con), question, None, slots_scope(dict(slots))))
+def team_move_point(con: duckdb.DuckDBPyConnection, scope: Filtered, question: str) -> TeamQuery | None:
+    """``point.team_read_point`` over the case's typed reading and the
+    subject read from the question, planned - the team's point as the team
+    compiler runs it, or ``None`` where the team is not the subject."""
+    reading = team_read_point(scope, question, read_subject(names_of(con), question, None, scope))
     if reading is None:
         return None
     query = plan(reading)
@@ -286,14 +286,17 @@ def _run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
 
 def test_rows_skeleton_reads_a_log(cx_ctx: AnswerContext) -> None:
     """``game_log``'s point: the four-stat line, newest games first."""
-    q = default_query("game_log", {"player": "Brandin Podziemski"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))))
     out = _run(cx_ctx.con, q)
     assert [r["points"] for r in out["rows"]] == [10, 28, 15, 20]  # g5, g3, g2, g1 - newest first, g4 (DNP) excluded
 
 
 def test_scalar_skeleton_reads_a_count_or_an_average(cx_ctx: AnswerContext) -> None:
     """``threshold_count``'s point: a scalar count over the narrowed games."""
-    q = default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})
+    q = planned_query(
+        GAMES_COUNTED,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15 points", keyed=True),), measure=Measure(key="points", as_typed="points")),
+    )
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["games"] == 3  # g1 (20), g2 (15), g3 (28) - g5 (10) does not clear the line
 
@@ -302,7 +305,10 @@ def test_a_count_of_one_game_is_said_in_the_singular(cx_ctx: AnswerContext) -> N
     """ISSUES.md #36: the compiler's count said "had 1 games with ..." (five
     feed answers, "Cade Cunningham had 1 games with a triple-double on
     2024-12-16"), and a one-row log was headed "last 1 games"."""
-    q = default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 28})
+    q = planned_query(
+        GAMES_COUNTED,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=28, as_typed="28 points", keyed=True),), measure=Measure(key="points", as_typed="points")),
+    )
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["games"] == 1  # g3 (28) alone clears the line
     said = sentence(q, out)
@@ -336,7 +342,7 @@ def test_a_run_is_still_going_only_in_the_season_on_record_now() -> None:
 
 def test_grouped_skeleton_reads_a_split(cx_ctx: AnswerContext) -> None:
     """``player_splits``' point: a record grouped by venue."""
-    q = default_query("player_splits", {"player": "Brandin Podziemski"})
+    q = planned_query(PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",))))
     out = _run(cx_ctx.con, q)
     by_group = {r["group"]: r["games"] for r in out["rows"]}
     assert by_group == {"home": 3, "away": 1}  # g2, g3, g5 home; g1 away (g4 DNP excluded)
@@ -351,9 +357,20 @@ def test_a_bare_limit_is_filler_on_a_count_but_the_newest_n_on_a_log(cx_ctx: Ans
     """Rule 1: ``limit`` with no ``order`` means "the newest N" on a rows
     read and is dropped as filler everywhere else - a count reads every
     game in the span."""
-    counted = _run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "limit": 1}))
+    counted = _run(
+        cx_ctx.con,
+        planned_query(
+            GAMES_COUNTED,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",)),
+                lines=(Line(measure="points", value=15, as_typed="15 points", keyed=True),),
+                measure=Measure(key="points", as_typed="points"),
+                window=Window(count=1),
+            ),
+        ),
+    )
     assert counted["rows"][0]["games"] == 3  # the limit=1 filler does not cut this to one game
-    logged = _run(cx_ctx.con, default_query("game_log", {"player": "Brandin Podziemski", "limit": 2}))
+    logged = _run(cx_ctx.con, planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=Window(count=2))))
     assert [r["points"] for r in logged["rows"]] == [10, 28]  # g5, g3 - the newest two
 
 
@@ -361,7 +378,7 @@ def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: AnswerContext)
     """Rule 1's mirror image: a real limit (>1) with no ``order`` on a split
     is "his last N games" - a window ``player_splits`` refuses rather than
     silently answering for the whole span."""
-    q = default_query("player_splits", {"player": "Brandin Podziemski", "limit": 5})
+    q = planned_query(PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=Window(count=5)))
     with pytest.raises(Unsupported, match="game_log's question"):
         compile_query(cx_ctx.con, q)
 
@@ -369,7 +386,7 @@ def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: AnswerContext)
 def test_a_team_beside_the_player_becomes_his_opponent_on_a_log(cx_ctx: AnswerContext) -> None:
     """Rule 3: on a ``rows`` read with no opponent already named, a team
     beside the player becomes his opponent."""
-    q = default_query("game_log", {"player": "Brandin Podziemski", "team": "Boston Celtics"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",), teams=("Boston Celtics",))))
     out = _run(cx_ctx.con, q)
     assert [r["points"] for r in out["rows"]] == [10, 20]  # g5, g1 - his two games against Boston, newest first
 
@@ -379,8 +396,26 @@ def test_a_team_slot_narrows_to_his_games_for_that_team_on_a_condition_skeleton(
     the player narrows to his games for that team - a no-op here, since he
     never played for anyone else, but the same code path a traded player's
     question would take."""
-    with_team = _run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "team": "Golden State Warriors"}))
-    without_team = _run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    with_team = _run(
+        cx_ctx.con,
+        planned_query(
+            GAMES_COUNTED,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",), teams=("Golden State Warriors",)),
+                lines=(Line(measure="points", value=15, as_typed="15 points", keyed=True),),
+                measure=Measure(key="points", as_typed="points"),
+            ),
+        ),
+    )
+    without_team = _run(
+        cx_ctx.con,
+        planned_query(
+            GAMES_COUNTED,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15 points", keyed=True),), measure=Measure(key="points", as_typed="points")
+            ),
+        ),
+    )
     assert with_team["rows"][0]["games"] == without_team["rows"][0]["games"] == 3
 
 
@@ -390,7 +425,7 @@ def test_a_team_slot_is_ignored_entirely_on_a_per_game_average(cx_ctx: AnswerCon
     a team the player never played for (as the router routinely invents
     beside a correct opponent) silently narrowed his own averages to zero
     games instead of being ignored."""
-    q = default_query("player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics", "team": "Detroit Pistons"})
+    q = planned_query(PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",), teams=("Detroit Pistons",)), cuts=Cuts(opponent="Boston Celtics")))
     out = _run(cx_ctx.con, q)
     row = out["rows"][0]
     assert row["games"] == 2  # g1 and g5, vs Boston - the bogus Pistons team narrows nothing
@@ -404,7 +439,7 @@ def test_situation_narrows_to_the_named_weekday(cx_ctx: AnswerContext) -> None:
     games = {"g1": date(s - 1, 11, 1), "g2": date(s - 1, 12, 1), "g3": date(s, 1, 10), "g5": date(s, 3, 1), "g6": date(s - 1, 2, 1), "g7": date(s - 1, 3, 1)}
     weekday = games["g3"].strftime("%A").lower()
     matching = {event for event, day in games.items() if day.strftime("%A").lower() == weekday}
-    q = default_query("game_log", {"player": "Brandin Podziemski", "span": "career", "situation": f"{weekday}s"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(career=True)))
     out = _run(cx_ctx.con, q)
     assert len(out["rows"]) == len(matching)
     assert out["rows"][0]["points"] == 28  # g3 is always in the match set (it defines the weekday)
@@ -414,7 +449,7 @@ def test_starter_bench_category_is_refused_outside_a_grouped_read(cx_ctx: Answer
     """Rule 9: ``split: starter_bench`` names a category (a table of both
     halves), not a filter - refused on a ``rows``/``scalar`` read, honored
     only by a grouped read by starter."""
-    q = default_query("game_log", {"player": "Brandin Podziemski", "split": "starter_bench"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), split="starter_bench"))
     with pytest.raises(Unsupported, match="a table of both halves"):
         compile_query(cx_ctx.con, q)
 
@@ -425,7 +460,7 @@ def test_an_unhonored_scoping_slot_is_refused(cx_ctx: AnswerContext) -> None:
     planned (``to_query`` plans); the compile step keeps the same check for
     a query built by hand."""
     with pytest.raises(Unsupported, match="the finals cannot be read here"):
-        default_query("game_log", {"player": "Brandin Podziemski", "round": "finals"})
+        planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(round="finals")))
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +471,7 @@ def test_an_unhonored_scoping_slot_is_refused(cx_ctx: AnswerContext) -> None:
 def test_a_measure_word_the_router_did_not_name_moves_the_point(cx_ctx: AnswerContext) -> None:
     """A measure word in the question ("plus-minus") is added to a log's
     line even though the router's own ``stat`` slot said nothing about it."""
-    q = move_point(cx_ctx.con, "game_log", {"player": "Brandin Podziemski"}, "Podziemski's plus-minus each game this season")
+    q = move_point(cx_ctx.con, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "Podziemski's plus-minus each game this season")
     assert isinstance(q, Query)  # a named player never returns a TeamQuery
     out = _run(cx_ctx.con, q)
     g3 = next(r for r in out["rows"] if r["points"] == 28)
@@ -446,7 +481,7 @@ def test_a_measure_word_the_router_did_not_name_moves_the_point(cx_ctx: AnswerCo
 def test_most_in_a_game_moves_to_rows_by_measure(cx_ctx: AnswerContext) -> None:
     """ "Career-high" moves a ``player_stat``-shaped point to rows ordered by
     the named measure - the top game(s), not an average."""
-    q = move_point(cx_ctx.con, "player_stat", {"player": "Brandin Podziemski", "stat": "points"}, "Podziemski's career-high in points")
+    q = move_point(cx_ctx.con, PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="points", as_typed="points")), "Podziemski's career-high in points")
     assert isinstance(q, Query)  # a named player never returns a TeamQuery
     assert q.skeleton == "rows" and q.order == "measure"
     out = _run(cx_ctx.con, q)
@@ -457,7 +492,7 @@ def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: AnswerContext) 
     """ "How many ... has he won" moves to a career count with the ``won``
     predicate, whatever season was (or was not) named - route()'s own
     unscoped-count-is-career rule, read here in code."""
-    q = move_point(cx_ctx.con, "record_when", {"player": "Brandin Podziemski"}, "how many games has Podziemski's team won?")
+    q = move_point(cx_ctx.con, LINE_RECORD, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "how many games has Podziemski's team won?")
     assert isinstance(q, Query)  # a named player never returns a TeamQuery
     assert q.span.career  # the scope itself carries it; the point settles no span of its own
     out = _run(cx_ctx.con, q)
@@ -473,10 +508,10 @@ def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx
     average outright, whatever move asked for it."""
     from association.query.compose.core import Unsupported, _agg
 
-    slots = {"player": "Brandin Podziemski", "stat": "double_double", "venue": "away", "span": "career"}
-    q = move_point(cx_ctx.con, "player_splits", dict(slots), "Podziemski double-doubles career away")
+    scope = Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(venue="away"), measure=Measure(key="double_double", as_typed="double_double"), span=Span(career=True))
+    q = move_point(cx_ctx.con, PLAYER_SPLITS, scope, "Podziemski double-doubles career away")
     assert isinstance(q, Query) and q.skeleton == "scalar" and q.aggregate == "count" and ("double_double", "=", True) in q.predicates
-    result = compose_answer(cx_ctx, "player_splits", dict(slots), "Podziemski double-doubles career away")
+    result = compose_answer(cx_ctx, PLAYER_SPLITS, scope, "Podziemski double-doubles career away")
     assert result is not None and "double-double" in result.answer
     with pytest.raises(Unsupported):
         _agg("double_double", "per_game")
@@ -497,7 +532,7 @@ def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: Answ
     """A ranking word with no player subject reads the league-wide grouped
     point - the leaderboard shape a template refuses because no player was
     named."""
-    q = move_point(cx_ctx.con, "other", {}, "top scorers this season")
+    q = move_point(cx_ctx.con, None, Reading(), "top scorers this season")
     assert isinstance(q, Query)  # no team named in this fixture's own words
     assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
     out = _run(cx_ctx.con, q)
@@ -508,7 +543,7 @@ def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: Answ
 def test_a_position_word_with_no_player_reads_that_positions_log(cx_ctx: AnswerContext) -> None:
     """A position word with no player subject reads that group's log, rows -
     not a ranking, since no ranking word was asked for."""
-    q = move_point(cx_ctx.con, "other", {}, "centers game log this season")
+    q = move_point(cx_ctx.con, None, Reading(), "centers game log this season")
     assert isinstance(q, Query)  # no team named in this fixture's own words
     assert q.subject == "everyone" and q.skeleton == "rows" and q.position == "C"
     out = _run(cx_ctx.con, q)
@@ -518,7 +553,12 @@ def test_a_position_word_with_no_player_reads_that_positions_log(cx_ctx: AnswerC
 def test_the_questions_own_number_names_its_column_not_the_routers_stat(cx_ctx: AnswerContext) -> None:
     """A threshold's own words ("30 point") name its column, even where the
     router's ``stat`` slot names a different one entirely."""
-    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 30, "stat": "rebounds"}, "players with a 30 point game this season")
+    q = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="points", value=30, as_typed="30 point", keyed=True),), measure=Measure(key="rebounds", as_typed="rebounds")),
+        "players with a 30 point game this season",
+    )
     assert isinstance(q, Query)  # no team named in this fixture's own words
     assert q.predicates == [("points", ">=", 30)]
     out = _run(cx_ctx.con, q)
@@ -535,7 +575,7 @@ def test_a_team_subject_question_is_refused_not_ranked(cx_ctx: AnswerContext) ->
     """A period ("first half") is not this relation's question - refused,
     never answered with a ranking of players over the whole game."""
     with pytest.raises(Unsupported, match="period relation"):
-        move_point(cx_ctx.con, "other", {}, "least points scored by the Warriors in the first half this season")
+        move_point(cx_ctx.con, None, Reading(), "least points scored by the Warriors in the first half this season")
 
 
 def test_an_opponents_or_allowed_figure_is_refused_not_ranked(cx_ctx: AnswerContext) -> None:
@@ -543,7 +583,7 @@ def test_an_opponents_or_allowed_figure_is_refused_not_ranked(cx_ctx: AnswerCont
     question; refused rather than answered as a ranking of players, which
     silently substituted a different question until this guard existed."""
     with pytest.raises(Unsupported, match="team relation"):
-        move_point(cx_ctx.con, "other", {}, "most opponent bench points allowed by team this season")
+        move_point(cx_ctx.con, None, Reading(), "most opponent bench points allowed by team this season")
 
 
 # ---------------------------------------------------------------------------
@@ -559,7 +599,7 @@ def test_refused_carries_the_relations_own_wording(cx_ctx: AnswerContext) -> Non
     :class:`~association.query.result.Clarify` of near spellings), which the
     sayer words. A plain typo of one player ("Podzemski") is no longer this
     shape: it is read as him (entities.read_near_spelling)."""
-    q = default_query("game_log", {"player": "Jemel Podziemski"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Jemel Podziemski",))))
     with pytest.raises(Refused) as excinfo:
         run(cx_ctx.con, q)
     assert "podziemski" in (say(excinfo.value.result).answer or "").lower()
@@ -571,7 +611,7 @@ def test_a_name_nothing_resolves_to_is_the_reads_refusal(cx_ctx: AnswerContext) 
     6.0.0 a decline (``Unsupported``), on the reasoning that the agent might
     do better with it; the agent is gone, and a decline was the user's
     "Nothing here answers this question: ... no player matching"."""
-    q = default_query("game_log", {"player": "Zzyzx Nobody"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Zzyzx Nobody",))))
     with pytest.raises(Refused) as caught:
         run(cx_ctx.con, q)
     outcome = caught.value.result
@@ -581,7 +621,7 @@ def test_a_name_nothing_resolves_to_is_the_reads_refusal(cx_ctx: AnswerContext) 
 def test_answer_returns_none_for_a_question_the_compiler_cannot_say(cx_ctx: AnswerContext) -> None:
     """``answer()`` reports "not a point on this relation" as ``None`` -
     which is a fall-through to the agent, not a refusal."""
-    assert compose_answer(cx_ctx, "game_log", {}, "some team's log") is None
+    assert compose_answer(cx_ctx, PLAYER_LOG, Reading(), "some team's log") is None
 
 
 def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: AnswerContext) -> None:
@@ -590,7 +630,7 @@ def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: AnswerCont
     "plus-minus" moves the point off ``player_stat``'s own line, so this is
     the compiler's sentence rather than the template's (``compose.present``,
     step 2a - ``test_an_intents_own_point_reads_as_its_template``)."""
-    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "Podziemski's plus-minus vs Boston")
+    result = compose_answer(cx_ctx, PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics")), "Podziemski's plus-minus vs Boston")
     assert result is not None
     assert "Brandin Podziemski" in result.answer
     assert result.data["skeleton"] == "scalar"
@@ -607,11 +647,18 @@ def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: AnswerContext
     s = current_season()
     # "PRA" moves the point off player_stat's own line, so the compiler's
     # own span phrase is what answers (compose.present, step 2a).
-    both = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s}, "Podziemski's PRA")
+    both = compose_answer(
+        cx_ctx, PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="points", as_typed="points"), span=Span(since=(s - 1), until=s)), "Podziemski's PRA"
+    )
     assert both is not None
     assert f"({s - 1}-{s})" in both.answer and "on)" not in both.answer
     assert both.data["rows"][0]["games"] == 6
-    one = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s - 1}, "Podziemski's PRA")
+    one = compose_answer(
+        cx_ctx,
+        PLAYER_LINE,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="points", as_typed="points"), span=Span(since=(s - 1), until=(s - 1))),
+        "Podziemski's PRA",
+    )
     assert one is not None
     assert f"career ({s - 1})" in one.answer
     assert one.data["rows"][0]["games"] == 2
@@ -631,13 +678,29 @@ def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate
     cx_ctx.con.execute("INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)", ["g9", s, f"{s}-03-15T20:00Z", BOS, GS, 90, 101, GS])
     cx_ctx.con.execute(f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})", _box("g9", s, GS, BOS, PODZ, minutes=31, pts=24, reb=6, ast=5))
     result = compose_answer(
-        cx_ctx, "game_log", {"player": "Brandin Podziemski", "opponent": "Boston", "without": ["Jaylen Brown"], "season": s, "season_type": 2}, "podziemski game log vs boston without jaylen brown"
+        cx_ctx,
+        PLAYER_LOG,
+        Reading(
+            who=Who(kind="player", players=("Brandin Podziemski",)),
+            cuts=Cuts(opponent="Boston"),
+            companions=(Companion(player="Jaylen Brown", predicate="absent"),),
+            span=Span(season=s, season_type=2),
+        ),
+        "podziemski game log vs boston without jaylen brown",
     )
     assert result is not None and [g["date"] for g in result.data["games"]] == [f"{s}-03-15"]
     assert "vs the Boston Celtics without Jaylen Brown on the other side" in (result.answer or "")
     # A man on neither side: the own-side reading, and the honest empty answer.
     neither = compose_answer(
-        cx_ctx, "game_log", {"player": "Brandin Podziemski", "opponent": "Boston", "without": ["Domantas Sabonis"], "season": s, "season_type": 2}, "podziemski game log vs boston without sabonis"
+        cx_ctx,
+        PLAYER_LOG,
+        Reading(
+            who=Who(kind="player", players=("Brandin Podziemski",)),
+            cuts=Cuts(opponent="Boston"),
+            companions=(Companion(player="Domantas Sabonis", predicate="absent"),),
+            span=Span(season=s, season_type=2),
+        ),
+        "podziemski game log vs boston without sabonis",
     )
     assert neither is not None and "Domantas Sabonis was not Brandin Podziemski's teammate" in (neither.answer or "")
 
@@ -649,7 +712,9 @@ def test_an_empty_splits_read_names_the_narrowing_not_a_phantom_did_not_play(cx_
     (g4) is a DNP, so his splits against them are empty, and the answer
     says that it is the narrowing that emptied them."""
     s = current_season()
-    result = compose_answer(cx_ctx, "player_splits", {"player": "Brandin Podziemski", "opponent": "Lakers", "season": s, "season_type": 2}, "podziemski record vs lakers")
+    result = compose_answer(
+        cx_ctx, PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Lakers"), span=Span(season=s, season_type=2)), "podziemski record vs lakers"
+    )
     assert result is not None and result.data["games"] == 0
     assert "none of them vs the Los Angeles Lakers" in (result.answer or "") and "did not play in any" not in (result.answer or "")
 
@@ -675,8 +740,14 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Answ
     # the template's own point reads in the template's words instead).
     result = compose_answer(
         cx_ctx,
-        "threshold_count",
-        {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "span": "career", "opponent": "Detroit Pistons"},
+        GAMES_COUNTED,
+        Reading(
+            who=Who(kind="player", players=("Brandin Podziemski",)),
+            cuts=Cuts(opponent="Detroit Pistons"),
+            lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+            span=Span(career=True),
+        ),
         "Podziemski's 15+ point games vs Detroit in his career",
     )
     assert result is not None
@@ -687,7 +758,12 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Answ
     assert result.data["rows"][0]["games"] == 3
     assert result.data["span"] == f"regular season career ({s - 1}-{s})"
 
-    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 10, "stat": "rebounds", "span": "career"}, "players with 10 points career")
+    q = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="points", value=10, as_typed="10 points", keyed=True),), measure=Measure(key="rebounds", as_typed="rebounds"), span=Span(career=True)),
+        "players with 10 points career",
+    )
     assert isinstance(q, Query) and q.subject == "everyone"
     out = run(cx_ctx.con, q)
     assert out["player_seasons"] is None
@@ -695,7 +771,7 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Answ
 
 def test_a_refusal_from_answer_is_the_relations_own(cx_ctx: AnswerContext) -> None:
     """A near-miss name is a handled refusal from ``answer()``, not ``None``."""
-    result = compose_answer(cx_ctx, "game_log", {"player": "Podzemski"}, "Podzemski's last 5 games")
+    result = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Podzemski",))), "Podzemski's last 5 games")
     assert result is not None
     assert re.search(r"podziemski", result.answer, re.I)
 
@@ -760,7 +836,11 @@ def test_team_move_point_reads_an_unnarrowed_season_total(team_cx_ctx: AnswerCon
     """F127's shape: "how many 3 pointers have the magic made" - a plain
     season total from ``team_season_stats``, not a per-game average, and the
     finished postseason is named too rather than left unmentioned."""
-    q = team_move_point(team_cx_ctx.con, {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season")
+    q = team_move_point(
+        team_cx_ctx.con,
+        Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")),
+        "how many 3 pointers have the magic made so far this season",
+    )
     assert isinstance(q, TeamQuery)
     result = run_team(team_cx_ctx.con, q)
     assert result.value == 961
@@ -774,7 +854,7 @@ def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: AnswerCont
     (ISSUES.md) - ``team_named_in`` reads "magic" from the text itself, the
     same repair :func:`association.query.subject.players_named_in` already
     makes for a dropped PLAYER."""
-    q = team_move_point(team_cx_ctx.con, {"stat": "threePointFieldGoalsMade"}, "how many 3 pointers have the magic made so far this season")
+    q = team_move_point(team_cx_ctx.con, Reading(measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")), "how many 3 pointers have the magic made so far this season")
     assert isinstance(q, TeamQuery)
     assert q.who.team == "Orlando Magic"
 
@@ -785,7 +865,12 @@ def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: AnswerConte
     restoration would turn this into a question about him UNLESS the team
     reading is tried first (``move_point``'s own ordering, not just this
     function's)."""
-    q = move_point(team_cx_ctx.con, "leaderboard", {"stat": "threePointFieldGoalsMade", "season_type": 2}, "how many 3 pointers have the magic made so far this season")
+    q = move_point(
+        team_cx_ctx.con,
+        PLAYER_RANKING,
+        Reading(measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"), span=Span(season_type=2)),
+        "how many 3 pointers have the magic made so far this season",
+    )
     assert isinstance(q, TeamQuery)
     assert q.who.player is None
 
@@ -796,7 +881,11 @@ def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: AnswerContext) -> N
     Toronto's own side, their last 3 regular-season games are r3 (110, a
     home loss to Cleveland), r4 (90, an away win) and r5 (115, a home win) -
     315 points, not the season's."""
-    q = team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "total points scored by the raptors in their last 3 games")
+    q = team_move_point(
+        team_cx_ctx.con,
+        Reading(who=Who(kind="team", teams=("Toronto Raptors",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2), window=Window(order="recent", count=3)),
+        "total points scored by the raptors in their last 3 games",
+    )
     assert isinstance(q, TeamQuery)
     result = run_team(team_cx_ctx.con, q)
     assert result.value == 315
@@ -810,8 +899,8 @@ def test_a_teams_quarter_is_never_read_as_its_season_line(team_cx_ctx: AnswerCon
     answer their season's 961 - a whole-game total under a quarter's
     question. It goes to the narrowed reader, which sums game-level columns
     only, and declines a box-score count rather than answering the season."""
-    for period in ({"period": 1}, {"half": 2}):
-        q = TeamQuery(**(slots_scope({"team": "Orlando Magic", "season_type": 2, **period})).filters(), metric="threePointFieldGoalsMade")
+    for period in (Period(number=1), Period(number=2, half=True)):
+        q = TeamQuery(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season_type=2), period=period, metric="threePointFieldGoalsMade")
         with pytest.raises(Unsupported):
             run_team(team_cx_ctx.con, q)
 
@@ -819,7 +908,11 @@ def test_a_teams_quarter_is_never_read_as_its_season_line(team_cx_ctx: AnswerCon
 def test_team_move_point_reads_a_narrowed_differential(team_cx_ctx: AnswerContext) -> None:
     """F129's shape: Toronto's last 3 games (r3 110-120 L, r4 90-100 W, r5
     115-108 W) sum to a -13 differential (-10 -10 +7), not the season's."""
-    q = team_move_point(team_cx_ctx.con, {"stat": "pointsDifference", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "raptors point differential over their last 3 games")
+    q = team_move_point(
+        team_cx_ctx.con,
+        Reading(who=Who(kind="team", teams=("Toronto Raptors",)), measure=Measure(as_typed="pointsDifference"), span=Span(season_type=2), window=Window(order="recent", count=3)),
+        "raptors point differential over their last 3 games",
+    )
     assert isinstance(q, TeamQuery)
     result = run_team(team_cx_ctx.con, q)
     assert result.value == -13
@@ -830,13 +923,20 @@ def test_team_move_point_never_hijacks_a_player_ranking(team_cx_ctx: AnswerConte
     """ "Who leads the Lakers in scoring" narrows a PLAYER ranking by team -
     it is not the team's own subject, and must fall through to the
     league-wide reading (``_everyone_point``'s own question) unchanged."""
-    assert team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Los Angeles Lakers"}, "who leads the lakers in scoring") is None
+    assert team_move_point(team_cx_ctx.con, Reading(who=Who(kind="team", teams=("Los Angeles Lakers",)), measure=Measure(key="points", as_typed="points")), "who leads the lakers in scoring") is None
 
 
 def test_team_move_point_never_hijacks_a_named_player(team_cx_ctx: AnswerContext) -> None:
     """A player already named makes the team a narrowing of him, never the
     subject - ``move_point``'s own player path, untouched."""
-    assert team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Orlando Magic", "player": "Paolo Banchero"}, "how many points has banchero scored for the magic") is None
+    assert (
+        team_move_point(
+            team_cx_ctx.con,
+            Reading(who=Who(kind="player", players=("Paolo Banchero",), teams=("Orlando Magic",)), measure=Measure(key="points", as_typed="points")),
+            "how many points has banchero scored for the magic",
+        )
+        is None
+    )
 
 
 def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: AnswerContext) -> None:
@@ -848,19 +948,26 @@ def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: A
     noisier path - caught by re-running ``k2_run_pkg.py`` against this
     package, which crashed on it (``'TeamQuery' object has no attribute
     'subject'``) before this guard existed."""
-    q = team_move_point(team_cx_ctx.con, {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team")
+    q = team_move_point(
+        team_cx_ctx.con, Reading(who=Who(kind="team", teams=("any_team",)), measure=Measure(key="rebounds", as_typed="rebounds"), span=Span(season_type=2)), "rebounds allowed per team"
+    )
     assert q is None
     with pytest.raises(Unsupported, match="team relation"):
-        move_point(team_cx_ctx.con, "leaderboard", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team")
+        move_point(
+            team_cx_ctx.con,
+            PLAYER_RANKING,
+            Reading(who=Who(kind="team", teams=("any_team",)), measure=Measure(key="rebounds", as_typed="rebounds"), span=Span(season_type=2)),
+            "rebounds allowed per team",
+        )
     # Under team_stat the question is the team's own season (Phase 2, step 4):
     # its reader resolves the team and refuses the placeholder, as the
     # retired template did.
     # The point reads the subject's kind as the parser read it (Phase 3,
     # step 2): "any_team" is no team the words name, so the league.
     named = Reading(who=Who(kind="team", teams=("any_team",)), measure=Measure(key="rebounds", as_typed="rebounds"), span=Span(season_type=2))
-    assert move_point(team_cx_ctx.con, "team_stat", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team") == TeamSeasonQuery(
-        **(replace(named, who=replace(named.who, kind="everyone"))).filters(), relation="team_seasons", shape="scalar"
-    )
+    assert move_point(
+        team_cx_ctx.con, TEAM_LINE, Reading(who=Who(kind="team", teams=("any_team",)), measure=Measure(key="rebounds", as_typed="rebounds"), span=Span(season_type=2)), "rebounds allowed per team"
+    ) == TeamSeasonQuery(**(replace(named, who=replace(named.who, kind="everyone"))).filters(), relation="team_seasons", shape="scalar")
 
 
 def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: AnswerContext) -> None:
@@ -868,7 +975,14 @@ def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: Ans
     to a window needs a join the team-games relation does not have yet
     (ISSUES.md) - refused rather than silently answering the season instead."""
     q = team_move_point(
-        team_cx_ctx.con, {"stat": "threePointFieldGoalsMade", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "3 pointers made by the raptors in their last 3 games"
+        team_cx_ctx.con,
+        Reading(
+            who=Who(kind="team", teams=("Toronto Raptors",)),
+            measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"),
+            span=Span(season_type=2),
+            window=Window(order="recent", count=3),
+        ),
+        "3 pointers made by the raptors in their last 3 games",
     )
     assert isinstance(q, TeamQuery)
     with pytest.raises(Unsupported):
@@ -906,27 +1020,29 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
             measures=["points"],
             aggregate=aggregate,  # type: ignore[arg-type]
             group="venue" if shape == "split" else "none",
-            **(slots_scope({"team": "Orlando Magic", **cells})).filters(),
+            who=Who(kind="team", teams=("Orlando Magic",)),
+            **cells,
         )
 
     line = Line(measure="threePointFieldGoalsMade", value=5, period=Period(number=1))
+    banchero_out = (Companion(player="Paolo Banchero", predicate="absent"),)
     refused: list[tuple[str, dict[str, Any], str]] = [
-        ("rows", {"period_condition": line}, "games with 5+ 3-pointers in the 1st quarter"),
-        ("scalar", {"period_condition": line}, "games with 5+ 3-pointers in the 1st quarter"),
+        ("rows", {"lines": (line,)}, "games with 5+ 3-pointers in the 1st quarter"),
+        ("scalar", {"lines": (line,)}, "games with 5+ 3-pointers in the 1st quarter"),
         ("rows", {"split": "starter"}, "the games as a starter"),
-        ("scalar", {"without": ("Paolo Banchero",)}, "games without Paolo Banchero"),
-        ("scalar", {"below": ("14 fta",)}, "games with under 14 fta"),
-        ("scalar", {"season_n": 3}, "the 3rd season of a career"),
-        ("runs", {"period_condition": line}, "games with 5+ 3-pointers in the 1st quarter"),
+        ("scalar", {"companions": banchero_out}, "games without Paolo Banchero"),
+        ("scalar", {"lines": (Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="14 fta", narrows=True),)}, "games with under 14 fta"),
+        ("scalar", {"cuts": Cuts(season_n=3)}, "the 3rd season of a career"),
+        ("runs", {"lines": (line,)}, "games with 5+ 3-pointers in the 1st quarter"),
     ]
     for shape, cells, named in refused:
         with pytest.raises(Unsupported, match=rf"^{re.escape(named)} cannot be read over a team's games"):
             plan(team_point(shape, **cells))
     passes: list[tuple[str, dict[str, Any]]] = [
-        ("scalar", {"opponent": "Boston", "venue": "home", "order": "recent", "limit": 10}),
+        ("scalar", {"cuts": Cuts(opponent="Boston", venue="home"), "window": Window(order="recent", count=10)}),
         ("rows", {"span": Span(since=2022, until=2024)}),
         ("split", {"split": "home_away"}),
-        ("rows", {"without": ("Paolo Banchero",)}),  # the log's own reader says where that question belongs
+        ("rows", {"companions": banchero_out}),  # the log's own reader says where that question belongs
     ]
     for shape, cells in passes:
         assert isinstance(plan(team_point(shape, **cells)), TeamQuery), (shape, cells)
@@ -946,33 +1062,42 @@ def test_a_league_point_refuses_a_cell_the_league_read_has_no_subject_for() -> N
     from association.query.point import read_point
     from association.query.subject import Subject
 
-    def league_ranking(slots: dict[str, Any], intent: str = "leaderboard", question: str = "who led the league in points") -> Any:
-        reading = Reading(**(slots_scope(slots)).filters(), asked=asked(intent), subject=Subject("everyone"))
+    def league_ranking(scope: Reading, asked: PointShape = PLAYER_RANKING, question: str = "who led the league in points") -> Any:
+        reading = replace(scope, asked=asked, subject=Subject("everyone"))
         return plan(read_point(reading, question))
 
-    refused: list[tuple[dict[str, Any], str]] = [
-        ({"stat": "points", "date": "2024-11-22"}, "the game on 2024-11-22"),
-        ({"stat": "points", "without": ["Jaylen Brown"]}, "games without Jaylen Brown"),
-        ({"stat": "points", "split": "bench"}, "the games off the bench"),
-        ({"stat": "points", "own_team": "Miami Heat"}, "games for Miami Heat"),
-        ({"stat": "points", "order": "recent", "limit": 5}, "the last 5 games"),
+    points = Measure(key="points", as_typed="points")
+    refused: list[tuple[Reading, str]] = [
+        (Reading(cuts=Cuts(date="2024-11-22"), measure=points), "the game on 2024-11-22"),
+        (Reading(companions=(Companion(player="Jaylen Brown", predicate="absent"),), measure=points), "games without Jaylen Brown"),
+        (Reading(measure=points, split="bench"), "the games off the bench"),
+        (Reading(cuts=Cuts(tenure="Miami Heat"), measure=points), "games for Miami Heat"),
+        (Reading(measure=points, window=Window(order="recent", count=5)), "the last 5 games"),
     ]
-    for slots, named in refused:
+    for scope, named in refused:
         with pytest.raises(Unsupported, match=rf"^{re.escape(named)} cannot be read here"):
-            league_ranking(slots)
-    for slots, named in (({"stat": "blocks", "game_n": 7, "season_type": 3}, "game 7 of a series"), ({"stat": "points", "date": "2001-02-02"}, "the game on 2001-02-02")):
+            league_ranking(scope)
+    for scope, named in (
+        (Reading(cuts=Cuts(game_n=7), measure=Measure(key="blocks", as_typed="blocks"), span=Span(season_type=3)), "game 7 of a series"),
+        (Reading(cuts=Cuts(date="2001-02-02"), measure=points), "the game on 2001-02-02"),
+    ):
         with pytest.raises(Unsupported, match=rf"^{re.escape(named)} cannot be read here"):
-            league_ranking(slots, "single_game_high", "most blocks in a game")
+            league_ranking(scope, GAME_HIGHS, "most blocks in a game")
     # What the league read does narrow by still plans.
-    for slots in ({"stat": "points", "opponent": "Boston Celtics"}, {"stat": "points", "venue": "home"}, {"stat": "points", "season_n": 15}):
-        assert isinstance(league_ranking(slots), Query), slots
-        assert isinstance(league_ranking(slots, "single_game_high", "most points in a game"), Query), slots
+    for scope in (Reading(cuts=Cuts(opponent="Boston Celtics"), measure=points), Reading(cuts=Cuts(venue="home"), measure=points), Reading(cuts=Cuts(season_n=15), measure=points)):
+        assert isinstance(league_ranking(scope), Query), scope
+        assert isinstance(league_ranking(scope, GAME_HIGHS, "most points in a game"), Query), scope
 
 
 def test_answer_composes_a_team_subject_sentence(team_cx_ctx: AnswerContext) -> None:
     """``answer()``'s dispatch to the team subject, end to end - the same
     surface :func:`association.query.agent.Agent._try_compose` calls."""
-    result = compose_answer(team_cx_ctx, "leaderboard", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season")
+    result = compose_answer(
+        team_cx_ctx,
+        PLAYER_RANKING,
+        Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")),
+        "how many 3 pointers have the magic made so far this season",
+    )
     assert result is not None
     assert "961" in result.answer
     assert result.data["team"] == "Orlando Magic"
@@ -992,7 +1117,17 @@ def test_answer_refuses_a_season_under_the_players_coverage_floor(cx_ctx: Answer
     """Box scores (and so ``threshold_count``) reach back only to 1994 -
     #197's first gap: the compiler used to answer an empty result as
     confidently as a real one for a season no template would ever reach."""
-    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "season": 1990}, "Podziemski's 15+ point games in 1990")
+    result = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(
+            who=Who(kind="player", players=("Brandin Podziemski",)),
+            lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+            span=Span(season=1990),
+        ),
+        "Podziemski's 15+ point games in 1990",
+    )
     assert result is not None
     assert "1994" in result.answer and "1990" in result.answer
 
@@ -1005,7 +1140,12 @@ def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: An
     about; the assertion is that the caveat function ran and found nothing
     to say for a season it does not cover a note for, proving the call site
     exists without needing to rebuild that exact gap in a tiny fixture."""
-    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, "Podziemski's 15+ point games this season")
+    result = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),), measure=Measure(key="points", as_typed="points")),
+        "Podziemski's 15+ point games this season",
+    )
     assert result is not None
     assert "Note:" not in result.answer  # the current season carries no caveat - proves one is not added where none applies
 
@@ -1013,7 +1153,12 @@ def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: An
 def test_answer_refuses_a_season_under_the_teams_coverage_floor(team_cx_ctx: AnswerContext) -> None:
     """``team_season_stats`` reaches back only to 1994 - #197's gap on the
     team subject's own unnarrowed (season-line) reader."""
-    result = compose_answer(team_cx_ctx, "leaderboard", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic", "season": 1990}, "how many 3 pointers did the magic make in 1990")
+    result = compose_answer(
+        team_cx_ctx,
+        PLAYER_RANKING,
+        Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"), span=Span(season=1990)),
+        "how many 3 pointers did the magic make in 1990",
+    )
     assert result is not None
     assert "1994" in result.answer and "1990" in result.answer
 
@@ -1024,7 +1169,10 @@ def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ct
     assertion is that answering a real, covered narrowed question adds no
     spurious note."""
     result = compose_answer(
-        team_cx_ctx, "game_log", {"stat": "points", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "total points scored by the raptors in their last 3 games"
+        team_cx_ctx,
+        PLAYER_LOG,
+        Reading(who=Who(kind="team", teams=("Toronto Raptors",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2), window=Window(order="recent", count=3)),
+        "total points scored by the raptors in their last 3 games",
     )
     assert result is not None
     assert "Note:" not in result.answer
@@ -1043,7 +1191,12 @@ def test_a_highest_scoring_boolean_measure_ranks_the_games_not_a_per_player_aver
     `_everyone_ranking`'s per-player AVERAGE (which would need
     `minimum_games` triple-doubles just to rank anyone). Podziemski's g3
     (28/10/11) is the fixture's only triple-double."""
-    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "limit": 10, "season_type": 2}, "players with the highest scoring triple doubles")
+    q = move_point(
+        cx_ctx.con,
+        PLAYER_RANKING,
+        Reading(measure=Measure(key="triple_double", as_typed="triple_double"), span=Span(season_type=2), window=Window(count=10)),
+        "players with the highest scoring triple doubles",
+    )
     assert isinstance(q, Query)
     assert q.subject == "everyone" and q.skeleton == "rows" and q.order == "measure"
     assert q.predicates == [("triple_double", "=", True)]
@@ -1059,7 +1212,7 @@ def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: AnswerContext) -> 
     # "ever" is the span tagger's reading (lexicon.CAREER_WORDS), in the
     # stages before the point is read; the point reader reads no span of
     # its own since Phase 3, step 2, so the slots carry what the stages would.
-    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "season_type": 2, "span": "career"}, "biggest triple double ever")
+    q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="triple_double", as_typed="triple_double"), span=Span(season_type=2, career=True)), "biggest triple double ever")
     assert isinstance(q, Query)
     assert q.measures[0] == "points"
     assert q.span.career
@@ -1080,7 +1233,19 @@ def test_several_number_stat_lines_read_the_qualifying_games_not_a_count(cx_ctx:
     20+ points, 7+ rebounds and 3+ assists at once (Brown's g5 and
     Podziemski's g3) - the 20-point-guards ranking pool (6 rebounds apiece)
     and the two players' own lower-rebound games fall short of the 7."""
-    q = move_point(cx_ctx.con, "threshold_count", {"season_type": 2}, "players with 20 points and 7 rebounds and 3 assists this season")
+    q = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(
+            lines=(
+                Line(measure="points", value=20, as_typed="20 points", keyed=True),
+                Line(measure="rebounds", value=7, as_typed="7 rebounds"),
+                Line(measure="assists", value=3, as_typed="3 assists"),
+            ),
+            span=Span(season_type=2),
+        ),
+        "players with 20 points and 7 rebounds and 3 assists this season",
+    )
     assert isinstance(q, Query)
     assert q.subject == "everyone" and q.skeleton == "rows"
     assert sorted(q.predicates) == sorted([("points", ">=", 20), ("rebounds", ">=", 7), ("assists", ">=", 3)])
@@ -1099,20 +1264,44 @@ def test_a_league_wide_read_since_a_season_reaches_every_season_from_it(cx_ctx: 
     holds one, "since s-1" both, and "s-1 through s-1" the other one."""
     s = current_season()
     question = "players with 12 rebounds and 5 assists games"
-    this_season = move_point(cx_ctx.con, "threshold_count", {"season_type": 2}, question)
+    this_season = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="rebounds", value=12, as_typed="12 rebounds", keyed=True), Line(measure="assists", value=5, as_typed="5 assists")), span=Span(season_type=2)),
+        question,
+    )
     assert isinstance(this_season, Query) and this_season.subject == "everyone" and this_season.skeleton == "rows"
     assert [r["rebounds"] for r in run(cx_ctx.con, this_season)["rows"]] == [12]
-    since = move_point(cx_ctx.con, "threshold_count", {"season_type": 2, "since": s - 1}, question)
+    since = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="rebounds", value=12, as_typed="12 rebounds", keyed=True), Line(measure="assists", value=5, as_typed="5 assists")), span=Span(season_type=2, since=s - 1)),
+        question,
+    )
     assert isinstance(since, Query)
     out = run(cx_ctx.con, since)
     assert sorted(r["rebounds"] for r in out["rows"]) == [12, 14]
     assert f"({s - 1} on)" in sentence(since, out)
-    until = move_point(cx_ctx.con, "threshold_count", {"season_type": 2, "since": s - 1, "until": s - 1}, question)
+    until = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(
+            lines=(Line(measure="rebounds", value=12, as_typed="12 rebounds", keyed=True), Line(measure="assists", value=5, as_typed="5 assists")), span=Span(season_type=2, since=s - 1, until=s - 1)
+        ),
+        question,
+    )
     assert isinstance(until, Query)
     assert [r["rebounds"] for r in run(cx_ctx.con, until)["rows"]] == [14]
     # A named season beside ``since`` is the contradiction ``_span_of``
     # refuses for a player, and the compiler declines it the same way.
-    both = move_point(cx_ctx.con, "threshold_count", {"season_type": 2, "season": s, "since": s - 1}, question)
+    both = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(
+            lines=(Line(measure="rebounds", value=12, as_typed="12 rebounds", keyed=True), Line(measure="assists", value=5, as_typed="5 assists")), span=Span(season=s, season_type=2, since=s - 1)
+        ),
+        question,
+    )
     assert isinstance(both, Query)
     with pytest.raises(Unsupported, match="since"):
         run(cx_ctx.con, both)
@@ -1128,7 +1317,12 @@ def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: AnswerContext)
     redundant line when the router's own ``stat`` already names the same
     column the phrase does; filed as a finding (ISSUES.md), not fixed here,
     since it is a pre-existing single-line quirk outside F161's own scope."""
-    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 15, "stat": "rebounds"}, "players with 15 points this season")
+    q = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="points", value=15, as_typed="15 points", keyed=True),), measure=Measure(key="rebounds", as_typed="rebounds")),
+        "players with 15 points this season",
+    )
     assert isinstance(q, Query)
     assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
 
@@ -1138,7 +1332,7 @@ def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: Answer
     league-wide ``threshold_count`` naming no line at all - not even in the
     question's own text - is refused, not turned into a whole-league listing."""
     with pytest.raises(PointRefused) as refused:
-        move_point(cx_ctx.con, "threshold_count", {}, "players with a good game this season")
+        move_point(cx_ctx.con, GAMES_COUNTED, Reading(), "players with a good game this season")
     assert refused.value.cause == Cause(kind="needs_line")
 
 
@@ -1159,7 +1353,9 @@ def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: AnswerCon
     the fixture's only point guard; a "with at least 2 games" floor
     (``Filtered.minimum``) clears his 4 games past the real
     ``PER_GAME_MIN_GAMES`` default, which he does not reach on his own."""
-    q = move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "highest points per game this season by a point guard with at least 2 games")
+    q = move_point(
+        cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)), "highest points per game this season by a point guard with at least 2 games"
+    )
     assert isinstance(q, Query)
     assert q.subject == "everyone" and q.position == "PG" and q.minimum_games == 2
     out = run(cx_ctx.con, q)
@@ -1176,12 +1372,17 @@ def test_a_stated_minimum_in_any_wording_is_the_rankings_qualifier_said_as_asked
     sentence says it as the default is said, and records no decision: the
     words asked for it. Above everyone's games, the ranking is empty, and
     says the minimum emptied it - never "no games"."""
-    q = move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, f"highest points per game this season by a point guard {floor}")
+    q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)), f"highest points per game this season by a point guard {floor}")
     assert isinstance(q, Query) and q.minimum_games == 2 and q.minimum is not None
     with collect() as remarks:
         said = sentence(q, run(cx_ctx.con, q))
     assert ", minimum 2 games)" in said and not remarks.decisions
-    emptied = move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, f"highest points per game this season by a point guard {floor.replace('2', '5')}")
+    emptied = move_point(
+        cx_ctx.con,
+        PLAYER_RANKING,
+        Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)),
+        f"highest points per game this season by a point guard {floor.replace('2', '5')}",
+    )
     assert isinstance(emptied, Query)
     assert sentence(emptied, run(cx_ctx.con, emptied)).startswith("No player played 5 games in the ")
 
@@ -1191,7 +1392,7 @@ def test_a_stated_minimum_on_a_point_that_ranks_no_players_is_refused_by_name(cx
     high it keeps nothing, so it is refused by a cause naming the floor
     asked rather than answered past (ISSUES.md #377)."""
     with pytest.raises(PointRefused) as refused:
-        move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "most points in a game this season minimum 20 games")
+        move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)), "most points in a game this season minimum 20 games")
     assert refused.value.cause == Cause(kind="minimum_unranked", facts={"unit": "games", "count": 20})
     assert "20 games" in refusal_result(refused.value.cause).answer
 
@@ -1204,7 +1405,9 @@ def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misappli
     sample) and never misread as a games count (100 attempts is not 100
     games). The reader gives the cause, and the planner says it."""
     with pytest.raises(PointRefused) as refused:
-        move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "highest points per game by a point guard with at least 100 attempts")
+        move_point(
+            cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)), "highest points per game by a point guard with at least 100 attempts"
+        )
     assert refused.value.cause == Cause(kind="ranking_floor_unit", facts={"unit": "attempts", "count": 100})
     said = refusal_result(refused.value.cause).answer
     assert "100 attempts" in said and "at least N games" in said
@@ -1219,15 +1422,15 @@ def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_
     ranking with no stat named at all still defaults to points - only a
     stat that was NAMED and failed to map is a refusal."""
     with pytest.raises(PointRefused) as refused:
-        move_point(cx_ctx.con, "single_game_high", {"stat": "netpoints"}, "who had the highest netpoints game this season")
+        move_point(cx_ctx.con, GAME_HIGHS, Reading(measure=Measure(key="netpoints", as_typed="netpoints")), "who had the highest netpoints game this season")
     assert refused.value.cause == Cause(kind="no_ranking_measure", facts={"stat": "netpoints"})
     assert "netpoints" in refusal_result(refused.value.cause).answer
     # A leaderboard's NetPoints ranking is the season line's (its retired
     # template's reader, over the NetPoints tables): a point, not a refusal.
-    netpoints = move_point(cx_ctx.con, "leaderboard", {"stat": "netpoints"}, "who leads the league in netpoints this season")
+    netpoints = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="netpoints", as_typed="netpoints")), "who leads the league in netpoints this season")
     assert isinstance(netpoints, Query) and netpoints.source == "seasons" and netpoints.subject == "everyone"
     # No stat named at all is still the plain "top scorers" default.
-    q = move_point(cx_ctx.con, "leaderboard", {}, "who are the top scorers this season")
+    q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(), "who are the top scorers this season")
     assert isinstance(q, Query)
     assert q.measures == ["points"]
 
@@ -1270,7 +1473,7 @@ def test_run_carries_the_not_counted_box_score_note(cx_ctx: AnswerContext) -> No
     at all, not a did-not-play entry (:func:`_add_empty_box_score`)."""
     s = current_season()
     _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
-    q = default_query("game_log", {"player": "Brandin Podziemski"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))))
     out = run(cx_ctx.con, q)
     assert any("Not counted: 1 game" in note for note in out["notes"])
 
@@ -1281,7 +1484,7 @@ def test_answer_appends_the_box_score_notes_to_the_sentence(cx_ctx: AnswerContex
     ``data`` for a caller that reads values rather than the prose."""
     s = current_season()
     _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
-    result = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski"}, "Podziemski's game log this season")
+    result = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "Podziemski's game log this season")
     assert result is not None
     assert "Not counted: 1 game" in result.answer
     assert any("Not counted: 1 game" in note for note in result.data["notes"])
@@ -1296,7 +1499,7 @@ def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: AnswerContext
     reads `player_season_stats`) agreeing with it."""
     cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
     cx_ctx.con.execute("INSERT INTO player_season_stats VALUES ('10', 1990, 2, NULL, 10, NULL)")
-    q = default_query("game_log", {"player": "Brandin Podziemski", "span": "career"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), span=Span(career=True)))
     out = run(cx_ctx.con, q)
     assert any("Box scores begin with the 1993-94 season" in note and "1990-1993" in note for note in out["notes"])
 
@@ -1306,7 +1509,7 @@ def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: An
     current-season read, even with the same older row on record."""
     cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
     cx_ctx.con.execute("INSERT INTO player_season_stats VALUES ('10', 1990, 2, NULL, 10, NULL)")
-    q = default_query("game_log", {"player": "Brandin Podziemski"})
+    q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))))
     out = run(cx_ctx.con, q)
     assert not any("Box scores begin with" in note for note in out["notes"])
 
@@ -1317,9 +1520,17 @@ def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx:
     caller, for a named player (a `scalar` read) and for the league-wide
     subject (a `grouped` read, which has no box-score notes of its own to
     read it for at all) alike."""
-    named = run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    named = run(
+        cx_ctx.con,
+        planned_query(
+            GAMES_COUNTED,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15 points", keyed=True),), measure=Measure(key="points", as_typed="points")
+            ),
+        ),
+    )
     assert "rebuilt_shown" not in named["rows"][0]
-    q = move_point(cx_ctx.con, "other", {}, "top scorers this season")
+    q = move_point(cx_ctx.con, None, Reading(), "top scorers this season")
     assert isinstance(q, Query)  # no team named in this fixture's own words
     everyone = run(cx_ctx.con, q)
     assert "rebuilt_shown" not in everyone["rows"][0]
@@ -1331,7 +1542,9 @@ def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ct
     which then refused it too, as a scoping slot the relation does not
     honor, and the question fell through to the agent. The marker is the
     compiler's to read (COMPILER_SLOTS); the games are ranked by points."""
-    result = compose_answer(cx_ctx, "leaderboard", {"stat": "triple_double", "limit": 5, "ranked_by": "points"}, "players with the highest scoring triple doubles")
+    result = compose_answer(
+        cx_ctx, PLAYER_RANKING, Reading(measure=Measure(key="triple_double", as_typed="triple_double"), window=Window(count=5, by="points")), "players with the highest scoring triple doubles"
+    )
     assert result is not None
     assert "triple-double" in result.answer
     assert result.data["rows"][0]["points"] == 28
@@ -1346,8 +1559,8 @@ def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: AnswerConte
     and `season_n` over everyone is each player's Nth regular season - every fixture player's 1st is s-1 and
     2nd is s, so the top single game moves from Brown's 26 (g6, s-1) to
     Curry's 40 (g3, s), and the sentence names the ordinal."""
-    first = compose_answer(cx_ctx, "single_game_high", {"stat": "points", "season_n": 1, "span": "career"}, "most points in a game in 1st season played")
-    second = compose_answer(cx_ctx, "single_game_high", {"stat": "points", "season_n": 2, "span": "career"}, "most points in a game in 2nd season played")
+    first = compose_answer(cx_ctx, GAME_HIGHS, Reading(cuts=Cuts(season_n=1), measure=Measure(key="points", as_typed="points"), span=Span(career=True)), "most points in a game in 1st season played")
+    second = compose_answer(cx_ctx, GAME_HIGHS, Reading(cuts=Cuts(season_n=2), measure=Measure(key="points", as_typed="points"), span=Span(career=True)), "most points in a game in 2nd season played")
     assert first is not None and second is not None
     assert first.data["rows"][0]["points"] == 26 and first.data["rows"][0]["player"] == "Jaylen Brown"
     assert second.data["rows"][0]["points"] == 40 and second.data["rows"][0]["player"] == "Stephen Curry"
@@ -1367,7 +1580,12 @@ def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: AnswerContext)
     no subject. ``_grouped_sentence`` now includes the predicates
     (``_predicates(q)``, the same call ``_rows_sentence``/``_scalar_sentence``
     already make), and ``data["headline"]`` carries the same sentence."""
-    result = compose_answer(cx_ctx, "threshold_count", {"team": "Golden State Warriors", "stat": "triple_double", "span": "career"}, "golden state warriors all-time triple doubles")
+    result = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(who=Who(kind="team", teams=("Golden State Warriors",)), measure=Measure(key="triple_double", as_typed="triple_double"), span=Span(career=True)),
+        "golden state warriors all-time triple doubles",
+    )
     assert result is not None
     assert "Golden State Warriors" in result.answer
     assert "with a triple-double" in result.answer  # the predicate, not just the span
@@ -1376,7 +1594,7 @@ def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: AnswerContext)
     assert "with a triple-double" in result.data["headline"]
     # Filed under player_stat (the router's intent for the live wording), the
     # team still makes it the same count.
-    as_stat = compose_answer(cx_ctx, "player_stat", {"team": "Golden State Warriors", "span": "career"}, "golden state warriors all-time triple doubles")
+    as_stat = compose_answer(cx_ctx, PLAYER_LINE, Reading(who=Who(kind="team", teams=("Golden State Warriors",)), span=Span(career=True)), "golden state warriors all-time triple doubles")
     assert as_stat is not None and as_stat.data["rows"][0]["games"] == 1
 
 
@@ -1394,14 +1612,24 @@ def test_a_grouped_by_player_count_carries_the_whole_total_a_window_cut(cx_ctx: 
     exercises) - stat and phrase naming the SAME column is the one case
     ``_everyone_threshold_predicates`` does not add a line for, which would
     leave no predicate to count at all."""
-    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 10, "stat": "rebounds", "limit": 2}, "players with 10 points this season")
+    q = move_point(
+        cx_ctx.con,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="points", value=10, as_typed="10 points", keyed=True),), measure=Measure(key="rebounds", as_typed="rebounds"), window=Window(count=2)),
+        "players with 10 points this season",
+    )
     assert isinstance(q, Query)
     assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
     out = run(cx_ctx.con, q)
     assert len(out["rows"]) == 2
     assert out["total"] == 56
     assert sum(r["games"] for r in out["rows"]) == 44  # the listed two alone
-    result = compose_answer(cx_ctx, "threshold_count", {"threshold": 10, "stat": "rebounds", "limit": 2}, "players with 10 points this season")
+    result = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="points", value=10, as_typed="10 points", keyed=True),), measure=Measure(key="rebounds", as_typed="rebounds"), window=Window(count=2)),
+        "players with 10 points this season",
+    )
     assert result is not None
     assert result.data["total"] == 56
     assert "56" in result.answer and "listed" in result.answer
@@ -1434,54 +1662,96 @@ def _add_condition_tables(con: duckdb.DuckDBPyConnection) -> None:
 _RETIRED = json.loads((Path(__file__).parent / "retired_templates.json").read_text())
 
 
-def _retired_template_answer(intent: str, slots: dict[str, Any], question: str) -> Reply:
-    """The answer ``intent``'s retired template gave for this case
-    (``retired_templates.json``), the fixture's seasons put back."""
+def _retired_template_answer(question: str) -> Reply:
+    """The answer the retired template gave for this case's question
+    (``retired_templates.json``, which keeps the intent and the slot dict
+    each was frozen under), the fixture's seasons put back."""
     s = current_season()
     for case in _RETIRED["cases"]:
-        if (case["intent"], case["slots"], case["question"]) == (intent, slots, question):
+        if case["question"] == question:
             text = case["expected"].replace("{S-1}-{s}", f"{s - 1}-{s % 100:02d}").replace("{S-2}-{s-1}", f"{s - 2}-{(s - 1) % 100:02d}")
             frozen = json.loads(text.replace("{S-2}", str(s - 2)).replace("{S-1}", str(s - 1)).replace("{S}", str(s)))
             return Reply(data=frozen["data"], answer=frozen["answer"])
-    raise AssertionError(f"no frozen answer for {intent} {slots} {question!r}")
+    raise AssertionError(f"no frozen answer for {question!r}")
 
 
-def _parity(ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str) -> tuple[Any, Any]:
-    """The retired template's answer and the compiler's for the same slots:
-    the template's is the one it gave when it retired, frozen, and the
-    compiler's ``data`` is compared in the same JSON form."""
+def _parity(ctx: AnswerContext, asked: PointShape, scope: Reading, question: str) -> tuple[Any, Any]:
+    """The retired template's answer and the compiler's for the same
+    reading: the template's is the one it gave when it retired, frozen, and
+    the compiler's ``data`` is compared in the same JSON form."""
     _add_condition_tables(ctx.con)
-    composed = compose_answer(ctx, intent, dict(slots), question)
+    composed = compose_answer(ctx, asked, scope, question)
     assert composed is not None
-    return _retired_template_answer(intent, slots, question), Reply(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
+    return _retired_template_answer(question), Reply(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
 
 
 @pytest.mark.parametrize(
-    ("intent", "slots", "question"),
+    ("asked", "scope", "question"),
     [
-        ("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, "how many 15+ point games did podziemski have"),
-        ("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "span": "career"}, "how many 15+ point games has podziemski had in his career"),
-        ("threshold_count", {"stat": "points", "threshold": 25}, "who had the most 25+ point games"),
-        ("threshold_count", {"stat": "points", "threshold": 20, "above": ["20+ point", "5+ rebound"]}, "who had the most 20+ point 5+ rebound games"),
-        ("threshold_count", {"player": "Brandin Podziemski", "stat": "fouls", "threshold": 6, "span": "career"}, "how many times has podziemski fouled out"),
-        ("single_game_high", {"player": "Stephen Curry", "stat": "points"}, "stephen curry's most points in a game"),
-        ("single_game_high", {"stat": "points"}, "most points in a single game"),
-        ("single_game_high", {"stat": "rebounds"}, "what was the highest rebounding game this year"),
-        ("game_log", {"player": "Brandin Podziemski", "limit": 2}, "podziemski's last 2 games"),
-        ("game_log", {"player": "Brandin Podziemski", "opponent": "Boston Celtics", "span": "career"}, "podziemski's games against boston"),
-        ("player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "podziemski's stats vs boston"),
-        ("record_when", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, "warriors record when podziemski scores 15+"),
-        ("player_splits", {"player": "Brandin Podziemski", "split": "home_away"}, "podziemski home and away splits"),
-        ("player_splits", {"player": "Brandin Podziemski", "split": "wins_losses", "span": "career"}, "podziemski's career splits in wins and losses"),
+        (
+            GAMES_COUNTED,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),), measure=Measure(key="points", as_typed="points")
+            ),
+            "how many 15+ point games did podziemski have",
+        ),
+        (
+            GAMES_COUNTED,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",)),
+                lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),),
+                measure=Measure(key="points", as_typed="points"),
+                span=Span(career=True),
+            ),
+            "how many 15+ point games has podziemski had in his career",
+        ),
+        (GAMES_COUNTED, Reading(lines=(Line(measure="points", value=25, as_typed="25+ point", keyed=True),), measure=Measure(key="points", as_typed="points")), "who had the most 25+ point games"),
+        (
+            GAMES_COUNTED,
+            Reading(
+                lines=(
+                    Line(measure="points", value=20, as_typed="20 points", keyed=True),
+                    Line(measure="points", value=20, as_typed="20+ point", narrows=True),
+                    Line(measure="rebounds", value=5, as_typed="5+ rebound", narrows=True),
+                ),
+                measure=Measure(key="points", as_typed="points"),
+            ),
+            "who had the most 20+ point 5+ rebound games",
+        ),
+        (
+            GAMES_COUNTED,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",)),
+                lines=(Line(measure="fouls", value=6, as_typed="fouled out", keyed=True),),
+                measure=Measure(key="fouls", as_typed="fouls"),
+                span=Span(career=True),
+            ),
+            "how many times has podziemski fouled out",
+        ),
+        (GAME_HIGHS, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points")), "stephen curry's most points in a game"),
+        (GAME_HIGHS, Reading(measure=Measure(key="points", as_typed="points")), "most points in a single game"),
+        (GAME_HIGHS, Reading(measure=Measure(key="rebounds", as_typed="rebounds")), "what was the highest rebounding game this year"),
+        (PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=Window(count=2)), "podziemski's last 2 games"),
+        (PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(career=True)), "podziemski's games against boston"),
+        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics")), "podziemski's stats vs boston"),
+        (
+            LINE_RECORD,
+            Reading(
+                who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="scores 15+", keyed=True),), measure=Measure(key="points", as_typed="points")
+            ),
+            "warriors record when podziemski scores 15+",
+        ),
+        (PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), split="home_away"), "podziemski home and away splits"),
+        (PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), span=Span(career=True), split="wins_losses"), "podziemski's career splits in wins and losses"),
     ],
 )
-def test_an_intents_own_point_reads_as_its_template(cx_ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str) -> None:
+def test_an_intents_own_point_reads_as_its_template(cx_ctx: AnswerContext, asked: PointShape, scope: Reading, question: str) -> None:
     """Step 2a's parity, per intent: the compiler's answer to the intent's
     own default point is the template's, word for word and key for key -
     what folding the template into the compiler needs. The numbers are the
     compiler's own settled player, span and narrowing; the sentence and
     ``data`` are the template's own helpers (``compose.present``)."""
-    template, composed = _parity(cx_ctx, intent, slots, question)
+    template, composed = _parity(cx_ctx, asked, scope, question)
     assert composed.answer == template.answer
     assert composed.data == template.data
 
@@ -1490,7 +1760,7 @@ def test_a_point_the_words_moved_keeps_the_compilers_own_sentence(cx_ctx: Answer
     """A measure the question's words add ("PRA", which player_stat's line
     does not carry) is not the intent's own point, so the compiler's own
     sentence and point data answer it, as before step 2a."""
-    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "Podziemski's PRA vs Boston")
+    result = compose_answer(cx_ctx, PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics")), "Podziemski's PRA vs Boston")
     assert result is not None
     assert result.data["skeleton"] == "scalar" and result.data["measures"] == ["pra"]
     assert result.data["rows"][0]["games"] == 2
@@ -1500,7 +1770,17 @@ def test_a_slot_the_template_refuses_keeps_the_compilers_own_sentence(cx_ctx: An
     """``check_scope`` gates the template's presentation: an opponent is a
     slot ``threshold_count`` does not honor, so the count against Boston is
     the compiler's point, said the compiler's way."""
-    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "opponent": "Boston Celtics"}, "podziemski 15+ point games vs boston")
+    result = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(
+            who=Who(kind="player", players=("Brandin Podziemski",)),
+            cuts=Cuts(opponent="Boston Celtics"),
+            lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+        ),
+        "podziemski 15+ point games vs boston",
+    )
     assert result is not None
     assert result.data["skeleton"] == "scalar"
     assert result.data["rows"][0]["games"] == 1  # g1 (20) - g5 (10) does not clear the line
@@ -1512,7 +1792,7 @@ def test_a_single_game_high_question_is_one_game_even_without_in_a_game(cx_ctx: 
     intent itself names one game: Curry's 40 in g3. (An opponent is a slot
     ``single_game_high`` refuses, which is how such a question reaches the
     compiler at all, so the compiler's own rows answer it.)"""
-    result = compose_answer(cx_ctx, "single_game_high", {"stat": "points", "opponent": "Detroit Pistons"}, "what was the highest scoring game against detroit")
+    result = compose_answer(cx_ctx, GAME_HIGHS, Reading(cuts=Cuts(opponent="Detroit Pistons"), measure=Measure(key="points", as_typed="points")), "what was the highest scoring game against detroit")
     assert result is not None
     assert result.data["skeleton"] == "rows" and result.data["rows"][0]["points"] == 40
 
@@ -1522,7 +1802,12 @@ def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: AnswerContex
     the whole line, and the league-wide count declined for want of one
     (``_everyone_threshold_predicates`` adds none on the measure it would
     rank by). Counted now - Podziemski's g3 (11 assists) is the only one."""
-    result = compose_answer(cx_ctx, "threshold_count", {"stat": "assists", "threshold": 10}, "most games with 10+ assists this season")
+    result = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(lines=(Line(measure="assists", value=10, as_typed="10+ assists", keyed=True),), measure=Measure(key="assists", as_typed="assists")),
+        "most games with 10+ assists this season",
+    )
     assert result is not None
     assert result.data["leaders"] == [{"player": "Brandin Podziemski", "games": 1}]
 
@@ -1534,11 +1819,21 @@ def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: AnswerContext) -> 
     ascending and kept the oldest, so "the past 4 seasons" was answered with
     a career's first four."""
     s = current_season()
-    result = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "turnovers", "limit": 1}, "podziemski's turnovers over the past season")
+    result = compose_answer(
+        cx_ctx,
+        SEASON_HISTORY,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="turnovers", as_typed="turnovers"), window=Window(count=1)),
+        "podziemski's turnovers over the past season",
+    )
     assert result is not None
     assert [r["group"] for r in result.data["rows"]] == [s]
     assert "most recent 1 seasons" in result.answer
-    both = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "turnovers", "limit": 5}, "podziemski's turnovers by season")
+    both = compose_answer(
+        cx_ctx,
+        SEASON_HISTORY,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="turnovers", as_typed="turnovers"), window=Window(count=5)),
+        "podziemski's turnovers by season",
+    )
     assert both is not None
     assert [r["group"] for r in both.data["rows"]] == [s, s - 1]
     assert "most recent" not in both.answer  # the whole career fit
@@ -1576,18 +1871,34 @@ def _add_season_line(con: duckdb.DuckDBPyConnection) -> None:
 
 
 @pytest.mark.parametrize(
-    ("intent", "slots", "question"),
+    ("asked", "scope", "question"),
     [
-        ("player_stat", {"player": "Stephen Curry", "stat": "points"}, "how many points does curry average"),
-        ("player_stat", {"player": "Stephen Curry"}, "what are curry's numbers this season"),
-        ("player_stat", {"player": "Stephen Curry", "span": "career"}, "curry career averages"),
-        ("player_stat", {"player": "Stephen Curry", "stat": "threePointFieldGoalPct", "span": "career"}, "curry career 3pt percentage"),
-        ("player_history", {"player": "Stephen Curry", "stat": "threePointFieldGoalPct", "limit": 4}, "curry's 3pt percentage over the past 4 seasons"),
-        ("player_history", {"player": "Brandin Podziemski", "stat": "points", "limit": 1}, "podziemski's ppg over the past season"),
-        ("player_history", {"player": "Stephen Curry", "stat": "points", "span": "career"}, "curry's ppg every season of his career"),
+        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points")), "how many points does curry average"),
+        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",))), "what are curry's numbers this season"),
+        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True)), "curry career averages"),
+        (
+            PLAYER_LINE,
+            Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"), span=Span(career=True)),
+            "curry career 3pt percentage",
+        ),
+        (
+            SEASON_HISTORY,
+            Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"), window=Window(count=4)),
+            "curry's 3pt percentage over the past 4 seasons",
+        ),
+        (
+            SEASON_HISTORY,
+            Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="points", as_typed="points"), window=Window(count=1)),
+            "podziemski's ppg over the past season",
+        ),
+        (
+            SEASON_HISTORY,
+            Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True)),
+            "curry's ppg every season of his career",
+        ),
     ],
 )
-def test_the_season_line_reads_as_its_template(cx_ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str) -> None:
+def test_the_season_line_reads_as_its_template(cx_ctx: AnswerContext, asked: PointShape, scope: Reading, question: str) -> None:
     """The season line as the compiler's second source: an unnarrowed
     ``player_stat`` and a ``player_history`` are the template's own answer,
     word for word and key for key - the numbers from the season line
@@ -1595,7 +1906,7 @@ def test_the_season_line_reads_as_its_template(cx_ctx: AnswerContext, intent: st
     compiler declined the first and answered the second from box scores
     grouped by season, in its own words, before (#228)."""
     _add_season_line(cx_ctx.con)
-    template, composed = _parity(cx_ctx, intent, slots, question)
+    template, composed = _parity(cx_ctx, asked, scope, question)
     assert composed.answer == template.answer
     assert composed.data == template.data
 
@@ -1606,13 +1917,13 @@ def test_a_season_line_point_the_words_moved_is_not_the_templates(cx_ctx: Answer
     exactly as it declined every unnarrowed line before - never the default
     stat line in its place."""
     _add_season_line(cx_ctx.con)
-    assert compose_answer(cx_ctx, "player_stat", {"player": "Stephen Curry"}, "curry's PRA this season") is None
+    assert compose_answer(cx_ctx, PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",))), "curry's PRA this season") is None
 
 
 def test_the_season_source_is_never_compiled_over_games() -> None:
     """A season-line point reaching the game-level compiler is refused, not
     read over box scores under the season line's name."""
-    q = default_query("player_stat", {"player": "Stephen Curry", "stat": "points"})
+    q = planned_query(PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points")))
     assert q.source == "seasons"
     with pytest.raises(Unsupported, match="seasons source"):
         compile_query(duckdb.connect(":memory:"), q)
@@ -1623,9 +1934,9 @@ def test_own_team_narrows_a_composed_average(cx_ctx: AnswerContext) -> None:
     compiler's read exactly as it narrows ``player_stat``'s: Curry never
     played for Boston, so his games "for Boston" are none - the compiler
     ignored the slot and averaged every game he played."""
-    q = default_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Boston Celtics"})
+    q = planned_query(PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Detroit Pistons", tenure="Boston Celtics")))
     assert _run(cx_ctx.con, q)["rows"][0]["games"] == 0
-    q = default_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Golden State Warriors"})
+    q = planned_query(PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Detroit Pistons", tenure="Golden State Warriors")))
     assert _run(cx_ctx.con, q)["rows"][0]["games"] == 1  # g3
 
 
@@ -1633,7 +1944,7 @@ def test_a_composed_answer_carries_no_coverage_caveat_of_its_own(cx_ctx: AnswerC
     """The agent appends ``coverage_caveat`` to a composed answer exactly as
     to a template's (``agent._try_compose``); the compiler appending it too
     printed ESPN's 2001-playoffs note twice. The note is the agent's to add."""
-    result = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski", "season": 2001, "season_type": 3}, "podziemski plus-minus game log 2001 playoffs")
+    result = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), span=Span(season=2001, season_type=3)), "podziemski plus-minus game log 2001 playoffs")
     assert result is not None
     assert "Note:" not in result.answer
     assert not any("Note:" in note for note in result.data.get("notes", []))
@@ -1653,7 +1964,7 @@ def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: AnswerCo
     split = player_splits(cx_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="usage_pct", as_typed="usage_pct"), split="home_away"))
     away = next(row for row in split.data["splits"]["home_away"] if row["group"] == "away")
     assert away["games"] == 1 and away["usage_pct"] == pytest.approx(24.35)
-    log = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski", "stat": "usage_pct"}, "podziemski usage game log")
+    log = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="usage_pct", as_typed="usage_pct")), "podziemski usage game log")
     assert log is not None
     g1 = next(row for row in log.data["rows"] if row["opponent"] == "BOS" and not row["home"])
     assert g1["usage_pct"] == pytest.approx(away["usage_pct"])
@@ -1669,7 +1980,12 @@ def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: AnswerCo
     sixers when maxey scored 20+ points"). It stays his, and the record is
     the template's own table."""
     _add_condition_tables(cx_ctx.con)
-    result = compose_answer(cx_ctx, "record_when", {"stat": "points", "player": "Podziemski", "threshold": 15}, "show me stats for the warriors when podziemski scored 15+ points")
+    result = compose_answer(
+        cx_ctx,
+        LINE_RECORD,
+        Reading(who=Who(kind="player", players=("Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15+ points", keyed=True),), measure=Measure(key="points", as_typed="points")),
+        "show me stats for the warriors when podziemski scored 15+ points",
+    )
     assert result is not None
     assert result.answer.startswith("Golden State Warriors record when Brandin Podziemski had 15+ points")
 
@@ -1680,7 +1996,12 @@ def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_
     over exactly the narrowed games as a ratio of sums (``core.RATES``), in
     its own sentence, never the season line's figure (5.0.0)."""
     _add_condition_tables(cx_ctx.con)
-    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "ts_pct", "opponent": "Boston Celtics"}, "podziemski ts% vs boston")
+    result = compose_answer(
+        cx_ctx,
+        PLAYER_LINE,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics"), measure=Measure(key="ts_pct", as_typed="ts_pct")),
+        "podziemski ts% vs boston",
+    )
     assert result is not None
     assert "TS%" in result.answer and "vs the Boston Celtics" in result.answer
     assert result.data["measures"] == ["ts_pct"] and result.data["skeleton"] == "scalar" and result.data["rows"][0]["games"] == 2
@@ -1698,10 +2019,10 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
     con.execute("UPDATE player_box_stats SET reconstructed = FALSE")
     con.execute("UPDATE player_box_stats SET minutes = NULL, reconstructed = TRUE WHERE event_id = 'g5' AND athlete_id = ?", [PODZ])
     con.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_box_stats")
-    out = run(con, default_query("game_log", {"player": "Brandin Podziemski"}))
+    out = run(con, planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)))))
     newest = out["rows"][0]
     assert newest["points"] == 10 and newest["minutes"] is None and newest["reconstructed"]
-    template, composed = _parity(cx_ctx, "game_log", {"player": "Brandin Podziemski"}, "podziemski's game log")
+    template, composed = _parity(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "podziemski's game log")
     assert composed.answer == template.answer
 
 
@@ -1715,8 +2036,8 @@ def test_a_teams_total_of_triple_doubles_is_declined_for_the_readings_cause(cx_c
     with pytest.raises(Unsupported, match="team's total"):
         move_point(
             cx_ctx.con,
-            "leaderboard",
-            {"stat": "triple_double", "team": "Golden State Warriors", "span": "career"},
+            PLAYER_RANKING,
+            Reading(who=Who(kind="team", teams=("Golden State Warriors",)), measure=Measure(key="triple_double", as_typed="triple_double"), span=Span(career=True)),
             "golden state warriors all-time triple doubles vs west",
             Subject("team", teams=("Golden State Warriors",)),
         )
@@ -1735,7 +2056,16 @@ def test_a_count_under_a_ceiling_with_no_threshold_is_counted(cx_ctx: AnswerCont
     IS the count - no threshold arrives - and the compiler declined it, so
     the template's fallback answered. Counted now, in the template's words:
     Curry's four games this season all have under 5 free throw attempts."""
-    result = compose_answer(cx_ctx, "threshold_count", {"player": "Stephen Curry", "stat": "freeThrowsAttempted", "below": ["under 5 fta"]}, "curry games with under 5 fta")
+    result = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(
+            who=Who(kind="player", players=("Stephen Curry",)),
+            lines=(Line(measure="freeThrowsAttempted", op="<", value=5, as_typed="under 5 fta", narrows=True),),
+            measure=Measure(key="freeThrowsAttempted", as_typed="freeThrowsAttempted"),
+        ),
+        "curry games with under 5 fta",
+    )
     assert result is not None
     assert result.answer == f"Stephen Curry had 4 games with under 5 free throw attempts in the {current_season()} regular season."
     assert result.data["leaders"] == [{"player": "Stephen Curry", "games": 4}]
@@ -1752,7 +2082,17 @@ def test_a_teams_own_threshold_record_is_said_by_record_whens_team_reader(cx_ctx
     cx_ctx.con.execute("ALTER TABLE games ADD COLUMN neutral_site BOOLEAN")
     cx_ctx.con.execute("ALTER TABLE games ADD COLUMN venue_city VARCHAR")
     real_games.build_table(cx_ctx.con, {"games", "teams"})
-    result = compose_answer(cx_ctx, "record_when", {"team": "Golden State Warriors", "stat": "points", "threshold": 100, "season_type": 2}, "warriors record when they scored 100 points")
+    result = compose_answer(
+        cx_ctx,
+        LINE_RECORD,
+        Reading(
+            who=Who(kind="team", teams=("Golden State Warriors",)),
+            lines=(Line(measure="points", value=100, as_typed="100 points", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+            span=Span(season_type=2),
+        ),
+        "warriors record when they scored 100 points",
+    )
     assert result is not None
     assert result.answer.startswith("Golden State Warriors record when they had 100+ points")
     assert result.data["reached"]["games"] == 3 and result.data["reached"]["wins"] == 3
@@ -1763,7 +2103,12 @@ def test_a_record_over_a_line_of_zero_is_declined_as_the_template_refused_it(cx_
     """A line of 0 is every game he played - never a record "when". The
     template refused it; the compiler answered "went 2-1 in the 3 games
     points >= 0" until it refused the same way, with the reason."""
-    refused = compose_answer(cx_ctx, "record_when", {"player": "Stephen Curry", "stat": "points", "threshold": 0}, "")
+    refused = compose_answer(
+        cx_ctx,
+        LINE_RECORD,
+        Reading(who=Who(kind="player", players=("Stephen Curry",)), lines=(Line(measure="points", value=0, as_typed="0 points", keyed=True),), measure=Measure(key="points", as_typed="points")),
+        "",
+    )
     assert refused is not None and refused.answer == "A threshold of 0 counts every game - there is no line there to keep games past."
 
 
@@ -1791,7 +2136,9 @@ def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(c
     count seasons in. Read over everyone, the compiler narrowed to players in
     their 15th season OF THE DEFAULT YEAR while its sentence named only the
     year; it declines now, as the template did, saying why."""
-    refused = compose_answer(cx_ctx, "threshold_count", {"stat": "points", "threshold": 20, "season_n": 15}, "")
+    refused = compose_answer(
+        cx_ctx, GAMES_COUNTED, Reading(cuts=Cuts(season_n=15), lines=(Line(measure="points", value=20, as_typed="20 points", keyed=True),), measure=Measure(key="points", as_typed="points")), ""
+    )
     assert refused is not None and refused.answer == "The 15th season is a place in one player's career, and no player was named."
 
 
@@ -1800,7 +2147,7 @@ def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: AnswerContext) -
     heading says so - a default that is displayed and corrected by naming a
     stat (AGENTS.md). The retired template refused it; the compiler, which
     answered player_history first from step (a), read the same default."""
-    result = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski"}, "")
+    result = compose_answer(cx_ctx, SEASON_HISTORY, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "")
     assert result is not None
     assert "points per game" in result.answer.split("\n")[0]
 
@@ -1810,7 +2157,12 @@ def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(
     the compiler drew Luka Doncic's POINTS by season for it, a stat named and
     silently replaced, until it declined as the retired template did."""
     why: list[str] = []
-    assert compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "shot_distance"}, "", declined=why.append) is None
+    assert (
+        compose_answer(
+            cx_ctx, SEASON_HISTORY, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="shot_distance", as_typed="shot_distance")), "", declined=why.append
+        )
+        is None
+    )
     assert why == ["no per-season history for stat 'shot_distance'"]
 
 
@@ -1828,9 +2180,30 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
     (``compose_answer`` above, the subject and the point built by hand)."""
 
     question = "how many 15+ point games did podziemski have"
-    reading = reading_of(cx_ctx.con, question, with_subject(cx_ctx.con, question, slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})))
+    reading = reading_of(
+        cx_ctx.con,
+        question,
+        with_subject(
+            cx_ctx.con,
+            question,
+            Routed(
+                GAMES_COUNTED,
+                Reading(
+                    who=Who(kind="player", players=("Brandin Podziemski",)),
+                    lines=(Line(measure="points", value=15, as_typed="15 points", keyed=True),),
+                    measure=Measure(key="points", as_typed="points"),
+                ),
+            ),
+        ),
+    )
     assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
-    by_hand = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, question, reading.subject)
+    by_hand = compose_answer(
+        cx_ctx,
+        GAMES_COUNTED,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),), measure=Measure(key="points", as_typed="points")),
+        question,
+        reading.subject,
+    )
 
     def unread(*args: Any, **kwargs: Any) -> Reading:
         raise AssertionError("the compiler read the question")
@@ -1847,13 +2220,13 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     refusal as the answer - a copy, since the agent appends its notes to the
     answer it is handed."""
 
-    declined = reading_of(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", slots_route("game_log", {})))
+    declined = reading_of(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", Routed(PLAYER_LOG)))
     assert declined.point is None and declined.point_declined == "no player subject and no ranking or position-group reading of the question"
     why: list[str] = []
     assert compose.answer(cx_ctx, declined, planned=plan_point(declined), declined=why.append) is None
     assert why == [declined.point_declined]
 
-    refused = reading_of(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
+    refused = reading_of(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", Routed(GAME_HIGHS, Reading(measure=Measure(as_typed="gizmos")))))
     assert refused.point is None and refused.point_refusal == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
     planned = plan_point(refused)
     answered = compose.answer(cx_ctx, refused, planned=planned)
@@ -1871,7 +2244,12 @@ def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: Answe
     warehouse, "Joel Embiid averaged 4622.5% TS% per game over 2 games vs the
     Boston Celtics". Podziemski's two games against Boston: 30 points on 30
     shots and no free throws is a TS% of 0.5."""
-    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "ts_pct", "opponent": "Boston Celtics"}, "podziemski true shooting vs boston")
+    result = compose_answer(
+        cx_ctx,
+        PLAYER_LINE,
+        Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics"), measure=Measure(key="ts_pct", as_typed="ts_pct")),
+        "podziemski true shooting vs boston",
+    )
     assert result is not None
     assert result.data["rows"][0]["ts_pct"] == pytest.approx(0.5)
     assert "50.0% TS%" in result.answer and "5000" not in result.answer
@@ -1885,11 +2263,30 @@ def test_the_planner_refuses_a_narrowing_the_relation_cannot_honor() -> None:
     """``plan`` is where a Reading meets its relation, and a scoping slot the
     relation does not narrow by (``rate``: no per-36 read on the games) is
     refused there - not one call later, inside the compile step."""
-    from routed import default_reading
-
     with pytest.raises(Unsupported, match="a rate per 36 cannot be read here"):
-        plan(default_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"}))
-    assert isinstance(plan(default_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})), Query)
+        plan(
+            default_point(
+                GAMES_COUNTED,
+                Reading(
+                    who=Who(kind="player", players=("Brandin Podziemski",)),
+                    lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+                    measure=Measure(key="points", as_typed="points", unit="per_36"),
+                ),
+            )
+        )
+    assert isinstance(
+        plan(
+            default_point(
+                GAMES_COUNTED,
+                Reading(
+                    who=Who(kind="player", players=("Brandin Podziemski",)),
+                    lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+                    measure=Measure(key="points", as_typed="points"),
+                ),
+            )
+        ),
+        Query,
+    )
 
 
 def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: AnswerContext) -> None:
@@ -1903,7 +2300,18 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     reading = reading_of(
         cx_ctx.con,
         "podziemski 30 point games per 36",
-        with_subject(cx_ctx.con, "podziemski 30 point games per 36", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"})),
+        with_subject(
+            cx_ctx.con,
+            "podziemski 30 point games per 36",
+            Routed(
+                GAMES_COUNTED,
+                Reading(
+                    who=Who(kind="player", players=("Brandin Podziemski",)),
+                    lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+                    measure=Measure(key="points", as_typed="points", unit="per_36"),
+                ),
+            ),
+        ),
     )
     assert reading.point is not None and reading.point_declined is None and reading.point_refusal is None
     planned = plan_point(reading)
@@ -1915,7 +2323,18 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     answerable = reading_of(
         cx_ctx.con,
         "podziemski 30 point games",
-        with_subject(cx_ctx.con, "podziemski 30 point games", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})),
+        with_subject(
+            cx_ctx.con,
+            "podziemski 30 point games",
+            Routed(
+                GAMES_COUNTED,
+                Reading(
+                    who=Who(kind="player", players=("Brandin Podziemski",)),
+                    lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+                    measure=Measure(key="points", as_typed="points"),
+                ),
+            ),
+        ),
     )
     handed = plan_point(answerable)
     assert isinstance(handed.query, Query)
@@ -1971,7 +2390,7 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     netpoints = {"player_netpoints", "fingerprint"}
     shots = {"shot_chart", "shot_distance"}
     assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots | {"coach"}
-    narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
+    narrowed = planned_query(GAME_HIGHS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics"), measure=Measure(key="points", as_typed="points")))
     assert compose._read(cx_ctx.con, GAME_HIGHS, narrowed) is None
     assert compose._read(cx_ctx.con, GAME_HIGHS, replace(narrowed, **(replace(narrowed, cuts=replace(narrowed.cuts, opponent=None))).filters())) is not None
 

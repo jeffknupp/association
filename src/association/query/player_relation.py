@@ -776,8 +776,9 @@ def scoped_player(
 
     .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
-       is still taken, through the slot door (``tests/slots.py``),
-       until every caller passes ``reading``.
+       was taken until every caller passed ``reading``, the tests last,
+       through their slot door (``tests/slots.py``, deleted in Phase 4,
+       step 0).
     """
     season_n = scope.cuts.season_n
     asked = span if span is not None else scope.span
@@ -986,8 +987,9 @@ def scoped_games(
 
     .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
-       is still taken, through the slot door (``tests/slots.py``),
-       until every caller passes ``reading``.
+       was taken until every caller passed ``reading``, the tests last,
+       through their slot door (``tests/slots.py``, deleted in Phase 4,
+       step 0).
 
     .. versionchanged:: 6.0.0
        Reads the cuts off ``scope.cuts`` (Phase 3, step 2), the tenure
@@ -1065,8 +1067,9 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Filt
 
     .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
-       is still taken, through the slot door (``tests/slots.py``),
-       until every caller passes ``reading``.
+       was taken until every caller passed ``reading``, the tests last,
+       through their slot door (``tests/slots.py``, deleted in Phase 4,
+       step 0).
     """
     season_clause, season_params = span.clause("pgl.season")
     narrowed = league(season_clause, season_params, span.season_type)

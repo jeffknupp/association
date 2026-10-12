@@ -12,33 +12,34 @@ A test that wants a particular reading of the words - a key and a scope of
 its own - says so HERE, and hands it to the parser's last step
 (``parse._reading``), standing in for the words:
 
-- :func:`slots_route` is the reading a slot dict names, with no subject
-  (:class:`Routed`);
+- :class:`Routed` is that reading - the key the words ask and the typed
+  filters, with no subject until :func:`with_subject` reads one (until
+  Phase 4, step 0 a test built it from a retired label and a slot dict,
+  ``slots_route``);
 - :func:`with_subject` reads the subject the way ``read_route`` does - once,
   before any key is settled - and puts it on the reading;
 - :func:`reading_of` is the Reading the parser's last step writes from it;
 - :func:`ask_routed` answers a question through the whole ``Agent`` with
   ``read_route`` replaced by that Reading, and no model asked;
-- :func:`staged` and :func:`staged_raw` are the grammar's rules and the
-  taggers over a test's slot dict or model-era reply (the router's stages
-  until the slice; :class:`Staged`).
+- :func:`staged` is the grammar's rules and the taggers over a test's
+  question, under a key, with the names typed (the router's stages until
+  the slice; :class:`Staged`).
 
 And one stage on: :func:`planned_answer` is the compiler's answer to a
 Reading a test built, PLANNED first as the answering loop plans it
 (``compose.plan.plan_point``) - ``compose.answer`` takes its planning and
-never plans (step 2 of the same order).
+never plans (step 2 of the same order) - and :func:`planned_query` the
+query the default point of a key over a test's reading plans to.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 from unittest import mock
 
 import duckdb
-from shapes import asked as _asked
-from slots import slots_scope
 
 from association.query import compose, grammar, parse
 from association.query.agent import Agent
@@ -89,14 +90,6 @@ class Routed:
         return asked_label(self.asked)
 
 
-def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Routed:
-    """The reading ``intent`` (a retired name, translated to what the words
-    ask: ``shapes.asked``) and ``slots`` name, through the Scope's one door
-    (``Scope.from_slots`` raises ``ScopeError`` for a value no field holds).
-    It carries no subject: :func:`with_subject` reads one."""
-    return Routed(_asked(intent), slots_scope(slots or {}))
-
-
 def with_subject(con: duckdb.DuckDBPyConnection | NameIndex, question: str, route: Routed) -> Routed:
     """``route`` carrying who ``question`` is about, read as ``read_route``
     reads it - under no key, from the reading's own scope - and settled
@@ -143,23 +136,6 @@ def planned_answer(ctx: AnswerContext, reading: Reading, *, declined: Callable[[
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
 
 
-def default_reading(intent: str, slots: Mapping[str, Any]) -> Reading:
-    """The intent's default point over ``slots``, read: what the retired
-    ``compose.adapt.to_reading`` gave (deleted with the last adapter in
-    Phase 2, step 3; tests were its only callers) -
-    :func:`~association.query.point.default_point` over the typed scope."""
-    return default_point(_asked(intent), slots_scope(dict(slots)))
-
-
-def default_query(intent: str, slots: Mapping[str, Any]) -> Query:
-    """The intent's default point over ``slots``, planned: what the retired
-    ``compose.adapt.to_query`` gave (deleted 2026-10-03; tests were its only
-    callers)."""
-    query = plan(default_reading(intent, slots))
-    assert isinstance(query, Query)
-    return query
-
-
 @dataclass(frozen=True)
 class Staged:
     """What the grammar's rules and the taggers read for a test's question
@@ -184,10 +160,9 @@ class Staged:
 
 
 def staged(
-    asked: PointShape | str | None,
-    question: str | Mapping[str, Any],
-    companions: tuple[Companion, ...] | str = (),
-    old_companions: tuple[Companion, ...] = (),
+    asked: PointShape | None,
+    question: str,
+    companions: tuple[Companion, ...] = (),
     *,
     lines: tuple[Line, ...] = (),
     who: Subject | None = None,
@@ -200,27 +175,9 @@ def staged(
     """The grammar's rules then the taggers over ``question``, under the key
     ``asked`` (``router.settle`` until Phase 3, step 4, slice (b)): who the
     subject reading hands the rules (``who``, the ``opponent``) and the
-    companions typed, the model's stat (a test's side, shot value and
-    columns) the measure tagger's context."""
-    if isinstance(asked, str):  # TRANSITIONAL: a retired label and a slot dict, until the last caller is re-seated
-        assert isinstance(question, Mapping) and isinstance(companions, str)
-        names = {key: question[key] for key in ("player", "players", "team", "teams") if key in question}
-        given_opponent = question.get("opponent")
-        given_stat = question.get("stat")
-        given_fields = question.get("fields")
-        return staged(
-            _asked(asked),
-            companions,
-            old_companions,
-            lines=lines,
-            who=Subject.from_slots(names),
-            opponent=given_opponent if isinstance(given_opponent, str) and given_opponent.strip() else None,
-            stat=given_stat if isinstance(given_stat, str) else None,
-            side=question.get("side"),
-            shot_value=question.get("shot_value"),
-            fields=tuple(given_fields) if isinstance(given_fields, (list, tuple)) else (),
-        )
-    assert isinstance(question, str) and not isinstance(companions, str)
+    companions, typed, and the model's stat (a test's side, shot value and
+    columns) the measure tagger's context. Until Phase 4, step 0 it took a
+    retired label and a slot dict of the names and the measure context."""
     stat = stat if stat is not None and stat.strip() else None
     # The rules read the lines as the parser hands them: each number
     # marked, the typed lines beside it (parse._read_route_staged).

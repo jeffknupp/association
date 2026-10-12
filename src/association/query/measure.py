@@ -349,18 +349,6 @@ def key_of(spelling: str | None) -> Alias | tuple[None, MeasureWhose, None, None
     return found if found is not None else (None, "own", None, None, None)
 
 
-def column_of(spelling: str | None) -> str | None:
-    """The stored game-log column ``spelling`` names (the catalog's
-    ``column``), or None - what a keyed line's measure is read as.
-
-    .. versionadded:: 6.0.0
-    """
-    key, whose, _side, _how, _category = key_of(spelling)
-    if key is None or whose != "own":
-        return None
-    return CATALOG[key].column
-
-
 def measure_of(spelling: str, **fields: object) -> Measure:
     """The :class:`~association.query.reading.Measure` ``spelling`` names,
     through the catalog - a test's and a caller's way to build one from a

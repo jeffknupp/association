@@ -761,8 +761,8 @@ the settled scope instead of the one `read_route` reads from, and the two
 paths disagreed on 9 of 12 wordings naming a franchise's old name.
 `Agent.ask` takes a question and nothing else; a test that needs a
 particular reading of the words stands in for `read_route`
-(`tests/routed.py`: `ask_routed`, `with_subject`, `reading_of`, which hand
-a test's own key and scope to the parser's last step), and a harness
+(`tests/routed.py`: `Routed`, `ask_routed`, `with_subject`, `reading_of`,
+which hand a test's own key and typed scope to the parser's last step), and a harness
 answers recorded QUESTIONS with their
 recorded normalizer replies, as `scripts/stage_snapshots.py` and
 `scripts/preview_answers.py` do. Do not
@@ -996,7 +996,8 @@ elsewhere, ISSUES.md #377), a frozen base every planned query inherits too (`Que
 itself, and `Scope`, the record they stood on until Phase 3, step 4,
 slice (b), is gone - with its slot door, which only the tests still
 called (`tests/slots.py`: `slots_scope`, `slots_reading`, the families'
-doors). Until slice (c) `to_slots()` and the `scope` record
+doors) until Phase 4, step 0 deleted it: every test states its reading in
+the typed fields and a shape by its `PointShape` key since. Until slice (c) `to_slots()` and the `scope` record
 (`scope_record`, `projected()`) kept the shape the populations were
 recorded in; slice (c) deleted that projection, so the populations
 record the typed Reading (`stages._reading_record`: the ten filters by
@@ -1074,8 +1075,9 @@ a shape:
   quarter from its one nickname, 24; a quarter's player read back, 1) it is
   the reading's word, written on the typed subject the taggers and the
   last step read - the grammar's writes (`ROADMAP-TYPES.md`, Still open
-  15). A test hands its names through `tests/routed.py`'s
-  `staged`/`handed`. Four stages that wrote a name the parser never hands
+  15). A test hands its names to the rules typed, through
+  `tests/routed.py`'s `staged` (`who=`, `opponent=`; a slot dict through
+  `staged`/`handed` until Phase 4, step 0). Four stages that wrote a name the parser never hands
   - a rank word or a pseudo-team as the team, a team in the players list,
   one player listed as a comparison - went with the subject's slice (0 of
   the 2,710 readings reached them).
@@ -1098,7 +1100,7 @@ a shape:
   readings and the words win every one; the stages wrote a name after the
   subject reading on 58 (the grammar's subject 30, a team's nickname 27, a
   quarter's player 1) and no other stage fired; `apply_subject` moved the
-  player on 10. The four slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Subject`, one name to `player`, two or
+  player on 10. The four slots are gone from the filters; the tests' slot door took them until Phase 4, step 0 deleted it (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4; it built the `Subject`, one name to `player`, two or
   more to `players`, a team the same), and the typed value is recorded
   (`stages._reading_record`, `who`, beside the subject reading's own
   record `subject`; until slice (c) `to_slots` and `projected()` gave the
@@ -1165,8 +1167,8 @@ a shape:
   it writes nothing. A "by quarter" question reads NO period (the
   breakdown is the point's shape, `Reading.by="period"`), and a period as
   a CONDITION on which games count is the line slice's value
-  (`period_condition`), untouched. The two slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Period`;
-  both at once is refused at the door), a model-era `period`/`half`
+  (`period_condition`), untouched. The two slots are gone from the filters; the tests' slot door took them until Phase 4, step 0 deleted it (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4; it built the `Period`;
+  both at once was refused at the door), a model-era `period`/`half`
   key is no argument the parser takes, and the typed value is recorded
   (`stages._reading_record`, `period`; until slice (c) `to_slots` and
   `projected()` gave the old shape back beside it). ONE cell, `period`, in both
@@ -1202,7 +1204,7 @@ a shape:
   two claims over one word, which `span.claimed` joins into one named for
   both (a partial overlap raised until this slice, and "lebron's last game
   7" - the window's "last game" and the postseason's "game 7" - raised out
-  of the reader to the user). The eight slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Cuts`), and the typed value is recorded
+  of the reader to the user). The eight slots are gone from the filters; the tests' slot door took them until Phase 4, step 0 deleted it (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4; it built the `Cuts`), and the typed value is recorded
   (`stages._reading_record`, `cuts`; until slice (c) `to_slots` and
   `projected()` gave the old shape back beside it, in the old field
   order). The tables declare the cuts
@@ -1255,7 +1257,7 @@ a shape:
   `_numbered_stat_lines`, deleted) differed from the words on 1 ("most
   games with 20 pt,s 10 reb, 5 ast": the pattern could not pass the comma
   and fell back to the model's "rebounds" - the one answer this slice
-  moved). The seven slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Line`s and `Companion`s: `threshold` with the
+  moved). The seven slots are gone from the filters; the tests' slot door took them until Phase 4, step 0 deleted it (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4; it built the `Line`s and `Companion`s: `threshold` with the
   model's stat as a keyed line, `above`/`below` through
   `lines.phrase_line`, `period_condition` through `Line.from_period_slot`,
   the three companion slots through `Companion.from_slot`), and the typed
@@ -1315,8 +1317,8 @@ a shape:
   the route and the reading; 24 readings carried a key no answer-side
   vocabulary held (`shot_distance`, the ranking's sentinel; `games_played`,
   read by nothing; the grammar's given-up keys, refused by name). The seven
-  slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it
-  builds the `Measure` through the catalog), and the typed value is
+  slots are gone from the filters; the tests' slot door took them until Phase 4, step 0 deleted it (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4; it
+  built the `Measure` through the catalog), and the typed value is
   recorded (`stages._reading_record`, `measure`; until slice (c)
   `to_slots` and `projected()` gave the old shape back beside it, a side
   or a rate the key folds in, `netpoints_defense_per_100`, the key's and
@@ -1349,7 +1351,7 @@ a shape:
   source - so those rules were dead, and went rather than being ported; the
   model-era `order`/`limit`/`rank`/`ranked_by` a route still carries are
   dropped at the stages' door with the span's keys. The four slots are gone
-  from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the
+  from the filters; the tests' slot door took them until Phase 4, step 0 deleted it (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4; it built the
   `Window`), and the typed value is recorded (`stages._reading_record`,
   `window`; until slice (c) `to_slots` and `projected()` gave the old
   shape back beside it). `query/span.py` is the span's tagger: `read_span(question, SpanContext)` (and `point.span_under` over its `SpanCandidates`) reads
@@ -1375,10 +1377,10 @@ a shape:
   key a route still carries (`season`, `season_ref`, `season_type`,
   `order`, `limit`, ...) is no argument the parser takes (it was dropped
   at the stages' door, `router._MODEL_SPAN_KEYS`, until the router went;
-  `tests/routed.py`'s `staged_raw` drops it from a test's payload): the
+  a test hands `tests/routed.py`'s `staged` none to drop): the
   words are the one source. The
-  six slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them
-  (it builds the `Span`), and the typed value is recorded
+  six slots are gone from the filters; the tests' slot door took them until Phase 4, step 0 deleted it (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4;
+  it built the `Span`), and the typed value is recorded
   (`stages._reading_record`, `span`; until slice (c) `Reading.to_slots`
   projected the value back to the six slots, and `Filtered.scope_record()`
   / `Reading.projected()` / `Query.projected()` kept every recorded shape

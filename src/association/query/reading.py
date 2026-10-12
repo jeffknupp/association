@@ -15,7 +15,8 @@ the scoping as fields rather than a slot dict, every field a closed type the
 checkers hold every construction to. Since Phase 3, step 4, slice (b) those
 fields are the Reading's own (:class:`Filtered`, the base every planned query
 inherits too), and the ``Scope`` record they stood on is gone with its slot
-door (``tests/slots.py`` keeps it for the tests). Since slice (c) the typed
+door (which the tests kept, ``tests/slots.py``, until Phase 4, step 0, when
+every test came to state its reading typed). Since slice (c) the typed
 values are the shape a reading is recorded and traced in: the projection
 back to the slot dict (``to_slots``, ``scope_record``, ``projected``) went
 with it, and a decline says each cell by what the words asked under it
@@ -160,7 +161,11 @@ when none is named; a team's games take all but ``starter_bench``.
 class ScopeError(ValueError):
     """A slot value the filters cannot hold - a key nothing types, a value of
     the wrong type or outside its closed set, a window of fewer than one
-    game. Raised where a slot dict comes in (the slot door (``tests/slots.py``, ``Scope.from_slots`` until Phase 3, step 4)), so
+    game. Raised where a typed value is built (each checks its own values)
+    or where the model's names and stat come in as slots
+    (:meth:`Subject.from_slots`, :meth:`Measure.from_slots`; the tests' slot
+    door, ``tests/slots.py``, until Phase 4, step 0, and
+    ``Scope.from_slots`` until Phase 3, step 4), so
     the question is refused the way a template's refusal is rather than
     an answer quietly leaving the narrowing out.
 
@@ -890,8 +895,10 @@ class Measure:
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Measure | None:
-        """The measure the seven slot values name (the slot door (``tests/slots.py``, ``Scope.from_slots`` until Phase 3, step 4)
-        reads them off a slot dict): the ``stat`` resolved through the
+        """The measure the seven slot values name (the parser reads the
+        model's stat through it; the tests' slot door, ``tests/slots.py``,
+        read a slot dict through it until Phase 4, step 0, and
+        ``Scope.from_slots`` until Phase 3, step 4): the ``stat`` resolved through the
         catalog (:func:`association.query.measure.key_of`), ``rate`` as
         the unit and its reading, ``per_game`` as the per-game ``how``,
         ``side``, ``shot_value``, ``fields`` as ``beside``, ``kind`` as
@@ -1028,8 +1035,10 @@ class Subject:
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Subject:
-        """The subject four slot values name (the slot door (``tests/slots.py``, ``Scope.from_slots`` until Phase 3, step 4) reads
-        them off a slot dict): ``player`` then ``players`` as the players,
+        """The subject four slot values name (the parser reads the model's
+        names through it; the tests' slot door, ``tests/slots.py``, read a
+        slot dict through it until Phase 4, step 0, and
+        ``Scope.from_slots`` until Phase 3, step 4): ``player`` then ``players`` as the players,
         ``team`` then ``teams`` as the teams, each name once, the kind
         what they hold - two or more players a ``pair``, one a ``player``,
         then two or more teams ``teams``, one a ``team``, else
@@ -1127,9 +1136,9 @@ class Filtered:
 
     Never held as a record of its own: until Phase 3, step 4, slice (b) it
     was ``Scope``, a record the Reading and the queries held (``.scope``),
-    built from a slot dict by ``Scope.from_slots`` (the door the tests keep,
-    ``tests/slots.py``). A reader of the filters takes the Reading or the
-    query itself.
+    built from a slot dict by ``Scope.from_slots`` (the door the tests kept,
+    ``tests/slots.py``, until Phase 4, step 0). A reader of the filters
+    takes the Reading or the query itself.
 
     .. versionadded:: 6.0.0
        ``Scope`` (5.0.0) folded into the Reading and the queries; its

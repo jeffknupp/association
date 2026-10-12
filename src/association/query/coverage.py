@@ -275,8 +275,9 @@ def check_coverage(shape: PointShape | None, scope: Filtered) -> str | None:
 
     .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
-       is still taken, through the slot door (``tests/slots.py``),
-       until every caller passes ``reading``.
+       was taken until every caller passed ``reading``, the tests last,
+       through their slot door (``tests/slots.py``, deleted in Phase 4,
+       step 0).
 
     .. versionchanged:: 6.0.0
        Keyed by the planned point's :class:`~association.query.reading.PointShape`
@@ -331,8 +332,9 @@ def coverage_caveat(shape: PointShape | None, scope: Filtered, *, intent: str = 
 
     .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
-       is still taken, through the slot door (``tests/slots.py``),
-       until every caller passes ``reading``.
+       was taken until every caller passed ``reading``, the tests last,
+       through their slot door (``tests/slots.py``, deleted in Phase 4,
+       step 0).
 
     .. versionchanged:: 6.0.0
        Keyed by the planned point's :class:`~association.query.reading.PointShape`;
