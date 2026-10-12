@@ -19,7 +19,6 @@ from typing import Any, get_args
 
 import pytest
 from routed import staged as settle
-from shapes import asked
 from slots import slots_scope
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
@@ -47,79 +46,101 @@ from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import read_route
 from association.query.point import _team_measure, measure_under
-from association.query.reading import PLAYER_RANKING, Claim, Filtered, Measure, PointShape, Reading, ScopeError, Span, cell_set, unhonored_cells
+from association.query.reading import (
+    GAMES_COUNTED,
+    LINE_RUNS,
+    NETPOINTS_FINGERPRINT,
+    PERIOD_LOG,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_RANKING,
+    SEASON_HISTORY,
+    SHOT_DISTANCE,
+    TEAM_LINE,
+    TEAM_RANKING,
+    Claim,
+    Filtered,
+    Measure,
+    PointShape,
+    Reading,
+    ScopeError,
+    Span,
+    cell_set,
+    unhonored_cells,
+)
 from association.query.reading import Subject as Who
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
 # ---------------- the tagger: words to a Measure ----------------
 
 
-def _read(question: str, intent: str, key: str | None = None, **context: Any) -> Measure | None:
-    return measure_under(asked(intent), read_measure(question), MeasureContext(key=key, **context)).measure
+def _read(question: str, shape: PointShape | None, key: str | None = None, **context: Any) -> Measure | None:
+    return measure_under(shape, read_measure(question), MeasureContext(key=key, **context)).measure
 
 
 @pytest.mark.parametrize(
-    ("question", "intent", "key", "expected"),
+    ("question", "shape", "key", "expected"),
     [
         # The words' own measure stands over the model's key; the model's key stands where the words name none.
-        ("how many points does embiid average", "player_stat", "rebounds", measure_of("points")),
-        ("jokic stats this season", "game_log", "assists", measure_of("assists")),
-        ("compare sga and embiid", "player_compare", "points", None),
+        ("how many points does embiid average", PLAYER_LINE, "rebounds", measure_of("points")),
+        ("jokic stats this season", PLAYER_LOG, "assists", measure_of("assists")),
+        ("compare sga and embiid", PLAYER_COMPARISON, "points", None),
         # The grammar's spellings, as the stages wrote them, and the catalog's key behind each.
-        ("who were the top 10 in defensive netpoints / 100 possessions", "leaderboard", None, Measure(key="netpoints", as_typed="netpoints_defense_per_100", how="per_100", side="defense")),
-        ("who were the top 10 in defensive netpoints / 90", "leaderboard", "netpoints", Measure(key="netpoints", as_typed="netpoints_defense", how="per_90", unit="/ 90", side="defense")),
-        ("centers by pf per 100", "leaderboard", "fouls", Measure(key="fouls", as_typed="fouls", how="per_100", unit="per 100")),
-        ("kevin durant true shooting percentage career", "player_stat", "threePointFieldGoalPct", measure_of("ts_pct")),
-        ("game score nba leader", "leaderboard", "points", Measure(key="game_score", as_typed="avg_game_score", how="per_game")),
-        ("lebron game score this season", "player_stat", "points", measure_of("game_score")),
-        ("show me lebron's 2pt percentage for the past 5 years", "player_history", "threePointFieldGoalPct", measure_of("twoPointFieldGoalPct")),
-        ("who lead the league in avg 3 point distance", "leaderboard", "threePointFieldGoalPct", measure_of("shot_distance")),
-        ("who attempted the most three pointers this season?", "leaderboard", "threePointFieldGoalsMade", measure_of("threePointFieldGoalsAttempted")),
+        ("who were the top 10 in defensive netpoints / 100 possessions", PLAYER_RANKING, None, Measure(key="netpoints", as_typed="netpoints_defense_per_100", how="per_100", side="defense")),
+        ("who were the top 10 in defensive netpoints / 90", PLAYER_RANKING, "netpoints", Measure(key="netpoints", as_typed="netpoints_defense", how="per_90", unit="/ 90", side="defense")),
+        ("centers by pf per 100", PLAYER_RANKING, "fouls", Measure(key="fouls", as_typed="fouls", how="per_100", unit="per 100")),
+        ("kevin durant true shooting percentage career", PLAYER_LINE, "threePointFieldGoalPct", measure_of("ts_pct")),
+        ("game score nba leader", PLAYER_RANKING, "points", Measure(key="game_score", as_typed="avg_game_score", how="per_game")),
+        ("lebron game score this season", PLAYER_LINE, "points", measure_of("game_score")),
+        ("show me lebron's 2pt percentage for the past 5 years", SEASON_HISTORY, "threePointFieldGoalPct", measure_of("twoPointFieldGoalPct")),
+        ("who lead the league in avg 3 point distance", PLAYER_RANKING, "threePointFieldGoalPct", measure_of("shot_distance")),
+        ("who attempted the most three pointers this season?", PLAYER_RANKING, "threePointFieldGoalsMade", measure_of("threePointFieldGoalsAttempted")),
         # A team metric's alias text, as asked - and what a team gives up as the opponent's figure.
-        ("Lowest defensive rating by a team this season", "team_leaderboard", "usage_pct_defense", measure_of("defensive rating")),
-        ("rebounds allowed per team", "team_leaderboard", "rebounds", Measure(key="rebounds", as_typed="rebounds allowed", whose="opponent")),
+        ("Lowest defensive rating by a team this season", TEAM_RANKING, "usage_pct_defense", measure_of("defensive rating")),
+        ("rebounds allowed per team", TEAM_RANKING, "rebounds", Measure(key="rebounds", as_typed="rebounds allowed", whose="opponent")),
         # The LONGEST team alias the words hold wins, as the stages read it: "points per game" over the grammar's "points allowed" (ISSUES.md, "A team metric's alias...").
-        ("which team allowed the most points per game", "team_leaderboard", "points", measure_of("points per game")),
-        ("which team has the most points allowed", "team_leaderboard", "points", Measure(key="points", as_typed="points allowed", whose="opponent")),
-        ("which team has the lowest scoring allowed", "team_leaderboard", "points", Measure(key=None, as_typed="scoring allowed")),
+        ("which team allowed the most points per game", TEAM_RANKING, "points", measure_of("points per game")),
+        ("which team has the most points allowed", TEAM_RANKING, "points", Measure(key="points", as_typed="points allowed", whose="opponent")),
+        ("which team has the lowest scoring allowed", TEAM_RANKING, "points", Measure(key=None, as_typed="scoring allowed")),
         # A team's season total, a quarter's log, a run's result, a fingerprint's side, a chart's shots, the columns beside a ranking.
         (
             "how many 3 pointers have the magic made so far this season",
-            "team_stat",
+            TEAM_LINE,
             "threePointFieldGoalsMade",
             Measure(key="threePointFieldGoalsMade", as_typed="3 pointers", how="total", unit="total"),
         ),
-        ("tyrese maxey first half games this season", "period_split", None, Measure(how="per_game")),
-        ("lakers longest losing streak this season", "streak", "points", Measure(won=False)),
-        ("lakers longest winning streak this season", "streak", None, Measure(won=True)),
-        ("Show me Wembanyama's defensive fingerprint chart", "fingerprint", None, Measure(side="defense")),
-        ("what was steph curry's avg 3pt shot distance", "shot_distance", None, Measure(shot_value=3)),
-        ("Top 5 scorers with their rebounds and assists", "leaderboard", "points", Measure(key="points", as_typed="points", beside=("rebounds", "assists"))),
+        ("tyrese maxey first half games this season", PERIOD_LOG, None, Measure(how="per_game")),
+        ("lakers longest losing streak this season", LINE_RUNS, "points", Measure(won=False)),
+        ("lakers longest winning streak this season", LINE_RUNS, None, Measure(won=True)),
+        ("Show me Wembanyama's defensive fingerprint chart", NETPOINTS_FINGERPRINT, None, Measure(side="defense")),
+        ("what was steph curry's avg 3pt shot distance", SHOT_DISTANCE, None, Measure(shot_value=3)),
+        ("Top 5 scorers with their rebounds and assists", PLAYER_RANKING, "points", Measure(key="points", as_typed="points", beside=("rebounds", "assists"))),
         # A measure the WORDS name stands on a whole-line reader whether or not the stat-word list knows its word (the drop is the model's key's alone):
         # "3s", "3pm" and "rebs" are box-score words and no STAT_WORDS word, and each answered the default line until this slice (ISSUES.md, closed).
-        ("grayson allen 3s made last season", "player_stat", None, measure_of("threePointFieldGoalsMade")),
-        ("klay 3pm each HOME game LAST season", "player_stat", None, measure_of("threePointFieldGoalsMade")),
-        ("Michael porter Rebs 2h vs mavericks game log", "period_split", None, Measure(key="rebounds", as_typed="rebounds", how="per_game")),
+        ("grayson allen 3s made last season", PLAYER_LINE, None, measure_of("threePointFieldGoalsMade")),
+        ("klay 3pm each HOME game LAST season", PLAYER_LINE, None, measure_of("threePointFieldGoalsMade")),
+        ("Michael porter Rebs 2h vs mavericks game log", PERIOD_LOG, None, Measure(key="rebounds", as_typed="rebounds", how="per_game")),
         # The comparison's whole line holds the stat asked about, and its reader refuses a named one: the words' key is dropped there too.
-        ("compare luka and sga in netpts", "player_compare", None, None),
+        ("compare luka and sga in netpts", PLAYER_COMPARISON, None, None),
         # Fouling out is the count's own stat; a games count is no measure; "td3s" is a triple-double and never a shot.
-        ("how many times has embiid fouled out", "threshold_count", "fouls", measure_of("fouls")),
-        ("how many games did embiid play", "player_stat", "games_played", None),
-        ("luka td3s home", "player_stat", "threePointFieldGoalsMade", measure_of("triple_double")),
+        ("how many times has embiid fouled out", GAMES_COUNTED, "fouls", measure_of("fouls")),
+        ("how many games did embiid play", PLAYER_LINE, "games_played", None),
+        ("luka td3s home", PLAYER_LINE, "threePointFieldGoalsMade", measure_of("triple_double")),
     ],
 )
-def test_the_words_read_as_one_measure(question: str, intent: str, key: str | None, expected: Measure | None) -> None:
-    assert _read(question, intent, key) == expected
+def test_the_words_read_as_one_measure(question: str, shape: PointShape | None, key: str | None, expected: Measure | None) -> None:
+    assert _read(question, shape, key) == expected
 
 
 def test_the_models_key_is_context_the_words_confirm_and_never_the_source_where_they_name_one() -> None:
     """The one REQUIRED key the normalizer fills whether or not the question
     names a stat: a whole-line reader drops it where the words name none, a
     reader that reads it keeps it, and the words win where both name one."""
-    assert _read("Knicks stats this season", "team_stat", "points") is None
-    assert _read("Knicks pace this season", "team_stat", "pace") == measure_of("pace")
-    assert _read("who led the league in assists in 2019", "leaderboard", "assists") == measure_of("assists")
-    assert _read("How far was Curry average three pointer?", "shot_distance", "threePointFieldGoalsAttempted") == Measure(
+    assert _read("Knicks stats this season", TEAM_LINE, "points") is None
+    assert _read("Knicks pace this season", TEAM_LINE, "pace") == measure_of("pace")
+    assert _read("who led the league in assists in 2019", PLAYER_RANKING, "assists") == measure_of("assists")
+    assert _read("How far was Curry average three pointer?", SHOT_DISTANCE, "threePointFieldGoalsAttempted") == Measure(
         key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade", shot_value=3
     )
 
