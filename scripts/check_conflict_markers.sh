@@ -8,13 +8,16 @@
 # Markdown and the changelog hook counts headings, not markers. Found by
 # reading the file, which is not a gate; now it is one.
 #
-# Only the start and end markers are checked: a bare `=======` line is a
+# The start and end markers and the diff3 base marker (`||||||| `) are
+# checked - a merge resolved under zdiff3 by a script that read "ours" up to
+# the first `=======` kept the base marker inside CHANGES.md (2026-10-12),
+# and this gate passed it; a bare `=======` line is a
 # legitimate setext underline in Markdown.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-found="$(git ls-files -z | xargs -0 grep -nE '^(<<<<<<< |>>>>>>> )' -- 2>/dev/null || true)"
+found="$(git ls-files -z | xargs -0 grep -nE '^(<<<<<<< |>>>>>>> |[|]{7} )' -- 2>/dev/null || true)"
 if [[ -n "${found}" ]]; then
   echo "merge-conflict markers in tracked files:" >&2
   echo "${found}" >&2
