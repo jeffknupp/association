@@ -2362,6 +2362,35 @@ read (``player_relation.POSITION_CODES``, which a test holds to it).
 .. versionadded:: 6.0.0
 """
 
+PRIVATE_USE_FIRST = "\ue000"
+"""The first character of the range the grammars' marks are drawn from
+(Unicode's Private Use Area, U+E000-U+F8FF, which no text means anything
+by): every mark below (:data:`LINE_MARK_PLUS` ... :data:`DATE_MARK`) is in
+it, and the parser's first step reads every character of it as a space
+(:func:`unmarked`), so a mark typed into a question forges no typed value.
+
+.. versionadded:: 6.0.0
+"""
+PRIVATE_USE_LAST = "\uf8ff"
+"""The last character of that range.
+
+.. versionadded:: 6.0.0
+"""
+_UNMARKED = dict.fromkeys(range(ord(PRIVATE_USE_FIRST), ord(PRIVATE_USE_LAST) + 1), " ")
+
+
+def unmarked(text: str) -> str:
+    """``text`` with every character of the private-use range read as a
+    space, where it stands - every position kept, so each claim's offset
+    holds (ISSUES.md #383: "nikola jokic <WINDOW_MARK> stats this season"
+    was read as a window of games nobody named, and answered a 10-game
+    log). The parser's first step, :func:`~association.query.parse.read_route`.
+
+    .. versionadded:: 6.0.0
+    """
+    return text.translate(_UNMARKED)
+
+
 # A line at or above a number, however it is written: "30+", "36-plus",
 # "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield) -
 # a fragment the child grammars below are built from.

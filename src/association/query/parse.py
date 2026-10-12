@@ -574,9 +574,16 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
        then, and ``reading_from_route`` - folded in here - wrote the Reading
        from the Route.
     """
+    # The intake: every private-use character is read as a space, where it
+    # stands, before anything reads the words (ISSUES.md #383) - the
+    # grammars read the typed values as marks from that range
+    # (lexicon.mark_lines, mark_opponent, ...), and a mark typed by hand
+    # would be read as a value no tagger read. The one place it is done.
+    question = lexicon.unmarked(question)
+    names = [lexicon.unmarked(name) for name in names or ()]
     # The model's reply as given: the words it accounts for are no unread
     # words (Reading.unread, by the claims ledger's rule).
-    given = tuple(names or ())
+    given = tuple(names)
     asked = question
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]

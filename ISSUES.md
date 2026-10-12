@@ -4024,14 +4024,6 @@ those were found.
 - **Next step:** delete it with its RUN cause and phrase when the conference-as-subject reading lands (the P1 "A conference or division the players or teams belong to ..."), or keep it as that reading's guard - decide there.
 - **GitHub:** #344
 
-### A private-use character typed into a question is read as a grammar mark
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 10).
-- **Evidence:** the grammars read the question with each typed value written over by a private-use character (`lexicon.LINE_MARK_*`, `OPPONENT_MARK*`, `COMPANION_MARK*`, `WINDOW_MARK`, `DATE_MARK`: U+E000-U+E00B), and nothing strips the range on intake (`parse`, `agent`, `normalizer`, `web/app.py`). On `4de1801` "nikola jokic \ue00a stats this season" answers a 10-game log (`87cc782`: his season line); "how many games \ue001\ue001 \ue003\ue003 did nikola jokic have" a log (the review's `data/adhoc-*`). 0 of the 2,711 recorded and feed questions, and 0 lines of the large StatMuse feed, hold a character in U+E000-U+F8FF.
-- **User sees:** a different shape for an invisible character.
-- **Next step:** replace U+E000-U+F8FF with spaces before the parser reads the words (positions kept, so every claim's offset holds), one line in the parser's first step; the marks then cannot be forged.
-- **Priority:** P4 - nobody has typed one.
-- **GitHub:** #383
-
 ### "diabate last 20 game" lost its "of 73" since `9da65c0`
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 11).
 - **Evidence:** "Moussa Diabate, last 20 of 73 games of the 2026 regular season" on `2ae0be8` became "Moussa Diabate, last 20 games of the 2026 regular season" on `9da65c0` (and "last 10 game" likewise): on the window-mark path, where the log row reads the typed window and not its own "last N games" words, the log's total left the heading. Among the ten enumerated moves of `9da65c0` (`CHANGES.md`).

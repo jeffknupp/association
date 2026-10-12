@@ -820,3 +820,57 @@ def test_a_line_and_an_opponent_are_marked_where_their_words_stand() -> None:
     assert lexicon.mark_companions("record when maxey scored \ue000\ue000\ue000 points", ((7, 28),)) == "record " + lexicon.COMPANION_MARK_PRESENCE * 18 + "\ue000" * 3 + " points"
     assert lexicon.mark_companions("log in games embiid missed", ((4, 26),)) == "log " + lexicon.COMPANION_MARK * 22
     assert marked_for_grammar("randle last 10 game log since 1/26/20") == "randle " + lexicon.WINDOW_MARK * 12 + " log " + lexicon.DATE_MARK * 13
+
+
+#: Every mark the grammars read a typed value as (``lexicon``'s private-use
+#: characters, U+E000-U+E00B), by name.
+_MARKS = (
+    "LINE_MARK_PLUS",
+    "LINE_MARK",
+    "LINE_MARK_AT_LEAST",
+    "LINE_MARK_STAT",
+    "LINE_MARK_LEAD",
+    "OPPONENT_MARK_AGAINST",
+    "OPPONENT_MARK_VERSUS",
+    "OPPONENT_MARK",
+    "COMPANION_MARK_PRESENCE",
+    "COMPANION_MARK",
+    "WINDOW_MARK",
+    "DATE_MARK",
+)
+
+
+@pytest.mark.parametrize("mark", _MARKS)
+@pytest.mark.parametrize(
+    "question",
+    ["nikola jokic {} stats this season", "how many games {}{} {}{} did nikola jokic have", "{}joel embiid game log vs boston", "luka doncic {} points per game in 2024 {}"],
+)
+def test_a_mark_typed_into_the_question_is_read_as_a_space(con: duckdb.DuckDBPyConnection, question: str, mark: str) -> None:
+    """A user who types a private-use character forges nothing (ISSUES.md
+    #383): the grammars read the question with each typed value written over
+    by a mark (``lexicon.mark_lines``, ``mark_opponent``, ...), so a mark
+    typed by hand was read as a value the taggers never read - "nikola jokic
+    <WINDOW_MARK> stats this season" answered a 10-game log. The parser's
+    first step reads every character of the private-use range as a space,
+    where it stands, so the reading is the one of the question with a space
+    there, every claim at the same place."""
+    from association.query import lexicon
+
+    char = getattr(lexicon, mark)
+    assert "" <= char <= ""
+    typed = question.format(*[char] * question.count("{}"))
+    spaced = question.format(*[" "] * question.count("{}"))
+    assert _read(con, typed) == _read(con, spaced)
+    assert _read(con, typed, ["nikola jokic"]) == _read(con, spaced, ["nikola jokic"])
+
+
+def test_every_mark_is_in_the_range_the_parser_reads_as_a_space() -> None:
+    """The marks are drawn from the range the parser's first step blanks, so
+    none can be typed: a mark added outside it fails here."""
+    from association.query import lexicon
+
+    marks = {name: value for name, value in vars(lexicon).items() if name.endswith("_MARK") or "_MARK_" in name}
+    assert set(_MARKS) <= set(marks)
+    for name, value in marks.items():
+        if isinstance(value, str) and len(value) == 1:
+            assert lexicon.PRIVATE_USE_FIRST <= value <= lexicon.PRIVATE_USE_LAST, name
