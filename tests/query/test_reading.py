@@ -5,15 +5,14 @@ the question again - ROADMAP plan item 6, step (a)."""
 from __future__ import annotations
 
 from dataclasses import fields, replace
-from typing import Any
 
 import pytest
-from routed import default_query, default_reading
-from slots import slots_scope
+from routed import planned_query
 
 from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
+from association.query.point import default_point
 from association.query.reading import GAMES_COUNTED, Companion, Cuts, Line, Measure, Period, Reading, Span, Window
 from association.query.reading import Subject as Who
 
@@ -21,14 +20,19 @@ from association.query.reading import Subject as Who
 def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was() -> None:
     """The adapters build a Reading; ``to_query`` is that Reading planned, so
     every caller of the old contract sees the same Query."""
-    slots: dict[str, Any] = {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "season": 2026}
-    reading = default_reading("threshold_count", slots)
+    scope = Reading(
+        who=Who(kind="player", players=("Brandin Podziemski",)),
+        lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+        measure=Measure(key="points", as_typed="points"),
+        span=Span(season=2026),
+    )
+    reading = default_point(GAMES_COUNTED, scope)
     assert isinstance(reading, Reading)
     assert (reading.relation, reading.shape, reading.aggregate, reading.predicates) == ("player", "scalar", "count", [("points", ">=", 30)])
     planned = plan(reading)
     assert isinstance(planned, Query)
-    assert planned == default_query("threshold_count", slots)
-    assert planned.filters() == slots_scope(slots).filters()
+    assert planned == planned_query(GAMES_COUNTED, scope)
+    assert planned.filters() == scope.filters()
     assert planned.skeleton == "scalar" and planned.aggregate == "count"
 
 
@@ -114,60 +118,14 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
     assert "filters={'who': {'kind': 'player', 'players': ['Joel Embiid']}, 'span': {'season': 2026}}" in line
 
 
-def test_a_slot_dict_types_through_the_door() -> None:
-    """The tests' slot door (``tests/slots.py``, ``Scope.from_slots`` until
-    Phase 3, step 4) types a slot dict, empty slots (None, "", [], False)
-    read as absent - the reading ``check_scope`` already took of a falsy
-    slot. Nothing projects back: the slot-era ``to_slots`` went with slice (c)."""
-    slots: dict[str, Any] = {
-        "player": "Joel Embiid",
-        "opponent": "Boston Celtics",
-        "season": 2026,
-        "season_type": 2,
-        "without": ["Tyrese Maxey"],
-        "venue": "home",
-        "order": "recent",
-        "limit": 10,
-        "season_type_unstated": True,
-    }
-    scope = slots_scope({**slots, "team": None, "players": [], "stat": "", "per_game": False})
-    assert (scope.who.player, [c.player for c in scope.companions if c.absent], scope.cuts.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ["Tyrese Maxey"], "home", 10, True)
-    assert (scope.cuts.opponent, scope.span.season, scope.span.season_type, scope.window.order) == ("Boston Celtics", 2026, 2, "recent")
-
-
-@pytest.mark.parametrize(
-    ("slots", "match"),
-    [
-        ({"sesaon": 2026}, "no scope field"),
-        ({"season": "2026"}, "whole number"),
-        ({"season": True}, "whole number"),
-        ({"players": ["Joel Embiid", 7]}, "list of text"),
-        ({"venue": "neutral"}, "one of"),
-        ({"season_type": 1}, "one of"),
-        ({"limit": 0}, "below 1"),
-        ({"span": "decade"}, "one of"),
-        ({"date": "last night"}, "calendar day"),
-        ({"date": "2026-02-30"}, "calendar day"),
-        ({"conditions": [{"player": "Jayson Tatum", "predicate": "dunked"}]}, "predicate"),
-        ({"conditions": [{"side": "own"}]}, "names no player"),
-    ],
-)
-def test_a_slot_nothing_types_is_refused_out_loud(slots: dict[str, Any], match: str) -> None:
-    """A slot the scope could only drop is a narrowing the answer would
-    silently leave out - this project's worst failure shape - so a key or a
-    value nothing here types raises instead."""
-    with pytest.raises(ValueError, match=match):
-        slots_scope(slots)
-
-
-def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None:
-    """Two hand-kept lists against the ones they must agree with: a check per
-    Scope field (a field without one would take any value), the Group names
-    against compose.core.GROUPS, and every scoping slot the templates declare
-    against the Scope's fields."""
+def test_every_group_is_the_compilers_and_every_declared_cell_a_filters_cell() -> None:
+    """Hand-kept lists against the ones they must agree with: the Group names
+    against compose.core.GROUPS, and every cell the relation tables declare
+    against the filters' cells. Until Phase 4, step 0 it held the tests' slot
+    door to a check per field too (``tests/slots.py``'s ``_CHECKS``), with the
+    typed families and the stated minimum exempt - the door went, and every
+    family but the split checks its own values."""
     from typing import get_args
-
-    from slots import _CHECKS, _COMPANION_SLOT_NAMES, _CUT_SLOT_KEYS, _LINE_SLOT_NAMES, _MEASURE_SLOT_NAMES, _PERIOD_SLOT_NAMES, _SPAN_SLOT_NAMES, _SUBJECT_SLOT_NAMES, _WINDOW_SLOT_NAMES
 
     from association.query.compose.core import GROUPS
     from association.query.player_relation import RELATION_SCOPING
@@ -183,21 +141,6 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     from association.query.team_relation import TEAM_RELATION_SCOPING
 
     names = {f.name for f in fields(Filtered)}
-    # The subject's four slot names, the span's six, the window's four, the cuts' eight, the period's two, the lines' four and the
-    # companions' three pass the door into the typed values (Phase 3, step 2). A stated minimum was born typed (ISSUES.md #377):
-    # no slot ever carried it, and the door takes none.
-    assert (
-        set(_CHECKS)
-        == (names - {"who", "span", "window", "cuts", "period", "lines", "companions", "measure", "minimum"})
-        | set(_SUBJECT_SLOT_NAMES)
-        | _MEASURE_SLOT_NAMES
-        | _SPAN_SLOT_NAMES
-        | _WINDOW_SLOT_NAMES
-        | _CUT_SLOT_KEYS
-        | _PERIOD_SLOT_NAMES
-        | _LINE_SLOT_NAMES
-        | _COMPANION_SLOT_NAMES
-    )
     # `presence` is the team relation's own group (compose.team.compile_team_presence), not a key of the player relation's GROUPS.
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
@@ -238,26 +181,3 @@ def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_
         "the seasons 2018-19 through 2020-21, the regular season and the playoffs together, the last 5 games, games ranked by points, games for MIA, the finals, "
         "the 2nd half, games with under 14 fta, games z started and games without y, a starter and bench split and a rate per 100 possessions cannot be read here - why"
     )
-
-
-def test_a_period_condition_round_trips_through_the_slot_door() -> None:
-    """A quarter or half as a condition on which games count (ROADMAP step 2,
-    #275) is one typed line in a period (Phase 3, step 2): a stat, a
-    number, the comparison ("at least" by default, "exactly" for a bare
-    number) and exactly one of a period or a half. A slot dict in that shape
-    reads and writes back the same; one naming both a period and a half, or
-    neither, or a key nothing types, is refused at the door."""
-    from association.query.reading import Line, Period, ScopeError
-
-    scope = Reading(lines=(Line(measure="threePointFieldGoalsMade", period=Period(number=1)),))
-    assert scope.lines == (Line(measure="threePointFieldGoalsMade", op=">=", value=1, period=Period(number=1)),)
-    exact = Reading(lines=(Line(measure="points", op="=", value=10, period=Period(number=1, half=True)),))
-    assert exact.lines == (Line(measure="points", op="=", value=10, period=Period(number=1, half=True)),)
-    for bad in (
-        {"stat": "points", "threshold": 1},
-        {"stat": "points", "threshold": 1, "period": 1, "half": 1},
-        {"stat": "points", "threshold": 1, "period": 1, "op": "<"},
-        {"stat": "points", "period": 1},
-    ):
-        with pytest.raises(ScopeError):
-            slots_scope({"period_condition": bad})

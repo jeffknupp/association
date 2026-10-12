@@ -239,3 +239,13 @@ def staged(
         return Staged(settled.asked, claims=claimed(list(settled.claims)))
     scope, claims = parse._tagged(question, settled, companions, lines=lines, model_stat=stat, side=side, shot_value=shot_value, fields=fields)
     return Staged(settled.asked, scope, claimed([*settled.claims, *claims]))
+
+
+def planned_query(asked: PointShape, scope: Reading) -> Query:
+    """The default point of the key ``asked`` over ``scope``
+    (:func:`~association.query.point.default_point`), planned
+    (``compose.plan.plan``) - a test's way to the compiler's query for a
+    reading it states."""
+    query = plan(default_point(asked, scope))
+    assert isinstance(query, Query)
+    return query
