@@ -12,14 +12,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from routed import ask_routed, slots_route
+from routed import Routed, ask_routed
 
 from association.query.agent import Agent
 from association.query.answer import Answer, Artifact, Reply, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Cause, Cuts, Reading, Span
+from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Cause, Cuts, Measure, Reading, Span
 from association.query.reading import Subject as Who
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
@@ -240,7 +240,7 @@ def _agent(tmp_path: Path) -> Agent:
 def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={"value": 1}, answer="templated"))
     agent = _agent(tmp_path)
-    answer = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
+    answer = ask_routed(agent, "who scored the most points", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
     assert agent.reading is not None and agent.reading.intent == "leaderboard"
     record = snapshot(agent.reading, answer, planned=agent.planned)
     with pytest.raises(ValueError, match="needs its planning"):
