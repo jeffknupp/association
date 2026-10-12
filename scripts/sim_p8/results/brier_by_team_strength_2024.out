@@ -1,0 +1,9 @@
+scripts/sim_p8/results/validate_2024_from_2024-01-01_2026-10-12_weights.json: 737 games, season 2024
+worst eight by record: DET 0.171, WSH 0.183, CHA 0.256, POR 0.256, SA 0.268, TOR 0.305, MEM 0.329, UTAH 0.378
+
+                 games     n  simulation  strength    ESPN  home rate
+                   all   737      0.2313    0.2312  0.2088     0.2503
+      no bottom-4 team   549      0.2405    0.2449  0.2270     0.2491
+      no bottom-6 team   464      0.2420    0.2469  0.2351     0.2483
+      no bottom-8 team   389      0.2440    0.2459  0.2404     0.2480
+ a bottom-8 team plays   348      0.2171    0.2148  0.1735     0.2530

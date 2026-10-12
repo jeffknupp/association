@@ -137,6 +137,11 @@ was learned the hard way and is about the data, not the pipeline.
   against 11.2 + 32.8, the total -2.1; Brier 0.2226, ahead of the
   strength model's 0.2250 for the first time, ESPN 0.1984. Two runs of
   one setup differed by 0.002 on Brier, so treat smaller moves as noise.
+  The same code on the neighboring seasons (plan item 8, "By season"):
+  2024 Brier 0.2313 level with the strength model, 2026 0.2207 against
+  0.2250; games with a bottom-eight team are the easy ones for every
+  forecaster, so a tanking season flatters the score rather than hurting
+  it (`scripts/sim_p8/brier_by_team_strength.py` splits a run's JSON).
   Each fix was found by decomposing the run's JSON per team-game (points,
   FGA, FTA, rebounds, turnovers, real against simulated) and confirmed
   with `--explain` on a replay; do the same before changing a constant,

@@ -1,0 +1,9 @@
+scripts/sim_p8/results/validate_2026_from_2026-01-01_2026-10-12_weights.json: 719 games, season 2026
+worst eight by record: WSH 0.207, IND 0.232, BKN 0.244, UTAH 0.268, SAC 0.268, MEM 0.305, DAL 0.317, NO 0.317
+
+                 games     n  simulation  strength    ESPN  home rate
+                   all   719      0.2207    0.2250  0.1926     0.2470
+      no bottom-4 team   540      0.2303    0.2399  0.2104     0.2479
+      no bottom-6 team   458      0.2327    0.2421  0.2149     0.2479
+      no bottom-8 team   387      0.2359    0.2479  0.2194     0.2489
+ a bottom-8 team plays   332      0.2031    0.1984  0.1615     0.2447

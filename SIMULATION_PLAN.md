@@ -892,6 +892,33 @@ check measured on 2019-2026 and recorded in the module docstring:
    own trend); the strength model's remaining headroom to ESPN, 0.024 of
    Brier, which is team-strength estimation; threes 0.415 against 0.420;
    free throws 2.5% high.
+
+   **By season** (2026-10-12, the same code and seeds on 2024 and 2026 from
+   January 1; `results/validate_2024_from_2024-01-01_2026-10-12_weights.md`,
+   `..._2026_...`; the Brier split by team record is
+   `scripts/sim_p8/brier_by_team_strength.py`, outputs beside them):
+
+   | season | games | simulation | strength | ESPN | home rate | refused |
+   | --- | --- | --- | --- | --- | --- | --- |
+   | 2024 (2023-24) | 737 | 0.2313 | 0.2312 | 0.2088 | 0.2503 | 13 |
+   | 2025 (2024-25) | 741 | 0.2226 | 0.2250 | 0.1984 | 0.2486 | 5 |
+   | 2026 (2025-26) | 719 | 0.2207 | 0.2250 | 0.1926 | 0.2470 | 15 |
+
+   2026's league rates all land within 0.004 (threes 0.420 against 0.416,
+   free throws 0.255 against 0.256, offensive rebounds 0.254 against 0.258,
+   points per 100 possessions 113.1 against 113.5); 2024's free throws run
+   0.253 against 0.236 because the whistle changed inside that season (0b
+   0.13's worst rate) and its window could not know. Coverage and the
+   minutes error are the same in every season (0.74 / 0.79 / 0.85; MAE
+   5.3-5.4). On the tanking question (2025 and 2026 each had six to eight
+   teams under .320): games with a bottom-eight team are the EASIEST for
+   every forecaster (simulation 0.203-0.217, ESPN 0.16-0.17), and with
+   them removed the simulation's lead over the strength model is larger,
+   not smaller - 0.2359 against 0.2479 in 2026, 0.2336 against 0.2386 in
+   2025, 0.2440 against 0.2459 in 2024 - so those games flatter the Brier
+   rather than count against the simulator. The refusals in 2024 and 2026
+   are mostly seven-man real rosters (`MIN_ROSTER` 8) and eight-man ones
+   fouling out, which a tanking season produces more of.
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is

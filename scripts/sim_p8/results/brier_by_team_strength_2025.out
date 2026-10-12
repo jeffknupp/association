@@ -1,0 +1,9 @@
+scripts/sim_p8/results/validate_2025_from_2025-01-01_2026-10-12_weights.json: 741 games, season 2025
+worst eight by record: UTAH 0.207, WSH 0.220, CHA 0.232, NO 0.256, PHI 0.293, BKN 0.317, TOR 0.366, SA 0.415
+
+                 games     n  simulation  strength    ESPN  home rate
+                   all   741      0.2226    0.2250  0.1984     0.2486
+      no bottom-4 team   554      0.2340    0.2373  0.2137     0.2492
+      no bottom-6 team   470      0.2315    0.2370  0.2204     0.2482
+      no bottom-8 team   398      0.2336    0.2386  0.2192     0.2476
+ a bottom-8 team plays   343      0.2098    0.2093  0.1742     0.2499
