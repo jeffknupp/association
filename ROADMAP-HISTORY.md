@@ -1412,6 +1412,29 @@ agents' reports named here are in `~/association-research/stages/`.
     2.2 and 2.3 hours (565k and 604k tokens). Filed: #387-#394, all P1.
     Left: #385's remainder, Phase 4's first item.
 
+38. **Phase 4, step 0 (2026-10-12).** The test doors go. One Opus agent,
+    31 commits in 1.7 hours, rebased and merged at `e120fc4`: 29 test
+    files re-seated on the typed Reading and the `PointShape`,
+    `tests/slots.py` and `tests/shapes.py` deleted with their last
+    callers, `tests/routed.py` kept to the helpers that take typed values,
+    13 door-subject tests (42 cases) deleted, the suite 3,029 -> 2,987,
+    and `measure.column_of` gone from `src` as the door's only caller.
+    Proved two ways beyond the four populations (every one identical):
+    4,094 of 4,096 unit-test calls identical, and every Reading the suite
+    constructs recorded on both trees through a scratch plugin - 3 new
+    Readings in the whole suite, all hand-built "other" cases whose label
+    nothing reads. What it taught: a codemod that re-seats a test can
+    leave it asserting that a value equals itself - five such tests from
+    the cleanup's (b)1 were found by reading them, not by the suite - so
+    the construction-level proof (what each test BUILDS, not only what it
+    calls across a stage) is the check for test-only rewrites; and ast
+    columns are bytes, not characters, which an accented name showed. The
+    Phase 4 rows were accepted by Jeff the same day, with the lanes to
+    run in parallel after this step; the lanes wait for Jeff's go-ahead
+    while the box is busy with other work. Cost: the agent's 1.7 hours
+    (633k tokens), the lead's re-verification. Filed: #395 (P4). Closed:
+    #385.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
