@@ -7,7 +7,6 @@
   "compose.netpoints": 3,
   "compose.seasons": 7,
   "compose.shots": 3,
-  "compose.standings": 4,
   "compose.team": 2,
   "compose.team_records": 2,
   "compose.team_stats": 9,
@@ -19,6 +18,7 @@
   "player_games": 4,
   "player_relation": 18,
   "season_line": 7,
+  "standings": 4,
   "team_games": 2,
   "team_relation": 2
  },

@@ -561,7 +561,10 @@ gets turned off.
     words),
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
-    `team_relation.py`, `season_line.py`, `team_seasons.py`), the
+    `team_relation.py`, `season_line.py`, `team_seasons.py` and the
+    standings' reads beside it, `standings.py` - each relation module runs
+    its own statements, and `compose/` runs only what the compiler built
+    or a relation hands it, Phase 4, step 5), the
     compiler's readers and the sayer (`compose/`), the coverage
     declaration (`coverage.py`), renderers, the answering loop
     (`agent.py`). `web/` - the local web interface.
@@ -1703,7 +1706,11 @@ a shape:
     whether a narrowing left a player no games his span holds
     (`player_relation.narrowing_emptied`, beside `no_narrowed_games`), and
     a team's games with its narrowing off, which an empty team log names
-    as missing (`team_games.unnarrowed_games`).
+    as missing (`team_games.unnarrowed_games`). The standings', a module
+    of their own (`query/standings.py`, the team-season relation's reads
+    of ESPN's `standings` and the season totals they are checked against:
+    `season_row`, `career_rows`, `first_season`, `season_games`), which
+    `compose/standings.py` reads.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body

@@ -285,6 +285,8 @@ forbidden_modules = [
     "association.query.conditions",
     "association.query.team_metrics",
     "association.query.season_line",
+    "association.query.team_seasons",
+    "association.query.standings",
     "association.query.shotchart",
     "association.query.fingerprint",
 ]
@@ -321,6 +323,8 @@ source_modules = [
     "association.query.conditions",
     "association.query.entities",
     "association.query.season_line",
+    "association.query.team_seasons",
+    "association.query.standings",
     "association.query.stages",
 ]
 forbidden_modules = ["association.query.normalizer", "ollama"]
