@@ -468,6 +468,7 @@ class Validation:
     baselines: Baselines
     games: list[GameCheck] = field(default_factory=list)
     refused: list[tuple[str, str]] = field(default_factory=list)
+    real_minutes: bool = False  # the rotation was the real game's lineups (a diagnostic), not the model
 
 
 Connect = Callable[[], duckdb.DuckDBPyConnection]
@@ -488,7 +489,7 @@ class _DayResult:
     lines: list[str]
 
 
-def _replay_day(con: duckdb.DuckDBPyConnection, event_ids: Sequence[str], n: int, seed: int, baselines: Baselines, offset: int) -> _DayResult:
+def _replay_day(con: duckdb.DuckDBPyConnection, event_ids: Sequence[str], n: int, seed: int, baselines: Baselines, offset: int, real_minutes: bool = False) -> _DayResult:
     """Replay one day's games on ``con``: the estimates and rotations are
     built once for the day's window (:func:`association.sim.game.shared_for`)
     and shared. ``offset`` numbers the progress lines across days."""
@@ -501,7 +502,7 @@ def _replay_day(con: duckdb.DuckDBPyConnection, event_ids: Sequence[str], n: int
         if shared is None or shared.window != window:
             shared = matchup.shared_for(con, window)
         try:
-            prepared = matchup.prepare_replay(con, real, shared)
+            prepared = matchup.prepare_replay(con, real, shared, real_minutes=real_minutes)
             games = matchup.run(prepared, n, seed)
         except (matchup.SimulationRefused, EngineError, RotationError) as exc:
             # A replay's roster is the real one, which can run short after
@@ -522,13 +523,13 @@ core by default, and sixteen workers on a 24-core machine then run through
 """
 
 
-def _replay_day_in_worker(connect: Connect, event_ids: Sequence[str], n: int, seed: int, baselines: Baselines, offset: int) -> _DayResult:
+def _replay_day_in_worker(connect: Connect, event_ids: Sequence[str], n: int, seed: int, baselines: Baselines, offset: int, real_minutes: bool = False) -> _DayResult:
     """:func:`_replay_day` on a connection of the worker's own, with
     :data:`WORKER_THREADS` DuckDB threads."""
     con = connect()
     try:
         con.execute(f"SET threads TO {WORKER_THREADS}")
-        return _replay_day(con, event_ids, n, seed, baselines, offset)
+        return _replay_day(con, event_ids, n, seed, baselines, offset, real_minutes)
     finally:
         con.close()
 
@@ -551,6 +552,7 @@ def validate(
     progress: Callable[[str], None] | None = None,
     jobs: int = 1,
     connect: Connect | None = None,
+    real_minutes: bool = False,
 ) -> Validation:
     """Replay the held-out set and score it. The league-wide estimates and
     rotations are built once per game day (:func:`association.sim.game.shared_for`)
@@ -558,22 +560,24 @@ def validate(
     replayed by that many worker processes, each opening its own connection
     with ``connect`` (required then); the result is the same for any
     ``jobs``, games in date order, and the progress lines arrive a day at a
-    time as days complete.
+    time as days complete. With ``real_minutes`` every replay follows the
+    real game's lineups (:mod:`association.sim.real_minutes`): a diagnostic
+    of the rotation model's share of the error, which the report says.
 
     .. versionadded:: 6.0.0
     """
     if jobs > 1 and connect is None:
         raise ValueError("jobs above one need a connect factory for the workers' own connections")
-    run = Validation(season, start, n, seed, baselines_for(con, season, start))
+    run = Validation(season, start, n, seed, baselines_for(con, season, start), real_minutes=real_minutes)
     days = held_out_days(con, season, start, limit)
     offsets = [sum(len(d) for d in days[:k]) for k in range(len(days))]
     if jobs <= 1 or connect is None or len(days) <= 1:
         for day, offset in zip(days, offsets, strict=True):
-            _absorb(run, _replay_day(con, day, n, seed, run.baselines, offset), progress)
+            _absorb(run, _replay_day(con, day, n, seed, run.baselines, offset, real_minutes), progress)
         return run
     results: dict[int, _DayResult] = {}
     with ProcessPoolExecutor(max_workers=min(jobs, len(days))) as pool:
-        futures = {pool.submit(_replay_day_in_worker, connect, day, n, seed, run.baselines, offset): k for k, (day, offset) in enumerate(zip(days, offsets, strict=True))}
+        futures = {pool.submit(_replay_day_in_worker, connect, day, n, seed, run.baselines, offset, real_minutes): k for k, (day, offset) in enumerate(zip(days, offsets, strict=True))}
         for future in as_completed(futures):
             results[futures[future]] = future.result()
             if progress is not None:
@@ -682,6 +686,7 @@ def report(run: Validation, m: Mapping[str, Any] | None = None) -> str:
         "",
         f"{m['games']} games replayed, {run.n} simulations each from seed {run.seed}; {m['refused']} refused. {m['seconds_per_game']:.1f} s a game.",
         f"Baselines fitted on {b.training_games} earlier window games: home-win rate {b.home_rate:.3f}; strength model p = sigmoid({b.strength_a:.3f} + {b.strength_b:.4f} * net-rating difference).",
+        *(["**Rotation: the real game's lineups, followed by the clock** - a diagnostic of the rotation model's share of the error, not a forecast (minutes are given)."] if run.real_minutes else []),
         "",
         "## Win probability (Brier score, lower is better; 0.25 is a coin)",
         "",

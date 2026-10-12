@@ -42,10 +42,11 @@ import duckdb
 
 from association.nba.season import eastern_date_sql
 from association.sim import rates, rotation
+from association.sim import real_minutes as real_minutes_module
 from association.sim.database import WAREHOUSE
 from association.sim.engine import EngineError, GameSetup, TeamSetup, simulate
 from association.sim.events import SimGame
-from association.sim.params import LeagueParams, PlayerParams, TeamParams, Window
+from association.sim.params import LeagueParams, PlayerParams, RotationPolicy, TeamParams, Window
 from association.sim.render import Names
 
 WINDOW_SEASONS = 3
@@ -182,6 +183,7 @@ class Prepared:
     league_rotation: rotation.LeagueRotation
     names: Names
     notes: tuple[str, ...] = ()
+    policies: Mapping[str, RotationPolicy] | None = None  # a rotation policy per team id instead of the model (the real-minutes diagnostic)
 
     @property
     def near_prior(self) -> tuple[str, ...]:
@@ -194,7 +196,7 @@ class Prepared:
         return GameSetup(home=self._side(self.home), away=self._side(self.away), league=self.league)
 
     def _side(self, roster: Roster) -> TeamSetup:
-        policy = rotation.RotationModel(self.profiles[roster.team_id], self.league_rotation)
+        policy: RotationPolicy = self.policies[roster.team_id] if self.policies is not None else rotation.RotationModel(self.profiles[roster.team_id], self.league_rotation)
         return TeamSetup(team=self.teams[roster.team_id], players={a: self.players[a] for a in roster.players}, starters=roster.starters, policy=policy)
 
 
@@ -565,12 +567,14 @@ def real_game(con: duckdb.DuckDBPyConnection, event_id: str) -> RealGame:
     return RealGame(event_id, int(season), date, str(home), str(away), {t: tuple(r) for t, r in rosters.items()}, {t: tuple(s) for t, s in starters.items()}, int(hs), int(as_))
 
 
-def prepare_replay(con: duckdb.DuckDBPyConnection, game: RealGame, shared: Shared | None = None) -> Prepared:
+def prepare_replay(con: duckdb.DuckDBPyConnection, game: RealGame, shared: Shared | None = None, real_minutes: bool = False) -> Prepared:
     """A replay's setup: the window ends on the game's own Eastern date, the
     rosters are the players who appeared, the starters the box five (where
     the box names five). A player with no minutes before that date is
     dropped with a note rather than refusing the whole game; a side left
-    under :data:`MIN_ROSTER` is refused.
+    under :data:`MIN_ROSTER` is refused. With ``real_minutes`` the rotation
+    is the real game's lineups followed by the clock
+    (:mod:`association.sim.real_minutes`), a diagnostic the notes name.
 
     .. versionadded:: 6.0.0
     """
@@ -584,4 +588,11 @@ def prepare_replay(con: duckdb.DuckDBPyConnection, game: RealGame, shared: Share
     starters = {t: s for t, s in game.starters.items() if len(s) == 5 and all(a in rosters[t] for a in s)}
     prepared = prepare(con, game.home, game.away, window, rosters=rosters, starters=starters, shared=shared)
     notes = list(prepared.notes) + ([f"dropped for want of minutes before {game.date.isoformat()}: {', '.join(dropped)}"] if dropped else [])
-    return Prepared(prepared.home, prepared.away, prepared.window, prepared.league, prepared.teams, prepared.players, prepared.profiles, prepared.league_rotation, prepared.names, tuple(notes))
+    policies: dict[str, RotationPolicy] | None = None
+    if real_minutes:
+        lineups = real_minutes_module.read_lineups(con, game.event_id, game.season, game.home, game.away)
+        policies = dict(lineups)
+        notes.append(real_minutes_module.describe(list(lineups.values())))
+    return Prepared(
+        prepared.home, prepared.away, prepared.window, prepared.league, prepared.teams, prepared.players, prepared.profiles, prepared.league_rotation, prepared.names, tuple(notes), policies
+    )

@@ -1079,6 +1079,24 @@ check measured on 2019-2026 and recorded in the module docstring:
    unchanged, margin sd 16.6 against 16.4, total +0.9, coverage 0.745 /
    0.789 / 0.858, minutes MAE 5.26. **Step 9 is complete.**
 
+   **Diagnostic, 2026-10-12: the rotation's share** (`--real-minutes`,
+   `sim/real_minutes.py`; `results/validate_2025_from_2025-01-01_2026-10-12_real_minutes.md`
+   beside `_defense.md`, 734 games). With the real lineups followed by the
+   clock (minutes MAE 1.15, the residual foul-outs and overtime) the Brier
+   is 0.2161 against the model's 0.2214 - a per-game difference of 0.0048,
+   standard error 0.0017 - so perfect minutes would close about a fifth of
+   the 0.023 to ESPN (0.1987), and the rest sits in the possession model
+   and the strength estimates. Player coverage with real minutes: points
+   0.844, rebounds 0.867, assists 0.894 - over-covered, so the normal run's
+   0.744 is the minutes and the possession model's own intervals are too
+   wide; players under 10 real minutes 0.95; players who really scored 20+
+   are covered 0.687 even with their minutes, so star scoring is
+   under-predicted by the possession model (usage or efficiency of the
+   high-usage player), not by the rotation. League rates and margin spread
+   unchanged. What this ranks: the rotation is worth up to 0.005 of Brier;
+   star scoring is a possession-model miss worth looking at with
+   `--explain` on a star's game.
+
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.
 

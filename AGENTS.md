@@ -189,15 +189,19 @@ was learned the hard way and is about the data, not the pipeline.
   `team_id` is the shooter's through 2012), a putback's rebound is logged
   after the putback in 2007-2017. `rates.estimate` still reads the box
   score; the P4 upgrades on these tables are the second half.
-- **Next**, in the order the last run ranks them: first a minutes-given
-  replay diagnostic (a rotation policy that follows the real game's
-  resolved segments, a flag on `sim replay` and `sim validate`, both
-  numbers in the report) to size how much of the remaining error is the
-  rotation's - minutes mean absolute error 5.3 has not moved through five
-  rates fixes, points coverage is 0.744 against 0.800, substitutions come
-  nineteen seconds into a game and eight-man rosters foul out (3 games
-  refused) - before tuning `rotation.RotationSettings` (a minimum stint,
-  early hysteresis, foul-trouble awareness); the offensive-rebound share
+- **The rotation's share is measured** (`sim validate --real-minutes`,
+  `sim/real_minutes.py`, 2026-10-12): with the real lineups the Brier is
+  0.2161 against the model's 0.2214, so the rotation is worth up to 0.005
+  of Brier, a fifth of the gap to ESPN; player coverage goes 0.744 to
+  0.844 (over-covered), so the model's intervals are narrow only through
+  the minutes, and players who really scored 20+ are covered 0.687 even
+  with their minutes - star scoring is a possession-model miss.
+- **Next**, in the order the last runs rank them: the rotation model
+  (`rotation.RotationSettings`: a minimum stint, early hysteresis,
+  foul-trouble awareness; minutes MAE 5.3, substitutions nineteen seconds
+  into a game, eight-man rosters fouling out), measured against the
+  real-minutes ceiling; star scoring (usage or efficiency of the high-usage
+  player, `--explain` on a star's game); the offensive-rebound share
   0.245 against 0.255, which is 2025's within-season drift (0.247 before
   January 1, 0.255 after) and needs a within-season weight or trend, not
   a season weight; threes 0.415 against 0.420 and free throws 2.5% high.

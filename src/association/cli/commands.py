@@ -419,8 +419,9 @@ def sim_game(
 
 @sim.command("replay")
 @click.argument("event_id")
+@click.option("--real-minutes", is_flag=True, help="Follow the real game's lineups by the clock instead of the rotation model (a diagnostic; the output says so).")
 @_sim_run_options
-def sim_replay(event_id: str, n: int, seed: int, pbp: bool, explain: bool, pbp_seed: int | None, as_json: bool, db_path: str, sim_path: str) -> None:
+def sim_replay(event_id: str, real_minutes: bool, n: int, seed: int, pbp: bool, explain: bool, pbp_seed: int | None, as_json: bool, db_path: str, sim_path: str) -> None:
     """Replay a real game N times: the players who appeared, rates from the
     games before that day, and the real result beside the simulated one.
 
@@ -432,7 +433,7 @@ def sim_replay(event_id: str, n: int, seed: int, pbp: bool, explain: bool, pbp_s
     con = database.connect(Path(sim_path), Path(db_path), read_only=True)
     try:
         real = sim_game_module.real_game(con, event_id)
-        prepared = sim_game_module.prepare_replay(con, real)
+        prepared = sim_game_module.prepare_replay(con, real, real_minutes=real_minutes)
     except sim_game_module.SimulationRefused as exc:
         raise click.ClickException(str(exc)) from exc
     finally:
@@ -460,10 +461,11 @@ def sim_replay(event_id: str, n: int, seed: int, pbp: bool, explain: bool, pbp_s
 @click.option("--seed", type=int, default=7, show_default=True)
 @click.option("--limit", type=int, default=None, help="Only the first LIMIT games, for a quick look.")
 @click.option("--jobs", type=int, default=None, help="Worker processes replaying game days in parallel; the result is the same for any number. Default: the cores less one, at most 16.")
+@click.option("--real-minutes", is_flag=True, help="Follow each real game's lineups instead of the rotation model: a diagnostic of the rotation's share of the error, named in the report.")
 @click.option("--out", type=click.Path(dir_okay=False), default=None, help="Write the Markdown report here (and the per-game JSON beside it as .json).")
 @click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file, attached read-only.")
 @click.option("--sim-path", default=DEFAULT_SIM_PATH, show_default=True, help="The simulator's own DuckDB file (`association sim build`).")
-def sim_validate(season: int, start: Any, n: int, seed: int, limit: int | None, jobs: int | None, out: str | None, db_path: str, sim_path: str) -> None:
+def sim_validate(season: int, start: Any, n: int, seed: int, limit: int | None, jobs: int | None, real_minutes: bool, out: str | None, db_path: str, sim_path: str) -> None:
     """Replay every held-out game and score the simulator against what
     happened and against three baselines (SIMULATION_PLAN.md, step 8).
 
@@ -482,7 +484,7 @@ def sim_validate(season: int, start: Any, n: int, seed: int, limit: int | None, 
     connect = functools.partial(database.connect, Path(sim_path), Path(db_path), read_only=True)
     con = connect()
     try:
-        run = validate.validate(con, season, start.date(), n, seed, limit, progress=lambda line: click.echo(line, err=True), jobs=workers, connect=connect)
+        run = validate.validate(con, season, start.date(), n, seed, limit, progress=lambda line: click.echo(line, err=True), jobs=workers, connect=connect, real_minutes=real_minutes)
     finally:
         con.close()
     text = validate.report(run)
