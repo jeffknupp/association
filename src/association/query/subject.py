@@ -225,7 +225,7 @@ class Subject(reading.Subject):
     ``kind`` is one of :data:`SUBJECT_KINDS`. ``players`` and ``teams`` are
     the names as the question or the router gave them - resolution to an
     entity stays with :mod:`association.query.entities` - except that a
-    router name the question's own span spells differently carries the
+    model name the question's own span spells differently carries the
     question's spelling (a bare "Jokic" completed, "Jaylen Huff" cut back to
     the "Jay Huff" typed; see :func:`_spellings`). ``opponent`` is a
     team the subject is set against - the question's own "vs the Pistons",

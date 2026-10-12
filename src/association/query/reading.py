@@ -718,7 +718,7 @@ class Companion:
     ``conditions`` (every other role, typed as ``ConditionSpec``) - read by
     ONE reader, the subject reading (``subject.read_subject``: the name by
     its position in the phrase, the role by the phrase's own words), written
-    onto the Scope by ``subject.apply_subject``, and resolved by one step per
+    onto the Reading by ``subject.apply_subject``, and resolved by one step per
     relation (``player_relation._condition_from_slot``, the with/without
     split's ``presence`` read).
 

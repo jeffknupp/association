@@ -4,8 +4,10 @@ the cells its words state and its coverage floor by the point's own
 :class:`~association.query.reading.PointShape`, and nothing in ``src``
 looks one up by a template's name; the tests that assert what a shape's
 words state (``compose.plan.cells_stated``) and what floor it is held to still speak
-in those names until step 4 re-seats them as question-to-Reading cases,
-and this is the one table that translates. Where several shapes share the
+in those names - about 300 call sites when Phase 3 closed (2026-10-11; step
+4 re-seated the router's tests as question-to-Reading cases, not these:
+Phase 4's first item, ``ISSUES.md``), and this is the one table that
+translates until then. Where several shapes share the
 words (a player's log and a team's), ``key`` gives the player relation's,
 and a test about the team's names its key outright.
 """

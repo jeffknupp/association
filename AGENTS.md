@@ -257,7 +257,13 @@ this tree:
   `011091f` and 684 once the one reader of companions no longer needed
   the verb in "when Embiid and Paul George play"; 709 after the window
   slice's fix (`d12f899`, Jeff's call to let it grow), 702 after the line
-  slice, and 690 since Phase 3, step 3, where "18-year-old" and the twelve
+  slice, 690 after Phase 3, step 3 - and 702 of 2,411 in 405 questions since
+  step 4's slice (c) (2026-10-11): twelve words a window read as the typed
+  window no longer needs ("games" after "last 10 ..."), left unread by
+  Jeff's ruling to keep that slice's moves; on the 2,082 feed questions 191
+  hold an unread number and 91 disagree between the Reading's list and the
+  deletion, held by nothing yet (`ISSUES.md`, the Phase 3 review) - step 3
+  being where "18-year-old" and the twelve
   words of "since 2000-01, how many games have players recorded 33 points,
   13 rebounds, 10 assists, 2 blocks, and 2 steals?" came to be read (689)
   and the "against" of "evaluate sga against embiid" stopped being read
@@ -1065,7 +1071,10 @@ a shape:
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader). **A tagger reads the words alone, never the key
+  layer of the reader - a contract no gate holds INSIDE the reader yet:
+  `point.py` keeps 12 compiled patterns, `parse.py` the parent grammar's 23
+  rows and 5 `re.` sites, `line.py` one, measured 2026-10-11 by the Phase 3
+  review, `ISSUES.md`; the regex ratchet counts modules OUTSIDE the reader). **A tagger reads the words alone, never the key
   the words ask** (Phase 3, step 4, slice (b)): each family is read twice
   over in `parse._tagged` - the tagger reads every candidate the words
   hold (`line.LineCandidates`, `window.WindowCandidates`,
@@ -1101,7 +1110,7 @@ a shape:
   `BY_QUARTER` - are the lexicon's, as are the point reader's guard
   `PERIOD_GUARD`, the grammar's `PERIOD_INTENT_WORDS`, the
   `period_as_condition` cause's `PERIOD_WORD` and the line slice's
-  `PERIOD_CONDITION`), and `parse.read_period_condition` calls it for a
+  `PERIOD_CONDITION`), and `line.read_period_line` calls it for a
   condition's period, so no second copy of "first | second | 1st | 2nd"
   exists. Measured first (`~/association-research/stages/period_family.py`,
   the two slots as each stage set them on all 2,710 readings, with the
@@ -1124,8 +1133,9 @@ a shape:
   relation tables (the exclusion rows paired the two slots under one
   reason in two wordings; rewritten as one), a decline still saying the
   slot name that was set (`Period.unhonored`: `half` or `period`) until
-  the decline-to-Cause commit rewords it; a reader whose other cells are
-  its own list takes `relation_period(intent)`. `query/cuts.py` is the cuts' tagger:
+  the decline-to-Cause commit rewords it (the per-reader lists and
+  `relation_period` went with step 2's closing slice: a shape's row of its
+  relation's table says what it honors). `query/cuts.py` is the cuts' tagger:
   `read_cuts(question, CutsContext)` reads which games of the span a read
   sees - a venue, a circumstance (`SITUATION`: a weekday, a month, a
   holiday, "since <day>", the opponent's conference or division, or words
@@ -1157,9 +1167,9 @@ a shape:
   `projected()` gave the old shape back beside it, in the old field
   order). The tables declare the cuts
   by name (`Cuts.CELLS` less `round` in `RELATION_SCOPING`, less `round`,
-  `tenure` and `season_n` in `TEAM_RELATION_SCOPING`), a reader whose
-  words state fewer takes `relation_cuts(intent)` with its exclusions,
-  and `reading.cell_set(scope, cell)` is the one reading of a cell name
+  `tenure` and `season_n` in `TEAM_RELATION_SCOPING`), a shape whose
+  words state fewer says so in its row (`relation_cuts` went with step 2's
+  closing slice), and `reading.cell_set(scope, cell)` is the one reading of a cell name
   against the filters for the tables that list cells by name. `query/line.py` is the lines' tagger:
   `read_lines(question)` reads the lines on a stat a question
   keeps the subject's games past - "30+ points", "20+ point 5+ assist
@@ -1580,7 +1590,7 @@ a shape:
     (`say.note_phrase`, ONE phrase per kind) and records it through
     `notes.note`, so the answer's remarks are the Result's notes. The
     compiler's own sentence phrases the same kinds through `note_phrase`
-    too (`player_relation.box_score_notes`, over `box_score_notes_read`);
+    too (`compose.core._box_notes`, over `player_relation.box_score_notes_read`);
     `tests/query/test_answer_notes.py` reads a
     `Note(kind, {...})` as a write when it checks every kind is written.
   - **The reader executes the compiled statement; the sayer keeps the
@@ -1825,7 +1835,7 @@ a shape:
   which discarded the schema and correctness rules while keeping the tool
   descriptions, and nothing said so. The normalizer's prompt is ~330 tokens
   against `NORMALIZER_NUM_CTX = 2048`, and
-  `test_the_normalizers_window_holds_its_prompt_and_a_long_question`
+  `test_the_prompt_leaves_room_for_the_question_and_the_reply`
   (`tests/query/test_normalizer.py`) holds the two together with
   `normalizer.estimate_tokens`; keep that check beside any prompt this
   project sends.
@@ -1890,8 +1900,10 @@ a shape:
   (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`),
   each the label table's (`reading.SHAPE_NAMES`, which names it back as
   the page's `Answer.intent`: `Reading.intent` is that label, filled from
-  the key and held to it, read only for the page, the trace and the
-  records). The kind is no part of the key: it is the subject reading's,
+  the key and held to it, read for the page, the trace and the records -
+  and, until Phase 4 keys them on the `PointShape`, as a cause fact four of
+  the sayer's refusal phrase tables choose their words by, the Phase 3
+  review's finding, 2026-10-11). The kind is no part of the key: it is the subject reading's,
   read before the grammar, which the grammar is keyed BY. Measured first
   (`~/association-research/stages/intent_family.py`, the 2,710
   readings): an intent maps to up to four planned keys (`player_stat`:
@@ -1974,9 +1986,11 @@ a shape:
   0 and `intent+opponent` 5 -> 0 joined claims at slice (b), every reading,
   answer and unread word identical, and the 11 left but #354's at slice
   (c), where a window read as the typed window no longer needs its "games"
-  (23 readings' unread words grew by it) and a broader window the tagger
-  reads is a log as "last 10 games" is (5 readings' key moved, every answer
-  identical). A row that reads a number or a versus word reads
+  (48 of the 2,710 readings' unread words grew by it, 12 of the 628's) and a
+  broader window the tagger reads is a log as "last 10 games" is (14
+  readings' key moved and 10 answers with them, 1 of the 628 and 9 feed,
+  each named in `CHANGES.md`; kept by Jeff's ruling, 2026-10-11 - two of
+  them answer a narrower question than asked, `ISSUES.md`). A row that reads a number or a versus word reads
   the mark beside it (`N_PLUS`, `MARKED_NUMBER`, `MEETING_WORDS`,
   `_PAIR_MEETING`); a new row does the same. The count's child grammar
   reads no bare digits beside its marks: a count is named from a line the

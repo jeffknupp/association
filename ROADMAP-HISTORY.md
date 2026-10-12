@@ -1337,6 +1337,45 @@ agents' reports named here are in `~/association-research/stages/`.
     found the day the words it writes are claimed. Cost: the lead's day,
     three four-population runs.
 
+36. **Phase 3, step 5 - the close (2026-10-11).** The live run
+    `live_parser29` at `4de1801`, 277 of 277 equal to the offline
+    prediction (276 of 277 model replies identical to the recorded ones),
+    graded blind against `live_parser28` - the Phase 2 close's run, so the
+    grading spans the phase: 167 of 175 and 156 of 166, as before; 4
+    answers moved by values (a decline now said as a cause, a page label,
+    two league-wide logs ordered within a game by athlete id since
+    `634c2af`), 12 by wording, every grade standing. Then the review
+    (Opus, read-only, no model; `~/association-research/reviews/phase3-2026-10-11/`),
+    which ran the 628 and the 2,082 whole at each of the phase's 69 `src`
+    commits and found every one of the 41 and 259 answer moves counted in
+    its commit's CHANGES entry - the phase's identity claim holds per
+    commit, which no step's proof had shown - and found the exit's regex
+    clause false inside the reader (18 `re.` sites and the parent grammar's
+    23 rows in `point.py`, `parse.py` and `line.py`; the ratchet counts
+    modules outside it), `Reading.intent` still a cause fact the sayer keys
+    four phrase tables on, the ledger at 702 of 2,411 in 405 against the
+    documents' 690, 10 records between question and answer, and five new
+    wrong or misleading answers, none a step's: "when playing 20 or more
+    minutes" read by nothing, a stated minimum ignored, "40 point playoff
+    games" refused for a false cause, "per 50 possessions" as totals, two
+    kept slice (c) moves narrower than asked. For the next bisect, which
+    commit holds which fix's source after the rebase that let one absorb
+    its neighbors': `bfe09f7` (message: two ISSUES entries closed) holds
+    #36's `compose/sentence.py`, #254's `compose/shots.py` ORDER BY and
+    #337's `conditions.box_source` cache, with no CHANGES touch (the hook
+    was bypassed); `6aa0dca` (#257) holds #262's and #297's; `d1078c8`
+    (#315, "628 of 628, 2,082 of 2,082 ... identical") holds #285/#217's
+    `compose/logs.py` and `say.py` and #336's `team_records.py` and moves
+    13 recorded and 62 feed answers - their CHANGES entries are the
+    CHANGES-only commits beside them (`f9b1ca2`, `63e66c5`, `e14c589`;
+    `e360c81`, `04cb52d`; `b6661ad`, `774321f`). What it taught: a ratchet
+    is only as wide as its population - the regex ratchet read 0 by
+    counting the wrong modules, the unread-number rule by counting the 628
+    alone (191 on the feed) - and a proof per step is not a proof per
+    commit until someone runs every commit. Cost: the live run's half hour,
+    the review's 85 minutes and 470k tokens, the lead's evening. Filed: 13
+    entries. Phase 3 closed.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

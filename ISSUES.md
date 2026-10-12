@@ -55,6 +55,13 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #372
 
+### "N or more minutes" after "when playing" is read by nothing: "Victor wembanyama stats when playing 20 or more minutes playoffs" answers his whole postseason
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 1).
+- **Evidence:** on `4de1801` (and on `87cc782` before the phase), with the recorded reply and in the feed run: "Victor Wembanyama averaged 34.1 minutes per game in 22 games in the 2026 postseason."; `Reading.unread` = stats, when, playing, 20, more. 2 of the 2,082 feed questions ("Victor wembanyama stats when playing 20 or more minutes" and its "... playoffs" twin), none of the 628. `lexicon.N_PLUS` reads "N or more" only as a line on the readers whose shape is a line, or beside "games with"; the floor of minutes the lines tagger reads ("with 25 minutes") does not take "playing N (or more) minutes".
+- **User sees:** a fluent line over every game where the games he played 20+ minutes in were asked for.
+- **Next step:** the lines tagger reads "playing N (or more) minutes" as the floor of minutes "with 25 minutes" already is, on every player reader, with the 2 feed answers enumerated before and after. The same family as #371's stated forms ("more than N stat", "exactly N stat"): one change that reads both is the better one.
+- **Priority:** P1 - a broader question answered fluently.
+
 ### A model name the words do not support stays among the subject's players, and changes the kind and the key: "points per quarter for Luka" with an invented "Stephen Curry" is the league's quarter ranking
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c) (re-seating the router tests as question-to-Reading cases, where the retired tests handed the stages a wrong model name on purpose and the stages' `_recover_period_subject` put the question's own name back).
 - **Evidence:** `parse.read_route(index, "points per quarter for Luka", ["Stephen Curry"], "points")` on the real index reads `who.players == ("Luka Doncic", "Stephen Curry")`, `misread == ["Stephen Curry"]` and asks `period_leaderboard` - two players are not "a named player", so the player's quarter breakdown becomes the league's ranking; with the model's name right, or with none, it asks `period_split`. The same on `508d643` (before the subject slice and step 4), so it predates them. "jokic game log this season" with an invented "Stephen Curry" keeps both and is refused by the invented name downstream (the documented refusal, AGENTS.md "When it cannot be repaired, say so by name"); the quarter case is refused by nothing and answered as a different shape. 0 of the 628 and 0 of the 2,082 (no recorded reply invents a name; the feed is read with none), so no population shows it; the unit cases `test_reader_cases.py` record it as it is.
@@ -2272,6 +2279,41 @@ those were found.
 - **Next step:** read the team-only check's player from the subject reading's own players (`Reading.subject`), which already excludes ordinary words, rather than a second `players_named_in` pass; re-measure the three.
 - **GitHub:** #342
 
+### "how many 40 point playoff games does kobe have" is refused for a false cause: "Kobe Bryant has no 2026 postseason numbers in the warehouse"
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 2).
+- **Evidence:** on `4de1801` and `87cc782`, the recorded-reply probe (the review's `data/adhoc-after-*.txt`) and the feed run; `Reading.unread` = 40, games. "how many 40 point games does kobe have in the playoffs" answers "13 games with 40+ points in his postseason career". The count's child grammar (`lexicon.CHILD_THRESHOLD_COUNT`) misses "N point playoff games" - a season-type word between the line and "games" - so the question is `player_stat` over a defaulted 2026 postseason, which the warehouse has nothing for. 1 feed question.
+- **User sees:** a refusal naming a missing season when the count asked for exists (13).
+- **Next step:** a season-type word between the line and "games" in the count's rows, with the feed answer enumerated.
+- **Priority:** P2 - a refusal naming the wrong cause.
+
+### "top 10 players in offensive netpoints per 50 possessions" answers season totals, and the "50" counts as read
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 3).
+- **Evidence:** on `4de1801` with the model's stat `netpoints_offense_per_100`: "... led the league in offensive NetPoints (season total) ..., at 403.9", `Reading.unread` = ["players"]; with `netpoints_offense`: unread = players, per, possessions - the "50" is never unread. "per possessions" and "per 100 possessions" answer per 100. The same on `87cc782`. Step 3's ROADMAP row says a number other than 100 "is left unread, never read as 100"; measured, it is claimed and the rate is dropped to the total - a word whose presence makes the reader read LESS, claimed, the case `span.needed`'s `gives_up` exists for.
+- **User sees:** totals where a rate was asked, under a heading that says "season total".
+- **Next step:** refuse a rate per N possessions for N != 100 by a cause naming the unit, and add the "50" case to `span.needed`'s `gives_up` checks so the number stays unread until it is.
+- **Priority:** P2 - a different figure than asked, with the unit said.
+
+### A stated minimum is read by nothing: "nba plus minus per game leaders minimum 100 games played" answers "minimum 20 games"
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 4).
+- **Evidence:** the 2,082 feed run on `4de1801`; 8 feed questions state "minimum N" or "at least N gp|games|attempts" and every one leaves the number unread (the review's `data/ledger-feed-4de1801.jsonl.gz`): "highest single season 3pt percent minimum 20 attempts", "nba pg highest win% games at least 300 gp", ... The Reading has no `minimum` field; `ROADMAP-TYPES.md`'s Reading draft has one.
+- **User sees:** the default qualifier stated beside the ranking ("minimum 20 games"), with no wording that reaches the one asked - the case "A reasonable default beats a question" does not allow (AGENTS.md: both conditions, the value shown AND a wording that reaches the alternative).
+- **Next step:** read "minimum|at least N games|gp|attempts|minutes" into a qualifier the ranking takes (the draft Reading's `minimum`), or refuse it by a cause naming the floor asked; the 8 feed answers enumerated.
+- **Priority:** P2 - the right numbers under the wrong floor, said.
+
+### "lebron james last 5 first games stats" answers his FIRST 10 games, with "last" and "5" unread
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 5); one of the ten answer moves of `9da65c0` (Phase 3, step 4, slice (c)) that Jeff kept on 2026-10-11 - before it, his season line.
+- **Evidence:** the feed run and the probe on `4de1801`: "LeBron James, first 10 of 60 games of the 2026 regular season: ...", `Reading.unread` = last, 5, stats. The window tagger reads "first games" as the window's end and the log's default count, and the count beside the contradicting end is left. 1 feed question.
+- **User sees:** ten games where five were asked (the heading says 10).
+- **Next step:** a count the window tagger reads beside a contradicting end ("last ... first") is no window, or the count stands with the end the words give; the answer enumerated.
+- **Priority:** P2 - the right games, the wrong count, said.
+
+### "warriors first 10 game record every season" answers the first 10 games of 2026 only, "every season" unread
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 6); one of the ten kept moves of `9da65c0` - before it a "cannot honor ['order']" refusal. #372's next step names this question as the one team reading slice (c) moved.
+- **Evidence:** the feed run and the probe on `4de1801`: "Golden State Warriors, first 10 games of the 2026 regular season (5-5): ...", `Reading.unread` = every, season. 1 feed question.
+- **User sees:** one season's opening record where every season's was asked.
+- **Next step:** "every season" beside a window is a per-season split the team log does not read: refuse it by a cause until the team-season relation reads a window per season (with #372, whose fix reads a team's "last N seasons" there).
+- **Priority:** P2 - one season's figure, stated, where every season's was asked.
+
 ## P3: refusal or gap
 
 
@@ -2913,6 +2955,27 @@ those were found.
 - **User sees:** possibly an average over fewer games than the table's G column, uncaveated.
 - **Next step:** one query over `team_box_stats`: rows where `fieldGoalsAttempted` is set and `assists`, a rebound column or `threePointFieldGoalsMade` is NULL, by season. If any, count per column.
 - **GitHub:** #312
+
+### Three Phase 3 commits carry seven other fixes' source under a different message
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 7), which ran both populations whole at every one of the phase's 69 `src` commits.
+- **Evidence:** `bfe09f7` (message: two ISSUES entries closed) holds #36's `compose/sentence.py`, #254's `compose/shots.py` ORDER BY and #337's `conditions.box_source` cache, touches `src/` and not `CHANGES.md` (the hook was bypassed); `6aa0dca` (#257) holds #262's and #297's code; `d1078c8` (#315, message "628 of 628, 2,082 of 2,082 ... identical") holds #285/#217's `compose/logs.py` and `say.py` and #336's `team_records.py`, and moves 13 recorded and 62 feed answers. Their CHANGES entries are in CHANGES-only commits with identical timestamps (`f9b1ca2`, `63e66c5`, `e14c589`; `e360c81`, `04cb52d`; `b6661ad`, `774321f`): a rebase that let one commit absorb its neighbors' source. Every move is enumerated in `CHANGES.md`; the commits' own messages do not carry it. `ROADMAP-HISTORY.md` entry 36 records which commit holds which fix.
+- **User sees:** nothing; a bisect or a revert lands on the wrong fix.
+- **Next step:** a CI job that checks every pushed commit in the range for the CHANGES rule the local hook enforces (the hook sees the working tree, never a commit), as `check_conflict_markers.sh` became a gate after the merges it names.
+- **Priority:** P3 - tooling.
+
+### Contract 6 ("regexes only in the lexicon") has no gate inside the reader, and the step 4 exit was measured by a ratchet that cannot see it
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 8).
+- **Evidence:** the review's `harness/regex_sites.py` on `4de1801`: `re.` call sites in `query/` 209 - `lexicon` 191, `point.py` 12 compiled patterns (`_TOP_IN_A_GAME`, `_NOT_PLAYERS`, `_HOW_MANY_OR_OFTEN`, `_WON`, `_FEWEST`, `_TOTAL`, `_VS`, `_RANKING`, `_LOG`, `_AT_LEAST`, `_BOOLEAN_GAME_RANKING`, `_TEAM_NOT_SUBJECT`), `parse.py` 5 (which compile `PARENT_GRAMMAR`'s 23 regex rows kept there, `_PLAYER_LOG`, `_PAIR_MEETING`, `_SLASHED_DAY`, `_CHAMPIONSHIP`, `_TITLE_ODDS` and `_BENCH_WORD`), `line.py:290` one `re.sub`. `scripts/check_ratchets.py`'s `regex_outside_the_reader` counts modules OUTSIDE `READER`, so it reads 0 and is blind to these; the step 4 row's "the regex ratchet 6 -> 0" read that ratchet. `87cc782` had 211 sites (router 111, subject 27, point 20, parse 18, entities 12, ...), so the phase moved the reader's patterns to the lexicon but for these.
+- **User sees:** nothing.
+- **Next step:** a ratchet of `re.` call sites per reader module outside `lexicon.py`, at today's counts (point 12, parse 5, line 1), that fails on growth; the grammar rows move to the lexicon when the rows become predicates over typed values (Phase 4).
+- **Priority:** P3 - a contract with no gate.
+
+### The claims ledger's agreement and unread-number checks hold on the 628 alone: on the 2,082 the Reading's unread and the deletion disagree on 91 questions, and 191 hold an unread number
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 9).
+- **Evidence:** `claims_ledger.py run --recorded stages/feed_recorded.jsonl` on `4de1801` (the review's `data/ledger-feed-4de1801.jsonl.gz` and its report): the Reading's `unread` and the deletion disagree on 91 of 2,082 (`report` exits 1 there); 191 feed questions hold an unread number (203 on `87cc782`). The "N or more minutes", the stated minimum and the "per 50 possessions" entries above are among them.
+- **User sees:** nothing directly; the entries above are what the number rule would have found.
+- **Next step:** held counts for the feed as `HELD_JOINS` holds the joins (a disagreement count and an unread-number count the report exits 1 on growing), then the 191 numbers read one by one as the 628's nine were in step 3.
+- **Priority:** P3 - a check whose population is too small to see the shapes it is for.
 
 ## P4: tooling, docs, low impact
 
@@ -3981,3 +4044,31 @@ those were found.
 - **User sees:** nothing.
 - **Next step:** delete it with its RUN cause and phrase when the conference-as-subject reading lands (the P1 "A conference or division the players or teams belong to ..."), or keep it as that reading's guard - decide there.
 - **GitHub:** #344
+
+### A private-use character typed into a question is read as a grammar mark
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 10).
+- **Evidence:** the grammars read the question with each typed value written over by a private-use character (`lexicon.LINE_MARK_*`, `OPPONENT_MARK*`, `COMPANION_MARK*`, `WINDOW_MARK`, `DATE_MARK`: U+E000-U+E00B), and nothing strips the range on intake (`parse`, `agent`, `normalizer`, `web/app.py`). On `4de1801` "nikola jokic \ue00a stats this season" answers a 10-game log (`87cc782`: his season line); "how many games \ue001\ue001 \ue003\ue003 did nikola jokic have" a log (the review's `data/adhoc-*`). 0 of the 2,711 recorded and feed questions, and 0 lines of the large StatMuse feed, hold a character in U+E000-U+F8FF.
+- **User sees:** a different shape for an invisible character.
+- **Next step:** replace U+E000-U+F8FF with spaces before the parser reads the words (positions kept, so every claim's offset holds), one line in the parser's first step; the marks then cannot be forged.
+- **Priority:** P4 - nobody has typed one.
+
+### "diabate last 20 game" lost its "of 73" since `9da65c0`
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 11).
+- **Evidence:** "Moussa Diabate, last 20 of 73 games of the 2026 regular season" on `2ae0be8` became "Moussa Diabate, last 20 games of the 2026 regular season" on `9da65c0` (and "last 10 game" likewise): on the window-mark path, where the log row reads the typed window and not its own "last N games" words, the log's total left the heading. Among the ten enumerated moves of `9da65c0` (`CHANGES.md`).
+- **User sees:** a heading without the total that the fuller wording ("last 20 games") still gives.
+- **Next step:** check what the log says its total from on a window read without "games" (`compose.logs`, the window note), and say it on both paths.
+- **Priority:** P4 - a heading's count.
+
+### The test doors keep the retired vocabulary alive: about 1,090 tests state a reading as a slot dict and about 300 look a shape up by a retired name
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 13 and section 3).
+- **Evidence:** `tests/slots.py` (the slot door, `Scope.from_slots` and the families' doors moved whole from `src` in step 4): 847 `slots_reading` and 243 `slots_scope` call sites; it imports two private names from `reading` (`_CUT_SLOT_NAMES`, `_FILTER_FIELDS`). `tests/shapes.py` (retired names to `PointShape` keys): `asked(` 149, `key(` 71, `stated(` 40, `unhonored(` 48; its docstring said the names live "until step 4 re-seats them", and step 4 closed without that (corrected 2026-10-11). `tests/routed.py`: `slots_route` 44, `ask_routed` 38, `default_query` 30, `default_reading` 14, `reading_of` 14, `with_subject` 13. Phase 4 deletes `reading.SHAPE_NAMES`, which `tests/shapes.py` is built from.
+- **User sees:** nothing.
+- **Next step:** Phase 4's first item: a test states a Reading in the typed fields (`reading.stated(...)`) and a shape by its `PointShape`, file by file, and the two doors go with their last caller.
+- **Priority:** P4 - tests.
+
+### Docstrings and comments still name the router and the Scope
+- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 14).
+- **Evidence:** `subject.py`'s module docstring ("the router's slots", "the router filed as the opponent"), `reading.py` 1995-2085 ("a player the router left out", "`router._SUBJECT_OF_HIGH`", "a router-supplied `team`"), `subject.py:121`, `:142`, and historical "until Phase 3 ..." sentences across `query/` - the review's `harness/doc_names.py` counts 126 backticked names in AGENTS.md's two reader sections that the source no longer has, nearly all in such sentences. `subject.Applied`'s docstring was corrected 2026-10-11; the trace's decision lines ("router players the question supports", "router names the question never held", "companions the router named nobody for", `subject._evidence`) were not, because each decision's `reason` quotes them and the reader cases (`tests/query/reader_cases.json`, 206 of 456) and the populations' readings record the reasons - rewording them is a recorded-reading move to enumerate (or the cases and the stage record leave the evidence prose out of the reason, as `stages._SUBJECT_LEFT_OUT` already leaves the `evidence` field out).
+- **User sees:** nothing.
+- **Next step:** a docstring sweep when Phase 4 rewrites `docs/architecture.rst`: each "until ..." sentence dated or deleted, each router mention rewritten as the model's names.
+- **Priority:** P4 - docs.
