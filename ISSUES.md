@@ -61,6 +61,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent line over every game where the games he played 20+ minutes in were asked for.
 - **Next step:** the lines tagger reads "playing N (or more) minutes" as the floor of minutes "with 25 minutes" already is, on every player reader, with the 2 feed answers enumerated before and after. The same family as #371's stated forms ("more than N stat", "exactly N stat"): one change that reads both is the better one.
 - **Priority:** P1 - a broader question answered fluently.
+- **GitHub:** #374
 
 ### A model name the words do not support stays among the subject's players, and changes the kind and the key: "points per quarter for Luka" with an invented "Stephen Curry" is the league's quarter ranking
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c) (re-seating the router tests as question-to-Reading cases, where the retired tests handed the stages a wrong model name on purpose and the stages' `_recover_period_subject` put the question's own name back).
@@ -2285,6 +2286,7 @@ those were found.
 - **User sees:** a refusal naming a missing season when the count asked for exists (13).
 - **Next step:** a season-type word between the line and "games" in the count's rows, with the feed answer enumerated.
 - **Priority:** P2 - a refusal naming the wrong cause.
+- **GitHub:** #375
 
 ### "top 10 players in offensive netpoints per 50 possessions" answers season totals, and the "50" counts as read
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 3).
@@ -2292,6 +2294,7 @@ those were found.
 - **User sees:** totals where a rate was asked, under a heading that says "season total".
 - **Next step:** refuse a rate per N possessions for N != 100 by a cause naming the unit, and add the "50" case to `span.needed`'s `gives_up` checks so the number stays unread until it is.
 - **Priority:** P2 - a different figure than asked, with the unit said.
+- **GitHub:** #376
 
 ### A stated minimum is read by nothing: "nba plus minus per game leaders minimum 100 games played" answers "minimum 20 games"
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 4).
@@ -2299,6 +2302,7 @@ those were found.
 - **User sees:** the default qualifier stated beside the ranking ("minimum 20 games"), with no wording that reaches the one asked - the case "A reasonable default beats a question" does not allow (AGENTS.md: both conditions, the value shown AND a wording that reaches the alternative).
 - **Next step:** read "minimum|at least N games|gp|attempts|minutes" into a qualifier the ranking takes (the draft Reading's `minimum`), or refuse it by a cause naming the floor asked; the 8 feed answers enumerated.
 - **Priority:** P2 - the right numbers under the wrong floor, said.
+- **GitHub:** #377
 
 ### "lebron james last 5 first games stats" answers his FIRST 10 games, with "last" and "5" unread
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 5); one of the ten answer moves of `9da65c0` (Phase 3, step 4, slice (c)) that Jeff kept on 2026-10-11 - before it, his season line.
@@ -2306,6 +2310,7 @@ those were found.
 - **User sees:** ten games where five were asked (the heading says 10).
 - **Next step:** a count the window tagger reads beside a contradicting end ("last ... first") is no window, or the count stands with the end the words give; the answer enumerated.
 - **Priority:** P2 - the right games, the wrong count, said.
+- **GitHub:** #378
 
 ### "warriors first 10 game record every season" answers the first 10 games of 2026 only, "every season" unread
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 6); one of the ten kept moves of `9da65c0` - before it a "cannot honor ['order']" refusal. #372's next step names this question as the one team reading slice (c) moved.
@@ -2313,6 +2318,7 @@ those were found.
 - **User sees:** one season's opening record where every season's was asked.
 - **Next step:** "every season" beside a window is a per-season split the team log does not read: refuse it by a cause until the team-season relation reads a window per season (with #372, whose fix reads a team's "last N seasons" there).
 - **Priority:** P2 - one season's figure, stated, where every season's was asked.
+- **GitHub:** #379
 
 ## P3: refusal or gap
 
@@ -2962,6 +2968,7 @@ those were found.
 - **User sees:** nothing; a bisect or a revert lands on the wrong fix.
 - **Next step:** a CI job that checks every pushed commit in the range for the CHANGES rule the local hook enforces (the hook sees the working tree, never a commit), as `check_conflict_markers.sh` became a gate after the merges it names.
 - **Priority:** P3 - tooling.
+- **GitHub:** #380
 
 ### Contract 6 ("regexes only in the lexicon") has no gate inside the reader, and the step 4 exit was measured by a ratchet that cannot see it
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 8).
@@ -2969,6 +2976,7 @@ those were found.
 - **User sees:** nothing.
 - **Next step:** a ratchet of `re.` call sites per reader module outside `lexicon.py`, at today's counts (point 12, parse 5, line 1), that fails on growth; the grammar rows move to the lexicon when the rows become predicates over typed values (Phase 4).
 - **Priority:** P3 - a contract with no gate.
+- **GitHub:** #381
 
 ### The claims ledger's agreement and unread-number checks hold on the 628 alone: on the 2,082 the Reading's unread and the deletion disagree on 91 questions, and 191 hold an unread number
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 9).
@@ -2976,6 +2984,7 @@ those were found.
 - **User sees:** nothing directly; the entries above are what the number rule would have found.
 - **Next step:** held counts for the feed as `HELD_JOINS` holds the joins (a disagreement count and an unread-number count the report exits 1 on growing), then the 191 numbers read one by one as the 628's nine were in step 3.
 - **Priority:** P3 - a check whose population is too small to see the shapes it is for.
+- **GitHub:** #382
 
 ## P4: tooling, docs, low impact
 
@@ -4051,6 +4060,7 @@ those were found.
 - **User sees:** a different shape for an invisible character.
 - **Next step:** replace U+E000-U+F8FF with spaces before the parser reads the words (positions kept, so every claim's offset holds), one line in the parser's first step; the marks then cannot be forged.
 - **Priority:** P4 - nobody has typed one.
+- **GitHub:** #383
 
 ### "diabate last 20 game" lost its "of 73" since `9da65c0`
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 11).
@@ -4058,6 +4068,7 @@ those were found.
 - **User sees:** a heading without the total that the fuller wording ("last 20 games") still gives.
 - **Next step:** check what the log says its total from on a window read without "games" (`compose.logs`, the window note), and say it on both paths.
 - **Priority:** P4 - a heading's count.
+- **GitHub:** #384
 
 ### The test doors keep the retired vocabulary alive: about 1,090 tests state a reading as a slot dict and about 300 look a shape up by a retired name
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 13 and section 3).
@@ -4065,6 +4076,7 @@ those were found.
 - **User sees:** nothing.
 - **Next step:** Phase 4's first item: a test states a Reading in the typed fields (`reading.stated(...)`) and a shape by its `PointShape`, file by file, and the two doors go with their last caller.
 - **Priority:** P4 - tests.
+- **GitHub:** #385
 
 ### Docstrings and comments still name the router and the Scope
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 14).
@@ -4072,3 +4084,4 @@ those were found.
 - **User sees:** nothing.
 - **Next step:** a docstring sweep when Phase 4 rewrites `docs/architecture.rst`: each "until ..." sentence dated or deleted, each router mention rewritten as the model's names.
 - **Priority:** P4 - docs.
+- **GitHub:** #386
