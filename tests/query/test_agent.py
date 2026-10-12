@@ -8,10 +8,10 @@ from typing import Any
 import ollama
 import pytest
 from routed import ask_routed, slots_route
-from slots import slots_scope
 
 from association.query.agent import Agent
-from association.query.reading import Reading
+from association.query.reading import Line, Measure, Reading
+from association.query.reading import Subject as Who
 
 
 def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -589,7 +589,13 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
         if trace is not None:
             trace(
                 Reading(
-                    **(slots_scope({"player": "Joel Embiid", "threshold": 30, "stat": "points"})).filters(),
+                    **(
+                        Reading(
+                            who=Who(kind="player", players=("Joel Embiid",)),
+                            lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+                            measure=Measure(key="points", as_typed="points"),
+                        )
+                    ).filters(),
                     shape="scalar",
                     measures=[],
                     aggregate="count",
