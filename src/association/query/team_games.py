@@ -85,6 +85,8 @@ from .measures import TEAM_PERIOD_COLUMNS as TEAM_PERIOD_COLUMNS
 # `season_text.MONTH_NAMES` now). `narrow_calendar` below still imports the
 # names it calls at call time.
 if TYPE_CHECKING:
+    import duckdb
+
     from .calendar import AlignmentNarrowing, CalendarNarrowing
 
 # One row per team per game, from that team's side, over every game that was
@@ -897,6 +899,25 @@ def period_games_sql(narrowed: TeamNarrowed, columns: tuple[str, ...]) -> tuple[
         ORDER BY qp.eastern_date
     """
     return sql, params
+
+
+def period_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, columns: tuple[str, ...]) -> list[tuple[Any, ...]]:
+    """A team's quarter or half, read: :func:`period_games_sql`'s rows - each
+    narrowed game's Eastern date, the period's points, ``columns``, the
+    opponent and the season the game was played in, in date order - run
+    through the compiler's one door
+    (:func:`~association.query.compose.core.values_of`).
+
+    .. versionadded:: 6.0.0
+       ``compose.periods._team_quarter_points_games``' read, moved to its
+       relation (Phase 4, step 5).
+    """
+    # At call time: the compiler imports this module, and the season line's
+    # `Statement` (the door's) imports it through the team-season relation.
+    from association.query.compose.core import values_of
+    from association.query.season_line import Statement
+
+    return values_of(con, Statement(*period_games_sql(narrowed, columns)))
 
 
 def season_game_counts_sql(scope: str, scope_params: list[Any], team_id: str) -> tuple[str, list[Any]]:

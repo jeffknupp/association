@@ -1687,7 +1687,18 @@ a shape:
     `result.Refusal` or `result.Clarify` the sayer words; the one step that
     still phrases a note for the compiler's own sentence
     (`compose.core._box_notes`) takes the sayer's helper through a
-    call-time import, since `compose` imports the relations.
+    call-time import, since `compose` imports the relations. Since Phase 4,
+    step 5 a statement a reader ran by hand is its relation's as well: a
+    relation function builds it, runs it through the compiler's one door
+    (a call-time import of `compose.core.values_of`, as the season line's
+    reads do) and hands back rows or values, and the reader keeps its
+    words and its Result. The period's: the league's ranking by a quarter's
+    stat, one quarter of its points-by-quarter table and the most games in
+    a pool narrowed to an opponent or a venue
+    (`player_games.period_ranking`, `period_quarter`, `most_games`, beside
+    the statements and `PERIOD_RECONCILIATION`), and a team's quarter or
+    half (`team_games.period_games`); `compose/periods.py` runs only the
+    compiled statements.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body
