@@ -640,9 +640,9 @@ renderers keyed by shape (22 become one per shape); the browser check run;
 `docs/architecture.rst` rewritten. `AGENTS.md` is updated with each slice,
 not here: agents work from it throughout.
 
-**Phase 4, the expected steps (DRAFT, written 2026-10-12 by the lead,
-before the phase, for Jeff to accept, reorder or strike; each step is
-re-planned in its own row as it lands, as Phases 2 and 3's were).** The
+**Phase 4, the expected steps (written 2026-10-12 by the lead, before the
+phase, and accepted by Jeff the same day; each step is re-planned in its
+own row as it lands, as Phases 2 and 3's were).** The
 paragraph above was written on 2026-09-30, when "close out" meant the
 label and the page. Three phases and two reviews later the done table
 still shows debt no row owns - records 10 against 4, 80 hand-written
@@ -681,6 +681,34 @@ Three rules hold throughout, Phase 3's: a decline or a refusal reworded
 is ONE enumerated commit; a boundary that moves is recorded in
 `tests/stage_calls.py` on both sides first; and the ratchets only shrink
 - a step that reaches 0 deletes its ratchet with the thing it held.
+
+**How the steps run (Jeff, 2026-10-12: in parallel where they can).**
+The dependencies are files, not logic. Step 0 is tests only and touches
+the test files every other step would edit (`test_compose.py` above
+all), so it runs FIRST and alone, one agent, hours not days (the (b)1
+codemods are in the research repo). Then three lanes at once, each an
+agent in its own worktree from pushed master, each proving its own
+commits on the four populations against the before tree, and the lead
+re-proving each merge on the merged tree as the cleanup's merges were:
+**lane A, the reader seam** - step 3 then step 6, one agent at a time
+(`point.py`, `reading.py`, `parse.py`, `grammar.py`, `lexicon.py`,
+`compose/core.py`'s compile; AGENTS.md: "the parser-compiler seam is one
+agent's at a time"); **lane B, the answer's shape and the page** - step 1
+then step 2 then step 4 (`answer.py`, `agent.py`, `compose/plan.py`,
+`compose/say.py`'s label readers, `web/`, `tests/stage_calls.py`), where
+step 2's touch on `reading.py` (the `intent` field and the label table)
+is the one planned overlap with lane A, resolved at merge; **lane C, the
+statements** - step 5 as two or three agents at once, one per relation
+on disjoint tables (the season line with the team seasons; the standings
+with the periods; NetPoints and shots with the entity reads), each
+moving statements out of `compose/` into its relation and shrinking the
+SQL ratchet for its modules alone. The shared files every lane touches
+(`CHANGES.md`, `ISSUES.md`, `AGENTS.md`, `scripts/ratchets.json`) merge
+by keeping both sides; private helpers are prefixed with the function
+they came from (the collisions "Verifying your work" records). Step 7 is
+last and alone: the documents, then the live run and the review over the
+merged tree. The lead's own work: the merges, each re-verified; reading
+the agents' transcripts on a cadence; and the open P1 list between them.
 
 ## How a note survives a rewording
 
