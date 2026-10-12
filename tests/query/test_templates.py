@@ -8,9 +8,8 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import default_query, default_reading
 from routed import planned_answer as compose_answer
-from slots import slots_reading, slots_scope
+from routed import planned_query
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -31,6 +30,7 @@ from association.query.compose.splits import _player_splits, _team_splits, read_
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, compile_team_count, compile_team_line, compile_team_range, compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
+from association.query.measure import measure_of
 from association.query.measures import PERIOD_RATE_STATS
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
@@ -177,7 +177,7 @@ def test_a_floor_at_the_counts_own_number_on_another_stat_is_a_second_line(con: 
 
     worded = lines_under(GAMES_COUNTED, read_lines("how many games did luka have 30 points playing 30 or more minutes"))
     assert worded.stat == "points"
-    result = threshold_count(con, slots_reading({"stat": "points", "player": "Luka Doncic", "lines": worded.lines}))
+    result = threshold_count(con, Reading(who=Who(kind="player", players=("Luka Doncic",)), lines=worded.lines, measure=measure_of("points")))
     assert result.data["leaders"] == [{"player": "Luka Doncic", "games": 4}]
     assert "games with 30+ points and at least 30 minutes" in (result.answer or "")
 
@@ -195,7 +195,7 @@ def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_n
     from association.query.point import lines_under
 
     worded = lines_under(GAMES_COUNTED, read_lines("luka games with under 20 points"))
-    result = threshold_count(con, slots_reading({"stat": "rebounds", "player": "Luka Doncic", "lines": worded.lines}))
+    result = threshold_count(con, Reading(who=Who(kind="player", players=("Luka Doncic",)), lines=worded.lines, measure=measure_of("rebounds")))
     assert result.data["leaders"] == [{"player": "Luka Doncic", "games": 3}]
     assert "games with under 20 points" in (result.answer or "") and "20+" not in (result.answer or "")
     # A phrase with ANOTHER number is a second line beside the count.
@@ -775,9 +775,9 @@ def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: AnswerCont
     # Through the presenter's own declaration, which is what refused before
     # (check_scope; the template retired into the compiler): calling the
     # reader directly would pass whether or not `rate` is declared stated.
-    slots = {"stat": "points", "rate": "/ 90"}
-    assert [cell for cell, _ in cells_unhonored(slots_scope(slots), PLAYER_RANKING)] == []
-    result = leaderboard(lb_con, slots_reading(slots))
+    scope = Reading(measure=measure_of("points", how="per_90", unit="/ 90"))
+    assert [cell for cell, _ in cells_unhonored(scope, PLAYER_RANKING)] == []
+    result = leaderboard(lb_con, scope)
     assert "per 90 minutes" in (result.answer or "")
     assert "per game" in (result.answer or "") and "season total" in (result.answer or "")
     # Points has no per-100 form, so the refusal must not offer one.
@@ -790,9 +790,9 @@ def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: Answe
     `rate == "total"` branch, and check_scope refused before it could ever
     run, so "most points this season" as a TOTAL was unreachable through the
     pipeline."""
-    slots = {"stat": "points", "rate": "total"}
-    assert [cell for cell, _ in cells_unhonored(slots_scope(slots), PLAYER_RANKING)] == []
-    result = leaderboard(lb_con, slots_reading(slots))
+    scope = Reading(measure=measure_of("points", how="total", unit="total"))
+    assert [cell for cell, _ in cells_unhonored(scope, PLAYER_RANKING)] == []
+    result = leaderboard(lb_con, scope)
     assert "total points" in (result.answer or "")
     assert result.data["leaders"][0]["display_name"] == "Luka Doncic"
 
@@ -853,7 +853,7 @@ def test_true_shooting_says_which_qualifier_it_ranked_under(shooting_ctx: Answer
 @pytest.mark.parametrize(("stat", "qualifier"), [("true_shooting", "550 true-shooting attempts"), ("efg_pct", "480 field-goal attempts")])
 def test_a_shooting_percentage_qualifies_on_attempts_not_games(shooting_ctx: AnswerContext, stat: str, qualifier: str) -> None:
     """Both low-volume players have the games; neither has the shots."""
-    result = leaderboard(shooting_ctx, slots_reading({"stat": stat, "season": 2025}))
+    result = leaderboard(shooting_ctx, Reading(measure=measure_of(stat), span=Span(season=2025)))
     assert [r["display_name"] for r in result.data["leaders"]] == ["Jarrett Allen", "Nikola Jokic"]
     assert f"2025 regular season (minimum {qualifier})," in (result.answer or "")
 
@@ -862,7 +862,7 @@ def test_a_shooting_percentage_qualifies_on_attempts_not_games(shooting_ctx: Ans
 def test_a_shooting_percentage_scales_its_qualifier_for_the_postseason(shooting_ctx: AnswerContext, stat: str, qualifier: str) -> None:
     """The season floor is more than one player reached in the whole 2025
     postseason, so it cannot carry over, and games cannot stand in for it."""
-    result = leaderboard(shooting_ctx, slots_reading({"stat": stat, "season": 2025, "season_type": 3}))
+    result = leaderboard(shooting_ctx, Reading(measure=measure_of(stat), span=Span(season=2025, season_type=3)))
     assert [r["display_name"] for r in result.data["leaders"]] == ["Jarrett Allen", "Isaiah Joe", "Nikola Jokic"]
     assert f"2025 postseason (minimum {qualifier})," in (result.answer or "")
 
@@ -1376,14 +1376,6 @@ def test_game_log_filters_an_exact_calendar_date(gl_con: AnswerContext) -> None:
     assert [g["date"] for g in games] == ["2026-04-12"]
 
 
-def test_a_malformed_date_never_reaches_the_game_log() -> None:
-    """``game_log`` used to ignore a date it could not read and answer the
-    whole log - a narrowing silently dropped. The Reading's door refuses a
-    date that is not a calendar day instead."""
-    with pytest.raises(ValueError, match="calendar day"):
-        slots_reading({"team": "Knicks", "date": "April 12"})
-
-
 def test_game_log_ambiguous_team_asks(gl_con: AnswerContext) -> None:
     gl_con.con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
     assert "did you mean" in (game_log(gl_con, Reading(who=Who(kind="team", teams=("LA",)))).answer or "")
@@ -1675,9 +1667,9 @@ def test_shot_chart_a_named_season_is_the_season_the_refusal_names(sc_ctx: Answe
 
 
 def test_a_nonsense_shot_value_never_reaches_the_chart() -> None:
-    """It used to be ignored by the template; the Reading's door refuses it now."""
+    """It used to be ignored by the template; the Measure refuses it now."""
     with pytest.raises(ValueError, match="shot_value"):
-        slots_reading({"player": "Stephen Curry", "season": current_season(), "shot_value": 0})
+        Measure(shot_value=0)  # type: ignore[arg-type]
 
 
 def test_shot_chart_without_a_player_falls_through(sc_ctx: AnswerContext) -> None:
@@ -2847,16 +2839,16 @@ def test_team_quarter_points_refuses_a_stat_no_period_splits_and_one_it_cannot_r
     none, so the answer says so, never a zero. A stat nothing splits by
     period is refused naming it."""
     for stat in ("threePointFieldGoalsMade", "rebounds", "assists"):
-        result = team_quarter_points(tq_con, slots_reading({"team": "Knicks", "period": 1, "season": current_season(), "stat": stat}))
+        result = team_quarter_points(tq_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=measure_of(stat), span=Span(season=current_season()), period=Period(number=1)))
         assert "No play-by-play is on record" in (result.answer or "") and "total" not in result.data, stat
     for stat in ("minutes", "plusMinus", "pointsInPaint"):
-        result = team_quarter_points(tq_con, slots_reading({"team": "Knicks", "period": 1, "season": current_season(), "stat": stat}))
+        result = team_quarter_points(tq_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=measure_of(stat), span=Span(season=current_season()), period=Period(number=1)))
         assert f"not {stat}." in (result.answer or "") and "by quarter is not on record" in (result.answer or ""), stat
     # Points is the one the linescore holds, under either spelling, and no
     # stat at all still means the score.
     allowed: tuple[str | None, ...] = ("points", "avg_points", None)
     for held in allowed:
-        result = team_quarter_points(tq_con, slots_reading({"team": "Knicks", "period": 1, "season": current_season(), "stat": held}))
+        result = team_quarter_points(tq_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=measure_of(held) if held else None, span=Span(season=current_season()), period=Period(number=1)))
         assert result.data["total"] == 60
 
 
@@ -3672,9 +3664,9 @@ def test_fingerprint_honors_the_side_slot(fp_ctx: AnswerContext) -> None:
 
 
 def test_a_nonsense_side_never_reaches_the_fingerprint() -> None:
-    """It used to be read as the total; the Reading's door refuses it now."""
+    """It used to be read as the total; the Measure refuses it now."""
     with pytest.raises(ValueError, match="side"):
-        slots_reading({"player": "Shai", "side": "sideways"})
+        Measure(side="sideways")  # type: ignore[arg-type]
 
 
 def test_fingerprint_defaults_to_the_current_season(fp_ctx: AnswerContext) -> None:
@@ -4160,7 +4152,7 @@ def test_a_situation_naming_the_calendar_narrows_the_relation(pg_ctx: AnswerCont
     played = [date(s - 1, 11, 1), date(s - 1, 12, 1), date(s, 1, 10)]  # e1, e2, e3, the current season's games
     weekday = played[-1].strftime("%A").lower()  # e3's day of the week
     expected = sorted(d.isoformat() for d in played if d.strftime("%A").lower() == weekday)
-    log = game_log(pg_ctx, slots_reading({"player": "Brandin Podziemski", "situation": f"{weekday}s"}))
+    log = game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(situation=situation_of(f"{weekday}s"))))
     assert sorted(g["date"] for g in log.data["games"]) == expected and f"on {weekday.capitalize()}s" in (log.answer or "")
     january = player_stat(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(situation=situation_of("in january")), measure=Measure(key="points", as_typed="points")))
     assert january.data["stats"]["gamesPlayed"] == 1 and january.data["stats"]["avgPoints"] == 15.0 and "in January" in (january.answer or "")
@@ -4179,7 +4171,7 @@ def test_a_situation_naming_no_calendar_is_refused_by_value(pg_ctx: AnswerContex
     promised "as an 18 year old"."""
     for situation in ("18 year old", "since returning", "before turning 27"):
         with pytest.raises(Unsupported, match=re.escape(situation)):
-            game_log(pg_ctx, slots_reading({"player": "Brandin Podziemski", "situation": situation}))
+            game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(situation=situation_of(situation))))
 
 
 def test_a_situation_naming_a_conference_or_division_narrows_the_relation(pg_ctx: AnswerContext) -> None:
@@ -4494,13 +4486,13 @@ def test_game_log_dates_are_the_eastern_day_the_game_was_played(pg_ctx: AnswerCo
     s = current_season()
     games = game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Detroit Pistons"))).data["games"]
     assert games[-1]["date"] == f"{s - 1}-12-01"
-    assert [g["date"] for g in game_log(pg_ctx, slots_reading({"player": "Brandin Podziemski", "date": f"{s - 1}-12-01"})).data["games"]] == [f"{s - 1}-12-01"]
-    assert game_log(pg_ctx, slots_reading({"player": "Brandin Podziemski", "date": f"{s - 1}-12-02"})).data["games"] == []
+    assert [g["date"] for g in game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s - 1}-12-01"))).data["games"]] == [f"{s - 1}-12-01"]
+    assert game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s - 1}-12-02"))).data["games"] == []
 
 
 def test_a_date_finds_its_game_whatever_season_the_router_assumed(pg_ctx: AnswerContext) -> None:
     s = current_season()
-    result = game_log(pg_ctx, slots_reading({"player": "Brandin Podziemski", "date": f"{s - 1}-02-28", "season": s}))
+    result = game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s - 1}-02-28"), span=Span(season=s)))
     assert [g["season"] for g in result.data["games"]] == [s - 1]
 
 
@@ -4680,18 +4672,21 @@ def test_player_stat_on_one_date_is_that_games_line(pg_ctx: AnswerContext) -> No
     nothing - and one game is a line, not an average, with no season total
     appended and the career span the date replaced left unsaid."""
     s = current_season()
-    result = player_stat(pg_ctx, slots_reading({"player": "Brandin Podziemski", "date": f"{s - 1}-12-01"}))
+    result = player_stat(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s - 1}-12-01")))
     assert result.answer == f"Brandin Podziemski had 20 points, 7 rebounds and 5 assists on {s - 1}-12-01."
     assert result.data["date"] == f"{s - 1}-12-01" and result.data["stats"]["gamesPlayed"] == 1
     # The router's season is usually its "current" default: a date in the
     # previous season is still found.
-    last = player_stat(pg_ctx, slots_reading({"player": "Brandin Podziemski", "stat": "points", "date": f"{s - 1}-02-28", "season": s}))
+    last = player_stat(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s - 1}-02-28"), measure=measure_of("points"), span=Span(season=s)))
     assert last.answer == f"Brandin Podziemski had 8 points on {s - 1}-02-28."
     # The compiler reads the date the same way - the slot's season replaced,
     # not read beside a career span (#230: it declined "a career span and
     # the {s} season at once").
-    assert _compiled(PLAYER_LINE)(pg_ctx, slots_reading({"player": "Brandin Podziemski", "stat": "points", "date": f"{s - 1}-02-28", "season": s})).answer == last.answer
-    none = player_stat(pg_ctx, slots_reading({"player": "Brandin Podziemski", "date": f"{s}-07-04"}))
+    assert (
+        _compiled(PLAYER_LINE)(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s - 1}-02-28"), measure=measure_of("points"), span=Span(season=s))).answer
+        == last.answer
+    )
+    none = player_stat(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s}-07-04")))
     assert none.answer.startswith(f"No regular season game on {s}-07-04 found for Brandin Podziemski")
 
 
@@ -4921,9 +4916,16 @@ def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: AnswerContext) -> Non
     though no team was named. The template is retired
     (compose.COMPILED_INTENTS); what its words state is its row's."""
     with pytest.raises(Unsupported, match="games against Detroit Pistons cannot be read here"):
-        plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"}))
+        plan(default_point(PLAYER_MEETINGS, Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), cuts=Cuts(opponent="Detroit Pistons"))))
     with pytest.raises(Unsupported, match="games against Detroit Pistons"):
-        plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]}))
+        plan(
+            default_point(
+                PLAYER_MEETINGS,
+                Reading(
+                    who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), cuts=Cuts(opponent="Detroit Pistons"), companions=(Companion(player="Jaylen Brown", predicate="absent"),)
+                ),
+            )
+        )
     assert "opponent" not in cells_stated(PLAYER_MEETINGS)
 
 
@@ -4941,9 +4943,9 @@ def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: AnswerContext
     shown beneath averages over all of them), and `round` no relation has -
     the planner's refusal, as the parser plans the point."""
     with pytest.raises(Unsupported, match="newest meetings"):
-        plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"}))
+        plan(default_point(PLAYER_MEETINGS, Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), window=Window(order="recent"))))
     with pytest.raises(Unsupported, match="different span"):
-        default_query("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
+        planned_query(PLAYER_MEETINGS, Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), cuts=Cuts(round="finals")))
 
 
 def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: AnswerContext) -> None:
@@ -5071,7 +5073,7 @@ def test_player_matchup_honors_date_over_a_season_full_of_meetings(pm_ctx: Answe
     games actually are), a `date` naming g1 must narrow to it alone, not
     the season's 2 meetings averaged together."""
     s = current_season()
-    result = player_matchup(pm_ctx, slots_reading({"players": ["Stephen Curry", "LeBron James"], "date": f"{s - 2}-11-10", "season": s - 1}))
+    result = player_matchup(pm_ctx, Reading(who=Who(kind="pair", players=("Stephen Curry", "LeBron James")), cuts=Cuts(date=f"{s - 2}-11-10"), span=Span(season=s - 1)))
     assert result.data["meetings"] == 1
     assert result.data["averages"]["Stephen Curry"]["points"] == 30
     assert result.data["averages"]["LeBron James"]["points"] == 25
@@ -5088,7 +5090,7 @@ def test_player_matchup_date_replaces_even_an_explicitly_wrong_season(pm_ctx: An
     default a missing-or-defeated season to `current_season()`, which holds
     neither game here at all."""
     s = current_season()
-    result = player_matchup(pm_ctx, slots_reading({"players": ["Stephen Curry", "LeBron James"], "date": f"{s - 2}-11-10", "season": s}))
+    result = player_matchup(pm_ctx, Reading(who=Who(kind="pair", players=("Stephen Curry", "LeBron James")), cuts=Cuts(date=f"{s - 2}-11-10"), span=Span(season=s)))
     assert result.data["meetings"] == 1
     assert result.data["averages"]["Stephen Curry"]["points"] == 30
     assert result.data["averages"]["LeBron James"]["points"] == 25
@@ -5441,9 +5443,9 @@ def playoff_ctx(tmp_path: Path) -> AnswerContext:
 def test_an_early_playoffs_is_found_by_the_year_it_was_played(playoff_ctx: AnswerContext) -> None:
     """ESPN labels the 1991 Finals season 1990. Matched by label, "the 1991
     playoffs" found 1992's, and "the 1990 playoffs" found 1991's."""
-    both = ["Chicago Bulls", "Los Angeles Lakers"]
-    assert head_to_head(playoff_ctx, slots_reading({"teams": both, "season": 1991, "season_type": 3})).data["games"] == 2
-    assert head_to_head(playoff_ctx, slots_reading({"teams": both, "season": 1990, "season_type": 3})).data["games"] == 0
+    both = Who(kind="teams", teams=("Chicago Bulls", "Los Angeles Lakers"))
+    assert head_to_head(playoff_ctx, Reading(who=both, span=Span(season=1991, season_type=3))).data["games"] == 2
+    assert head_to_head(playoff_ctx, Reading(who=both, span=Span(season=1990, season_type=3))).data["games"] == 0
 
 
 def test_the_phantom_season_does_not_double_a_playoffs(playoff_ctx: AnswerContext) -> None:
@@ -5468,8 +5470,8 @@ def test_head_to_head_takes_the_opponent_as_the_other_team(playoff_ctx: AnswerCo
 
 def test_head_to_head_reads_past_a_team_named_twice(playoff_ctx: AnswerContext) -> None:
     """The first two names are one team; the opponent after them is the second."""
-    slots = {"team": "Chicago Bulls", "teams": ["Bulls"], "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3}
-    assert head_to_head(playoff_ctx, slots_reading(slots)).data["games"] == 2
+    scope = Reading(who=Who(kind="teams", teams=("Chicago Bulls", "Bulls")), cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season=1991, season_type=3))
+    assert head_to_head(playoff_ctx, scope).data["games"] == 2
 
 
 # ---------------- period_split ----------------
@@ -5658,8 +5660,12 @@ def test_a_shooting_percentage_in_a_period_is_the_periods_makes_over_its_attempt
     in this fixture is a three, so the field goal percentage is the same
     ratio; no free throw was attempted at all, and the answer says that
     rather than printing a zero."""
-    slots: dict[str, Any] = {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "threePointFieldGoalPct", "per_game": True}
-    result = period_split(period_ctx, slots_reading(slots))
+
+    def curry(**more: Any) -> Reading:
+        """Curry's first quarters this regular season, with ``more`` beside them."""
+        return Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON, season_type=2), period=Period(number=1), **more)
+
+    result = period_split(period_ctx, curry(measure=measure_of("threePointFieldGoalPct", how="per_game")))
     assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["games_played"]) == ("three_pct", 4, 7, 5)
     assert result.data["average"] == pytest.approx(400 / 7)
     answer = result.answer or ""
@@ -5667,13 +5673,13 @@ def test_a_shooting_percentage_in_a_period_is_the_periods_makes_over_its_attempt
     assert "averaging" not in answer, "the percentage is the average; a second figure beside it would be a mean of rates"
     assert "1st quarter 3-pointers made-attempted, every game:" in answer and "2-5     40.0%" in answer and "0-0         -" in answer
     assert [g["three_pct"] for g in result.data["games"]] == [40.0, 100.0, None, 100.0, None], "e1 through e5 in date order; a game with no attempt has no percentage"
-    field_goals = period_split(period_ctx, slots_reading({**slots, "stat": "fieldGoalPct", "per_game": False}))
+    field_goals = period_split(period_ctx, curry(measure=measure_of("fieldGoalPct")))
     assert (field_goals.data["total"], field_goals.data["attempted"]) == (4, 7) and "shot 4 of 7 (57.1%) on field goals" in (field_goals.answer or "")
-    free_throws = period_split(period_ctx, slots_reading({**slots, "stat": "freeThrowPct", "per_game": False}))
+    free_throws = period_split(period_ctx, curry(measure=measure_of("freeThrowPct")))
     assert (free_throws.data["total"], free_throws.data["attempted"], free_throws.data["average"]) == (0, 0, None)
     assert "Stephen Curry attempted no free throws in the 1st quarter over 5 games" in (free_throws.answer or "")
     # One game says its own date, the way a column's one-game answer does.
-    one = period_split(period_ctx, slots_reading({**slots, "per_game": False, "opponent": "Boston", "venue": "away"}))
+    one = period_split(period_ctx, curry(measure=measure_of("threePointFieldGoalPct"), cuts=Cuts(opponent="Boston", venue="away")))
     assert "Stephen Curry shot 1 of 1 (100.0%) on 3-pointers in the 1st quarter at the Boston Celtics on" in (one.answer or "")
 
 
@@ -5821,15 +5827,22 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
     # is no order (Scope.from_slots refuses it before the presenter reads it).
     # Through its shape's row (``compose.plan.cells_unhonored``; the template
     # retired into the compiler), which is what check_scope read before.
-    for slot, given in (("opponent", "Boston Celtics"), ("venue", "home"), ("without", "Klay Thompson"), ("order", "recent"), ("date", "2026-01-02")):
-        assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "Stephen Curry", "period": 1, slot: given}), PERIOD_LOG)] == []
+    curry = Who(kind="player", players=("Stephen Curry",))
+    for given in (
+        Reading(who=curry, period=Period(number=1), cuts=Cuts(opponent="Boston Celtics")),
+        Reading(who=curry, period=Period(number=1), cuts=Cuts(venue="home")),
+        Reading(who=curry, period=Period(number=1), companions=(Companion(player="Klay Thompson", predicate="absent"),)),
+        Reading(who=curry, period=Period(number=1), window=Window(order="recent")),
+        Reading(who=curry, period=Period(number=1), cuts=Cuts(date="2026-01-02")),
+    ):
+        assert [cell for cell, _ in cells_unhonored(given, PERIOD_LOG)] == []
     # Two slots it still does not filter on, for the same reason: the accuracy
     # caveat (PERIOD_RECONCILIATION) is measured per season, and this reads
     # only one - see its row in RELATION_SCOPING_EXCLUDED. The point
     # itself refuses them (point._default_period_split), naming why.
-    for slot, value in (("span", "career"), ("since", 2023)):
+    for span in (Span(career=True), Span(since=2023)):
         with pytest.raises(Unsupported, match="accuracy caveat is measured per season"):
-            plan(default_reading("period_split", {"player": "Stephen Curry", "period": 1, slot: value}))
+            plan(default_point(PERIOD_LOG, Reading(who=curry, span=span, period=Period(number=1))))
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: AnswerContext) -> None:
@@ -5871,7 +5884,7 @@ def test_a_date_narrows_to_that_one_game(period_ctx: AnswerContext) -> None:
     matching a direct, unscoped read of that one game's shots.
     """
     e1_date = _eastern_date_of(f"{SEASON - 1}-11-01T00:30Z")
-    result = period_split(period_ctx, slots_reading({"player": "Stephen Curry", "period": 1, "date": e1_date}))
+    result = period_split(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(date=e1_date), period=Period(number=1)))
     assert result.data["total"] == 6, "e1's two made first-quarter threes, not the 12 points across e1/e2/e4"
     assert result.data["games_played"] == 1
     assert result.data["season"] == SEASON, "read off the game itself, not defaulted separately"

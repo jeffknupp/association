@@ -15,8 +15,7 @@ package: the parser reads the model's names and stat through them.
 - :func:`filters` is the old ``Scope.from_slots``, returning the typed
   values by field name;
 - :func:`slots_scope` is a Reading holding nothing but those filters (what
-  a test handed a reader as a ``Scope``);
-- :func:`slots_reading` is the old ``Reading.from_slots``.
+  a test handed a reader as a ``Scope``).
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ from association.query.reading import (
     Line,
     Measure,
     Period,
-    PointShape,
     Reading,
     ScopeError,
     Span,
@@ -42,19 +40,13 @@ from association.query.reading import (
 )
 
 if TYPE_CHECKING:
-    from association.query import subject as subject_reading
+    pass
 
 
 def slots_scope(slots: Mapping[str, Any]) -> Reading:
     """A Reading holding nothing but the filters ``slots`` names
     (:func:`filters`) - what a test handed a reader as a ``Scope``."""
     return Reading(**filters(slots))
-
-
-def slots_reading(slots: Mapping[str, Any], *, asked: PointShape | None = None, subject: subject_reading.Subject | None = None) -> Reading:
-    """A Reading holding the filters ``slots`` names, what the words ask
-    and who the question is about - the old ``Reading.from_slots``."""
-    return Reading(**filters(slots), asked=asked, subject=subject)
 
 
 def filters(slots: Mapping[str, Any]) -> dict[str, Any]:
