@@ -561,10 +561,11 @@ gets turned off.
     words),
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
-    `team_relation.py`, `season_line.py`, `team_seasons.py`, and a
-    declared relation's own since Phase 4, step 5: `netpoints.py`, the
-    NetPoints relation, which builds and runs every statement over the
-    NetPoints tables), the
+    `team_relation.py`, `season_line.py`, `team_seasons.py`, and the
+    two declared relations' own since Phase 4, step 5: `netpoints.py`,
+    the NetPoints relation, which builds and runs every statement over
+    the NetPoints tables, and `shots.py`, the shot relation, every
+    statement over `shot_chart`), the
     compiler's readers and the sayer (`compose/`), the coverage
     declaration (`coverage.py`), renderers, the answering loop
     (`agent.py`). `web/` - the local web interface.
@@ -1812,8 +1813,15 @@ a shape:
   beyond what its retired template's words state, its shape's row of
   `RELATION_SCOPING_EXCLUDED`)
   is read the same way: `read_shot_chart` and `read_shot_distance` are the
-  retired templates' statements moved whole (`shotchart.render_for_player`'s
-  with them), executed through `core.values_of`, and said by the sayer - a
+  retired templates' reads moved whole (`shotchart.render_for_player`'s
+  with them), their statements the shot relation's since Phase 4, step 5
+  (`query/shots.py`: `narrowed_games`, the games a narrowing sends a shot
+  read to through the player-games relation's `games_subquery`;
+  `distance`; `chart_shots`), executed through `core.values_of` there,
+  over `shotchart.SHOT_VALUE_SQL` and the court's `HAS_POSITION_SQL` and
+  `SHOT_DISTANCE_SQL` - fragments kept where they are, since the
+  player-games relation's period rebuild reads the value too and the
+  drawing the court's geometry - and said by the sayer - a
   shot chart's `Chart` (the marks, the counts drawn, the caption, the file
   name) drawn first by `compose.shots.draw_shot_chart` over
   `court.render_court_html`, between the read and the sayer, as the

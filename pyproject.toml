@@ -288,6 +288,7 @@ forbidden_modules = [
     "association.query.shotchart",
     "association.query.fingerprint",
     "association.query.netpoints",
+    "association.query.shots",
 ]
 allow_indirect_imports = false
 
@@ -323,6 +324,7 @@ source_modules = [
     "association.query.entities",
     "association.query.season_line",
     "association.query.netpoints",
+    "association.query.shots",
     "association.query.stages",
 ]
 forbidden_modules = ["association.query.normalizer", "ollama"]

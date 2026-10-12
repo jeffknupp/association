@@ -7,7 +7,6 @@
   "compose.logs": 2,
   "compose.periods": 4,
   "compose.seasons": 7,
-  "compose.shots": 3,
   "compose.splits": 1,
   "compose.standings": 4,
   "compose.team": 2,
@@ -21,6 +20,7 @@
   "player_games": 1,
   "player_relation": 16,
   "season_line": 7,
+  "shots": 3,
   "team_relation": 2
  },
  "regex_outside_the_reader": [],
