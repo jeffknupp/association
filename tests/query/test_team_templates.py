@@ -18,7 +18,7 @@ import duckdb
 import pytest
 from routed import planned_answer as compose_answer
 from shapes import asked
-from slots import slots_reading, slots_scope
+from slots import slots_reading
 from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -409,15 +409,15 @@ def test_the_team_as_its_own_opponent_falls_through(team_ctx: AnswerContext) -> 
 
 def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
     # The compiler's since Phase 2's slice (iv): its words state these, and the planner declines `order`.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"venue": "home", "opponent": "Boston Celtics", "span": "career"}), TEAM_RECORD)] == []
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"order": "recent"}), TEAM_RECORD)] == ["window"]
+    assert [cell for cell, _ in cells_unhonored(Reading(cuts=Cuts(opponent="Boston Celtics", venue="home"), span=Span(career=True)), TEAM_RECORD)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(window=Window(order="recent")), TEAM_RECORD)] == ["window"]
 
 
 def test_team_record_honors_situation_and_split_at_the_declaration_level() -> None:
     """The declaration only says the slot is stated - the reader itself
     still refuses a `situation` that names no month and a `split` that is not
     "month" (see the tests above), the same way it always refused `order`."""
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"situation": "in october", "split": "month"}), TEAM_RECORD)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(cuts=Cuts(situation=situation_of("in october")), split="month"), TEAM_RECORD)] == []
 
 
 # ---------------- team_stat ----------------
