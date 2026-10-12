@@ -18,6 +18,7 @@ web
 sim_build
 sim_game
 sim_replay
+sim_validate
 
 # association/web/app.py, inside create_app: registered by FastAPI's @app.get
 # / @app.post.
@@ -71,3 +72,13 @@ ranked_by
 
 # pytest: an autouse fixture, entered around every test (tests/conftest.py).
 _names_loaded
+
+# association/sim/validate.py, PlayerCheck: the interval bounds `_coverage`
+# reads by attribute name (`getattr(p, f"{stat}_low")`), written into the
+# per-game JSON by `games_json`.
+points_low
+points_high
+rebounds_low
+rebounds_high
+assists_low
+assists_high

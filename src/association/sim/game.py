@@ -43,7 +43,7 @@ import duckdb
 from association.nba.season import eastern_date_sql
 from association.sim import rates, rotation
 from association.sim.database import WAREHOUSE
-from association.sim.engine import GameSetup, TeamSetup, simulate
+from association.sim.engine import EngineError, GameSetup, TeamSetup, simulate
 from association.sim.events import SimGame
 from association.sim.params import LeagueParams, PlayerParams, TeamParams, Window
 from association.sim.render import Names
@@ -122,6 +122,31 @@ def window_for(con: duckdb.DuckDBPyConnection, season: int, as_of: dt.date | Non
     """
     seasons = tuple(range(season - WINDOW_SEASONS + 1, season + 1))
     return Window(seasons, as_of or rates.as_of_after(con, season))
+
+
+@dataclass(frozen=True)
+class Shared:
+    """The per-window work several matchups can share: the league-wide
+    estimates, every team's rotation profile and the league's rotation
+    tables. :func:`shared_for` builds one; :func:`prepare` and
+    :func:`prepare_replay` take it so a validation run that replays every
+    game of a day estimates once for the day.
+
+    .. versionadded:: 6.0.0
+    """
+
+    window: Window
+    estimates: rates.Estimates
+    profiles: Mapping[str, rotation.RotationProfile]
+    league_rotation: rotation.LeagueRotation
+
+
+def shared_for(con: duckdb.DuckDBPyConnection, window: Window) -> Shared:
+    """Estimate the whole league and build every rotation for ``window``.
+
+    .. versionadded:: 6.0.0
+    """
+    return Shared(window, rates.estimate(con, window), rotation.build_profiles(con, window), rotation.build_league_rotation(con, window))
 
 
 @dataclass(frozen=True)
@@ -233,21 +258,34 @@ def _check_roster(roster: Roster, estimates: rates.Estimates, window: Window) ->
     return [f"{a} simulated at nearly the league prior ({estimates.players[a].zone_mix.trials:.0f} charted shots in the window)" for a in roster.players if estimates.players[a].near_prior]
 
 
-def prepare(con: duckdb.DuckDBPyConnection, home: str, away: str, window: Window, rosters: Mapping[str, Sequence[str]] | None = None, starters: Mapping[str, Sequence[str]] | None = None) -> Prepared:
+def prepare(
+    con: duckdb.DuckDBPyConnection,
+    home: str,
+    away: str,
+    window: Window,
+    rosters: Mapping[str, Sequence[str]] | None = None,
+    starters: Mapping[str, Sequence[str]] | None = None,
+    shared: Shared | None = None,
+) -> Prepared:
     """Estimate and assemble a matchup. ``home`` and ``away`` are team ids;
-    ``rosters`` and ``starters`` by team id replace the defaults.
+    ``rosters`` and ``starters`` by team id replace the defaults; ``shared``
+    is the window's league-wide work already done (:func:`shared_for`), used
+    when its window is this one.
 
     .. versionadded:: 6.0.0
     """
     if home == away:
         raise SimulationRefused("a team cannot play itself")
     requested = {a for r in (rosters or {}).values() for a in r}
-    estimates = rates.estimate(con, window, team_ids=[home, away], athlete_ids=sorted(requested) or None)
+    if shared is not None and shared.window == window:
+        estimates, profiles, league_rotation = shared.estimates, shared.profiles, shared.league_rotation
+    else:
+        estimates = rates.estimate(con, window, team_ids=[home, away], athlete_ids=sorted(requested) or None)
+        profiles = rotation.build_profiles(con, window)
+        league_rotation = rotation.build_league_rotation(con, window)
     for team in (home, away):
-        if team not in estimates.teams:
+        if team not in estimates.teams or team not in profiles:
             raise SimulationRefused(f"{team} has no games in {window.describe()}")
-    profiles = rotation.build_profiles(con, window)
-    league_rotation = rotation.build_league_rotation(con, window)
     sides: dict[str, Roster] = {}
     notes: list[str] = []
     for team in (home, away):
@@ -271,7 +309,14 @@ def run(prepared: Prepared, n: int, seed: int) -> list[SimGame]:
     """
     if n < 1:
         raise SimulationRefused("at least one game")
-    return [simulate(prepared.setup(), seed + i) for i in range(n)]
+    games = []
+    for i in range(n):
+        try:
+            games.append(simulate(prepared.setup(), seed + i))
+        except EngineError as exc:
+            # Name the seed, so `sim replay ... --n 1 --seed <seed> --pbp --explain` replays exactly this game.
+            raise EngineError(f"seed {seed + i}: {exc}") from exc
+    return games
 
 
 def quantiles(values: Sequence[float], points: Sequence[float] = (0.1, 0.25, 0.5, 0.75, 0.9)) -> dict[str, float]:
@@ -510,7 +555,7 @@ def real_game(con: duckdb.DuckDBPyConnection, event_id: str) -> RealGame:
     return RealGame(event_id, int(season), date, str(home), str(away), {t: tuple(r) for t, r in rosters.items()}, {t: tuple(s) for t, s in starters.items()}, int(hs), int(as_))
 
 
-def prepare_replay(con: duckdb.DuckDBPyConnection, game: RealGame) -> Prepared:
+def prepare_replay(con: duckdb.DuckDBPyConnection, game: RealGame, shared: Shared | None = None) -> Prepared:
     """A replay's setup: the window ends on the game's own Eastern date, the
     rosters are the players who appeared, the starters the box five (where
     the box names five). A player with no minutes before that date is
@@ -520,10 +565,13 @@ def prepare_replay(con: duckdb.DuckDBPyConnection, game: RealGame) -> Prepared:
     .. versionadded:: 6.0.0
     """
     window = window_for(con, game.season, game.date)
-    estimates = rates.estimate(con, window, team_ids=[game.home, game.away], athlete_ids=sorted(a for r in game.rosters.values() for a in r))
-    rosters = {t: tuple(a for a in r if a in estimates.players) for t, r in game.rosters.items()}
-    dropped = [a for t, r in game.rosters.items() for a in r if a not in estimates.players]
+    if shared is not None and shared.window == window:
+        known = shared.estimates.players
+    else:
+        known = rates.estimate(con, window, team_ids=[game.home, game.away], athlete_ids=sorted(a for r in game.rosters.values() for a in r)).players
+    rosters = {t: tuple(a for a in r if a in known) for t, r in game.rosters.items()}
+    dropped = [a for t, r in game.rosters.items() for a in r if a not in known]
     starters = {t: s for t, s in game.starters.items() if len(s) == 5 and all(a in rosters[t] for a in s)}
-    prepared = prepare(con, game.home, game.away, window, rosters=rosters, starters=starters)
+    prepared = prepare(con, game.home, game.away, window, rosters=rosters, starters=starters, shared=shared)
     notes = list(prepared.notes) + ([f"dropped for want of minutes before {game.date.isoformat()}: {', '.join(dropped)}"] if dropped else [])
     return Prepared(prepared.home, prepared.away, prepared.window, prepared.league, prepared.teams, prepared.players, prepared.profiles, prepared.league_rotation, prepared.names, tuple(notes))

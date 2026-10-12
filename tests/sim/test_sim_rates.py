@@ -249,7 +249,7 @@ def test_the_league_means_are_the_fixtures_sums(estimates: rates.Estimates) -> N
 def test_a_players_rates_are_his_counts_shrunk_toward_the_league(estimates: rates.Estimates) -> None:
     league, h1 = estimates.league, estimates.players["h1"]
     _check_rate(h1.shots_per_minute, 4, 66, league.per_minute["shots_per_minute"])
-    _check_rate(h1.free_throw_trips_per_minute, 1, 66, league.per_minute["free_throw_trips_per_minute"])  # the 1-of-1 is a trip
+    _check_rate(h1.free_throw_trips_per_minute, 0, 66, league.per_minute["free_throw_trips_per_minute"])  # the 1-of-1 is an and-one, not a trip
     _check_rate(h1.turnovers_per_minute, 1, 66, league.per_minute["turnovers_per_minute"])
     _check_rate(h1.make_rate_in("restricted"), 1, 2, 3 / 4)
     _check_rate(h1.make_rate_in("corner_three"), 1, 1, 1.0)

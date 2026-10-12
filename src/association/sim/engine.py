@@ -122,6 +122,20 @@ OVERTIME_BONUS_TEAM_FOULS = 4
 """
 
 
+THREE_SHOT_TRIP_SHARE = 0.035
+"""The share of shooting-foul trips that are three free throws. Measured on
+``sim_plays`` 2024-2026: 683, 860 and 990 ``Free Throw - 1 of 3`` trips
+against 23,155, 23,551 and 25,395 ``1 of 2`` - 2.9%, 3.5%, 3.8%. The first
+draft drew the trip's zone from the shooter's zone mix and gave a three
+from a three-point zone, which made 40% of trips three shots and, with the
+estimator's double-counted and-ones, simulated 0.377 free-throw attempts
+per field-goal attempt against a real 0.211 in the first replay validation
+(2026-10-11). Not yet a ``LeagueParams`` field; the estimator should supply
+it.
+
+.. versionadded:: 6.0.0
+"""
+
 HEAVE_MAKE_RATE = 0.05
 """The make rate of a heave, a constant until the league record carries one
 (the plan excludes heaves from every shooting rate, so no zone's rate
@@ -270,8 +284,8 @@ def adjusted(probability: float, defense: float, league: float) -> float:
 def league_points_per_possession(league: LeagueParams) -> float:
     """The points a league-average possession is worth, from the league's
     own rates: a use is a turnover (``turnover_rate``), a trip
-    (``foul_rate``; two or three free throws by the zone mix, each at
-    ``free_throw_rate``) or a shot (the zone mix, the make rate by zone, the
+    (``foul_rate``; two free throws, three in :data:`THREE_SHOT_TRIP_SHARE`
+    of trips, each at ``free_throw_rate``) or a shot (the zone mix, the make rate by zone, the
     and-one's free throw), and a missed shot the offense rebounds
     (``offensive_rebound_rate``) starts another use. Used to size the
     home-court multiplier; an approximation, documented as one.
@@ -282,7 +296,7 @@ def league_points_per_possession(league: LeagueParams) -> float:
     make = sum(league.zone_mix.get(z, 0.0) * league.make_rate.get(z, 0.0) for z in ZONES)
     shot_points = sum(league.zone_mix.get(z, 0.0) * league.make_rate.get(z, 0.0) * value_of(z) for z in ZONES)
     shot_points += make * league.and_one_rate * league.free_throw_rate
-    trip_points = sum(league.zone_mix.get(z, 0.0) * value_of(z) for z in ZONES) * league.free_throw_rate
+    trip_points = (2.0 + THREE_SHOT_TRIP_SHARE) * league.free_throw_rate
     per_use = p_shot * shot_points + league.foul_rate * trip_points
     continued = p_shot * (1.0 - make) * league.offensive_rebound_rate
     return per_use / (1.0 - min(continued, 0.99))
@@ -734,12 +748,27 @@ class _Game:
         return _DEAD_BALL
 
     def _trip(self, offense: _Side, defense: _Side, shooter: _Player) -> str | None:
-        """A shooting foul on a miss: no attempt is charged, two free throws
-        (three from a three-point zone, the zone drawn from the shooter's mix)."""
-        zone = shooter.zone(self.rng)
+        """A shooting foul on a miss: no attempt is charged; three free throws
+        with probability :data:`THREE_SHOT_TRIP_SHARE`, else two. The zone
+        recorded on the foul is a three-point zone for a three-shot trip and
+        one of the shooter's two-point zones otherwise."""
+        count = 3 if self.rng.random() < THREE_SHOT_TRIP_SHARE else 2
+        zone = self._trip_zone(shooter, count)
         fouler = _pick_or_any(self.rng, defense.floor, [p.foul_w for p in defense.floor])
         self._charge_foul(defense, fouler, shooter, "shooting", zone)
-        return self._free_throws(offense, defense, shooter, value_of(zone))
+        return self._free_throws(offense, defense, shooter, count)
+
+    def _trip_zone(self, shooter: _Player, count: int) -> str:
+        """The zone a trip is recorded in: a three-point zone for three free
+        throws; for two, the shooter's own mix redrawn until it gives a two
+        (five tries, then the restricted area)."""
+        if count == 3:
+            return "above_break_three"
+        for _ in range(5):
+            zone = shooter.zone(self.rng)
+            if value_of(zone) == 2:
+                return zone
+        return "restricted"
 
     def _free_throws(self, offense: _Side, defense: _Side, shooter: _Player, count: int) -> str | None:
         """``count`` free throws, the dead ball before the last; a made last

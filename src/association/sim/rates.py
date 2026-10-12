@@ -143,10 +143,15 @@ from association.sim import shrink, zones
 from association.sim.database import WAREHOUSE
 from association.sim.params import ZONES, LeagueParams, Mix, PlayerParams, Rate, TeamParams, Window
 
-TRIP_START_SQL = "(sp.type LIKE 'Free Throw - %1 of %')"
-"""The first attempt of a free-throw trip in ``sim_plays`` (aliased ``sp``):
-``1 of 1``, ``1 of 2``, ``1 of 3``, the flagrant and clear-path trips'
-first attempts; a technical has no "of" and is no trip.
+TRIP_START_SQL = "(sp.type LIKE 'Free Throw - %1 of %' AND sp.type NOT LIKE '%1 of 1')"
+"""The first attempt of a free-throw trip DRAWN BY A SHOOTING FOUL ON A MISS
+in ``sim_plays`` (aliased ``sp``): ``1 of 2``, ``1 of 3``, the flagrant and
+clear-path trips' first attempts. A ``1 of 1`` is left out: 95.7-98.0% of
+them are and-ones (section 0b, 0.10), which the engine draws from
+``and_one_rate`` on a MADE shot - counting them as trips too gave every
+and-one a second trip of two or three free throws, and the first replay
+validation (2026-10-11) simulated 0.377 free-throw attempts per field-goal
+attempt against a real 0.211. A technical has no "of" and is no trip.
 
 .. versionadded:: 6.0.0
 """

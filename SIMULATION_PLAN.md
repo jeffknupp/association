@@ -705,7 +705,42 @@ check measured on 2019-2026 and recorded in the module docstring:
 8. **P8, validation** - the replay harness with BOTH baselines (home-win
    rate and a team-strength logistic fit on net rating or
    `team_power_index`), run on 2025 from January 1. This is the first
-   measured game and the regression gate for everything after.
+   measured game and the regression gate for everything after. **Done
+   2026-10-11** (`sim/validate.py`, `association sim validate`;
+   `scripts/sim_p8/`): three baselines (the home-win rate, a logistic fit on
+   point-in-time net ratings, and ESPN's pre-game probability), the margin
+   PIT, totals, league rates from the same box formula on both sides,
+   player 80% coverage and minutes. **The baseline run** (2025 from January
+   1, 738 games at 200 simulations, 8 refused, 868 s;
+   `results/validate_2025_from_2025-01-01_2026-10-11_baseline.md`):
+
+   | metric | real | simulated |
+   | --- | --- | --- |
+   | Brier, home win (home rate 0.2487; strength 0.2248; ESPN 0.1982) | | 0.2296 |
+   | margin: mean error / sd | 16.4 | +0.43 / 17.0 |
+   | margin PIT deciles | flat = 0.100 | 0.068-0.126 |
+   | total: mean error / sd | 19.4 | +3.54 / 18.7 |
+   | possessions a team-game (box formula) | 100.8 | 98.5 |
+   | points per 100 possessions | 113.5 | 118.0 |
+   | 3PA / FGA | 0.420 | 0.410 |
+   | FTA / FGA | 0.240 | 0.371 |
+   | offensive rebound rate | 0.255 | 0.242 |
+   | turnovers / possession | 0.130 | 0.127 |
+   | player 80% coverage: points / rebounds / assists (15,656) | 0.800 | 0.746 / 0.783 / 0.850 |
+   | minutes mean error / mean absolute | | -0.03 / 5.26 |
+
+   What it says: the simulator beats the home-win rate and is calibrated
+   on the margin, but does not yet beat a two-parameter strength model, and
+   ESPN's pre-game number is well ahead of both; the totals run 3.5 points
+   high because the free-throw rate is half again too high. The harness
+   found the cause at once - the estimator counted every and-one's `1 of 1`
+   as a trip of its own on top of `and_one_rate`, and the engine awarded
+   three free throws to 40% of trips by drawing the zone from the shooter's
+   mix where the real share is 3.5% - and the fix's run is the next file in
+   `results/`. The eight refusals are six games where a real roster of
+   eight or nine ran out of players after simulated foul-outs (the engine
+   fouls players out too often, to be re-measured after the fix) and two
+   where fewer than eight players appeared.
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is

@@ -108,16 +108,24 @@ was learned the hard way and is about the data, not the pipeline.
   `association.sim.render` words it). `uv run association sim game NY BOS
   --n 1000 --pbp` is the quickest way to see the whole thing run (7 s).
   Nothing is validated yet.
-- **Next: step 8**, the replay harness (`sim/validate.py`, `association sim
-  validate --season 2025 --from 2025-01-01 --n 1000`): for each real game
-  in the held-out set, `game.prepare_replay` -> `run` -> compare with what
-  happened; Brier score against BOTH baselines (the home-win rate, and a
-  team-strength logistic fit on net rating or `nba.team_power_index`),
-  margin PIT histogram, totals mean error and spread, league pace and
-  rates against the real ones, player points/rebounds/assists 80% interval
-  coverage, minutes mean error. Report as a markdown file under
-  `scripts/sim_p8/results/`; the first run sets the tolerances and is the
-  regression gate for every change after it.
+- **Step 8 done 2026-10-11:** `association sim validate --season 2025
+  --from 2025-01-01 --n 200 --out scripts/sim_p8/results/<name>.md` is the
+  simulator's yardstick (`association.sim.validate`; about 15 minutes for
+  the 750 held-out games). The plan's build-order item 8 holds the
+  baseline table. **Every change to the simulator from here is measured
+  by running it and committing the report**; a metric that gets worse
+  beyond noise needs a written reason. The first thing it found - free
+  throws at 0.371 per field-goal attempt against 0.240 - was fixed the same
+  day (and-ones counted twice; three-shot trips at 40% instead of 3.5%),
+  with the before and after reports side by side in `results/`.
+- **Next:** step 9, P3 (possessions and actions) and the fidelity upgrades
+  that need it - possession durations by start type (the pace runs light),
+  per-player on-court defense, usage per possession - each accepted only if
+  the validation does not get worse; and the open findings from the
+  baseline: points per 100 possessions high, foul-outs too frequent (six
+  of 738 replays ran a real eight-man roster out of players), player points
+  coverage 0.746 and assists 0.850 against 0.800, minutes mean absolute
+  error 5.3.
 - **Dispatching agents here:** make their worktrees by hand from the
   intended SHA (`git worktree add -b <branch> .claude/worktrees/<name>
   <sha>`); the Agent tool's own worktree isolation branched from master,
