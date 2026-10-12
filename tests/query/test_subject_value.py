@@ -57,10 +57,10 @@ def test_a_router_era_slot_shape_is_typed_by_its_names() -> None:
     """One name listed in a plural slot, or two teams split between ``team``
     and ``teams``, are slot dicts no reader of the words writes (0 of the
     2,710 readings): the typed subject holds the names, each once, and its
-    kind is what they hold."""
-    assert Reading(who=Who(kind="player", players=("Luka Doncic",))).who == Who(kind="player", players=("Luka Doncic",))
-    assert Reading(who=Who(kind="teams", teams=("Knicks", "Celtics"))).who.teams == ("Knicks", "Celtics")
-    assert Reading(who=Who(kind="team", teams=("Knicks",))).who == Who(kind="team", teams=("Knicks",))
+    kind is what they hold (:meth:`~association.query.reading.Subject.from_slots`)."""
+    assert Who.from_slots({"players": ["Luka Doncic"]}) == Who(kind="player", players=("Luka Doncic",))
+    assert Who.from_slots({"team": "Knicks", "teams": ["Celtics"]}).teams == ("Knicks", "Celtics")
+    assert Who.from_slots({"team": "Knicks", "teams": ["Knicks"]}) == Who(kind="team", teams=("Knicks",))
 
 
 def test_the_subject_holds_its_kind_its_names_and_its_position_to_their_sets() -> None:
