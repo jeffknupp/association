@@ -4072,6 +4072,7 @@ those were found.
 - **User sees:** nothing - a reader's error on a value no reading writes.
 - **Next step:** check `split` in a `Filtered.__post_init__` (the Reading's chains to it) and `date` in `Cuts.__post_init__`, raising `ScopeError` as every other typed value does; narrow the two `from_slots` doors to what their callers pass, or replace `Measure.from_slots({"stat": s})` with `measure.measure_of(s)`.
 - **Priority:** P4 - no reachable answer moves.
+- **GitHub:** #395
 
 ### Docstrings and comments still name the router and the Scope
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 14).
