@@ -10,9 +10,8 @@
   "compose.shots": 3,
   "compose.splits": 1,
   "compose.standings": 4,
-  "compose.team": 2,
+  "compose.team": 1,
   "compose.team_records": 2,
-  "compose.team_stats": 9,
   "conditions": 7,
   "connection": 1,
   "entities": 4,
@@ -21,7 +20,8 @@
   "player_games": 1,
   "player_relation": 16,
   "season_line": 13,
-  "team_relation": 2
+  "team_relation": 2,
+  "team_seasons": 7
  },
  "regex_outside_the_reader": [],
  "regex_in_the_reader": {

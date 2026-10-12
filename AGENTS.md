@@ -1700,7 +1700,9 @@ a shape:
     door and hands back rows or values - never a `Statement` the reader
     executes itself, which the SQL ratchet counts in the reader's module.
     The season line's reads are the first (`season_line.season_row` and
-    the five beside it).
+    the five beside it), the team seasons' the second (`team_seasons`'
+    `read_team_lines`, `read_team_records` and the five beside them, the
+    team compiler's season total among them).
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body
