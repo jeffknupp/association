@@ -82,3 +82,9 @@ rebounds_low
 rebounds_high
 assists_low
 assists_high
+points_mean
+rebounds_mean
+assists_mean
+points_crps
+rebounds_crps
+assists_crps

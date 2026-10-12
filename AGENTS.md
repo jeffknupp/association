@@ -137,11 +137,14 @@ was learned the hard way and is about the data, not the pipeline.
   with a game-level tempo factor (`2026-10-12_tempo`, the current state:
   possessions 101.4 against 100.8 with no constant, total +0.7 and
   calibrated, Brier 0.2166 against the strength model's 0.2260 and ESPN's
-  0.1994; the real-minutes diagnostic `_real_minutes` sits beside the
-  defense run it was made against). The harness scores wins (Brier),
-  margins and totals (error, spread, PIT), league box rates and player
-  interval coverage; it does not yet score player accuracy (the simulated
-  mean against the real line), which is the next harness piece. Before that run the
+  0.1994; the real-minutes diagnostic `_real_minutes` sits beside it). The
+  harness scores wins (Brier), margins and totals (error, spread, PIT),
+  league box rates, player interval coverage and, since 2026-10-12, player
+  ACCURACY: the simulated mean's absolute error and the CRPS of the
+  simulated distribution for points, rebounds, assists and minutes, by
+  tier of simulated minutes and for the model's top scorer on each side
+  (baseline points MAE 4.64 / CRPS 3.28; 6.65 / 4.75 for the top scorers;
+  minutes MAE 5.26). A change is ranked on these beside the Brier. Before that run the
   pace matched by a constant (100.5
   against 100.8 possessions), free throws are 0.246 against 0.240 per
   field-goal attempt, threes 0.415 against 0.420, points per 100
@@ -212,9 +215,8 @@ was learned the hard way and is about the data, not the pipeline.
   foul-trouble awareness; minutes MAE 5.3, substitutions nineteen seconds
   into a game, eight-man rosters fouling out), measured against the
   real-minutes ceiling; star scoring (usage or efficiency of the high-usage
-  player, `--explain` on a star's game); player accuracy metrics in the
-  harness (mean absolute error of the simulated mean by tier, a CRPS)
-  beside the coverage; a position-group prior for the deep bench (plan 0b
+  player, `--explain` on a star's game - the top scorers' points MAE is
+  6.65); a position-group prior for the deep bench (plan 0b
   0.16, `scripts/sim_p9/position_priors.py`); the offensive-rebound share
   0.247 against 0.255, which is 2025's within-season drift that no
   weighting of the data before January 1 reaches (plan 0b 0.16) - leave

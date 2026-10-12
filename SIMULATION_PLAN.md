@@ -1148,6 +1148,29 @@ check measured on 2019-2026 and recorded in the module docstring:
    ranked on the box score too; the position-group prior for the deep
    bench; then section 4.
 
+   **Player accuracy in the harness, 2026-10-12** (`validate.crps`,
+   `PlayerCheck.*_mean` / `*_crps`, `PLAYER_TIERS`; the engine unchanged).
+   The report now scores the simulated mean's absolute error and the CRPS of
+   the simulated distribution for points, rebounds, assists and minutes, by
+   tier of SIMULATED minutes and for the model's expected top scorer on each
+   side. Baseline, the current state
+   (`results/validate_2025_from_2025-01-01_2026-10-12_tempo.md`, 15,694
+   player-games):
+
+   | tier | n | points MAE / CRPS | rebounds | assists | minutes |
+   | --- | --- | --- | --- | --- | --- |
+   | all | 15,694 | 4.64 / 3.28 | 1.97 / 1.39 | 1.39 / 0.96 | 5.26 / 4.53 |
+   | 30+ simulated minutes | 4,027 | 5.86 / 4.19 | 2.20 / 1.53 | 1.89 / 1.33 | 4.36 / 3.61 |
+   | 15-30 | 8,401 | 4.65 / 3.28 | 2.03 / 1.44 | 1.34 / 0.92 | 5.59 / 4.85 |
+   | under 15 | 3,266 | 3.10 / 2.16 | 1.52 / 1.08 | 0.91 / 0.60 | 5.51 / 4.85 |
+   | the model's top scorer on each side | 1,480 | 6.65 / 4.75 | 2.17 / 1.52 | 2.03 / 1.44 | 4.10 / 3.37 |
+
+   With the real minutes (`--real-minutes`, regenerated beside it): points
+   3.75 / 2.62 over all (top scorers 5.95 / 4.28, 30+ minutes 5.16 / 3.69),
+   rebounds 1.63 / 1.13, assists 1.22 / 0.83 - the rotation is about a
+   fifth of the points error, the possession model the rest. From here
+   every change is ranked on these beside the Brier.
+
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.
 

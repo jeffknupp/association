@@ -143,3 +143,52 @@ def test_parallel_validation_needs_a_connect_factory() -> None:
 
     with pytest.raises(ValueError, match="connect factory"):
         validate.validate(duckdb.connect(":memory:"), 2025, dt.date(2025, 1, 1), 1, 7, jobs=2)
+
+
+def test_crps_is_the_absolute_error_of_a_point_forecast_and_rewards_a_right_sized_spread() -> None:
+    assert validate.crps([7.0, 7.0, 7.0], 10.0) == pytest.approx(3.0)
+    assert validate.crps([0.0, 2.0], 1.0) == pytest.approx(0.5)  # mean |x - 1| = 1, mean |x - x'| = 1
+    assert validate.crps([0.0, 2.0], 1.0) < validate.crps([1.0, 1.0], 2.0) < validate.crps([0.0, 4.0], 10.0)
+    assert math.isnan(validate.crps([], 3.0))
+    # Shrinking a well-centered spread toward the truth lowers the score; widening a centered spread raises it.
+    centered = [8.0, 9.0, 10.0, 11.0, 12.0]
+    assert validate.crps(centered, 10.0) < validate.crps([6.0, 8.0, 10.0, 12.0, 14.0], 10.0)
+
+
+def test_player_accuracy_is_reported_by_tier_of_simulated_minutes() -> None:
+    def player(athlete: str, team: str, minutes: float, pts: int, sim_minutes: float, pts_mean: float) -> PlayerCheck:
+        return PlayerCheck(athlete, team, minutes, pts, 5, 3, 100, sim_minutes, pts_mean - 5, pts_mean + 5, 2.0, 8.0, 1.0, 5.0, pts_mean, 5.0, 3.0, 2.5, 1.0, 0.8, 4.0)
+
+    game = GameCheck(
+        "g1",
+        dt.date(2025, 1, 2),
+        "H",
+        "A",
+        100,
+        90,
+        100,
+        0.6,
+        0.55,
+        None,
+        None,
+        10.0,
+        13.0,
+        0.5,
+        190.0,
+        19.0,
+        _line(100),
+        _line(90),
+        _line(101),
+        _line(89),
+        (player("s1", "H", 36.0, 30, 34.0, 24.0), player("b1", "H", 12.0, 4, 10.0, 6.0), player("s2", "A", 31.0, 18, 31.0, 20.0), player("r1", "A", 22.0, 9, 20.0, 9.0)),
+        1.0,
+    )
+    m = validate._player_metrics([game])
+    assert m["points_mae"] == pytest.approx((6 + 2 + 2 + 0) / 4) and m["points_crps"] == pytest.approx(2.5) and m["minutes_mae"] == pytest.approx((2 + 2 + 0 + 2) / 4)
+    tiers = {t["tier"]: t for t in m["tiers"]}
+    assert tiers["30+ simulated minutes"]["n"] == 2 and tiers["30+ simulated minutes"]["points_mae"] == pytest.approx(4.0)
+    assert tiers["15-30 simulated minutes"]["n"] == 1 and tiers["under 15 simulated minutes"]["n"] == 1
+    assert tiers["the model's top scorer on each side"]["n"] == 2 and tiers["the model's top scorer on each side"]["points_mae"] == pytest.approx(4.0)
+    run = Validation(2025, dt.date(2025, 1, 1), 100, 7, Baselines(0.55, 10, 0.0, 0.1, {}, {}), games=[game])
+    text = validate.report(run)
+    assert "| 30+ simulated minutes | 2 | 4.00 | 2.50 |" in text and "the model's top scorer on each side" in text and "CRPS" in text

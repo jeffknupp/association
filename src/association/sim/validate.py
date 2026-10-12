@@ -27,7 +27,12 @@ predicts is in its rates), simulates ``n`` games, and records:
   and FTA per FGA, offensive-rebound and turnover rates - simulated against
   real, from the same box formula on both sides;
 - each player's real points, rebounds and assists against the simulation's
-  80% interval, and his minutes against the simulated mean.
+  80% interval, and his minutes against the simulated mean; and the
+  ACCURACY of the player lines - the simulated mean's absolute error and
+  the CRPS of the simulated distribution (:func:`crps`) for points,
+  rebounds, assists and minutes - by tier of simulated minutes
+  (:data:`PLAYER_TIERS`) and for the model's expected top scorer on each
+  side.
 
 The two teams' point-in-time net ratings are the mean margins over their
 earlier games in the window, so the strength model, like the simulator,
@@ -207,6 +212,14 @@ class PlayerCheck:
     rebounds_high: float
     assists_low: float
     assists_high: float
+    # Accuracy (added 2026-10-12): the simulated mean of each line, and the CRPS of the simulated distribution against the real line.
+    points_mean: float = float("nan")
+    rebounds_mean: float = float("nan")
+    assists_mean: float = float("nan")
+    points_crps: float = float("nan")
+    rebounds_crps: float = float("nan")
+    assists_crps: float = float("nan")
+    minutes_crps: float = float("nan")
 
 
 @dataclass(frozen=True)
@@ -295,6 +308,23 @@ def _real_lines(con: duckdb.DuckDBPyConnection, real: matchup.RealGame) -> tuple
     return {t: TeamLine(*acc) for t, acc in sums.items()}, players
 
 
+def crps(samples: Sequence[float], value: float) -> float:
+    """The continuous ranked probability score of an empirical distribution
+    against the value that happened: ``mean |x - value| - mean |x - x'| / 2``
+    over the samples (and their pairs), in the stat's own unit; lower is
+    better, and a point forecast's CRPS is its absolute error. An empty
+    sample scores ``nan``.
+
+    .. versionadded:: 6.0.0
+    """
+    n = len(samples)
+    if n == 0:
+        return float("nan")
+    ordered = sorted(samples)
+    spread = sum((2 * i - n + 1) * x for i, x in enumerate(ordered)) * 2.0 / (n * n)  # mean |x - x'| over all ordered pairs
+    return sum(abs(x - value) for x in ordered) / n - spread / 2.0
+
+
 def _player_checks(games: Sequence[SimGame], real_players: Sequence[tuple[str, str, float, int, int, int]]) -> tuple[PlayerCheck, ...]:
     by_player: dict[str, list[tuple[float, float, float, float]]] = {}
     for g in games:
@@ -305,8 +335,33 @@ def _player_checks(games: Sequence[SimGame], real_players: Sequence[tuple[str, s
     checks = []
     for team, athlete, minutes, pts, reb, ast in real_players:
         sims = by_player.get(athlete, [])
-        qp, qr, qa = (matchup.quantiles([s[i] for s in sims], (lo, hi)) for i in (1, 2, 3))
-        checks.append(PlayerCheck(athlete, team, minutes, pts, reb, ast, len(sims), _mean([s[0] for s in sims]) if sims else 0.0, qp["p10"], qp["p90"], qr["p10"], qr["p90"], qa["p10"], qa["p90"]))
+        columns = [[s[i] for s in sims] for i in range(4)]
+        qp, qr, qa = (matchup.quantiles(columns[i], (lo, hi)) for i in (1, 2, 3))
+        checks.append(
+            PlayerCheck(
+                athlete,
+                team,
+                minutes,
+                pts,
+                reb,
+                ast,
+                len(sims),
+                _mean(columns[0]) if sims else 0.0,
+                qp["p10"],
+                qp["p90"],
+                qr["p10"],
+                qr["p90"],
+                qa["p10"],
+                qa["p90"],
+                points_mean=_mean(columns[1]),
+                rebounds_mean=_mean(columns[2]),
+                assists_mean=_mean(columns[3]),
+                points_crps=crps(columns[1], float(pts)),
+                rebounds_crps=crps(columns[2], float(reb)),
+                assists_crps=crps(columns[3], float(ast)),
+                minutes_crps=crps(columns[0], minutes),
+            )
+        )
     return tuple(checks)
 
 
@@ -645,8 +700,46 @@ def _score_metrics(games: Sequence[GameCheck]) -> dict[str, Any]:
     }
 
 
+PLAYER_TIERS: tuple[tuple[str, Callable[[PlayerCheck], bool]], ...] = (
+    ("30+ simulated minutes", lambda p: p.sim_minutes >= 30.0),
+    ("15-30 simulated minutes", lambda p: 15.0 <= p.sim_minutes < 30.0),
+    ("under 15 simulated minutes", lambda p: p.sim_minutes < 15.0),
+)
+"""The player tiers the accuracy is reported by: by SIMULATED minutes, so
+the tiers are the model's own expectation and not the outcome (a tier by
+real points would select on what is being scored).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def _accuracy(players: Sequence[PlayerCheck], tier: str) -> dict[str, Any]:
+    """Mean absolute error of the simulated mean and mean CRPS, per stat, over ``players``."""
+    out: dict[str, Any] = {"tier": tier, "n": len(players), "coverage_points": _coverage(players, "points")}
+    for stat in ("points", "rebounds", "assists"):
+        out[f"{stat}_mae"] = _mean([abs(getattr(p, f"{stat}_mean") - getattr(p, stat)) for p in players if not math.isnan(getattr(p, f"{stat}_mean"))])
+        out[f"{stat}_crps"] = _mean([getattr(p, f"{stat}_crps") for p in players if not math.isnan(getattr(p, f"{stat}_crps"))])
+    out["minutes_mae"] = _mean([abs(p.sim_minutes - p.minutes) for p in players])
+    out["minutes_crps"] = _mean([p.minutes_crps for p in players if not math.isnan(p.minutes_crps)])
+    return out
+
+
+def _top_scorers(games: Sequence[GameCheck]) -> list[PlayerCheck]:
+    """Each side's expected top scorer in each game, by the simulated mean."""
+    tops = []
+    for g in games:
+        for team in (g.home, g.away):
+            side = [p for p in g.players if p.team_id == team and p.sim_games > 0 and not math.isnan(p.points_mean)]
+            if side:
+                tops.append(max(side, key=lambda p: p.points_mean))
+    return tops
+
+
 def _player_metrics(games: Sequence[GameCheck]) -> dict[str, Any]:
     players = [p for g in games for p in g.players if p.sim_games > 0]
+    accuracy = _accuracy(players, "all")
+    tiers = [_accuracy([p for p in players if member(p)], tier) for tier, member in PLAYER_TIERS]
+    tiers.append(_accuracy(_top_scorers(games), "the model's top scorer on each side"))
     return {
         "player_games": len(players),
         "coverage_points": _coverage(players, "points"),
@@ -654,6 +747,8 @@ def _player_metrics(games: Sequence[GameCheck]) -> dict[str, Any]:
         "coverage_assists": _coverage(players, "assists"),
         "minutes_mean_error": _mean([p.sim_minutes - p.minutes for p in players]),
         "minutes_abs_error": _mean([abs(p.sim_minutes - p.minutes) for p in players]),
+        **{k: v for k, v in accuracy.items() if k not in ("tier", "n", "coverage_points")},
+        "tiers": tiers,
     }
 
 
@@ -671,6 +766,19 @@ def metrics(run: Validation) -> dict[str, Any]:
         **_player_metrics(games),
         "seconds_per_game": _mean([g.seconds for g in games]),
     }
+
+
+_ACCURACY_KEYS = ("points_mae", "points_crps", "rebounds_mae", "rebounds_crps", "assists_mae", "assists_crps", "minutes_mae", "minutes_crps")
+
+
+def _all_tier(m: Mapping[str, Any]) -> dict[str, Any]:
+    return {"tier": "all", "n": m["player_games"], "coverage_points": m["coverage_points"], **{k: m[k] for k in _ACCURACY_KEYS}}
+
+
+def _tier_row(t: Mapping[str, Any]) -> str:
+    cells = [t["tier"], str(t["n"]), f"{t['points_mae']:.2f}", f"{t['points_crps']:.2f}", f"{t['coverage_points']:.3f}"]
+    cells += [f"{t[k]:.2f}" for k in ("rebounds_mae", "rebounds_crps", "assists_mae", "assists_crps", "minutes_mae", "minutes_crps")]
+    return "| " + " | ".join(cells) + " |"
 
 
 def report(run: Validation, m: Mapping[str, Any] | None = None) -> str:
@@ -732,6 +840,13 @@ def report(run: Validation, m: Mapping[str, Any] | None = None) -> str:
         f"{m['player_games']} player-games. 80% interval coverage: points {m['coverage_points']:.3f}, rebounds {m['coverage_rebounds']:.3f}, "
         f"assists {m['coverage_assists']:.3f} (close to 0.800 is right).",
         f"Minutes: simulated mean minus real, mean {m['minutes_mean_error']:+.2f}, mean absolute {m['minutes_abs_error']:.2f}.",
+        "",
+        "Accuracy: the simulated mean's mean absolute error against the real line, and the CRPS of the whole simulated distribution "
+        "(lower is better; a point forecast's CRPS is its absolute error), by tier of SIMULATED minutes:",
+        "",
+        "| tier | player-games | points MAE | points CRPS | points coverage | rebounds MAE | rebounds CRPS | assists MAE | assists CRPS | minutes MAE | minutes CRPS |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        *(_tier_row(t) for t in [_all_tier(m), *m["tiers"]]),
     ]
     if run.refused:
         lines += ["", "## Refused", ""] + [f"- {e}: {why}" for e, why in run.refused]
