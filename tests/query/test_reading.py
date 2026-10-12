@@ -14,7 +14,7 @@ from slots import slots_scope
 from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
-from association.query.reading import GAMES_COUNTED, Reading, Span, Window
+from association.query.reading import GAMES_COUNTED, Companion, Cuts, Line, Measure, Period, Reading, Span, Window
 from association.query.reading import Subject as Who
 
 
@@ -38,7 +38,7 @@ def test_the_planner_copies_and_never_decides() -> None:
     ``relation`` -> ``subject``), and a field the Reading left unset is
     unset on the Query too."""
     reading = Reading(
-        **(slots_scope({"player": "X", "season": 2025})).filters(),
+        **(Reading(who=Who(kind="player", players=("X",)), span=Span(season=2025))).filters(),
         shape="ranking",
         by="player",
         measures=["points"],
@@ -75,7 +75,9 @@ def test_the_planner_copies_and_never_decides() -> None:
 
 
 def test_a_team_reading_plans_to_the_team_relation() -> None:
-    reading = Reading(**(slots_scope({"team": "Orlando Magic", "season": 2026})).filters(), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team")
+    reading = Reading(
+        **(Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026))).filters(), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team"
+    )
     q = plan(reading)
     assert isinstance(q, TeamQuery)
     assert (q.filters(), q.metric, q.aggregate) == (Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026)).filters(), "threePointFieldGoalsMade", "total")
@@ -96,7 +98,7 @@ def test_the_compilers_points_are_keyword_only() -> None:
 
 def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
     reading = Reading(
-        **(slots_scope({"player": "Joel Embiid", "season": 2026, "opponent": None, "without": []})).filters(),
+        **(Reading(who=Who(kind="player", players=("Joel Embiid",)), span=Span(season=2026))).filters(),
         shape="scalar",
         measures=[],
         aggregate="count",
@@ -216,28 +218,19 @@ def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_
     from association.query.compose.say import decline_body
     from association.query.reading import CELL_ORDER, cell_facts, unhonored_cells
 
-    scope = slots_scope(
-        {
-            "player": "x",
-            "since": 2019,
-            "until": 2021,
-            "season_type_unstated": True,
-            "order": "recent",
-            "limit": 5,
-            "ranked_by": "points",
-            "own_team": "MIA",
-            "round": "finals",
-            "half": 2,
-            "below": ["under 14 fta"],
-            "without": ["y"],
-            "conditions": [{"player": "z", "predicate": "started"}],
-            "stat": "points",
-            "rate": "per 100 possessions",
-            "split": "starter_bench",
-        }
+    scope = Reading(
+        who=Who(kind="player", players=("x",)),
+        cuts=Cuts(tenure="MIA", round="finals"),
+        companions=(Companion(player="z", predicate="started"), Companion(player="y", predicate="absent")),
+        lines=(Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="under 14 fta", narrows=True),),
+        measure=Measure(key="points", as_typed="points", how="per_100", unit="per 100 possessions"),
+        span=Span(both=True, since=2019, until=2021),
+        split="starter_bench",
+        period=Period(number=2, half=True),
+        window=Window(order="recent", count=5, by="points"),
     )
     assert scope.cells() == {"range", "both", "window", "ranked_by", "tenure", "round", "period", "line", "companion", "rate", "split"}
-    assert Reading().cells() == frozenset() and slots_scope({"split": "bench"}).cells() == {"split"}
+    assert Reading().cells() == frozenset() and Reading(split="bench").cells() == {"split"}
     assert set(CELL_ORDER) >= scope.cells()
     assert unhonored_cells(scope, frozenset({"range", "companion", "split"})) == ["both", "window", "ranked_by", "tenure", "round", "period", "line", "rate"]
     said = decline_body({"cells": [cell_facts(scope, cell) for cell in unhonored_cells(scope, frozenset())], "why": "why"})
@@ -256,9 +249,9 @@ def test_a_period_condition_round_trips_through_the_slot_door() -> None:
     neither, or a key nothing types, is refused at the door."""
     from association.query.reading import Line, Period, ScopeError
 
-    scope = slots_scope({"period_condition": {"stat": "threePointFieldGoalsMade", "threshold": 1, "period": 1}})
+    scope = Reading(lines=(Line(measure="threePointFieldGoalsMade", period=Period(number=1)),))
     assert scope.lines == (Line(measure="threePointFieldGoalsMade", op=">=", value=1, period=Period(number=1)),)
-    exact = slots_scope({"period_condition": {"stat": "points", "threshold": 10, "op": "=", "half": 1}})
+    exact = Reading(lines=(Line(measure="points", op="=", value=10, period=Period(number=1, half=True)),))
     assert exact.lines == (Line(measure="points", op="=", value=10, period=Period(number=1, half=True)),)
     for bad in (
         {"stat": "points", "threshold": 1},
