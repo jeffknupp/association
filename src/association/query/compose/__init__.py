@@ -310,7 +310,7 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
     unhonored = cells_unhonored(query, shape)
     found = shape_cells(shape)
     if unhonored and found is not None and found[1].declined == "read":
-        raise beyond_words(SHAPE_NAMES[shape], unhonored)
+        raise beyond_words(query, unhonored)
     if route.only:
         return _read_only(lambda: None if unhonored else route.reader(con, query), SHAPE_NAMES[shape])
     return None if unhonored else _read_log(lambda: route.reader(con, query))

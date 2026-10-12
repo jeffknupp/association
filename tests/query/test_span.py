@@ -180,10 +180,8 @@ def test_a_typed_span_and_a_slot_at_once_is_refused_at_the_door() -> None:
 def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert Span().cells() == frozenset()
     assert Span(since=2020, until=2024, both=True, career=True).cells() == {"range", "both", "career"}
-    assert Span(since=2020).unhonored(frozenset()) == ["since"]
-    assert Span(since=2020, until=2024).unhonored(frozenset({"career"})) == ["since", "until"]
-    assert Span(both=True, career=True).unhonored(frozenset({"both"})) == ["span"]
-    assert unhonored_cells(Reading(cuts=Cuts(opponent="BOS"), span=Span(since=2020, both=True)), frozenset({"opponent", "range"})) == ["season_type_unstated"]
+    assert unhonored_cells(Reading(span=Span(both=True, career=True)), frozenset({"both"})) == ["career"]
+    assert unhonored_cells(Reading(cuts=Cuts(opponent="BOS"), span=Span(since=2020, both=True)), frozenset({"opponent", "range"})) == ["both"]
     assert Span(season=2024, season_type=3, both=True).stated == {"season", "postseason", "both"}
     assert Span(since=2020).over_career() == Span(career=True, since=2020)
     assert Span(season=2024).as_career() == Span(season=2024, career=True)

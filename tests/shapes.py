@@ -100,8 +100,9 @@ def stated(words: str) -> frozenset[str]:
 
 
 def unhonored(words: str, scope: Filtered) -> list[str]:
-    """The slot names ``scope`` sets beyond what the shape named by ``words``
-    states (``compose.plan.cells_unhonored``) - where ``reading.unhonored_scoping``
-    over that shape's ``STATED_SCOPING`` row stood until Phase 3, step 2's
-    closing slice."""
-    return [slot for slot, _, _ in cells_unhonored(scope, KEYS[words])]
+    """The cells ``scope`` sets beyond what the shape named by ``words``
+    states (``compose.plan.cells_unhonored``), in the order a decline names
+    them - the slot names each was declared under until the Phase 3 review's
+    cleanup (b)3, ``reading.unhonored_scoping`` over the shape's
+    ``STATED_SCOPING`` row until Phase 3, step 2's closing slice."""
+    return [cell for cell, _ in cells_unhonored(scope, KEYS[words])]

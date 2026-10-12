@@ -18,8 +18,8 @@ inherits too), and the ``Scope`` record they stood on is gone with its slot
 door (``tests/slots.py`` keeps it for the tests). Since slice (c) the typed
 values are the shape a reading is recorded and traced in: the projection
 back to the slot dict (``to_slots``, ``scope_record``, ``projected``) went
-with it, and what a decline still says in slot names is read off the typed
-values (:func:`cell_slots`).
+with it, and a decline says each cell by what the words asked under it
+(:func:`cell_facts`, since the Phase 3 review's cleanup).
 
 .. versionadded:: 5.0.0
 """
@@ -168,12 +168,6 @@ class ScopeError(ValueError):
     """
 
 
-#: The slot name each span cell was declared and refused under until Phase
-#: 3, step 2 - the name a decline still says ("cannot honor ['since']"),
-#: until the decline-to-Cause commit rewords it.
-_CELL_SLOT_NAMES: dict[str, tuple[str, ...]] = {"career": ("span",), "range": ("since", "until"), "both": ("season_type_unstated",)}
-
-
 @dataclass(frozen=True, kw_only=True)
 class Span:
     """The seasons a question covers and the season type it reads, as the
@@ -253,14 +247,6 @@ class Span:
         table must honor, or step aside or refuse for."""
         return frozenset(cell for cell, held in (("career", self.career), ("range", self.since is not None or self.until is not None), ("both", self.both)) if held)
 
-    def unhonored(self, honored: frozenset[str]) -> list[str]:
-        """The slot names (``span``, ``since``, ``until``,
-        ``season_type_unstated``) of the cells this value sets beyond
-        ``honored`` - the names a decline says, in the order the slot list
-        said them."""
-        held = {"span": self.career, "since": self.since is not None, "until": self.until is not None, "season_type_unstated": self.both}
-        return [slot for cell in self.cells() - honored for slot in _CELL_SLOT_NAMES[cell] if held[slot]]
-
     def over_career(self) -> Span:
         """This span read over every season: a name narrowed over a career
         (an ordinal season, a date that names its own game) - the career
@@ -279,12 +265,6 @@ class Span:
         count of a player's games, a tenure or "ever" implies where no
         season was named."""
         return replace(self, career=True)
-
-
-#: The slot name each window cell was declared and refused under until
-#: Phase 3, step 2 - the name a decline still says ("cannot honor
-#: ['order']"), until the decline-to-Cause commit rewords it.
-_WINDOW_CELL_SLOT_NAMES: dict[str, tuple[str, ...]] = {"window": ("order",), "ranked_by": ("ranked_by",)}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -363,11 +343,6 @@ class Window:
         table must honor, or step aside or refuse for."""
         return frozenset(cell for cell, held in (("window", self.order is not None), ("ranked_by", self.by is not None)) if held)
 
-    def unhonored(self, honored: frozenset[str]) -> list[str]:
-        """The slot names (``order``, ``ranked_by``) of the cells this value
-        sets beyond ``honored`` - the names a decline says."""
-        return [slot for cell in self.cells() - honored for slot in _WINDOW_CELL_SLOT_NAMES[cell]]
-
 
 MinimumUnit = Literal["games", "attempts", "other"]
 """What a stated qualifier counts: games played, shot attempts, or another
@@ -418,21 +393,9 @@ class Minimum:
             raise ScopeError(f"a stated minimum of {self.count} is below 0")
 
 
-#: The slot name each cut was declared and refused under until Phase 3,
-#: step 2 - the name a decline still says ("cannot honor ['situation']"),
-#: until the decline-to-Cause commit rewords it. ``own_team`` is the
-#: tenure's slot name; the rest are their own. The order is the old
-#: ``Scope``'s field order, which a decline's list keeps.
-_CUT_SLOT_NAMES: dict[str, str] = {
-    "opponent": "opponent",
-    "tenure": "own_team",
-    "date": "date",
-    "situation": "situation",
-    "game_n": "game_n",
-    "season_n": "season_n",
-    "round": "round",
-    "venue": "venue",
-}
+#: The eight cuts by their cell names, in the order a decline names them
+#: (:data:`CELL_ORDER`).
+_CUT_ORDER: tuple[str, ...] = ("opponent", "tenure", "venue", "date", "situation", "game_n", "season_n", "round")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -452,8 +415,7 @@ class Situation:
     the parsed halves and never the words again.
 
     One value for the three rather than three cells, because the cell the
-    relations declare is the ``situation`` (the one slot it was), and a
-    decline still names it so (``_CUT_SLOT_NAMES``): measured on the 2,710
+    relations declare is the ``situation`` (the one slot it was): measured on the 2,710
     readings of 2026-10-09 (``~/association-research/stages/cuts_family.py``),
     96 carry one - 42 a calendar narrowing, 21 an alignment, 33 neither.
 
@@ -531,7 +493,7 @@ class Cuts:
     #: value as setting. A ``round`` is in neither table (no game is labeled
     #: by its round, so every reader refuses it); a ``tenure`` and an
     #: ordinal ``season_n`` are one player's, not the team relation's.
-    CELLS: ClassVar[frozenset[str]] = frozenset(_CUT_SLOT_NAMES)
+    CELLS: ClassVar[frozenset[str]] = frozenset(_CUT_ORDER)
 
     @property
     def named(self) -> bool:
@@ -541,13 +503,7 @@ class Cuts:
     def cells(self) -> frozenset[str]:
         """The cuts this value sets (:attr:`CELLS`): what a relation's table
         must honor, or step aside or refuse for."""
-        return frozenset(name for name in _CUT_SLOT_NAMES if getattr(self, name) is not None)
-
-    def unhonored(self, honored: frozenset[str]) -> list[str]:
-        """The slot names (``own_team`` for the tenure, the rest their own)
-        of the cuts this value sets beyond ``honored`` - the names a decline
-        says."""
-        return [_CUT_SLOT_NAMES[cell] for cell in _CUT_SLOT_NAMES if cell in self.cells() and cell not in honored]
+        return frozenset(name for name in _CUT_ORDER if getattr(self, name) is not None)
 
 
 def situation_of(text: str) -> Situation:
@@ -581,8 +537,9 @@ class Period:
     carry one - 79 quarters and 41 halves, never both - the two relations
     apply a quarter and a half through one step (``narrow_periods``), and
     each reader's exclusion rows paired the two slots under one reason in
-    two wordings. The slot name a decline said (``period`` or ``half``) is
-    kept by :meth:`unhonored` until the decline-to-Cause commit rewords it.
+    two wordings. A decline says the quarter or half asked ("the 2nd half",
+    :func:`cell_facts`); the slot name that was set (``period`` or
+    ``half``) until the Phase 3 review's cleanup (b)3.
 
     .. versionadded:: 6.0.0
     """
@@ -618,19 +575,6 @@ class Period:
         """The one cell this value sets (:attr:`CELLS`)."""
         return self.CELLS
 
-    def unhonored(self, honored: frozenset[str]) -> list[str]:
-        """The slot name (``half`` for a half, ``period`` for a quarter) of
-        the cell beyond ``honored`` - the name a decline says."""
-        return [] if "period" in honored else ["half" if self.half else "period"]
-
-
-#: The slot names the line family's cells were declared and refused under
-#: until Phase 3, step 2 - the names a decline still says ("cannot honor
-#: ['above', 'without']"), until the decline-to-Cause commit rewords it: a
-#: line the relation narrows by was ``below`` and ``above`` (by which way it
-#: faces), a line in a quarter ``period_condition``, a companion ``without``
-#: (an absence) and ``conditions`` (any other role).
-_LINE_CELL_SLOT_NAMES: dict[str, tuple[str, ...]] = {"line": ("below", "above"), "period_line": ("period_condition",)}
 
 LineOp = Literal[">=", ">", "<=", "<", "="]
 """How a line compares a stat to its number (``player_games.MEASURE_OPS``
@@ -791,8 +735,8 @@ class Companion:
     #: subject with a role. Declared under two slot names until Phase 3,
     #: step 2 (``without`` for an absence, ``conditions`` for the rest), and
     #: never honored or refused apart - no table named one without the
-    #: other - so one cell, which a decline still says under the slot name
-    #: set (:func:`companion_slot_names`).
+    #: other - so one cell, which a decline says by each companion's name
+    #: and role (:func:`cell_facts`).
     CELLS: ClassVar[frozenset[str]] = frozenset({"companion"})
 
     def __post_init__(self) -> None:
@@ -943,10 +887,6 @@ class Measure:
         """The cell this value sets (:attr:`CELLS`): ``rate`` where a unit
         was asked for that the key did not fold in."""
         return frozenset({"rate"}) if self.unit is not None else frozenset()
-
-    def unhonored(self, honored: frozenset[str]) -> list[str]:
-        """The cell set that ``honored`` does not hold, by its slot name."""
-        return [cell for cell in sorted(self.cells()) if cell not in honored]
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Measure | None:
@@ -1300,101 +1240,67 @@ class Filtered:
         stands in a quarter or half, ``companion`` where anyone stands
         beside the subject."""
         held = set()
-        named = line_slots_set(self.lines)
-        if "above" in named or "below" in named:
+        if any(line.period is None and line.narrows for line in self.lines):
             held.add("line")
-        if "period_condition" in named:
+        if any(line.period is not None for line in self.lines):
             held.add("period_line")
         if self.companions:
             held.add("companion")
         return frozenset(held)
 
 
-def line_slots_set(lines: tuple[Line, ...]) -> frozenset[str]:
-    """The slot names the subject's ``lines`` were declared and refused under
-    until Phase 3, step 2, as the typed values set them: ``threshold``, the
-    shape's own line; ``above``, a floor or an "N+ stat" pair the relation
-    narrows by; ``below``, a line kept under its number; ``period_condition``,
-    a line in a quarter or half. The names a decline says, until the
-    decline-to-Cause commit rewords it; the slot-era projection that listed
-    them went with Phase 3, step 4, slice (c).
+#: The order a decline names a point's cells in: the span, the window, the
+#: cuts, the period, the lines, the companions, the split, the unit.
+CELL_ORDER: tuple[str, ...] = ("career", "range", "both", "window", "ranked_by", *_CUT_ORDER, "period", "line", "period_line", "companion", "split", "rate")
+"""Every cell a point can set (:meth:`Filtered.cells`), in the order a
+decline names them (:func:`cell_facts`).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def cell_facts(scope: Filtered, cell: str) -> dict[str, Any]:
+    """What the words asked under ``cell`` on ``scope``, as the plain facts a
+    decline is said with (``say.cell_phrase``): the cell's name and its
+    typed value's parts - the window's end and count, the range's first and
+    last season, the opponent, the lines, the companions and their roles.
+    Until the Phase 3 review's cleanup (b)3 a decline said the slot names
+    each cell was declared under before Phase 3, step 2 ("cannot honor
+    ['order']", ``cell_slots``), 87 mentions of a name that was no field or
+    cell anywhere (ISSUES.md #281).
 
     .. versionadded:: 6.0.0
     """
-    named = set()
-    for line in lines:
-        if line.period is not None:
-            named.add("period_condition")
-            continue
-        if line.keyed:
-            named.add("threshold")
-        if line.narrows and line.below:
-            named.add("below")
-        elif line.narrows:
-            # A floor ("with 25 minutes"), a line kept over its number
-            # ("over 26 minutes") or an "N+ stat" pair: the line cell, so a
-            # reader that does not honor it declines rather than answering
-            # every game (a line kept over its number set no cell until
-            # 2026-10-11, when the lines tagger first wrote one).
-            named.add("above")
-    return frozenset(named)
+    facts: dict[str, Any] = {"cell": cell}
+    span, window, cuts = scope.span, scope.window, scope.cuts
+    if cell == "range":
+        facts.update(since=span.since, until=span.until)
+    elif cell == "window":
+        facts.update(order=window.order, count=window.count, of=window.of)
+    elif cell == "ranked_by":
+        facts.update(by=window.by)
+    elif cell == "situation":
+        facts.update(words=cuts.situation.text if cuts.situation is not None else None)
+    elif cell in _CUT_ORDER:
+        facts.update(value=getattr(cuts, cell))
+    elif cell == "period" and scope.period is not None:
+        facts.update(number=scope.period.number, half=scope.period.half)
+    elif cell in ("line", "period_line"):
+        facts.update(lines=[_line_facts(line) for line in scope.lines if (line.period is not None) == (cell == "period_line") and (line.narrows or cell == "period_line")])
+    elif cell == "companion":
+        facts.update(companions=[{"player": c.player, "side": c.side, "predicate": c.predicate} for c in scope.companions])
+    elif cell == "split":
+        facts.update(split=scope.split)
+    elif cell == "rate":
+        facts.update(unit=scope.measure.unit if scope.measure is not None else None)
+    return facts
 
 
-def companion_slot_names(scope: Filtered) -> list[str]:
-    """The slot names (``without``, ``conditions``) the companions on
-    ``scope`` were declared and refused under - the names a decline says,
-    in the order the slot list said them: ``without`` where a teammate is
-    absent, ``conditions`` where anyone stands on the other side or in an
-    own-side role but an absence (a teammate who played is the split's
-    name or a condition: a cell either way).
-
-    .. versionadded:: 6.0.0
-    """
-    named = []
-    if any(c.absent for c in scope.companions):
-        named.append("without")
-    if any(c.side == "opponent" or c.predicate != "absent" for c in scope.companions):
-        named.append("conditions")
-    return named
-
-
-def line_slot_names(scope: Filtered, cell: str) -> list[str]:
-    """The slot names (``below``, ``above``; ``period_condition``) the lines
-    on ``scope`` set under ``cell`` were declared and refused under.
-
-    .. versionadded:: 6.0.0
-    """
-    named = line_slots_set(scope.lines)
-    return [name for name in _LINE_CELL_SLOT_NAMES[cell] if name in named]
-
-
-def cell_slots(scope: Filtered, cell: str) -> list[str]:
-    """The slot names ``cell`` is set under on ``scope`` - the names a
-    decline says ("cannot honor ['since', 'until']"), each cell by the slots
-    it was declared under until Phase 3, step 2 (:meth:`Span.unhonored`,
-    :meth:`Window.unhonored`, :meth:`Cuts.unhonored`, :meth:`Period.unhonored`,
-    :func:`line_slot_names`, :func:`companion_slot_names`; the unit and the
-    split by their own names), in the order the slot list said them; none
-    where the cell is not set. Until the decline-to-Cause commit rewords the
-    declines, this is how a typed cell is said.
-
-    .. versionadded:: 6.0.0
-    """
-    if cell not in scope.cells():
-        return []
-    if cell in Span.CELLS:
-        return scope.span.unhonored(Span.CELLS - {cell})
-    if cell in Window.CELLS:
-        return scope.window.unhonored(Window.CELLS - {cell})
-    if cell in Cuts.CELLS:
-        return scope.cuts.unhonored(Cuts.CELLS - {cell})
-    if cell in Period.CELLS and scope.period is not None:
-        return scope.period.unhonored(frozenset())
-    if cell in Line.CELLS:
-        return line_slot_names(scope, cell)
-    if cell in Companion.CELLS:
-        return companion_slot_names(scope)
-    return [cell]
+def _line_facts(line: Line) -> dict[str, Any]:
+    """One line as a decline's plain facts: the words it was read from, its
+    stat, way and number, and the period it stands in."""
+    period = None if line.period is None else {"number": line.period.number, "half": line.period.half}
+    return {"as_typed": line.as_typed, "measure": line.measure, "op": line.op, "value": line.value, "period": period}
 
 
 def cell_set(scope: Filtered, cell: str) -> bool:
@@ -2480,8 +2386,8 @@ def scope_reads_box_scores(scope: Filtered, measures: list[Any]) -> bool:
 
 
 def unhonored_cells(scope: Filtered, honored: frozenset[str]) -> list[str]:
-    """The slot names of the cells ``scope`` sets that ``honored`` does not
-    hold, sorted (:meth:`Filtered.cells`, each by :func:`cell_slots`): the
+    """The cells ``scope`` sets that ``honored`` does not hold, in the order
+    a decline names them (:meth:`Filtered.cells`, :data:`CELL_ORDER`): the
     relation's own check of a cell set against its table
     (``compose.core._check_relation_scoping``).
 
@@ -2491,7 +2397,8 @@ def unhonored_cells(scope: Filtered, honored: frozenset[str]) -> list[str]:
 
     .. versionadded:: 6.0.0
     """
-    return sorted(slot for cell in scope.cells() - honored for slot in cell_slots(scope, cell))
+    held = scope.cells() - honored
+    return [cell for cell in CELL_ORDER if cell in held]
 
 
 # Templates that read a player name at all - resolving it, filtering on it, or

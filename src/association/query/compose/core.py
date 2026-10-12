@@ -76,6 +76,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Split,
     Subject,
     Window,
+    cell_facts,
     period_narrowing,
     unhonored_cells,
 )
@@ -500,8 +501,12 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
         honored -= {"both", "date", "game_n", "companion", "split", "tenure", "window"}
     unhonored = unhonored_cells(scope, honored)
     if unhonored:
-        whose = "a team's games cannot be narrowed by" if subject == "team" else "the relation cannot honor"
-        raise Unsupported(f"{whose} {unhonored} - it would answer for a different span than was asked")
+        # Said by the sayer's one decline phrase, by what the words asked
+        # under each cell (a call-time import: compose.say reads the readers).
+        from association.query.compose.say import decline_body
+
+        facts = {"cells": [cell_facts(scope, cell) for cell in unhonored], "over": "a team's games" if subject == "team" else None, "why": "it would answer for a different span than was asked"}
+        raise Unsupported(decline_body(facts))
 
 
 #: What a period-narrowed read may measure: the columns the period's line

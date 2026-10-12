@@ -26,7 +26,6 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from association.query.reading import (
-    _CUT_SLOT_NAMES,
     _FILTER_FIELDS,
     Companion,
     Cuts,
@@ -269,6 +268,19 @@ _MEASURE_SLOT_NAMES = frozenset({"stat", "fields", "per_game", "rate", "side", "
 _SPAN_SLOT_NAMES = frozenset({"season", "season_type", "season_type_unstated", "span", "since", "until"})
 #: The four slot names the window's door still takes (:meth:`Window.from_slots`).
 _WINDOW_SLOT_NAMES = frozenset({"order", "limit", "rank", "ranked_by"})
+#: The slot each cut was declared under until Phase 3, step 2 (``own_team``
+#: the tenure's, the rest their own): the door's own copy, since the reader
+#: says a cell by its own name (``reading.cell_facts``) and keeps no slot names.
+_CUT_SLOT_NAMES: dict[str, str] = {
+    "opponent": "opponent",
+    "tenure": "own_team",
+    "date": "date",
+    "situation": "situation",
+    "game_n": "game_n",
+    "season_n": "season_n",
+    "round": "round",
+    "venue": "venue",
+}
 #: The eight slot names the cuts' door still takes (:meth:`Cuts.from_slots`).
 _CUT_SLOT_KEYS = frozenset(_CUT_SLOT_NAMES.values())
 #: The two slot names the period's door still takes (:meth:`Period.from_slots`).

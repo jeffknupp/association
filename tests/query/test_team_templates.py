@@ -408,7 +408,7 @@ def test_the_team_as_its_own_opponent_falls_through(team_ctx: AnswerContext) -> 
 def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
     # The compiler's since Phase 2's slice (iv): its words state these, and the planner declines `order`.
     assert unhonored("team_record", slots_scope({"venue": "home", "opponent": "Boston Celtics", "span": "career"})) == []
-    assert unhonored("team_record", slots_scope({"order": "recent"})) == ["order"]
+    assert unhonored("team_record", slots_scope({"order": "recent"})) == ["window"]
 
 
 def test_team_record_honors_situation_and_split_at_the_declaration_level() -> None:

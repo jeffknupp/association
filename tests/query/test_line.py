@@ -45,10 +45,8 @@ from association.query.reading import (
     PointShape,
     Reading,
     ScopeError,
+    cell_facts,
     cell_set,
-    cell_slots,
-    companion_slot_names,
-    line_slot_names,
     unhonored_cells,
 )
 from association.query.reading import Subject as Who
@@ -164,8 +162,11 @@ def test_the_door_types_the_splits_teammates_and_a_role_beside_them() -> None:
     assert sorted((c.player, c.predicate) for c in both.companions) == [("Jayson Tatum", "played"), ("Jayson Tatum", "started")]
     absent = slots_scope({"with_player": ["Jaylen Brown"], "without": ["Jayson Tatum"]})
     assert sorted((c.player, c.predicate) for c in absent.companions) == [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")]
-    # What a decline names: the absent ones under `without`, every other role under `conditions`, whatever the point.
-    assert companion_slot_names(absent) == ["without", "conditions"] and companion_slot_names(scope) == ["conditions"]
+    # What a decline names: each companion by his name, side and role.
+    assert cell_facts(absent, "companion")["companions"] == [
+        {"player": "Jayson Tatum", "side": "own", "predicate": "absent"},
+        {"player": "Jaylen Brown", "side": "own", "predicate": "played"},
+    ]
 
 
 def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_door() -> None:
@@ -186,23 +187,23 @@ def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_doo
     assert Line(measure="points", value=30).as_predicate() == ("points", ">=", 30)
 
 
-def test_the_cells_and_the_slot_names_a_decline_still_says() -> None:
+def test_the_cells_and_what_a_decline_says_of_them() -> None:
     assert {"line", "period_line"} == Line.CELLS and {"companion"} == Companion.CELLS
     keyed = slots_scope({"stat": "points", "threshold": 30})
     assert keyed.cells() == frozenset() and threshold_of(keyed) == 30 and _shape(threshold_line(keyed) or Line(measure=None))[4]  # the shape's own line sets no cell, as the threshold slot never did
     below = slots_scope({"below": ["under 14 fta"]})
-    assert below.cells() == {"line"} and cell_set(below, "line") and line_slot_names(below, "line") == ["below"] and unhonored_cells(below, frozenset()) == ["below"]
+    assert below.cells() == {"line"} and cell_set(below, "line") and unhonored_cells(below, frozenset()) == ["line"]
     assert unhonored_cells(below, frozenset({"line"})) == []
     above = slots_scope({"above": ["with 25 minutes"], "below": ["under 14 fta"]})
-    assert line_slot_names(above, "line") == ["below", "above"] and unhonored_cells(above, frozenset()) == ["above", "below"]
+    assert unhonored_cells(above, frozenset()) == ["line"] and [line["op"] for line in cell_facts(above, "line")["lines"]] == ["<", ">="]
     quarter = slots_scope({"period_condition": {"stat": "points", "threshold": 10, "period": 1}})
-    assert quarter.cells() == {"period_line"} and unhonored_cells(quarter, frozenset()) == ["period_condition"] and period_lines(quarter) == list(quarter.lines)
+    assert quarter.cells() == {"period_line"} and unhonored_cells(quarter, frozenset()) == ["period_line"] and period_lines(quarter) == list(quarter.lines)
+    assert cell_facts(quarter, "period_line")["lines"][0]["period"] == {"number": 1, "half": False}
     without = slots_scope({"without": ["Jayson Tatum"]})
-    assert without.cells() == {"companion"} and companion_slot_names(without) == ["without"] and unhonored_cells(without, frozenset()) == ["without"]
+    assert without.cells() == {"companion"} and unhonored_cells(without, frozenset()) == ["companion"]
     started = slots_scope({"conditions": [{"player": "Joel Embiid", "predicate": "started"}], "without": ["Paul George"]})
-    assert companion_slot_names(started) == ["without", "conditions"] and unhonored_cells(started, frozenset({"companion"})) == []
-    assert sorted(slot for cell in ("companion", "line", "split") for slot in cell_slots(started, cell)) == ["conditions", "without"]
-    assert sorted(slot for cell in ("companion", "line", "split") for slot in cell_slots(slots_scope({"below": ["under 14 fta"], "split": "home_away"}), cell)) == ["below", "split"]
+    assert unhonored_cells(started, frozenset({"companion"})) == []
+    assert unhonored_cells(slots_scope({"below": ["under 14 fta"], "split": "home_away"}), frozenset()) == ["line", "split"]
 
 
 def test_the_relation_tables_declare_the_cells_once_and_by_the_cell_names() -> None:

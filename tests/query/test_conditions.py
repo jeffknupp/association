@@ -917,7 +917,7 @@ def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: Answe
     test_an_opponent_narrows_a_team_only_threshold_too,
     test_a_venue_narrows_a_team_only_threshold_too and
     test_a_team_only_threshold_honors_since below."""
-    with pytest.raises(Unsupported, match=r"record_when cannot honor \['below'\]"):
+    with pytest.raises(Unsupported, match=r"games with under 3 assists cannot be read here with no named player"):
         record_when(league, slots_reading(_slots(team="Boston Celtics", stat="points", threshold=100, below=["under 3 assists"])))
 
 
@@ -954,7 +954,7 @@ def test_a_team_only_threshold_refuses_a_condition(league: AnswerContext) -> Non
     teammate's start, bench game or line) has no subject to check it
     against - refused by name rather than silently answering the team's
     whole span as though the condition were never named (ISSUES.md)."""
-    with pytest.raises(Unsupported, match=r"record_when cannot honor \['conditions'\]"):
+    with pytest.raises(Unsupported, match=r"games Jayson Tatum started cannot be read here with no named player"):
         record_when(
             league,
             slots_reading(_slots(team="Boston Celtics", stat="points", threshold=100, conditions=[{"player": "Jayson Tatum", "predicate": "started"}])),
@@ -1081,9 +1081,9 @@ def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: AnswerCon
     named at all) has no single team's rival or home/road split to read -
     the planner refuses by name (its row's ``named_subject``) rather than
     silently narrowing nothing or picking one team to mean."""
-    with pytest.raises(Unsupported, match=r"streak cannot honor \['venue'\] without a named team or player"):
+    with pytest.raises(Unsupported, match=r"home games cannot be read here with no named team or player"):
         streak(league, slots_reading(_slots(kind="win", venue="home")))
-    with pytest.raises(Unsupported, match=r"streak cannot honor \['opponent'\] without a named team or player"):
+    with pytest.raises(Unsupported, match=r"games against Boston Celtics cannot be read here with no named team or player"):
         streak(league, slots_reading(_slots(kind="win", opponent="Boston Celtics")))
 
 
@@ -1391,7 +1391,7 @@ def test_streak_cannot_honor_a_relation_cell_without_a_player(league: AnswerCont
     ordinal season - only condition_player reads that, and neither branch
     calls it. ``since`` is NOT in this list any more (step 3, C4b) - see
     test_a_team_streak_honors_since below."""
-    with pytest.raises(Unsupported, match=r"streak cannot honor \['season_n'\]"):
+    with pytest.raises(Unsupported, match=r"the 1st season of a career cannot be read here"):
         streak(league, slots_reading(_slots(kind="win", season_n=1)))
 
 
@@ -1431,7 +1431,7 @@ def test_a_team_streak_refuses_a_condition(league: AnswerContext) -> None:
     """Team and league streaks settle no player, so a ``conditions`` entry
     has no subject to check it against - refused by name rather than
     silently narrowing nothing (ISSUES.md)."""
-    with pytest.raises(Unsupported, match=r"streak cannot honor \['conditions'\]"):
+    with pytest.raises(Unsupported, match=r"games Jayson Tatum started cannot be read here"):
         streak(league, slots_reading(_slots(team="Boston Celtics", kind="win", conditions=[{"player": "Jayson Tatum", "predicate": "started"}])))
 
 
@@ -1898,7 +1898,7 @@ def test_a_condition_the_relation_cannot_read_refuses(league: AnswerContext) -> 
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
     # A history's words state no condition (its shape's row, compose.plan.cells_unhonored):
     # its presenter steps aside, and the compiler's sentence says what it read.
-    assert unhonored("player_history", slots_scope({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]})) == ["conditions"]
+    assert unhonored("player_history", slots_scope({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]})) == ["companion"]
 
 
 def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: AnswerContext) -> None:

@@ -138,16 +138,14 @@ def test_a_typed_period_and_a_slot_at_once_or_both_slots_or_a_bad_value_is_refus
         slots_scope({"period": "first"})
 
 
-def test_the_cell_its_decline_name_and_what_a_reader_leaves_unhonored() -> None:
+def test_the_cell_and_what_a_reader_leaves_unhonored() -> None:
     assert {"period"} == Period.CELLS and Period(number=2).cells() == {"period"}
-    assert Period(number=2).unhonored(frozenset()) == ["period"] and Period(number=2, half=True).unhonored(frozenset()) == ["half"]
-    assert Period(number=2, half=True).unhonored(frozenset({"period"})) == []
     assert cell_set(slots_scope({"half": 1}), "period") and not cell_set(Reading(), "period")
-    assert unhonored_cells(slots_scope({"half": 1}), frozenset()) == ["half"]
+    assert unhonored_cells(slots_scope({"half": 1}), frozenset()) == ["period"]
     assert unhonored_cells(slots_scope({"period": 4}), frozenset()) == ["period"]
     assert unhonored_cells(slots_scope({"period": 4}), frozenset({"period"})) == []
-    # A reader whose words never said a quarter steps aside for one, under the slot's name.
-    assert unhonored("game_log", slots_scope({"player": "x", "half": 2})) == ["half"]
+    # A reader whose words never said a quarter steps aside for one.
+    assert unhonored("game_log", slots_scope({"player": "x", "half": 2})) == ["period"]
     assert unhonored("period_split", slots_scope({"player": "x", "half": 2})) == []
 
 

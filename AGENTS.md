@@ -663,9 +663,10 @@ player beside the subject with his role, `played`, `absent`, `started`,
 `opponent`'s, the slots `without`, `with_player` and `conditions` until
 then, one cell because no table ever honored or refused one without the
 others, applied by `_narrow_player_games`/`condition_player`, and the
-with/without split's names; a decline still says the slot names
-(`reading.cell_slots`, over `companion_slot_names` and `line_slot_names`)
-until the decline-to-Cause commit rewords it), the window's typed cell
+with/without split's names; a decline says each cell by what the words
+asked under it - "games without Joel Embiid", "the last 5 games" -
+`reading.cell_facts` phrased by `say.cell_phrase`, since the Phase 3
+review's cleanup (b)3, where it said the retired slot names), the window's typed cell
 (`reading.Window.CELLS`, Phase 3, step 2: `window`, an end of the span
 with its count - the slots `order` and `limit` until then - cut after
 every other filter by `relation_window`; a bare count is no cell, each
@@ -990,9 +991,10 @@ recorded in; slice (c) deleted that projection, so the populations
 record the typed Reading (`stages._reading_record`: the ten filters by
 field, the key the words asked beside its label, the subject reading's
 own record, the point's own fields with its typed filters, the planned
-query's fields), and what a decline still says in slot names is read off
-the typed values (`reading.cell_slots`, `line_slots_set`,
-`companion_slot_names`). Two things follow, and both matter when you add
+query's fields), and a decline says each cell by what the words asked
+under it, read off the typed values (`reading.cell_facts`, phrased by
+`say.decline_body`; the slot names until the Phase 3 review's cleanup
+(b)3). Two things follow, and both matter when you add
 a shape:
 
 - **A slot the router's model used to fill has to be read from the words,**
@@ -1158,9 +1160,9 @@ a shape:
   (`stages._reading_record`, `period`; until slice (c) `to_slots` and
   `projected()` gave the old shape back beside it). ONE cell, `period`, in both
   relation tables (the exclusion rows paired the two slots under one
-  reason in two wordings; rewritten as one), a decline still saying the
-  slot name that was set (`Period.unhonored`: `half` or `period`) until
-  the decline-to-Cause commit rewords it (the per-reader lists and
+  reason in two wordings; rewritten as one), a decline saying the
+  quarter or half asked ("the 2nd half"; the slot name that was set,
+  `half` or `period`, until the Phase 3 review's cleanup (b)3) (the per-reader lists and
   `relation_period` went with step 2's closing slice: a shape's row of its
   relation's table says what it honors). `query/cuts.py` is the cuts' tagger:
   `read_cuts(question, CutsContext)` reads which games of the span a read
@@ -1250,9 +1252,8 @@ a shape:
   until slice (c) `to_slots` and `projected()` gave the old shape back
   beside them, `with_player` only where the point was the with/without
   split and a teammate who played a `conditions` entry on any other point,
-  as the slot era wrote him - the rule `companion_slot_names` and the
-  parser's list of the names the reading settled on still read the typed
-  companions by). `query/measure.py` is the measure's tagger AND the one
+  as the slot era wrote him - the parser's list of the names the reading
+  settled on still reads the typed companions by that rule). `query/measure.py` is the measure's tagger AND the one
   catalog of what a question can ask about: `read_measure(question)`
   reads every word the measure is read by (`MeasureWords`), and
   `point.measure_under(asked, words, MeasureContext)` reads the measure
@@ -1531,8 +1532,10 @@ a shape:
     `TEAM_RELATION_SCOPING_EXCLUDED`, one row per route since step 2's
     closing slice); `reading.SHAPE_NAMES` keeps a retired template's name
     for the page's label and the name a shape's decline cause carries
-    alone (`cannot_honor`: "player_compare cannot honor ['since'] - ...";
-    `no_reading_of_point`: "game_log has no reading of this point"), ONE
+    alone (`no_reading_of_point`: "game_log has no reading of this
+    point"; a `cannot_honor` says its cells by what the words asked,
+    "player_compare: the seasons since 2022-23 cannot be read here - ...",
+    the page's label before it), ONE
     table keyed by the shape - the asked key for the label, the planned key
     for a decline - which Phase 4 deletes with the renderers; `coverage.SOURCES`
     is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`

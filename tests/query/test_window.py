@@ -217,12 +217,9 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert Window(count=5).cells() == frozenset() and Window(count=5).named
     assert Window(order="recent", count=5).cells() == {"window"}
     assert Window(by="points").cells() == {"ranked_by"}
-    assert Window(order="recent", count=5, by="points").unhonored(frozenset()) == ["ranked_by", "order"] or Window(order="recent", count=5, by="points").unhonored(frozenset()) == [
-        "order",
-        "ranked_by",
-    ]
-    assert Window(order="first", count=1).unhonored(frozenset({"window"})) == []
-    assert unhonored_cells(Reading(cuts=Cuts(opponent="BOS"), window=Window(order="recent", count=3)), frozenset({"opponent"})) == ["order"]
+    assert unhonored_cells(Reading(window=Window(order="recent", count=5, by="points")), frozenset()) == ["window", "ranked_by"]
+    assert unhonored_cells(Reading(window=Window(order="first", count=1)), frozenset({"window"})) == []
+    assert unhonored_cells(Reading(cuts=Cuts(opponent="BOS"), window=Window(order="recent", count=3)), frozenset({"opponent"})) == ["window"]
     assert unhonored_cells(Reading(window=Window(by="points", count=10)), frozenset({"window"})) == ["ranked_by"]
 
 

@@ -3435,10 +3435,10 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     # relation honors the slot for a named player, and the count's own words
     # state it (compose.plan.STATED_SCOPING).
     assert unhonored("threshold_count", slots_scope({"season_type_unstated": True})) == []
-    assert unhonored("leaderboard", slots_scope({"season_type_unstated": True})) == ["season_type_unstated"]
+    assert unhonored("leaderboard", slots_scope({"season_type_unstated": True})) == ["both"]
     # single_game_high's words do not state it: its presenter steps aside and
     # the compiler's sentence, which does, answers.
-    assert unhonored("single_game_high", slots_scope({"season_type_unstated": True})) == ["season_type_unstated"]
+    assert unhonored("single_game_high", slots_scope({"season_type_unstated": True})) == ["both"]
 
 
 def test_scope_guard_ignores_absent_or_empty_slots() -> None:
@@ -4675,9 +4675,9 @@ def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: AnswerContext) -> Non
     teammate named absent, rather than answering the whole matchup as
     though no team was named. The template is retired
     (compose.COMPILED_INTENTS); what its words state is its row's."""
-    with pytest.raises(Unsupported, match="opponent"):
+    with pytest.raises(Unsupported, match="games against Detroit Pistons cannot be read here"):
         plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"}))
-    with pytest.raises(Unsupported, match="opponent"):
+    with pytest.raises(Unsupported, match="games against Detroit Pistons"):
         plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]}))
     assert "opponent" not in stated("player_matchup")
 
@@ -5612,7 +5612,7 @@ def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(
     is in the reader's words (its shape's row of `RELATION_SCOPING_EXCLUDED`),
     the same as every other excluded cell here.
     """
-    assert unhonored("period_split", slots_scope({"player": "Stephen Curry", "period": 1, "span": "career"})) == ["span"]
+    assert unhonored("period_split", slots_scope({"player": "Stephen Curry", "period": 1, "span": "career"})) == ["career"]
 
 
 def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param(period_ctx: AnswerContext) -> None:

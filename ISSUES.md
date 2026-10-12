@@ -450,6 +450,7 @@ those were found.
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5, reading the feed's unread numbers one by one (`claims_ledger.py run --feed` on `4c595b8`).
 - **Evidence:** 24 of the 2,082 feed questions name a fact no table holds and are answered `fast` with a ranking or a line the words did not ask for: a draft position (6: "1st Overall draft picks for the past 25 seasons", "3rd nba overall draft picks", "4thd ...", "most points scored by a player drafted 58th/59th/60th in the nba draft" - the last three "Luka Doncic led the league in points per game ..."), a jersey number (3: "players with 78 jersey", "nba players that wear number 5 jersey active", ...), a height (3: "6 ft 6 inches nba players", "6'10 chicago bulls forwards 2010-2019" - every Bulls forward of the decade), a birth date ("NBA players with birth date 8/1"), a team's leads or 4-point plays ("How many 10+ point leads did the Sacramento Kings have last season" refused for a rate; "nba most 4 point plays" the teams' points per game), overtime points (5: "most 3ot points in a game by a team nba" - the teams' points per game, #2312's period), an opponent's win total ("luka doncic stats against 50 win teams in the 2026 season" - his whole line), a role ("highest scoring 2nd options in the nba this year"), a century ("21st century nba players highest win% games"). Each number is unread because nothing reads the fact it names; the words around it fall to the parent grammar's default (`leaderboard`'s points per game).
 - **User sees:** a wrong answer, fluently: a points ranking where draft picks, jersey numbers or heights were asked.
+- **Also:** 17 more feed questions ask for players born on a day ("NBA players born on August 1", "Which NBA players have an August 1 birthday?") and are read as a GAME on that day - the decline the cleanup's (b)3 reworded says so, "leaderboard: the game on 2026-08-01 cannot be read here", where it said "the relation cannot honor ['date']": a refusal, but naming the wrong cause (a game, where a birth date was asked).
 - **Next step:** the lexicon's words for each absent fact (draft/drafted/pick, jersey/wear number, ft/inches/height, born/birth, lead(s), 4-point play, Nth overtime as points, N-win teams) read into a `reading.Cause` that names the missing fact (`refused`, before any point), as `no_coach_table` does - #201's shape, these its commonest cases; each wording a test, the moved answers enumerated.
 - **Priority:** P1 - 24 of the 2,082 answered as a different question.
 - **Source:** ours (the warehouse holds none of these; `DATA.md` "No conference, division or birth-date data anywhere" for the birth date).
@@ -576,27 +577,6 @@ those were found.
   "last season" reads the latest season on record and says so. Then one
   rule in `season_text`, with the answer stating which season it read.
 - **GitHub:** #292
-
-### A refusal for an unhonored narrowing prints the intent's identifier and a Python list: "player_compare: player_compare cannot honor ['since']"
-- **Found:** 2026-09-30, roadmap review (agent B), on live parser22.
-- **Evidence:** "compare Jaylen Brown and Jason Tatum's netpoints over the
-  past four seasons" -> "Nothing here answers this question:
-  player_compare: player_compare cannot honor ['since'] - it would answer
-  for a different span than was asked."; "Best NBA record since January
-  31st 201" -> "... team_leaderboard cannot honor ['situation'] ...".
-- **User sees:** a slot name where AGENTS.md's rule is that a refusal
-  names the missing thing, never only the slot. Since Phase 3, step 4,
-  slice (a) (`56c472d`) the sentence is a typed cause the planner says
-  (`cannot_honor`: the shape's `name`, the `slots`, the row's `why`),
-  answered "fast", the words unchanged by design (6 of the 628 and 63 of
-  the 2,082 say it) - so the rewording is now one phrase
-  (`say._WORDS_PHRASES["cannot_honor"]`) plus a cell's words, not a
-  decline to chase through the answering loop.
-- **Next step:** each cell's phrase in the relation's cell table (the new
-  roadmap's contract 4), read by the `cannot_honor` phrase in place of the
-  slot list and the retired name - an answer move on those 69, Jeff's
-  call, its own enumerated commit.
-- **GitHub:** #281
 
 ### A comparison over a season no named player has a line in prints a table of dashes, not a refusal
 - **Found:** 2026-09-30, roadmap review (agent A), under a faked October

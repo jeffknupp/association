@@ -698,8 +698,8 @@ def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Pat
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
     answer = ask_routed(agent, "how many 30 point games has embiid had per 36", slots_route("threshold_count", {"player": "Joel Embiid", "stat": "points", "threshold": 30, "rate": "per_36"}))
-    assert answer.answered_by == "refused" and "the relation cannot honor" in answer.text
-    assert agent.unanswered == "threshold_count: the relation cannot honor ['rate'] - it would answer for a different span than was asked"
+    assert answer.answered_by == "refused" and "a rate per 36 cannot be read here" in answer.text
+    assert agent.unanswered == "threshold_count: a rate per 36 cannot be read here - it would answer for a different span than was asked"
 
 
 def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

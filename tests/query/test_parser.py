@@ -423,7 +423,7 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     assert reading is not None
     assert [c.predicate for c in reading.companions] == ["started"]
     planned = plan_point(reading)
-    assert planned.query is None and planned.declined is not None and "conditions" in planned.declined, planned
+    assert planned.query is None and planned.declined is not None and "games Joel Embiid started" in planned.declined, planned
 
 
 def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: duckdb.DuckDBPyConnection) -> None:

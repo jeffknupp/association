@@ -404,7 +404,7 @@ def test_an_unhonored_scoping_slot_is_refused(cx_ctx: AnswerContext) -> None:
     refused rather than silently dropped - by the planner, as the point is
     planned (``to_query`` plans); the compile step keeps the same check for
     a query built by hand."""
-    with pytest.raises(Unsupported, match="cannot honor"):
+    with pytest.raises(Unsupported, match="the finals cannot be read here"):
         default_query("game_log", {"player": "Brandin Podziemski", "round": "finals"})
 
 
@@ -891,16 +891,16 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
 
     line = Line(measure="threePointFieldGoalsMade", value=5, period=Period(number=1))
     refused: list[tuple[str, dict[str, Any], str]] = [
-        ("rows", {"period_condition": line}, "period_condition"),
-        ("scalar", {"period_condition": line}, "period_condition"),
-        ("rows", {"split": "starter"}, "split"),
-        ("scalar", {"without": ("Paolo Banchero",)}, "without"),
-        ("scalar", {"below": ("14 fta",)}, "below"),
-        ("scalar", {"season_n": 3}, "season_n"),
-        ("runs", {"period_condition": line}, "period_condition"),
+        ("rows", {"period_condition": line}, "games with 5+ 3-pointers in the 1st quarter"),
+        ("scalar", {"period_condition": line}, "games with 5+ 3-pointers in the 1st quarter"),
+        ("rows", {"split": "starter"}, "the games as a starter"),
+        ("scalar", {"without": ("Paolo Banchero",)}, "games without Paolo Banchero"),
+        ("scalar", {"below": ("14 fta",)}, "games with under 14 fta"),
+        ("scalar", {"season_n": 3}, "the 3rd season of a career"),
+        ("runs", {"period_condition": line}, "games with 5+ 3-pointers in the 1st quarter"),
     ]
     for shape, cells, named in refused:
-        with pytest.raises(Unsupported, match=rf"a team's games cannot be narrowed by .*{named}"):
+        with pytest.raises(Unsupported, match=rf"^{re.escape(named)} cannot be read over a team's games"):
             plan(team_point(shape, **cells))
     passes: list[tuple[str, dict[str, Any]]] = [
         ("scalar", {"opponent": "Boston", "venue": "home", "order": "recent", "limit": 10}),
@@ -931,17 +931,17 @@ def test_a_league_point_refuses_a_cell_the_league_read_has_no_subject_for() -> N
         return plan(read_point(reading, question))
 
     refused: list[tuple[dict[str, Any], str]] = [
-        ({"stat": "points", "date": "2024-11-22"}, "date"),
-        ({"stat": "points", "without": ["Jaylen Brown"]}, "without"),
-        ({"stat": "points", "split": "bench"}, "split"),
-        ({"stat": "points", "own_team": "Miami Heat"}, "own_team"),
-        ({"stat": "points", "order": "recent", "limit": 5}, "order"),
+        ({"stat": "points", "date": "2024-11-22"}, "the game on 2024-11-22"),
+        ({"stat": "points", "without": ["Jaylen Brown"]}, "games without Jaylen Brown"),
+        ({"stat": "points", "split": "bench"}, "the games off the bench"),
+        ({"stat": "points", "own_team": "Miami Heat"}, "games for Miami Heat"),
+        ({"stat": "points", "order": "recent", "limit": 5}, "the last 5 games"),
     ]
     for slots, named in refused:
-        with pytest.raises(Unsupported, match=rf"the relation cannot honor \['{named}'\]"):
+        with pytest.raises(Unsupported, match=rf"^{re.escape(named)} cannot be read here"):
             league_ranking(slots)
-    for slots, named in (({"stat": "blocks", "game_n": 7, "season_type": 3}, "game_n"), ({"stat": "points", "date": "2001-02-02"}, "date")):
-        with pytest.raises(Unsupported, match=rf"the relation cannot honor \['{named}'\]"):
+    for slots, named in (({"stat": "blocks", "game_n": 7, "season_type": 3}, "game 7 of a series"), ({"stat": "points", "date": "2001-02-02"}, "the game on 2001-02-02")):
+        with pytest.raises(Unsupported, match=rf"^{re.escape(named)} cannot be read here"):
             league_ranking(slots, "single_game_high", "most blocks in a game")
     # What the league read does narrow by still plans.
     for slots in ({"stat": "points", "opponent": "Boston Celtics"}, {"stat": "points", "venue": "home"}, {"stat": "points", "season_n": 15}):
@@ -1867,7 +1867,7 @@ def test_the_planner_refuses_a_narrowing_the_relation_cannot_honor() -> None:
     refused there - not one call later, inside the compile step."""
     from routed import default_reading
 
-    with pytest.raises(Unsupported, match="the relation cannot honor \\['rate'\\]"):
+    with pytest.raises(Unsupported, match="a rate per 36 cannot be read here"):
         plan(default_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"}))
     assert isinstance(plan(default_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})), Query)
 
@@ -1888,7 +1888,7 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     assert reading.point is not None and reading.point_declined is None and reading.point_refusal is None
     planned = plan_point(reading)
     assert planned.query is None and planned.refusal is None
-    assert planned.declined is not None and planned.declined.startswith("the relation cannot honor ['rate']")
+    assert planned.declined is not None and planned.declined.startswith("a rate per 36 cannot be read here")
     why: list[str] = []
     assert compose.answer(cx_ctx, reading, declined=why.append, planned=planned) is None and why == [planned.declined]
 
@@ -1990,7 +1990,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_period_stat": {"shape": asked("team_quarter_points"), "stat": "plusMinus"},
     "bench_points": {"shape": asked("team_leaderboard")},
     "team_boolean_count": {"shape": asked("leaderboard"), "stat": "triple_double"},
-    "cannot_honor": {"shape": asked("with_without"), "name": "with_without", "slots": ["since", "until"], "without": None, "why": "it would answer for a different span than was asked"},
+    "cannot_honor": {"shape": asked("with_without"), "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "why": "it would answer for a different span than was asked"},
     "no_reading_of_point": {"shape": asked("team_record"), "name": "team_record"},
 }
 
@@ -2023,20 +2023,19 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
     assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).answer == "A matchup needs two players, and none was read."
     # A shape's decline, said word for word as the decline it was (Phase 3, step 4).
     assert refusal_result(Cause(kind="cannot_honor", facts=_CAUSE_EXAMPLES["cannot_honor"])).answer == (
-        "Nothing here answers this question: with_without: with_without cannot honor ['since', 'until'] - it would answer for a different span than was asked."
+        "Nothing here answers this question: with_without: the seasons 2019-20 through 2023-24 cannot be read here - it would answer for a different span than was asked."
     )
     assert refusal_result(
         Cause(
             kind="cannot_honor",
             facts={
                 "shape": asked("streak"),
-                "name": "streak",
-                "slots": ["situation"],
+                "cells": [{"cell": "situation", "words": "on tuesdays"}],
                 "without": "team or player",
                 "why": "the league-wide streak has no single subject to narrow",
             },
         )
-    ).answer == ("Nothing here answers this question: streak: streak cannot honor ['situation'] without a named team or player - the league-wide streak has no single subject to narrow.")
+    ).answer == ("Nothing here answers this question: streak: the games 'on tuesdays' cannot be read here with no named team or player - the league-wide streak has no single subject to narrow.")
     assert refusal_result(Cause(kind="needs_threshold", facts={"shape": asked("streak"), "stat": "threePointFieldGoalsMade"})).answer == (
         "A streak needs the number of 3-pointers each game has to reach, and none was read."
     )

@@ -206,13 +206,15 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     assert Span.CELLS | Window.CELLS | (Cuts.CELLS - {"round"}) <= RELATION_SCOPING and "round" not in RELATION_SCOPING
 
 
-def test_a_scope_reports_every_cell_it_sets_by_the_slots_a_decline_says() -> None:
-    """``Scope.cells`` is every cell a scope sets, each family's and the
-    split's (Phase 3, step 2's closing slice: the line family's alone until
-    then, the rest read family by family beside ``SCOPING_SLOTS``), and
-    ``cell_slots`` the names a decline says each by - the slots it was
-    declared under, so no decline moves while the planner reads typed cells."""
-    from association.query.reading import cell_slots, unhonored_cells
+def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_asked() -> None:
+    """``Filtered.cells`` is every cell a scope sets, each family's and the
+    split's (Phase 3, step 2's closing slice), and ``cell_facts`` what the
+    words asked under each, which a decline is said by
+    (``say.decline_body``): the slot names each cell was declared under
+    before Phase 3, step 2 ("cannot honor ['order']") until the Phase 3
+    review's cleanup (b)3 (ISSUES.md #281)."""
+    from association.query.compose.say import decline_body
+    from association.query.reading import CELL_ORDER, cell_facts, unhonored_cells
 
     scope = slots_scope(
         {
@@ -236,22 +238,13 @@ def test_a_scope_reports_every_cell_it_sets_by_the_slots_a_decline_says() -> Non
     )
     assert scope.cells() == {"range", "both", "window", "ranked_by", "tenure", "round", "period", "line", "companion", "rate", "split"}
     assert Reading().cells() == frozenset() and slots_scope({"split": "bench"}).cells() == {"split"}
-    said = {cell: cell_slots(scope, cell) for cell in sorted(scope.cells())}
-    assert said == {
-        "both": ["season_type_unstated"],
-        "companion": ["without", "conditions"],
-        "line": ["below"],
-        "period": ["half"],
-        "range": ["since", "until"],
-        "ranked_by": ["ranked_by"],
-        "rate": ["rate"],
-        "round": ["round"],
-        "split": ["split"],
-        "tenure": ["own_team"],
-        "window": ["order"],
-    }
-    assert cell_slots(scope, "career") == [] and cell_slots(scope, "opponent") == []
-    assert unhonored_cells(scope, frozenset({"range", "companion", "split"})) == sorted(slot for cell in scope.cells() - {"range", "companion", "split"} for slot in said[cell])
+    assert set(CELL_ORDER) >= scope.cells()
+    assert unhonored_cells(scope, frozenset({"range", "companion", "split"})) == ["both", "window", "ranked_by", "tenure", "round", "period", "line", "rate"]
+    said = decline_body({"cells": [cell_facts(scope, cell) for cell in unhonored_cells(scope, frozenset())], "why": "why"})
+    assert said == (
+        "the seasons 2018-19 through 2020-21, the regular season and the playoffs together, the last 5 games, games ranked by points, games for MIA, the finals, "
+        "the 2nd half, games with under 14 fta, games z started and games without y, a starter and bench split and a rate per 100 possessions cannot be read here - why"
+    )
 
 
 def test_a_period_condition_round_trips_through_the_slot_door() -> None:

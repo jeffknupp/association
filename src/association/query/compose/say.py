@@ -4250,7 +4250,7 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
         "Ask for a named player's points, or a team's points, instead."
     ),
     "team_boolean_count": _say_team_boolean_count,
-    "cannot_honor": lambda facts: _shape_declined(facts, f"{facts['name']} cannot honor {list(facts['slots'])}{_without_named(facts)} - {facts['why']}"),
+    "cannot_honor": lambda facts: _shape_declined(facts, decline_body(facts)),
     "no_reading_of_point": lambda facts: _shape_declined(facts, f"{facts['name']} has no reading of this point"),
 }
 
@@ -4266,10 +4266,155 @@ def _shape_declined(facts: Mapping[str, Any], decline: str) -> str:
     return f"Nothing here answers this question: {asked_label(facts['shape'])}: {decline}."
 
 
-def _without_named(facts: Mapping[str, Any]) -> str:
-    """The subject a ``cannot_honor`` cell needs and the point has none of
-    ("without a named player"), or nothing."""
-    return f" without a named {facts['without']}" if facts.get("without") else ""
+def decline_body(facts: Mapping[str, Any]) -> str:
+    """A narrowing a shape or its relation cannot honor, said by what the
+    words asked (``facts["cells"]``, each :func:`~association.query.reading.cell_facts`'s,
+    phrased by :func:`cell_phrase`): "the last 5 games cannot be read here -
+    it would answer for a different span than was asked", with the subject
+    a cell needs and the point has none of (``without``) and where it was
+    to be read (``over``: a team's games). The one wording of a decline the
+    planner says (``cannot_honor``) and of one a relation's check raises
+    (``compose.core._check_relation_scoping``). Until the Phase 3 review's
+    cleanup (b)3 it said "<name> cannot honor ['order']" - the shape's
+    retired name and the slot names each cell was declared under before
+    Phase 3, step 2 (ISSUES.md #281).
+
+    .. versionadded:: 6.0.0
+    """
+    said = _joined_phrases([cell_phrase(cell) for cell in facts["cells"]])
+    without = f" with no named {facts['without']}" if facts.get("without") else ""
+    where = f" over {facts['over']}" if facts.get("over") else " here"
+    return f"{said} cannot be read{where}{without} - {facts['why']}"
+
+
+def _joined_phrases(phrases: list[str]) -> str:
+    """Phrases joined as a sentence lists them: "a, b and c"."""
+    return phrases[0] if len(phrases) == 1 else f"{', '.join(phrases[:-1])} and {phrases[-1]}"
+
+
+#: Each split a decline names, by its kind.
+_SPLIT_PHRASES: dict[str, str] = {
+    "home_away": "a home and road split",
+    "starter_bench": "a starter and bench split",
+    "wins_losses": "a split by wins and losses",
+    "month": "a split by month",
+    "starter": "the games as a starter",
+    "bench": "the games off the bench",
+}
+
+
+def cell_phrase(facts: Mapping[str, Any]) -> str:
+    """One cell a point sets, said by what the words asked under it
+    (:func:`~association.query.reading.cell_facts`): "the last 5 games",
+    "the seasons since 2019-20", "games without Joel Embiid", "a rate per
+    100".
+
+    .. versionadded:: 6.0.0
+    """
+    cell = facts["cell"]
+    phrases: dict[str, Callable[[], str]] = {
+        "career": lambda: "every season of a career",
+        "range": lambda: _range_phrase(facts.get("since"), facts.get("until")),
+        "both": lambda: "the regular season and the playoffs together",
+        "window": lambda: _window_phrase(facts.get("order"), facts.get("count"), facts.get("of", "games")),
+        "ranked_by": lambda: f"games ranked by {facts['by']}",
+        "opponent": lambda: f"games against {facts['value']}",
+        "tenure": lambda: f"games for {facts['value']}",
+        "venue": lambda: "home games" if facts["value"] == "home" else "road games",
+        "date": lambda: f"the game on {facts['value']}",
+        "situation": lambda: f"the games '{facts['words']}'",
+        "game_n": lambda: f"game {facts['value']} of a series",
+        "season_n": lambda: f"the {ordinal_word(facts['value'])} season of a career",
+        "round": lambda: f"the {facts['value']}",
+        "period": lambda: _period_phrase(facts.get("number"), facts.get("half")),
+        "line": lambda: _joined_phrases([_line_phrase(line) for line in facts["lines"]]),
+        "period_line": lambda: _joined_phrases([f"{_line_phrase(line)} in {_period_phrase(*_line_period(line))}" for line in facts["lines"]]),
+        "companion": lambda: _joined_phrases([_companion_phrase(companion) for companion in facts["companions"]]),
+        "split": lambda: _SPLIT_PHRASES.get(str(facts["split"]), f"a split by {facts['split']}"),
+        "rate": lambda: _rate_phrase(facts.get("unit")),
+    }
+    phrase = phrases.get(cell)
+    return phrase() if phrase is not None else str(cell)
+
+
+def _range_phrase(since: int | None, until: int | None) -> str:
+    """A range of seasons by the seasons' own names."""
+    if since is not None and until is not None:
+        return f"the seasons {season_label(since)} through {season_label(until)}"
+    if since is not None:
+        return f"the seasons since {season_label(since)}"
+    return f"the seasons through {season_label(until)}" if until is not None else "a range of seasons"
+
+
+def _window_phrase(order: str | None, count: int | None, of: str) -> str:
+    """A window at one end of the span: "the last 5 games", "the first game"."""
+    end = "first" if order == "first" else "last"
+    unit = of if of in ("games", "seasons") else "games"
+    if count is None:
+        return f"the {end} {unit}"
+    return f"the {end} {unit[:-1]}" if count == 1 else f"the {end} {count} {unit}"
+
+
+def _period_phrase(number: int | None, half: bool | None) -> str:
+    """A quarter or a half: "the 1st quarter", "the 2nd half"."""
+    if number is None:
+        return "a quarter or half"
+    return f"the {ordinal_word(number)} {'half' if half else 'quarter'}"
+
+
+def _line_period(line: Mapping[str, Any]) -> tuple[int | None, bool | None]:
+    """The quarter or half a line stands in, as its facts give it."""
+    period = line.get("period") or {}
+    return period.get("number"), period.get("half")
+
+
+#: A line's way, said before its number and stat.
+_LINE_WAYS: dict[str, str] = {">=": "{}+ {}", ">": "more than {} {}", "<=": "at most {} {}", "<": "under {} {}", "=": "exactly {} {}"}
+
+
+#: The words a line's phrase opens with when it says its way itself.
+_WAY_WORDS: tuple[str, ...] = ("under", "less", "below", "at most", "fewer", "max", "more", "over", "above", "at least", "exactly")
+
+
+def _line_phrase(line: Mapping[str, Any]) -> str:
+    """The games a line keeps, as the words gave it ("games with 30+
+    points", "games with under 14 fta"), quoted where the words are no
+    number and stat ("the games 'playing 20 or more minutes'"), or by its
+    number, way and stat where no words were kept."""
+    words = str(line.get("as_typed") or "").strip()
+    if not words:
+        return "games with " + _LINE_WAYS.get(str(line.get("op")), "{} {}").format(line.get("value"), _stat_words(line.get("measure")))
+    words = words.removeprefix("with ")
+    if line.get("op") in ("<", "<=") and not words.startswith(_WAY_WORDS):
+        words = f"{'under' if line.get('op') == '<' else 'at most'} {words}"
+    return f"games with {words}" if words[:1].isdigit() or words.startswith(_WAY_WORDS) else f"the games '{words}'"
+
+
+#: How a companion's role reads in a decline, by side and predicate.
+_COMPANION_PHRASES: dict[str, str] = {
+    "absent": "games without {}",
+    "played": "games {} played",
+    "started": "games {} started",
+    "bench": "games {} came off the bench",
+    "reached": "games {} reached his line",
+}
+
+
+def _companion_phrase(companion: Mapping[str, Any]) -> str:
+    """One player beside the subject, by his role: "games without Joel Embiid"."""
+    if companion.get("side") == "opponent":
+        return f"games against {companion['player']}"
+    return _COMPANION_PHRASES.get(str(companion.get("predicate")), "games with {}").format(companion["player"])
+
+
+def _rate_phrase(unit: str | None) -> str:
+    """A unit the measure was asked in: "a rate per 100", "a total"."""
+    if unit is None:
+        return "a unit"
+    if unit == "total":
+        return "a total"
+    words = unit.replace("_", " ")
+    return f"a rate {words}" if words.startswith(("per", "/")) else f"a figure in {words}"
 
 
 #: A reading's causes said by a phrase of their own rather than the shape

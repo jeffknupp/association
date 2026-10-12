@@ -30,7 +30,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
-from association.query.reading import Filtered, PointShape, Unsupported, cell_slots
+from association.query.reading import CELL_ORDER, Filtered, PointShape, Unsupported, cell_facts, cell_set
 from association.query.result import Grouped, Line, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import TEAM_RELATION_SCOPING_EXCLUDED, condition_team_no_games, team_games, team_span_label, team_where_in
@@ -166,9 +166,13 @@ def _team_record_when_needs_player(scope: Filtered) -> None:
     planner so this sentence, naming the missing player, is the refusal
     (``conditions.condition_needs_player_refusal`` until Phase 3, step 2's
     closing slice)."""
-    claimed = sorted(slot for cell in TEAM_RELATION_SCOPING_EXCLUDED[_TEAM_RECORD_LINE_SHAPE].taken for slot in cell_slots(scope, cell))
+    taken = TEAM_RELATION_SCOPING_EXCLUDED[_TEAM_RECORD_LINE_SHAPE].taken
+    claimed = [cell for cell in CELL_ORDER if cell in taken and cell_set(scope, cell)]
     if claimed:
-        raise Unsupported(f"record_when cannot honor {claimed} without a named player - only his own games can be narrowed that way")
+        # The sayer's one decline phrase (a call-time import: compose.say reads the readers).
+        from association.query.compose.say import decline_body
+
+        raise Unsupported(decline_body({"cells": [cell_facts(scope, cell) for cell in claimed], "without": "player", "why": "only his own games can be narrowed that way"}))
 
 
 def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:

@@ -182,10 +182,10 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert Cuts().cells() == frozenset() and not Cuts().named
     cuts = Cuts(opponent="BOS", tenure="MIA", venue="home", date="2026-01-19", situation=_situation("in march"), round="finals", game_n=4, season_n=2)
     assert cuts.cells() == Cuts.CELLS and cuts.named
-    assert cuts.unhonored(frozenset()) == ["opponent", "own_team", "date", "situation", "game_n", "season_n", "round", "venue"]
-    assert cuts.unhonored(Cuts.CELLS - {"round", "tenure"}) == ["own_team", "round"]
+    assert unhonored_cells(Reading(cuts=cuts), frozenset()) == ["opponent", "tenure", "venue", "date", "situation", "game_n", "season_n", "round"]
+    assert unhonored_cells(Reading(cuts=cuts), Cuts.CELLS - {"round", "tenure"}) == ["tenure", "round"]
     assert unhonored_cells(Reading(cuts=Cuts(round="finals", opponent="BOS")), cells_stated(key("game_log"))) == ["round"]
-    assert unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), cells_stated(key("game_log"))) == [] and unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["own_team"]
+    assert unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), cells_stated(key("game_log"))) == [] and unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["tenure"]
     assert cell_set(Reading(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Reading(), "tenure") and cell_set(Reading(companions=(Companion(player="X", predicate="absent"),)), "companion")
 
 
