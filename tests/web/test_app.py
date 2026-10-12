@@ -80,6 +80,21 @@ def test_ask_returns_the_whole_answer_not_just_the_text(tmp_path: Path) -> None:
     assert body["timing"]["total_seconds"] == 1.4
 
 
+def test_the_answer_carries_the_planned_shape_the_page_renders_by(tmp_path: Path) -> None:
+    """The page keys its renderers by the planned point's shape (Phase 4,
+    step 1), so the shape reaches the client as values beside the data - the
+    relation, the shape and what it is by - and as null where there is none."""
+    from association.query.reading import PointShape
+
+    shaped = _answer("the answer", shape=PointShape("player_seasons", "ranking", "player"))
+    body = _client(StubAnswerer(shaped), tmp_path).post("/api/ask", json={"question": "who leads the league in assists?"}).json()
+    assert body["shape"] == {"relation": "player_seasons", "shape": "ranking", "by": "player"}
+    assert body["intent"] == "leaderboard" and body["data"] == {"leaders": ["Jokic"]}
+
+    unshaped = _client(StubAnswerer(_answer("refused", answered_by="refused", intent=None, data=None)), tmp_path).post("/api/ask", json={"question": "something odd"}).json()
+    assert unshaped["shape"] is None
+
+
 def test_the_answer_carries_its_decisions_as_values(tmp_path: Path) -> None:
     """What was decided on the way - the subject reading, an override of a
     routed field - reaches the client as values off the answer, never parsed

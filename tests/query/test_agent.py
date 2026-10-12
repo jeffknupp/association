@@ -25,6 +25,7 @@ from association.query.reading import (
     Cuts,
     Line,
     Measure,
+    PointShape,
     Reading,
     Span,
     Window,
@@ -495,6 +496,25 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
     assert answer.question == "who leads the league in scoring?"
 
 
+def test_an_answer_carries_the_shape_the_answer_side_chose_its_reader_by(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The page renders an answer's data by the planned point's shape
+    (Phase 4, step 1): the one the answer side chose its reader by
+    (``Agent.planned``), carried out beside the data and named in the trace's
+    (compose) line - never re-derived from the label."""
+    from association.query.answer import Reply
+
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={"leaders": ["Jokic"]}, answer="Jokic."))
+    seen: list[str] = []
+    agent = _agent_with_players(tmp_path)
+    agent.trace = seen.append
+    agent.verbose = True
+    answer = ask_routed(agent, "who leads the league in scoring?", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
+
+    assert agent.planned is not None and agent.planned.shape is not None
+    assert answer.shape == agent.planned.shape == PointShape("player_seasons", "ranking", "player")
+    assert any("-> (compose)" in line and "shape=player_seasons/ranking/player" in line for line in seen), seen
+
+
 def test_a_refused_answer_has_no_intent_or_data_rather_than_an_empty_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Only a template or the compiler produces those. None says so; {} would
     read as "the template ran and found nothing", which is a different claim."""
@@ -503,6 +523,7 @@ def test_a_refused_answer_has_no_intent_or_data_rather_than_an_empty_one(monkeyp
 
     assert answer.answered_by == "refused"
     assert answer.intent is None
+    assert answer.shape is None
     assert answer.data is None
 
 

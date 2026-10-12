@@ -36,6 +36,15 @@ on the plot.
    :func:`fingerprint_file` and :func:`fingerprint_page`; their message is
    the sayer's (``compose.say.say_fingerprint``). Statements run through
    the compiler's one door.
+
+.. versionchanged:: 6.0.0
+   Its three statements (the season's pool, the per-game pool, a player's
+   first or last game) are the NetPoints relation's
+   (:mod:`association.query.netpoints`: :func:`~association.query.netpoints.season_fingerprints`,
+   :func:`~association.query.netpoints.game_fingerprints`,
+   :func:`~association.query.netpoints.fingerprint_game_of`), moved whole;
+   this module reads what they return into the pool, the percentiles and
+   the drawing, and runs no statement of its own.
 """
 
 from __future__ import annotations
@@ -47,6 +56,7 @@ import duckdb
 
 from association.nba.season import eastern_date
 
+from . import netpoints
 from .entities import Availability, Entity
 from .game_label import game_label
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
@@ -436,18 +446,6 @@ def _load_fingerprints_players(
     return fingerprints
 
 
-def _values(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any]) -> list[tuple[Any, ...]]:
-    """``sql`` run through the compiler's one door
-    (:func:`~association.query.compose.core.values_of`), as the season
-    line's statements are - the NetPoints relation's reads are this
-    module's, and nothing else runs them. At call time: the compiler
-    imports this module."""
-    from association.query.compose.core import values_of
-    from association.query.season_line import Statement
-
-    return values_of(con, Statement(sql, params))
-
-
 def load_fingerprints(
     con: duckdb.DuckDBPyConnection,
     players: list[Entity],
@@ -485,15 +483,10 @@ def load_fingerprints(
     .. versionadded:: 1.3.0
     """
     skills = skills_for(view)
-    summary = [f"{FINGERPRINT_SUMMARY_CATEGORY}_{letter}_net_pts" for letter in ("t", "o", "d")]
-    columns = summary + [skill.column for skill in skills]
-    rows = _values(
-        con,
-        # No season_type filter: net_points_player_fingerprint has no such
-        # column. Whatever the season's rows cover is what a fingerprint means.
-        f"SELECT athlete_id, minutes, total_poss, {', '.join(columns)} FROM net_points_player_fingerprint WHERE season = ?",
-        [season],
-    )
+    summary = _summary_columns()
+    # No season_type filter: net_points_player_fingerprint has no such
+    # column. Whatever the season's rows cover is what a fingerprint means.
+    rows = netpoints.season_fingerprints(con, season, summary + _skill_columns(skills))
     if not rows:
         raise FingerprintUnavailable("fingerprint_no_season", season=season)
 
@@ -537,37 +530,26 @@ class GamePlayed:
     label: str | None = None
 
 
-def _skill_expression(skill: Skill) -> str:
-    """The pivot for one skill, over the long per-game table.
-
-    ``net_points_player_game_fingerprint`` is one row per category, not one
-    column per category, so the season file's wide shape is rebuilt here.
-    Interpolated rather than parameterized because both halves come from
-    :data:`FINGERPRINT_SKILLS`, which is code.
-    """
-    return f"max(CASE WHEN f.category = '{skill.category}' THEN f.{FINGERPRINT_SIDES[skill.side]}_net_pts END)"
+def _summary_columns() -> list[netpoints.Column]:
+    """The headline's three NetPoints columns - the summary category's total,
+    offense and defense, in that order - as the relation names them."""
+    return [(FINGERPRINT_SUMMARY_CATEGORY, letter) for letter in ("t", "o", "d")]
 
 
-def _load_game_fingerprints_rows(con: duckdb.DuckDBPyConnection, season: int, season_type: int, columns: list[str]) -> list[tuple[Any, ...]]:
-    """Run the per-game pivot query, translating a missing table into the
-    per-game-specific refusal rather than a raw binder error.
+def _skill_columns(skills: tuple[Skill, ...]) -> list[netpoints.Column]:
+    """Each skill's column as the relation names it: its category and the
+    side it is measured on (:data:`FINGERPRINT_SIDES`) - the season file's
+    ``Skill.column``, and the per-game file's pivot of the same pair."""
+    return [(skill.category, FINGERPRINT_SIDES[skill.side]) for skill in skills]
+
+
+def _load_game_fingerprints_rows(con: duckdb.DuckDBPyConnection, season: int, season_type: int, columns: list[netpoints.Column]) -> list[tuple[Any, ...]]:
+    """Read the per-game pivot (:func:`~association.query.netpoints.game_fingerprints`),
+    translating a missing table into the per-game-specific refusal rather
+    than a raw binder error.
     """
     try:
-        rows = _values(
-            con,
-            f"SELECT f.event_id, f.athlete_id, max(g.t_poss), {', '.join(columns)} "
-            "FROM net_points_player_game_fingerprint f "
-            # A plain join: net_points_player_game holds one row per
-            # player-game. It used to hold two for 611 of them in 2026 alone,
-            # disagreeing, because two NetPoints dates resolved to one ESPN
-            # game - fixed at the source in NetPointsGameIndex rather than
-            # collapsed here. max() over the group is still what reads the
-            # possessions, since the group is the category pivot.
-            "JOIN net_points_player_game g ON g.event_id = f.event_id AND g.athlete_id = f.athlete_id "
-            "WHERE f.season = ? AND f.season_type = ? AND f.athlete_id IS NOT NULL "
-            "GROUP BY f.event_id, f.athlete_id",
-            [season, season_type],
-        )
+        rows = netpoints.game_fingerprints(con, season, season_type, columns)
     except duckdb.CatalogException as exc:
         # ONLY the missing-table case. A bare `except duckdb.Error` here read a
         # binder error in this module's own SQL as "you have not pulled this
@@ -708,12 +690,10 @@ def load_game_fingerprints(
     .. versionadded:: 2.1.0
     """
     skills = skills_for(view)
-    # Qualified with `f.`, every one: net_points_player_game carries o/d/t_net_pts
-    # of its own, so an unqualified name here is ambiguous rather than wrong -
-    # DuckDB says so, but only once the join is present.
-    summary = [f"max(CASE WHEN f.category = '{FINGERPRINT_SUMMARY_CATEGORY}' THEN f.{letter}_net_pts END)" for letter in ("t", "o", "d")]
-    columns = summary + [_skill_expression(skill) for skill in skills]
-    rows = _load_game_fingerprints_rows(con, season, season_type, columns)
+    # The long per-game table is pivoted back to the season file's wide shape
+    # by the relation (netpoints.game_fingerprints), column by column.
+    summary = _summary_columns()
+    rows = _load_game_fingerprints_rows(con, season, season_type, summary + _skill_columns(skills))
 
     pool_values, headline_pool, by_game = _load_game_fingerprints_pool(rows, len(summary), min_possessions, season)
     by_axis = [[game[index] for game in pool_values] for index in range(len(skills))]
@@ -733,17 +713,9 @@ def _game_for(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, seas
     schedule, and a postponed game keeps the id it was given for the date it
     was meant to be played on.
     """
-    rows = _values(
-        con,
-        "SELECT f.event_id, gm.date FROM net_points_player_game_fingerprint f "
-        "JOIN games gm ON gm.event_id = f.event_id "
-        "WHERE f.athlete_id = ? AND f.season = ? AND f.season_type = ? "
-        f"GROUP BY f.event_id, gm.date ORDER BY gm.date {'ASC' if order == 'first' else 'DESC'} LIMIT 1",
-        [athlete_id, season, season_type],
-    )
-    if not rows:
+    row = netpoints.fingerprint_game_of(con, athlete_id, season, season_type, order)
+    if row is None:
         return None
-    row = rows[0]
     event_id = str(row[0])
     return GamePlayed(event_id=event_id, date=eastern_date(row[1]), label=game_label(con, athlete_id, event_id))
 
