@@ -8,13 +8,12 @@ types, and the few rule-level checks over a tagger. The question cases are
 from typing import Any, get_args, get_type_hints
 
 import pytest
-from shapes import asked
 
 from association.query.compose.plan import refusal_result
 from association.query.grammar import CODE_ASSIGNED_ASKS
 from association.query.lexicon import ORDER_WORDS
 from association.query.point import ORDER_ASKS
-from association.query.reading import Cause, Filtered, Window
+from association.query.reading import PLAYER_LINE, PLAYER_LOG, Cause, Filtered, Window
 
 
 def _scope_values(field: str, of: type = Filtered) -> set[object]:
@@ -90,15 +89,15 @@ def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> N
 
     # No `order` at all: an ordinary game_log question with a limit, not "last
     # N games" - e.g. "top 5" is `order` absent, `limit` present.
-    assert not span_under(asked("game_log"), read_span("Knicks top 5 wins this season", SpanContext(limit=5))).span.both
+    assert not span_under(PLAYER_LOG, read_span("Knicks top 5 wins this season", SpanContext(limit=5))).span.both
     # `order="first"` is "his first N games", the opposite end of the season -
     # a real question, but not the one this signal is for.
-    assert not span_under(asked("game_log"), read_span("Knicks first 5 games", SpanContext(order="first", limit=5))).span.both
+    assert not span_under(PLAYER_LOG, read_span("Knicks first 5 games", SpanContext(order="first", limit=5))).span.both
     # No real limit at all.
-    assert not span_under(asked("game_log"), read_span("Knicks last games", SpanContext(order="recent"))).span.both
+    assert not span_under(PLAYER_LOG, read_span("Knicks last games", SpanContext(order="recent"))).span.both
     # A non-game_log intent never sees it, whatever else is set.
-    assert not span_under(asked("player_stat"), read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
-    assert span_under(asked("game_log"), read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
+    assert not span_under(PLAYER_LINE, read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
+    assert span_under(PLAYER_LOG, read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
 
 
 @pytest.mark.parametrize(
@@ -116,7 +115,7 @@ def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(question: s
     from association.query.point import span_under
     from association.query.span import SpanContext, read_span
 
-    assert not span_under(asked("game_log"), read_span(question, SpanContext(order="recent", limit=5, **context))).span.both
+    assert not span_under(PLAYER_LOG, read_span(question, SpanContext(order="recent", limit=5, **context))).span.both
 
 
 def test_a_team_metric_given_up_is_named_as_asked() -> None:
