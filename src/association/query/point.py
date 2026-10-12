@@ -918,10 +918,15 @@ def _default_threshold_count(scope: Filtered) -> Reading:
         # counts every game; no stat it keeps a line on), by its cause.
         threshold_count_line(scope)
         raise Unsupported("threshold_count refuses; nothing to compare")
-    # A below/above phrase carrying the threshold's own number IS the count,
-    # misread as a threshold (the count's sayer words it as the phrase).
-    lines = [line.as_typed for line in relation_lines(scope)]
-    predicates = [] if any(str(threshold) in line for line in lines) else [(col, ">=", threshold)]
+    # A below/above phrase on the threshold's own number and stat - or
+    # holding its words ("games with under 14 fta": the pair "14 fta" inside
+    # the phrase, the model's stat another) - IS the count, misread as a
+    # threshold; the count's sayer words it as the phrase. The number alone
+    # is not: "30 points playing 30 or more minutes" holds a floor of
+    # minutes at the same number, and the 30-point line was dropped for it.
+    keyed = threshold_line(scope)
+    the_count = any(line.value == threshold and (line.measure == col or (keyed is not None and keyed.as_typed in line.as_typed)) for line in relation_lines(scope))
+    predicates = [] if the_count else [(col, ">=", threshold)]
     return Reading(**scope.filters(), shape="scalar", by="count", measures=[], aggregate="count", group="none", predicates=predicates, available=BOX_SCORES)
 
 
@@ -1771,6 +1776,12 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
     plus = [candidate for candidate in pairs if candidate.how == "plus"]
     if asked in _LINES_PAIR_NAMES_THE_STAT and len(plus) == 1:
         stat = plus[0].line.measure
+    elif asked in _LINES_PAIR_NAMES_THE_STAT and stat is None and pairs and read.of("phrase"):
+        # The keyed line names the stat beside a floor or a ceiling on
+        # another one: "how many games did wemby have 30 points playing 30
+        # or more minutes" counted his 30-minute games, the longer word
+        # "minutes" read as the measure over the line's "points".
+        stat = pairs[0].line.measure
     found.sort(key=lambda each: each[0])
     return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
 

@@ -133,12 +133,36 @@ def test_answers_the_question_the_agent_kept_getting_wrong(con: AnswerContext) -
     assert {"player": "Luka Doncic", "games": 4} in result.data["leaders"]
 
 
+def test_a_floor_at_the_counts_own_number_on_another_stat_is_a_second_line(con: AnswerContext) -> None:
+    """ "how many games did wemby have 30 points playing 30 or more minutes"
+    counted his 30-minute games: the floor of minutes carried the count's
+    own number, and a phrase on the count's number was taken for the count
+    itself. The keyed line's words decide, never its number alone: Luka's 4
+    games of 35 points, each of 30 minutes, said with both lines."""
+    from association.query.line import read_lines
+    from association.query.point import lines_under
+
+    worded = lines_under(asked("threshold_count"), read_lines("how many games did luka have 30 points playing 30 or more minutes"))
+    assert worded.stat == "points"
+    result = threshold_count(con, slots_reading({"stat": "points", "player": "Luka Doncic", "lines": worded.lines}))
+    assert result.data["leaders"] == [{"player": "Luka Doncic", "games": 4}]
+    assert "games with 30+ points and at least 30 minutes" in (result.answer or "")
+
+
 def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_name(con: AnswerContext) -> None:
     """ "Sga games with under 14 fta" arrived as threshold 14 on freeThrowsMade -
     the model's nearest stat - and was answered as 14 or MORE free throws made.
-    The phrase carries the count's own number, so it IS the count, misread:
-    its direction and its column win. Luka has 4 games of 35 and 3 of 12."""
-    result = threshold_count(con, slots_reading({"stat": "rebounds", "threshold": 20, "player": "Luka Doncic", "below": ["under 20 points"]}))
+    The phrase holds the count's own line ("20 points" inside "under 20
+    points", as the lines tagger reads the words), so it IS the count,
+    misread: its direction and its column win. Luka has 4 games of 35 and 3
+    of 12. A phrase on another stat at the same number is a second line, not
+    the count (the keyed line's words, never its number alone: "30 points
+    playing 30 or more minutes")."""
+    from association.query.line import read_lines
+    from association.query.point import lines_under
+
+    worded = lines_under(asked("threshold_count"), read_lines("luka games with under 20 points"))
+    result = threshold_count(con, slots_reading({"stat": "rebounds", "player": "Luka Doncic", "lines": worded.lines}))
     assert result.data["leaders"] == [{"player": "Luka Doncic", "games": 3}]
     assert "games with under 20 points" in (result.answer or "") and "20+" not in (result.answer or "")
     # A phrase with ANOTHER number is a second line beside the count.

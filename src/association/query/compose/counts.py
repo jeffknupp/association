@@ -34,7 +34,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.query.entities import Entity
-from association.query.lines import measure_filters, threshold_count_line, threshold_of
+from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS
@@ -132,11 +132,15 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Result | U
     label = STAT_LABELS.get(stat or "", stat or "")
     notes += _threshold_count_notes(con, (season, season_type), player, rows, column, label, empty)
     facts = CountFacts(stat=stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0])
-    # A phrase carrying the count's own number IS the count, misread: the
-    # phrase wins, since it holds the direction and the column the model
-    # lost; a phrase with another number is a second line beside it. The
-    # count's own line has no label: the sayer says it from the stat.
-    counted = () if not threshold or any(line.value == threshold for line in lines) else (Line(column=column, value=threshold),)
+    # A phrase on the count's own number and stat, or holding its words, IS
+    # the count, misread: the phrase wins, since it holds the direction and
+    # the column the model lost; any other phrase is a second line beside it
+    # - a floor of 30 minutes beside 30 points is said beside them
+    # (point._default_threshold_count's rule). The count's own line has no
+    # label: the sayer says it from the stat.
+    keyed = threshold_line(scope)
+    is_the_count = any(line.value == threshold and (line.measure == column or (keyed is not None and keyed.as_typed in line.as_typed)) for line in relation_lines(scope))
+    counted = () if not threshold or is_the_count else (Line(column=column, value=threshold),)
     cells = (*counted, *(Line(column=line.column, op=line.op, value=line.value, label=line.label) for line in lines))
     span = replace(span, ordinal=compiled.span.ordinal if season is not None else None)
     if player is not None:
