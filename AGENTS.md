@@ -561,7 +561,10 @@ gets turned off.
     words),
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
-    `team_relation.py`, `season_line.py`, `team_seasons.py`), the
+    `team_relation.py`, `season_line.py`, `team_seasons.py`, and a
+    declared relation's own since Phase 4, step 5: `netpoints.py`, the
+    NetPoints relation, which builds and runs every statement over the
+    NetPoints tables), the
     compiler's readers and the sayer (`compose/`), the coverage
     declaration (`coverage.py`), renderers, the answering loop
     (`agent.py`). `web/` - the local web interface.
@@ -1785,10 +1788,16 @@ a shape:
   `DECLARED_RELATIONS`, read as their default
   points on the declared `netpoints` relation and planned as
   `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
-  per the decision "Charts are declared shapes": `read_player_netpoints`
-  builds its statements and runs them through `core.values_of`;
-  `read_fingerprint` reads through `query/fingerprint.py`'s loaders (the
-  percentile pool and the polygons from one read) into a `Chart`, which
+  per the decision "Charts are declared shapes", over the NetPoints
+  relation (`query/netpoints.py`, since Phase 4, step 5: every statement
+  over the NetPoints tables is built and run there, through
+  `core.values_of`, and `compose/` and `fingerprint.py` run none):
+  `read_player_netpoints` reads a season's line, its categories or one
+  game's through it (`netpoints.season_totals`, `season_categories`,
+  `game_line`); `read_fingerprint` reads through `query/fingerprint.py`'s
+  loaders (the percentile pool and the polygons from one read, the
+  relation's `season_fingerprints`, `game_fingerprints` and
+  `fingerprint_game_of`) into a `Chart`, which
   `compose.netpoints.draw_fingerprint` writes with `query/radar.py` before
   `compose.say.say_fingerprint` words it - a reader reads and names no file
   that does not exist yet, and the sayer takes the Result and nothing

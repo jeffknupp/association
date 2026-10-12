@@ -34,7 +34,7 @@ target"):
     compiler built (``compile_*``), counted in the module that makes the
     call. A function that only passes on a statement it is handed (a
     ``Statement`` parameter, or ``Statement(sql, ...)`` over a parameter:
-    ``season_line._values``, ``fingerprint._values``) is a door itself, and
+    ``season_line._values``, ``netpoints._values``) is a door itself, and
     its callers are counted instead. How the argument is traced, and what
     counts when it cannot be, is :func:`_origin`. Contract 3: one place
     builds and runs SQL; a sayer cannot read the warehouse. Counted, not

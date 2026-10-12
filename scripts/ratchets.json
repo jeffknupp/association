@@ -5,7 +5,6 @@
  "sql_outside_the_relations": {
   "compose.core": 1,
   "compose.logs": 2,
-  "compose.netpoints": 3,
   "compose.periods": 4,
   "compose.seasons": 7,
   "compose.shots": 3,
@@ -17,8 +16,8 @@
   "conditions": 7,
   "connection": 1,
   "entities": 4,
-  "fingerprint": 3,
   "game_label": 1,
+  "netpoints": 6,
   "player_games": 1,
   "player_relation": 16,
   "season_line": 7,
