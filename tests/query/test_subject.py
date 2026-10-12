@@ -20,7 +20,25 @@ from association.query.decisions import Decision
 from association.query.entities import find_teams, names_of, teams_of
 from association.query.lines import threshold_of
 from association.query.names import NameIndex
-from association.query.reading import Companion, Filtered, Line, Reading, asked_label
+from association.query.reading import (
+    GAMES_COUNTED,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_MEETINGS,
+    PLAYER_RANKING,
+    SHOT_CHART,
+    TEAM_MEETINGS,
+    TEAM_PERIOD_TOTAL,
+    Companion,
+    Cuts,
+    Filtered,
+    Line,
+    Measure,
+    Reading,
+    Span,
+    asked_label,
+)
+from association.query.reading import Subject as Who
 from association.query.subject import SUBJECT_KINDS, Subject, apply_subject, child_named, question_supports, read_subject, settle_subject
 
 
@@ -289,10 +307,10 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
 
     single: dict[str, Any] = {"player": "Ben Simmons"}
     after, decisions, dropped, _ = _applied(con, "how many points does embiid average", "player_stat", single)
-    assert after == slots_scope({"player": "Joel Embiid"}) and [d.field for d in decisions] == ["player"] and dropped == []
+    assert after == Reading(who=Who(kind="player", players=("Joel Embiid",))) and [d.field for d in decisions] == ["player"] and dropped == []
 
     kept: dict[str, Any] = {"player": "Nikola Jokic"}
-    assert _applied(con, "jokic ppg", "player_stat", kept)[:3] == (slots_scope({"player": "Nikola Jokic"}), [], [])
+    assert _applied(con, "jokic ppg", "player_stat", kept)[:3] == (Reading(who=Who(kind="player", players=("Nikola Jokic",))), [], [])
 
     # A companion the router filed among the players (player_matchup's pair
     # shape) is the question's own name, kept - the golden caught this as a
@@ -307,11 +325,11 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
     # right - _question_derived_player's job, now the reading's.
     bare: dict[str, Any] = {"player": "Jokic"}
     after, decisions, _, _ = _applied(con, "How many 30+ point games did Jokic have this season?", "threshold_count", bare)
-    assert after == slots_scope({"player": "Nikola Jokic"}) and [(d.before, d.after) for d in decisions] == [("Jokic", "Nikola Jokic")]
+    assert after == Reading(who=Who(kind="player", players=("Nikola Jokic",))) and [(d.before, d.after) for d in decisions] == [("Jokic", "Nikola Jokic")]
     near: dict[str, Any] = {"player": "Deron Williams"}
-    assert _applied(con, "derozan career points vs knicks", "player_stat", near)[0] == slots_scope({"player": "DeMar DeRozan"})
+    assert _applied(con, "derozan career points vs knicks", "player_stat", near)[0] == Reading(who=Who(kind="player", players=("DeMar DeRozan",)))
     right: dict[str, Any] = {"player": "Deron Williams"}
-    assert _applied(con, "deron williams career points", "player_stat", right)[:3] == (slots_scope({"player": "Deron Williams"}), [], [])
+    assert _applied(con, "deron williams career points", "player_stat", right)[:3] == (Reading(who=Who(kind="player", players=("Deron Williams",))), [], [])
 
     # A player the router left OUT (the question names two, the slot holds
     # one) is not put back here - the parser reads every name the question
@@ -336,9 +354,9 @@ def test_a_typo_of_the_questions_own_is_resolved_from_the_span_the_routers_name_
     from association.query.subject import apply_subject
 
     slots: dict[str, Any] = {"stat": "threePointFieldGoalsMade", "player": "Stephen Curry", "season": 2025}
-    s = read_subject(names_of(con), "Show a shot chart for 3 point shots by Seph Curry's last season", asked("shot_chart"), slots_scope(slots))
+    s = read_subject(names_of(con), "Show a shot chart for 3 point shots by Seph Curry's last season", SHOT_CHART, slots_scope(slots))
     assert s.players == ("Seth Curry",)
-    applied = apply_subject(s, slots_scope(slots), asked=asked("shot_chart"))
+    applied = apply_subject(s, slots_scope(slots), asked=SHOT_CHART)
     assert applied.scope.who.player == "Seth Curry" and applied.dropped == [] and [(d.field, d.before, d.after) for d in applied.decisions] == [("player", "Stephen Curry", "Seth Curry")]
 
     typo: dict[str, Any] = {"player": "Payton Prichard", "opponent": "Philadelphia 76ers", "venue": "home"}
@@ -358,9 +376,9 @@ def test_the_routers_spelling_stands_where_a_whole_word_names_somebody_else(con:
     from association.query.subject import apply_subject
 
     slots: dict[str, Any] = {"players": ["Kareem Abdul-Jabbar", "Bob Lanier"]}
-    s = read_subject(names_of(con), "kareem stats vs bob lanier", asked("player_matchup"), slots_scope(slots))
+    s = read_subject(names_of(con), "kareem stats vs bob lanier", PLAYER_MEETINGS, slots_scope(slots))
     assert s.players == ("Kareem Abdul-Jabbar", "Bob Lanier")
-    applied = apply_subject(s, slots_scope(slots), asked=asked("player_matchup"))
+    applied = apply_subject(s, slots_scope(slots), asked=PLAYER_MEETINGS)
     assert (applied.decisions, applied.dropped, applied.scope.who.players) == ([], [], ("Kareem Abdul-Jabbar", "Bob Lanier"))
 
 
@@ -375,12 +393,15 @@ def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.
     router-era reroute that moved a player filed as the opponent into
     ``players`` never fired on the parser's output and is gone (ROADMAP plan
     item 6, step (d), part 3)."""
-    s = read_subject(names_of(con), "jay huff game log vs Embiid", asked("player_matchup"), slots_scope({"player": "Jaylen Huff", "opponent": "Nikola Jokic"}))
+    s = read_subject(names_of(con), "jay huff game log vs Embiid", PLAYER_MEETINGS, Reading(who=Who(kind="player", players=("Jaylen Huff",)), cuts=Cuts(opponent="Nikola Jokic")))
     # A log against a player is his own games with the other on the far side (ROADMAP step 3), the model's Jokic still carried as invented.
     assert s.kind == "player" and s.players == ("Jay Huff",) and [(c.player, c.side) for c in s.conditions] == [("Joel Embiid", "opponent")] and s.invented == ("Nikola Jokic",)
     invented = _parsed(con, "jay huff game log vs Embiid", ["Jaylen Huff", "Nikola Jokic"])
     assert invented.intent == "game_log" and invented.misread == ("Nikola Jokic",)
-    assert read_subject(names_of(con), "luka vs the lakers", asked("game_log"), slots_scope({"player": "Luka Doncic", "opponent": "Los Angeles Lakers"})).opponent == "Los Angeles Lakers"
+    assert (
+        read_subject(names_of(con), "luka vs the lakers", PLAYER_LOG, Reading(who=Who(kind="player", players=("Luka Doncic",)), cuts=Cuts(opponent="Los Angeles Lakers"))).opponent
+        == "Los Angeles Lakers"
+    )
     team = _parsed(con, "luka vs the lakers", ["luka", "lakers"])
     assert team.who.player == "Luka Doncic" and team.cuts.opponent == "Los Angeles Lakers" and team.misread == ()
     # A log against a player: his own games, the other on the far side (ROADMAP step 3); the bare pair is still the matchup.
@@ -546,7 +567,7 @@ def test_a_count_with_no_threshold_in_the_text_stays_the_routers_question(con: d
     threshold into a ranking - so the words alone do not move it."""
     intent, reading = _assigned(con, "how many times has jokic been named mvp", "other", stat="points", player="Nikola Jokic")
     # The stages, run under the parent once the child declined, add their own season type.
-    assert intent == "other" and reading.filters() == slots_scope({"stat": "points", "player": "Nikola Jokic", "season_type": 2}).filters()
+    assert intent == "other" and reading.filters() == Reading(who=Who(kind="player", players=("Nikola Jokic",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)).filters()
 
 
 def test_two_teams_meeting_is_not_a_count_of_games(con: duckdb.DuckDBPyConnection) -> None:
@@ -697,7 +718,7 @@ def test_a_position_group_is_the_subject_and_never_a_player_slot(con: duckdb.Duc
     question = "highest 3 point percentage in a season by a shooting guard with at least 400 attempts"
     intent, reading = _assigned(con, question, "leaderboard", stat="threePointFieldGoalPct", season_type=2)
     assert intent == "leaderboard" and reading.who.player is None
-    s = read_subject(names_of(con), question, asked("leaderboard"), slots_scope({"stat": "threePointFieldGoalPct"}))
+    s = read_subject(names_of(con), question, PLAYER_RANKING, Reading(measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct")))
     assert s.kind == "position" and s.position == "SG"
     # A team-only intent reads no player, so nothing is written there.
     _, reading = _assigned(con, "which team has the best centers", "team_leaderboard", stat="record", season_type=2)
@@ -785,7 +806,7 @@ def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: 
         and s.intent == "record_when"
     )
     assert "companions the router named nobody for ['maxey']" in s.evidence
-    applied = apply_subject(s, slots_scope(slots), asked=asked("player_stat"))
+    applied = apply_subject(s, slots_scope(slots), asked=PLAYER_LINE)
     assert (
         asked_label(applied.asked) == "record_when" and applied.dropped == [] and (applied.scope.who.player, applied.scope.who.team, threshold_of(applied.scope)) == ("maxey", "Philadelphia 76ers", 20)
     )
@@ -892,13 +913,13 @@ def test_the_one_player_named_in_games_he_played_is_the_subject(con: duckdb.Duck
     not a companion of nobody - read as a companion, the question had no
     subject and fell through as a league ranking. A second name keeps the
     companion reading."""
-    alone = read_subject(names_of(con), "2 threes in games Stephen Curry played including playoffs", asked("other"), slots_scope({"player": "Stephen Curry"}))
+    alone = read_subject(names_of(con), "2 threes in games Stephen Curry played including playoffs", None, Reading(who=Who(kind="player", players=("Stephen Curry",))))
     assert (alone.kind, alone.players, alone.conditions) == ("player", ("Stephen Curry",), ())
-    beside = read_subject(names_of(con), "maxey points in games embiid played", asked("other"), slots_scope({"players": ["Tyrese Maxey", "Joel Embiid"]}))
+    beside = read_subject(names_of(con), "maxey points in games embiid played", None, Reading(who=Who(kind="pair", players=("Tyrese Maxey", "Joel Embiid"))))
     assert beside.players == ("Tyrese Maxey",) and [(c.player, c.predicate) for c in beside.conditions] == [("Joel Embiid", "played")]
     # Two companions of a team, the team routed but not a word the reading
     # finds ("76ers"), stay the team's question.
-    team = read_subject(names_of(con), "show me the 76ers record when both Embiid and Paul George played", asked("other"), slots_scope({"team": "76ers", "players": ["Embiid", "Paul George"]}))
+    team = read_subject(names_of(con), "show me the 76ers record when both Embiid and Paul George played", None, Reading(who=Who(kind="pair", players=("Embiid", "Paul George"), teams=("76ers",))))
     assert team.players == () and {c.player for c in team.conditions} >= {"Joel Embiid"}
 
 
@@ -932,17 +953,17 @@ def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() ->
     words that name a child (``child_named``, the grammar's decision) are
     said once, whichever intent the subject was read under."""
     team = Subject("team", teams=("Philadelphia 76ers",), opponent="Boston Celtics", evidence=("team word '76ers'", "the words 'old' name streak"))
-    meeting = settle_subject(team, asked("head_to_head"))
+    meeting = settle_subject(team, TEAM_MEETINGS)
     assert (meeting.kind, meeting.teams, meeting.opponent) == ("teams", ("Philadelphia 76ers", "Boston Celtics"), None)
-    against = settle_subject(team, asked("team_quarter_points"))
+    against = settle_subject(team, TEAM_PERIOD_TOTAL)
     assert (against.kind, against.teams, against.opponent, against.intent) == ("team", ("Philadelphia 76ers",), "Boston Celtics", "team_quarter_points")
     assert against.evidence == ("team word '76ers'",)
 
     player = Subject("player", players=("Nikola Jokic",))
     question = "How many 30+ point games did Jokic have this season?"
-    assert child_named(player, asked("game_log"), question) == (asked("threshold_count"), "How many 30+ point games")
-    assert child_named(player, asked("threshold_count"), question) is None  # a child already chosen stands
-    counted = settle_subject(player, asked("threshold_count"), parent=asked("game_log"), words="How many 30+ point games")
+    assert child_named(player, PLAYER_LOG, question) == (GAMES_COUNTED, "How many 30+ point games")
+    assert child_named(player, GAMES_COUNTED, question) is None  # a child already chosen stands
+    counted = settle_subject(player, GAMES_COUNTED, parent=PLAYER_LOG, words="How many 30+ point games")
     assert counted.intent == "threshold_count" and counted.intent_reason == "the words 'How many 30+ point games' name threshold_count" and counted.evidence[-1].endswith("name threshold_count")
 
 
@@ -1065,6 +1086,6 @@ def test_a_count_is_named_from_a_line_the_tagger_read_never_a_bare_number() -> N
 
     player = Subject("player", players=("Stephen Curry",))
     question = "steph curry games with 15 points"
-    assert child_named(player, asked("game_log"), lines_named(question).marked(question), original=question) == (asked("threshold_count"), "games with 15 points")
+    assert child_named(player, PLAYER_LOG, lines_named(question).marked(question), original=question) == (GAMES_COUNTED, "games with 15 points")
     question = "kobe bryant career games with more than 40 field goal percentage"
-    assert child_named(player, asked("game_log"), lines_named(question).marked(question), original=question) is None
+    assert child_named(player, PLAYER_LOG, lines_named(question).marked(question), original=question) is None
