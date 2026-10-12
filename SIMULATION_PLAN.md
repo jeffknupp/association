@@ -482,6 +482,23 @@ defense as well as the player's (he defends beside the same teammates), so
 five defenders' deviations averaged (P4.4) is the team's defense recovered
 from its parts, plus who is on the floor.
 
+**0.16 Game weights by age (2026-10-12, `scripts/sim_p9/game_weights.py`;
+positions, `scripts/sim_p9/position_priors.py`).** The season weights of
+0.13 taken to days: against the held-out league rates of 2024-2026 from
+January 1, the mean relative error is 1.89% equal-weighted, 1.60% with the
+season decay of 0.5, 1.74% / 1.60% / 1.48% / 1.46% / 1.57% / 1.69% / 1.87% at
+half-lives of 730 / 365 / 240 / 180 / 120 / 90 / 60 days. The 2025
+offensive-rebound share is 0.255 after January 1 and the best estimate
+from the data before it is 0.247 (half-life 60 days), so that gap is
+within-season drift no weighting reaches. Positions: `players.position_abbr`
+covers all 802 active players at mixed granularity; folded to G / F / C, a
+position-group prior predicts the even half of a player-season from the
+odd half better than the league prior for every rate but three-point
+percentage - 0.5 to 6% less held-out error for regulars, up to 12% for
+players under 300 minutes (offensive rebounds, field-goal percentage,
+blocks) - a small, contained change for the deep bench (D7's first v2
+prior).
+
 **0.9 Shot positions (for P4.1).** From 2015, 99.95-100% of charted field
 goals carry a position; 2022's `points_attempted` is 0 on 96% of shots
 (`SHOT_VALUE_SQL` handles it); and from 2019 the shot chart holds exactly
@@ -1096,6 +1113,20 @@ check measured on 2019-2026 and recorded in the module docstring:
    unchanged. What this ranks: the rotation is worth up to 0.005 of Brier;
    star scoring is a possession-model miss worth looking at with
    `--explain` on a star's game.
+
+   **With game weights, half-life 180 days** (`params.HALF_LIFE_DAYS`,
+   replacing the season decay; the measurement is 0b 0.16;
+   `results/validate_2025_from_2025-01-01_2026-10-12_halflife.md`, 737
+   games, 9 refused): Brier 0.2163 against the strength model's 0.2253 and
+   ESPN's 0.1996 - a per-game gain of 0.0053 (standard error 0.0018) on the
+   on-court defense run, as large as that upgrade's own, and what the
+   real-minutes diagnostic had reached with perfect lineups; the spread of
+   simulated margins between games 6.5 from 6.1; threes 0.419 per attempt
+   against 0.420, free throws 0.243 against 0.240, offensive rebounds 0.247
+   against 0.255 (the rest is the within-season drift no weighting of the
+   data before January 1 reaches, 0.16); points per 100 possessions 113.2
+   against 113.5, possessions 101.3 against 100.8, total +0.7, coverage
+   0.745 / 0.788 / 0.861, minutes MAE 5.25. The gap to ESPN is 0.017.
 
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.

@@ -135,16 +135,15 @@ class Mix:
         return self.probabilities.get(category, 0.0)
 
 
-SEASON_DECAY = 0.5
-"""The default weight each season back in a window carries relative to the
-one after it: the latest season counts in full, the one before it half, the
-one before that a quarter. Measured 2026-10-11
-(``scripts/sim_p8/season_weights.py``): several league rates trend a point
-a season (the offensive-rebound share, threes per attempt), and against the
-held-out rates of 2024-2026 from January 1 the mean relative error of an
-equal-weighted three-season window is 1.89%, of decays 0.5 / 0.35 / 0.25
-1.61% / 1.55% / 1.59%, of the latest season alone 2.09%; 0.5 is in the
-flat minimum and keeps the most of a player's sample.
+HALF_LIFE_DAYS = 180.0
+"""The default half-life, in days, of a game's weight in a window: a game
+played 180 days before ``as_of`` counts half, one a year before a quarter.
+Measured 2026-10-12 (``scripts/sim_p9/game_weights.py``, after
+``scripts/sim_p8/season_weights.py`` had weighted whole seasons): against the
+held-out league rates of 2024-2026 from January 1, the mean relative error
+of an equal-weighted three-season window is 1.89%, of a season decay of 0.5
+1.60%, of half-lives of 365 / 240 / 180 / 120 / 90 days 1.60% / 1.48% /
+1.46% / 1.57% / 1.69%. ``None`` weights every game alike.
 
 .. versionadded:: 6.0.0
 """
@@ -153,34 +152,40 @@ flat minimum and keeps the most of a player's sample.
 @dataclass(frozen=True)
 class Window:
     """Which games a rate was estimated from: those strictly before ``as_of``
-    in the seasons listed (decision D5, point-in-time), each season's counts
-    weighted ``season_decay`` to the power of its distance from the latest
-    season, so the latest counts in full and each season back counts less
-    (:data:`SEASON_DECAY` by default; ``1.0`` weights them equally). A replay
-    passes the replayed game's date; a "fun" simulation the end of the
-    latest season.
+    in the seasons listed (decision D5, point-in-time), each game weighted
+    by its age - ``0.5 ** (days before as_of / half_life_days)``
+    (:data:`HALF_LIFE_DAYS` by default; ``None`` weights every game alike).
+    A replay passes the replayed game's date; a "fun" simulation the end of
+    the latest season.
 
     .. versionadded:: 6.0.0
     """
 
     seasons: tuple[int, ...]
     as_of: dt.date
-    season_decay: float = SEASON_DECAY
+    half_life_days: float | None = HALF_LIFE_DAYS
 
-    def weight(self, season: int) -> float:
-        """The weight on ``season``'s counts: ``season_decay ** (latest -
-        season)``; ``1.0`` for the latest season."""
-        return self.season_decay ** (max(self.seasons) - season)
+    def weight(self, day: dt.date) -> float:
+        """The weight of a game played on ``day``: ``0.5 ** (days before
+        as_of / half_life_days)``, ``1.0`` with no half-life."""
+        if self.half_life_days is None:
+            return 1.0
+        return 0.5 ** ((self.as_of - day).days / self.half_life_days)
+
+    def weight_sql(self, date_sql: str) -> str:
+        """The same weight in SQL over a DATE expression."""
+        if self.half_life_days is None:
+            return "1.0"
+        return f"power(0.5, datediff('day', {date_sql}, DATE '{self.as_of.isoformat()}') / {self.half_life_days!r})"
 
     def describe(self) -> str:
-        """``"2024-2026 through 2026-04-13, weighted 0.25 / 0.5 / 1"``, for
-        the output; a one-season or equal-weighted window says nothing of
-        weights."""
+        """``"2024-2026 through 2026-04-13, half-life 180 days"``, for the
+        output; an equal-weighted window says nothing of weights."""
         first, last = min(self.seasons), max(self.seasons)
         span = str(first) if first == last else f"{first}-{last}"
         text = f"{span} through {self.as_of.isoformat()}"
-        if first != last and self.season_decay != 1.0:
-            text += ", weighted " + " / ".join(f"{self.weight(s):g}" for s in sorted(set(self.seasons)))
+        if self.half_life_days is not None:
+            text += f", half-life {self.half_life_days:g} days"
         return text
 
 

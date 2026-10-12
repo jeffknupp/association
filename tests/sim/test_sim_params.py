@@ -54,17 +54,20 @@ def test_a_mix_answers_for_a_category_it_lacks_with_zero() -> None:
 
 
 def test_the_window_describes_itself() -> None:
-    assert params.Window((2024, 2025, 2026), dt.date(2026, 4, 13)).describe() == "2024-2026 through 2026-04-13, weighted 0.25 / 0.5 / 1"
-    assert params.Window((2024, 2025, 2026), dt.date(2026, 4, 13), season_decay=1.0).describe() == "2024-2026 through 2026-04-13"
-    assert params.Window((2026,), dt.date(2026, 1, 1)).describe() == "2026 through 2026-01-01"
+    assert params.Window((2024, 2025, 2026), dt.date(2026, 4, 13)).describe() == "2024-2026 through 2026-04-13, half-life 180 days"
+    assert params.Window((2024, 2025, 2026), dt.date(2026, 4, 13), half_life_days=None).describe() == "2024-2026 through 2026-04-13"
+    assert params.Window((2026,), dt.date(2026, 1, 1), half_life_days=None).describe() == "2026 through 2026-01-01"
 
 
-def test_the_window_weights_each_season_back_by_the_decay() -> None:
+def test_the_window_weights_each_game_by_its_age() -> None:
     window = params.Window((2024, 2025, 2026), dt.date(2026, 4, 13))
-    assert window.season_decay == params.SEASON_DECAY == 0.5
-    assert [window.weight(s) for s in (2024, 2025, 2026)] == [0.25, 0.5, 1.0]
-    assert params.Window((2025, 2026), dt.date(2026, 4, 13), season_decay=0.35).weight(2025) == 0.35
-    assert params.Window((2026,), dt.date(2026, 4, 13)).weight(2026) == 1.0
+    assert window.half_life_days == params.HALF_LIFE_DAYS == 180.0
+    assert window.weight(dt.date(2026, 4, 12)) == pytest.approx(0.5 ** (1 / 180))
+    assert window.weight(dt.date(2026, 4, 13) - dt.timedelta(days=180)) == pytest.approx(0.5)
+    assert window.weight(dt.date(2026, 4, 13) - dt.timedelta(days=360)) == pytest.approx(0.25)
+    assert params.Window((2026,), dt.date(2026, 4, 13), half_life_days=None).weight(dt.date(2024, 1, 1)) == 1.0
+    assert window.weight_sql("d") == "power(0.5, datediff('day', d, DATE '2026-04-13') / 180.0)"
+    assert params.Window((2026,), dt.date(2026, 4, 13), half_life_days=None).weight_sql("d") == "1.0"
 
 
 def test_a_player_record_is_frozen_and_reports_near_prior_from_his_shots() -> None:
@@ -117,7 +120,7 @@ def test_team_and_league_records_hold_the_defense_and_the_priors() -> None:
     )
     assert league.strength("make_rate.restricted") == 320.0
     assert league.strength("free_throw_rate") == params.DEFAULT_STRENGTH
-    assert league.window.describe() == "2026 through 2026-04-13"
+    assert league.window.describe() == "2026 through 2026-04-13, half-life 180 days"
     assert (league.pace, league.and_one_rate, league.assisted_rate, league.free_throw_rate) == (99.0, 0.04, 0.6, 0.78)
     assert (league.live_ball_share, league.turnover_rate, league.foul_rate, league.offensive_rebound_rate, league.home_court) == (0.55, 0.14, 0.21, 0.27, 2.5)
     assert league.make_rate["paint"] == 0.45 and league.zone_mix["paint"] == 0.2

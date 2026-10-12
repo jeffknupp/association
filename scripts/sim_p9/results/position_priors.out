@@ -1,0 +1,16 @@
+Regular seasons 2024-2026: 1704 player-seasons with both halves; groups G 798, F 668, C 238, NA 0
+
+rate              league k      loss  position k      loss   ratio  ratio <300 min
+shots / minute          26     861.5          27     857.9   0.996           0.979
+3PA / FGA                4     628.4           5     621.8   0.989           0.968
+FG%                     45     658.8          79     622.1   0.944           0.930
+3P%                    297     419.0         297     418.1   0.998           1.001
+FT%                     27     422.0          35     414.4   0.982           0.982
+OREB / minute           42     174.9          88     165.1   0.944           0.881
+DREB / minute           56     412.5          90     400.9   0.972           0.944
+AST / minute            28     328.3          38     323.5   0.985           0.966
+STL / minute           293      86.2         328      84.9   0.985           0.983
+BLK / minute            86      63.5         147      60.5   0.953           0.974
+PF / minute            129     223.2         155     218.4   0.978           0.974
+
+ratio = position prior's held-out loss / league prior's at each one's best strength; under one, the position prior predicts the other half better.

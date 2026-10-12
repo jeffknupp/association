@@ -17,7 +17,6 @@ takes 100 shots nobody should count.
 from __future__ import annotations
 
 import datetime as dt
-from collections import Counter
 from collections.abc import Iterator
 from typing import Any
 
@@ -209,7 +208,7 @@ def con(tmp_path_factory: pytest.TempPathFactory) -> Iterator[duckdb.DuckDBPyCon
 
 @pytest.fixture(scope="module")
 def estimates(con: duckdb.DuckDBPyConnection) -> rates.Estimates:
-    return rates.estimate(con, Window(seasons=(SEASON,), as_of=AS_OF))
+    return rates.estimate(con, Window(seasons=(SEASON,), as_of=AS_OF, half_life_days=None))
 
 
 def _check_rate(rate: Any, successes: float, trials: float, prior: float) -> None:
@@ -294,12 +293,12 @@ def test_a_player_with_no_minutes_in_the_window_is_missing(estimates: rates.Esti
 
 
 def test_as_of_moves_the_window(con: duckdb.DuckDBPyConnection) -> None:
-    later = rates.estimate(con, Window(seasons=(SEASON,), as_of=dt.date(2025, 1, 13)))
+    later = rates.estimate(con, Window(seasons=(SEASON,), as_of=dt.date(2025, 1, 13), half_life_days=None))
     assert later.players["h1"].minutes == 114
     assert later.players["h1"].shots_per_minute.trials == 114
     assert "h9" not in later.missing
     assert later.players["h9"].minutes == 48
-    early = rates.estimate(con, Window(seasons=(SEASON,), as_of=dt.date(2025, 1, 10)))
+    early = rates.estimate(con, Window(seasons=(SEASON,), as_of=dt.date(2025, 1, 10), half_life_days=None))
     assert early.players["h1"].minutes == 36  # 601 alone: 00:30Z on the 10th is the evening of the 9th
 
 
@@ -327,7 +326,7 @@ def test_team_rates_are_the_box_possession_formula_and_the_opponents_counts(esti
 
 
 def test_requested_ids_choose_the_records_and_the_missing(con: duckdb.DuckDBPyConnection) -> None:
-    only_home = rates.estimate(con, Window(seasons=(SEASON,), as_of=AS_OF), team_ids=["H", "Z"], athlete_ids=["a1", "nobody"])
+    only_home = rates.estimate(con, Window(seasons=(SEASON,), as_of=AS_OF, half_life_days=None), team_ids=["H", "Z"], athlete_ids=["a1", "nobody"])
     assert set(only_home.teams) == {"H"}
     assert "Z" in only_home.missing
     assert "nobody" in only_home.missing
@@ -335,7 +334,7 @@ def test_requested_ids_choose_the_records_and_the_missing(con: duckdb.DuckDBPyCo
     assert "a9" not in only_home.missing  # A was not asked about
     assert set(only_home.players) == {"h1", "h2", "h3", "h4", "h5", "h6", "a1"}
     # The league and the strengths are the whole window's, whoever was asked for.
-    whole = rates.estimate(con, Window(seasons=(SEASON,), as_of=AS_OF))
+    whole = rates.estimate(con, Window(seasons=(SEASON,), as_of=AS_OF, half_life_days=None))
     assert only_home.league == whole.league
 
 
@@ -345,16 +344,22 @@ def test_as_of_after_is_the_day_after_the_last_eastern_game_date(con: duckdb.Duc
         rates.as_of_after(con, 1999)
 
 
-def test_the_totals_weight_an_earlier_season_by_the_windows_decay() -> None:
-    counts: rates.Counts = {("a1", 2026, 0): Counter(fga=10, minutes=20), ("a1", 2026, 1): Counter(fga=10), ("a1", 2025, 0): Counter(fga=40, minutes=20), ("t", 2024, 1): Counter(poss=100)}
-    window = Window(seasons=(2024, 2025, 2026), as_of=dt.date(2026, 4, 13))
-    totals = rates._totals(counts, window)
-    assert dict(totals["a1"]) == {"fga": 40.0, "minutes": 30.0}  # 20 + 0.5 * 40, 20 + 0.5 * 20
-    assert dict(totals["t"]) == {"poss": 25.0}
-    players, teams = rates._league_totals({k: v for k, v in counts.items() if k[0] == "a1"}, {k: v for k, v in counts.items() if k[0] == "t"}, window)
-    assert dict(players) == {"fga": 40.0, "minutes": 30.0} and dict(teams) == {"poss": 25.0}
-    # Equal weights leave the counts alone.
-    assert dict(rates._totals(counts, Window(seasons=(2024, 2025, 2026), as_of=dt.date(2026, 4, 13), season_decay=1.0))["a1"]) == {"fga": 60, "minutes": 40}
+def test_a_half_life_weights_each_game_by_its_age_inside_every_count(con: duckdb.DuckDBPyConnection) -> None:
+    # Two games in the window: 601 on the evening of January 9 (Eastern), 602 on January 11; as of the 12th they are 3 and 1 days old.
+    window = Window(seasons=(SEASON,), as_of=AS_OF, half_life_days=2.0)
+    weights = {"601": window.weight(dt.date(2025, 1, 9)), "602": window.weight(dt.date(2025, 1, 11))}
+    assert weights["601"] == pytest.approx(0.5**1.5) and weights["602"] == pytest.approx(0.5**0.5)
+    est = rates.estimate(con, window)
+    h1 = est.players["h1"]
+    minutes = sum(weights[r[0]] * (r[3] or 0) for r in BOX if r[2] == "h1" and _in_window(r[0]))
+    fga = sum(weights[r[0]] * (r[4] or 0) for r in BOX if r[2] == "h1" and _in_window(r[0]))
+    assert h1.minutes == pytest.approx(minutes) and h1.shots_per_minute.trials == pytest.approx(minutes)
+    league_minutes = sum(weights[r[0]] * (r[3] or 0) for r in BOX if _in_window(r[0]) and r[3] is not None)
+    league_fga = sum(weights[r[0]] * (r[4] or 0) for r in BOX if _in_window(r[0]) and r[3] is not None)
+    assert est.league.per_minute_rate("shots_per_minute") == pytest.approx(league_fga / league_minutes)
+    assert h1.shots_per_minute.value == pytest.approx(shrink.shrink(fga, minutes, league_fga / league_minutes, h1.shots_per_minute.strength))
+    # Equal weights give the plain sums, as the other tests check.
+    assert rates.estimate(con, Window(seasons=(SEASON,), as_of=AS_OF, half_life_days=None)).players["h1"].minutes == _box_total(3, athlete="h1")
 
 
 def test_the_duration_histograms_are_shares_over_the_bins_and_the_first_use_seconds_a_team_rate(estimates: rates.Estimates) -> None:

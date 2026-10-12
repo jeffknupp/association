@@ -15,13 +15,13 @@ seconds (below).
 (``nba.season.eastern_date_sql``, the one rule the project dates games by)
 is strictly before ``as_of``. A replay passes the replayed game's date and
 cannot see that evening's games; a season simulation passes the day after
-its last game. Each season's counts are weighted ``Window.weight``
-(``season_decay`` to the power of the seasons back, 0.5 by default -
-``params.SEASON_DECAY`` has the measurement) before they are summed for a
-player, a team or the league, so a rate is the weighted mean and its
-``trials`` the weighted count, which the shrinkage treats as the sample;
-the prior strengths are fitted within each season (odd games against even)
-and so need no weight.
+its last game. Every game is weighted by its age, ``0.5 ** (days before
+as_of / half_life_days)`` (``Window.weight``, 180 days by default -
+``params.HALF_LIFE_DAYS`` has the measurement), inside every query: a count
+is a sum of game weights and a rate the weighted mean, its ``trials`` the
+weighted count the shrinkage treats as the sample; the prior strengths are
+fitted within each season (odd games against even) on the same weighted
+counts.
 
 **What each rate is read from.** A player's minutes, shots, free throws,
 turnovers, assists, rebounds, steals, blocks and fouls are the box score's
@@ -289,12 +289,13 @@ def _window_ctes(window: Window) -> str:
     seasons = _seasons_sql(window)
     return f"""
     games AS (
-        SELECT g.event_id, g.season, g.date, g.home_team_id, g.away_team_id, g.home_score, g.away_score
+        SELECT g.event_id, g.season, g.date, g.home_team_id, g.away_team_id, g.home_score, g.away_score,
+               CAST({window.weight_sql(eastern_date_sql("g.date"))} AS DOUBLE) AS weight
         FROM {WAREHOUSE}.real_games g
         WHERE g.season IN {seasons} AND {eastern_date_sql("g.date")} < DATE '{window.as_of.isoformat()}'
     ),
     player_games AS (
-        SELECT b.athlete_id, b.team_id, b.season, b.event_id, g.date, b.minutes,
+        SELECT b.athlete_id, b.team_id, b.season, b.event_id, g.date, g.weight, b.minutes,
                b.fieldGoalsAttempted AS fga, b.freeThrowsAttempted AS fta, b.freeThrowsMade AS ftm, b.turnovers AS tov, b.assists AS ast,
                b.offensiveRebounds AS oreb, b.defensiveRebounds AS dreb, b.steals AS stl, b.blocks AS blk, b.fouls AS pf,
                row_number() OVER (PARTITION BY b.athlete_id, b.season ORDER BY g.date, b.event_id) % 2 AS parity
@@ -303,12 +304,12 @@ def _window_ctes(window: Window) -> str:
         WHERE b.minutes IS NOT NULL
     ),
     team_parity AS (
-        SELECT team_id, season, event_id,
+        SELECT team_id, season, event_id, weight,
                row_number() OVER (PARTITION BY team_id, season ORDER BY date, event_id) % 2 AS parity
-        FROM (SELECT unnest([g.home_team_id, g.away_team_id]) AS team_id, g.season, g.event_id, g.date FROM games g)
+        FROM (SELECT unnest([g.home_team_id, g.away_team_id]) AS team_id, g.season, g.event_id, g.date, g.weight FROM games g)
     ),
     shots AS (
-        SELECT sc.athlete_id, sc.team_id, sc.event_id, sc.season, sc.made,
+        SELECT sc.athlete_id, sc.team_id, sc.event_id, sc.season, sc.made, g.weight,
                {zones.zone_sql("sp.shot_value", "sp.clock_remaining", "sc.shot_type")} AS zone,
                len(sp.participants) >= 2 AS assisted,
                sp.period, sp.clock_remaining
@@ -327,7 +328,8 @@ def _read_box(con: duckdb.DuckDBPyConnection, ctes: str, counts: Counts) -> None
     """Minutes and the box columns per player-season-parity."""
     rows = con.execute(f"""
         WITH {ctes}
-        SELECT athlete_id, season, parity, sum(minutes), sum(fga), sum(fta), sum(ftm), sum(tov), sum(ast), sum(oreb), sum(dreb), sum(stl), sum(blk), sum(pf)
+        SELECT athlete_id, season, parity, sum(weight * minutes), sum(weight * fga), sum(weight * fta), sum(weight * ftm), sum(weight * tov), sum(weight * ast),
+               sum(weight * oreb), sum(weight * dreb), sum(weight * stl), sum(weight * blk), sum(weight * pf)
         FROM player_games GROUP BY 1, 2, 3
     """).fetchall()
     for athlete, season, parity, minutes, fga, fta, ftm, tov, ast, oreb, dreb, stl, blk, pf in rows:
@@ -340,9 +342,9 @@ def _read_plays(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts:
     rows = con.execute(f"""
         WITH {ctes}
         SELECT pg.athlete_id, pg.season, pg.parity,
-               count(*) FILTER (WHERE {TRIP_START_SQL}) AS trips,
-               count(*) FILTER (WHERE sp.kind = 'turnover') AS tov_plays,
-               count(*) FILTER (WHERE sp.kind = 'turnover' AND sp.live_ball) AS live_tov
+               sum(pg.weight) FILTER (WHERE {TRIP_START_SQL}) AS trips,
+               sum(pg.weight) FILTER (WHERE sp.kind = 'turnover') AS tov_plays,
+               sum(pg.weight) FILTER (WHERE sp.kind = 'turnover' AND sp.live_ball) AS live_tov
         FROM sim_plays sp
         JOIN player_games pg ON pg.athlete_id = sp.athlete_id AND pg.event_id = sp.event_id AND pg.season = sp.season
         LEFT JOIN ({SHOOTING_CLOCKS_SQL} AND season IN {seasons}) sc
@@ -365,9 +367,9 @@ def _read_shots(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts:
             FROM sim_plays sp WHERE sp.type = 'Free Throw - 1 of 1' AND sp.season IN {seasons}
         )
         SELECT pg.athlete_id, pg.season, pg.parity, s.zone,
-               count(*), count(*) FILTER (WHERE s.made),
-               count(*) FILTER (WHERE s.made AND f.athlete_id IS NOT NULL),
-               count(*) FILTER (WHERE s.made AND s.assisted)
+               sum(pg.weight), sum(pg.weight) FILTER (WHERE s.made),
+               sum(pg.weight) FILTER (WHERE s.made AND f.athlete_id IS NOT NULL),
+               sum(pg.weight) FILTER (WHERE s.made AND s.assisted)
         FROM shots s
         JOIN player_games pg ON pg.athlete_id = s.athlete_id AND pg.event_id = s.event_id AND pg.season = s.season
         LEFT JOIN one_of_ones f ON f.season = s.season AND f.event_id = s.event_id AND f.period = s.period AND f.athlete_id = s.athlete_id AND f.clock_remaining = s.clock_remaining
@@ -423,14 +425,14 @@ def _read_team_games(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, co
             GROUP BY 1, 2, 3
         ),
         sides AS (
-            SELECT tb.*, tp.parity, coalesce(pl.trips, 0) AS trips, tb.tov + coalesce(pl.team_tov, 0) AS tov_all,
+            SELECT tb.*, tp.parity, tp.weight, coalesce(pl.trips, 0) AS trips, tb.tov + coalesce(pl.team_tov, 0) AS tov_all,
                    tb.fga - tb.oreb + tb.tov + coalesce(pl.team_tov, 0) + {FREE_THROW_POSSESSION_WEIGHT} * tb.fta AS poss
             FROM team_box tb
             JOIN team_parity tp ON tp.team_id = tb.team_id AND tp.season = tb.season AND tp.event_id = tb.event_id
             LEFT JOIN team_plays pl ON pl.team_id = tb.team_id AND pl.season = tb.season AND pl.event_id = tb.event_id
         )
-        SELECT t.team_id, t.season, t.parity, count(*), sum(t.minutes), sum(t.poss), sum(t.tov_all), sum(t.trips), sum(t.oreb), sum(t.dreb),
-               sum(o.poss), sum(o.tov_all), sum(o.trips), sum(o.oreb)
+        SELECT t.team_id, t.season, t.parity, sum(t.weight), sum(t.weight * t.minutes), sum(t.weight * t.poss), sum(t.weight * t.tov_all), sum(t.weight * t.trips),
+               sum(t.weight * t.oreb), sum(t.weight * t.dreb), sum(t.weight * o.poss), sum(t.weight * o.tov_all), sum(t.weight * o.trips), sum(t.weight * o.oreb)
         FROM sides t JOIN sides o ON o.event_id = t.event_id AND o.season = t.season AND o.team_id <> t.team_id
         GROUP BY 1, 2, 3
     """).fetchall()
@@ -458,7 +460,7 @@ def _read_allowed_shots(con: duckdb.DuckDBPyConnection, ctes: str, counts: Count
     team-season-parity: the shots whose side is the other team in the game."""
     rows = con.execute(f"""
         WITH {ctes}
-        SELECT tp.team_id, tp.season, tp.parity, s.zone, count(*), count(*) FILTER (WHERE s.made)
+        SELECT tp.team_id, tp.season, tp.parity, s.zone, sum(tp.weight), sum(tp.weight) FILTER (WHERE s.made)
         FROM shots s
         JOIN team_parity tp ON tp.event_id = s.event_id AND tp.season = s.season AND tp.team_id <> s.team_id
         WHERE s.zone IS NOT NULL AND s.team_id IS NOT NULL
@@ -500,19 +502,19 @@ def _duration_ctes(ctes: str, seasons: str) -> str:
     action; ``first_uses`` is each possession's first use of the ball."""
     return f"""{ctes},
     poss AS (
-        SELECT p.event_id, p.season, p.period, p.poss_no, p.offense_team_id, p.start_type, p.start_elapsed
+        SELECT p.event_id, p.season, p.period, p.poss_no, p.offense_team_id, p.start_type, p.start_elapsed, g.weight
         FROM sim_possessions p JOIN games g ON g.event_id = p.event_id AND g.season = p.season
         WHERE p.season IN {seasons} AND p.poss_no IS NOT NULL
     ),
     acts AS (
-        SELECT a.event_id, a.season, a.period, a.poss_no, a.seq, a.elapsed, a.kind, a.team_id, a.dead_ball, a.made,
+        SELECT a.event_id, a.season, a.period, a.poss_no, a.seq, a.elapsed, a.kind, a.team_id, a.dead_ball, a.made, poss.weight,
                lead(a.kind) OVER w AS next_kind, lead(a.elapsed) OVER w AS next_elapsed, lead(a.dead_ball) OVER w AS next_dead
         FROM sim_actions a JOIN poss USING (event_id, season, period, poss_no)
         WINDOW w AS (PARTITION BY a.event_id, a.season, a.period, a.poss_no ORDER BY a.seq)
     ),
     first_uses AS (
         SELECT * FROM (
-            SELECT a.season, a.elapsed, p.offense_team_id, p.event_id, p.start_type, p.start_elapsed,
+            SELECT a.season, a.elapsed, a.weight, p.offense_team_id, p.event_id, p.start_type, p.start_elapsed,
                    row_number() OVER (PARTITION BY a.event_id, a.season, a.period, a.poss_no ORDER BY a.seq) AS use_no
             FROM acts a JOIN poss p USING (event_id, season, period, poss_no)
             WHERE a.kind IN {USE_KINDS_SQL} AND NOT a.dead_ball
@@ -520,33 +522,33 @@ def _duration_ctes(ctes: str, seasons: str) -> str:
     )"""
 
 
-def _read_durations(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, window: Window) -> dict[str, tuple[float, ...]]:
+def _read_durations(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str) -> dict[str, tuple[float, ...]]:
     """The league's duration histograms by :data:`~association.sim.params.DURATION_KEYS`:
     whole seconds from a possession's start to its first use by start type,
     from an offensive rebound or a non-shooting foul to the next use, and
-    from a missed shot or free throw to its rebound, each season's counts
-    weighted by :meth:`Window.weight`."""
+    from a missed shot or free throw to its rebound, each game weighted by
+    its age like every other count."""
     bins = f"least(greatest(round({{}}), 0), {DURATION_BINS - 1})::INTEGER"
     rows = con.execute(
         f"""WITH {_duration_ctes(ctes, seasons)}
-        SELECT season, start_type, {bins.format("elapsed - start_elapsed")} AS s, count(*) FROM first_uses GROUP BY 1, 2, 3
+        SELECT start_type, {bins.format("elapsed - start_elapsed")} AS s, sum(weight) FROM first_uses GROUP BY 1, 2
         UNION ALL
-        SELECT a.season, CASE WHEN a.kind = 'offensive_rebound' THEN 'putback' ELSE 'after_foul' END, {bins.format("a.next_elapsed - a.elapsed")}, count(*)
+        SELECT CASE WHEN a.kind = 'offensive_rebound' THEN 'putback' ELSE 'after_foul' END, {bins.format("a.next_elapsed - a.elapsed")}, sum(a.weight)
         FROM acts a JOIN poss p USING (event_id, season, period, poss_no)
         WHERE ((a.kind = 'offensive_rebound' AND NOT a.dead_ball) OR (a.kind = 'foul_personal' AND a.team_id <> p.offense_team_id))
           AND a.next_kind IN {USE_KINDS_SQL} AND NOT a.next_dead
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2
         UNION ALL
-        SELECT a.season, CASE WHEN a.kind = 'shot' THEN 'rebound' ELSE 'free_throw_rebound' END, {bins.format("a.next_elapsed - a.elapsed")}, count(*)
+        SELECT CASE WHEN a.kind = 'shot' THEN 'rebound' ELSE 'free_throw_rebound' END, {bins.format("a.next_elapsed - a.elapsed")}, sum(a.weight)
         FROM acts a
         WHERE a.kind IN ('shot', 'free_throw') AND NOT a.made AND a.next_kind IN ('offensive_rebound', 'defensive_rebound') AND NOT a.next_dead
-        GROUP BY 1, 2, 3"""
+        GROUP BY 1, 2"""
     ).fetchall()
     counts: dict[str, list[float]] = {}
-    for season, start_type, second, n in rows:
+    for start_type, second, n in rows:
         key = DURATION_START_TYPES.get(start_type, start_type)
         if key in DURATION_KEYS:
-            counts.setdefault(key, [0.0] * DURATION_BINS)[int(second)] += n * window.weight(int(season))
+            counts.setdefault(key, [0.0] * DURATION_BINS)[int(second)] += float(n)
     return {key: tuple(c / sum(bucket) for c in bucket) for key, bucket in counts.items() if sum(bucket) > 0}
 
 
@@ -555,7 +557,7 @@ def _read_first_uses(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, co
     with the count, per team-season-parity (period starts left out)."""
     rows = con.execute(
         f"""WITH {_duration_ctes(ctes, seasons)}
-        SELECT f.offense_team_id, f.season, tp.parity, sum(f.elapsed - f.start_elapsed), count(*)
+        SELECT f.offense_team_id, f.season, tp.parity, sum(f.weight * (f.elapsed - f.start_elapsed)), sum(f.weight)
         FROM first_uses f JOIN team_parity tp ON tp.team_id = f.offense_team_id AND tp.season = f.season AND tp.event_id = f.event_id
         WHERE f.start_type <> 'period_start' GROUP BY 1, 2, 3"""
     ).fetchall()
@@ -579,16 +581,16 @@ def _read_uses(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts: 
     rows = con.execute(
         f"""WITH {ctes},
         uses AS (
-            SELECT a.event_id, a.season, a.period, a.segment_no, a.team_id, a.athlete_id
+            SELECT a.event_id, a.season, a.period, a.segment_no, a.team_id, a.athlete_id, g.weight
             FROM sim_actions a JOIN games g ON g.event_id = a.event_id AND g.season = a.season
             WHERE a.season IN {seasons} AND a.poss_no IS NOT NULL AND {USES_SQL}
         ),
         on_floor AS (
-            SELECT u.event_id, u.season, u.athlete_id, unnest(CASE WHEN u.team_id = g.home_team_id THEN s.home_lineup ELSE s.away_lineup END) AS on_id
+            SELECT u.event_id, u.season, u.athlete_id, u.weight, unnest(CASE WHEN u.team_id = g.home_team_id THEN s.home_lineup ELSE s.away_lineup END) AS on_id
             FROM uses u JOIN games g ON g.event_id = u.event_id AND g.season = u.season
             JOIN sim_segments s ON s.event_id = u.event_id AND s.season = u.season AND s.period = u.period AND s.segment_no = u.segment_no AND s.resolved
         )
-        SELECT pg.athlete_id, pg.season, pg.parity, count(*) FILTER (WHERE o.athlete_id = o.on_id), count(*)
+        SELECT pg.athlete_id, pg.season, pg.parity, sum(o.weight) FILTER (WHERE o.athlete_id = o.on_id), sum(o.weight)
         FROM on_floor o JOIN player_games pg ON pg.athlete_id = o.on_id AND pg.season = o.season AND pg.event_id = o.event_id
         GROUP BY 1, 2, 3"""
     ).fetchall()
@@ -604,11 +606,11 @@ def _read_defended(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, coun
     team-season-parity (every possession the team defended), the priors the
     players shrink toward, in the same unit."""
     zone_counts = ", ".join(f"count(*) FILTER (WHERE a.kind = 'shot' AND a.zone = '{z}') AS att_{z}, count(*) FILTER (WHERE a.kind = 'shot' AND a.zone = '{z}' AND a.made) AS made_{z}" for z in ZONES)
-    zone_sums = ", ".join(f"sum(f.att_{z}), sum(f.made_{z})" for z in ZONES)
+    zone_sums = ", ".join(f"sum(d.weight * f.att_{z}), sum(d.weight * f.made_{z})" for z in ZONES)
     rows = con.execute(
         f"""WITH {ctes},
         defended AS (
-            SELECT p.event_id, p.season, p.period, p.poss_no,
+            SELECT p.event_id, p.season, p.period, p.poss_no, g.weight,
                    unnest(CASE WHEN p.offense_team_id = g.home_team_id THEN s.away_lineup ELSE s.home_lineup END) AS defender
             FROM sim_possessions p JOIN games g ON g.event_id = p.event_id AND g.season = p.season
             JOIN sim_segments s ON s.event_id = p.event_id AND s.season = p.season AND s.period = p.period AND s.segment_no = p.segment_no AND s.resolved
@@ -623,7 +625,7 @@ def _read_defended(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, coun
                    {zone_counts}
             FROM sim_actions a WHERE a.season IN {seasons} AND a.poss_no IS NOT NULL GROUP BY 1, 2, 3, 4
         )
-        SELECT pg.athlete_id, pg.season, pg.parity, count(*), sum(f.tov), sum(f.trips), sum(f.oreb), sum(f.dreb), {zone_sums}
+        SELECT pg.athlete_id, pg.season, pg.parity, sum(d.weight), sum(d.weight * f.tov), sum(d.weight * f.trips), sum(d.weight * f.oreb), sum(d.weight * f.dreb), {zone_sums}
         FROM defended d JOIN facts f USING (event_id, season, period, poss_no)
         JOIN player_games pg ON pg.athlete_id = d.defender AND pg.season = d.season AND pg.event_id = d.event_id
         GROUP BY 1, 2, 3"""
@@ -632,7 +634,7 @@ def _read_defended(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, coun
     team_rows = con.execute(
         f"""WITH {ctes},
         defended AS (
-            SELECT p.event_id, p.season, p.period, p.poss_no, CASE WHEN p.offense_team_id = g.home_team_id THEN g.away_team_id ELSE g.home_team_id END AS team_id
+            SELECT p.event_id, p.season, p.period, p.poss_no, g.weight, CASE WHEN p.offense_team_id = g.home_team_id THEN g.away_team_id ELSE g.home_team_id END AS team_id
             FROM sim_possessions p JOIN games g ON g.event_id = p.event_id AND g.season = p.season
             WHERE p.season IN {seasons} AND p.poss_no IS NOT NULL
         ),
@@ -645,7 +647,7 @@ def _read_defended(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, coun
                    {zone_counts}
             FROM sim_actions a WHERE a.season IN {seasons} AND a.poss_no IS NOT NULL GROUP BY 1, 2, 3, 4
         )
-        SELECT d.team_id, d.season, tp.parity, count(*), sum(f.tov), sum(f.trips), sum(f.oreb), sum(f.dreb), {zone_sums}
+        SELECT d.team_id, d.season, tp.parity, sum(d.weight), sum(d.weight * f.tov), sum(d.weight * f.trips), sum(d.weight * f.oreb), sum(d.weight * f.dreb), {zone_sums}
         FROM defended d JOIN facts f USING (event_id, season, period, poss_no)
         JOIN team_parity tp ON tp.team_id = d.team_id AND tp.season = d.season AND tp.event_id = d.event_id
         GROUP BY 1, 2, 3"""
@@ -662,20 +664,16 @@ def _add_defended(counts: Counts, rows: list[tuple[Any, ...]]) -> None:
 
 
 def _read_home_margin(con: duckdb.DuckDBPyConnection, ctes: str) -> tuple[float, int]:
-    margin, games = con.execute(f"WITH {ctes} SELECT coalesce(avg(home_score - away_score), 0.0), count(*) FROM games").fetchone() or (0.0, 0)
+    margin, games = con.execute(f"WITH {ctes} SELECT coalesce(sum(weight * (home_score - away_score)) / sum(weight), 0.0), count(*) FROM games").fetchone() or (0.0, 0)
     return float(margin), int(games)
 
 
-def _weighted(c: Counter[str], weight: float) -> Counter[str]:
-    return c if weight == 1.0 else Counter({k: v * weight for k, v in c.items()})
-
-
-def _totals(counts: Counts, window: Window) -> dict[str, Counter[str]]:
-    """Each id's counts summed over its seasons and parities, each season's
-    weighted by :meth:`Window.weight`."""
+def _totals(counts: Counts) -> dict[str, Counter[str]]:
+    """Each id's counts summed over its seasons and parities (the game
+    weights are already in the counts)."""
     totals: dict[str, Counter[str]] = defaultdict(Counter)
-    for (owner, season, _), c in counts.items():
-        totals[owner].update(_weighted(c, window.weight(season)))
+    for (owner, _, _), c in counts.items():
+        totals[owner].update(c)
     return dict(totals)
 
 
@@ -783,14 +781,14 @@ def _team_names(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
     return dict(con.execute(f"SELECT team_id, display_name FROM {WAREHOUSE}.teams").fetchall())
 
 
-def _league_totals(player_counts: Counts, team_counts: Counts, window: Window) -> tuple[Counter[str], Counter[str]]:
-    """Everyone's counts summed, each season's weighted by :meth:`Window.weight`."""
+def _league_totals(player_counts: Counts, team_counts: Counts) -> tuple[Counter[str], Counter[str]]:
+    """Everyone's counts summed (the game weights are already in the counts)."""
     players: Counter[str] = Counter()
-    for (_, season, _), c in player_counts.items():
-        players.update(_weighted(c, window.weight(season)))
+    for c in player_counts.values():
+        players.update(c)
     teams: Counter[str] = Counter()
-    for (_, season, _), c in team_counts.items():
-        teams.update(_weighted(c, window.weight(season)))
+    for c in team_counts.values():
+        teams.update(c)
     return players, teams
 
 
@@ -873,7 +871,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     _read_allowed_shots(con, ctes, team_counts)
     durations: dict[str, tuple[float, ...]] = {}
     if _has_table(con, "sim_actions"):
-        durations = _read_durations(con, ctes, seasons, window)
+        durations = _read_durations(con, ctes, seasons)
         _read_first_uses(con, ctes, seasons, team_counts)
         if _has_table(con, "sim_segments"):
             _read_uses(con, ctes, seasons, player_counts)
@@ -883,7 +881,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     identities, sat_out = _read_identities(con, ctes, team_ids)
     home_court, _ = _read_home_margin(con, ctes)
 
-    player_total, team_total = _league_totals(player_counts, team_counts, window)
+    player_total, team_total = _league_totals(player_counts, team_counts)
     player_means, team_means = _league_means(player_total, team_total)
     zone_mu = _league_mix(player_total, "attempts")
     player_splits, team_splits = _splits(player_counts), _splits(team_counts)
@@ -895,7 +893,7 @@ def estimate(con: duckdb.DuckDBPyConnection, window: Window, team_ids: Sequence[
     strengths["allowed_zone_mix"] = _fit_mix(team_splits, "allowed_attempts", zone_mu)
 
     league = _league(window, player_total, team_total, player_means, team_means, strengths, home_court, durations)
-    player_totals, team_totals = _totals(player_counts, window), _totals(team_counts, window)
+    player_totals, team_totals = _totals(player_counts), _totals(team_counts)
     names = _team_names(con)
     teams = {t: _team_record(t, names.get(t, t), c, team_means, strengths, zone_mu) for t, c in team_totals.items() if team_ids is None or t in team_ids}
     players = {a: _player_record(a, identities[a], player_totals[a], player_means, strengths, zone_mu, team_totals.get(identities[a][0])) for a in sorted(_selected(identities, team_ids, athlete_ids))}

@@ -127,15 +127,17 @@ was learned the hard way and is about the data, not the pipeline.
   throws at 0.371 per field-goal attempt against 0.240 - was fixed the same
   day (and-ones counted twice; three-shot trips at 40% instead of 3.5%),
   with the before and after reports side by side in `results/`.
-- **Ten validation runs so far** (`scripts/sim_p8/results/`): the
+- **Eleven validation runs so far** (`scripts/sim_p8/results/`): the
   baseline, after the free-throw fix, with a pace constant, after the
   bonus-trip fix (`_trips`), two with team rebounds (`_teamreb`,
   `_teamreb_odds`), with the season-weighted window (`2026-10-12_weights`),
   with durations by situation (`2026-10-12_durations`), with usage shares
-  (`2026-10-12_usage`) and with on-court defense (`2026-10-12_defense`, the
-  current state: possessions 101.4 against 100.8 with no constant, total
-  +0.9, Brier 0.2214 against the strength model's 0.2259 and ESPN's
-  0.1999). Before that run the
+  (`2026-10-12_usage`), with on-court defense (`2026-10-12_defense`) and
+  with games weighted by age, half-life 180 days (`2026-10-12_halflife`,
+  the current state: possessions 101.3 against 100.8 with no constant,
+  total +0.7, Brier 0.2163 against the strength model's 0.2253 and ESPN's
+  0.1996; the real-minutes diagnostic `_real_minutes` sits beside the
+  defense run it was made against). Before that run the
   pace matched by a constant (100.5
   against 100.8 possessions), free throws are 0.246 against 0.240 per
   field-goal attempt, threes 0.415 against 0.420, points per 100
@@ -172,7 +174,10 @@ was learned the hard way and is about the data, not the pipeline.
   match without one. A league estimated without the possession tables is
   refused by the engine. **Usage shares done 2026-10-12** too
   (`PlayerParams.usage_share`, zero means unknown and the per-minute sum
-  is used): validated neutral, kept as the right unit. **On-court defense
+  is used): validated neutral, kept as the right unit. **Games are
+  weighted by age** (`params.HALF_LIFE_DAYS` 180, inside every estimator
+  query; `Window.half_life_days=None` for equal weights): Brier gain 0.005
+  a game, measured by `scripts/sim_p9/game_weights.py`. **On-court defense
   done 2026-10-12** (D6 option 2): the defense an action meets is the five
   on the floor (`PlayerParams.defended_*`, `LeagueParams.defended`,
   `shrink.combine_defenders` with the measured mean - the possession
@@ -201,10 +206,13 @@ was learned the hard way and is about the data, not the pipeline.
   foul-trouble awareness; minutes MAE 5.3, substitutions nineteen seconds
   into a game, eight-man rosters fouling out), measured against the
   real-minutes ceiling; star scoring (usage or efficiency of the high-usage
-  player, `--explain` on a star's game); the offensive-rebound share
-  0.245 against 0.255, which is 2025's within-season drift (0.247 before
-  January 1, 0.255 after) and needs a within-season weight or trend, not
-  a season weight; threes 0.415 against 0.420 and free throws 2.5% high.
+  player, `--explain` on a star's game); the simulated total's spread
+  within a game (17.2 against 19.5); a position-group prior for the deep
+  bench (plan 0b 0.16, `scripts/sim_p9/position_priors.py`); the
+  offensive-rebound share
+  0.247 against 0.255, which is 2025's within-season drift that no
+  weighting of the data before January 1 reaches (plan 0b 0.16) - leave
+  it; threes and free throws now match.
   Then, with the build order complete, the plan's section 4 (v2 work) in
   its order of value, the strength headroom to ESPN (0.022 of Brier)
   still running through rates and defense; and the simulated total's spread
