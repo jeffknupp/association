@@ -17,7 +17,6 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from slots import slots_reading
 from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -909,7 +908,7 @@ def test_a_weekday_narrows_a_teams_record(team_ctx: AnswerContext) -> None:
     from datetime import date
 
     weekday = date(int(S) - 1, 11, 19).strftime("%A")
-    answer = team_record(team_ctx, slots_reading({"team": "Knicks", "situation": f"on {weekday}s"})).answer
+    answer = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of(f"on {weekday}s")))).answer
     assert "1-1" in answer
     assert f"on {weekday}s" in answer
 
@@ -1210,7 +1209,7 @@ def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: AnswerContext) -> Non
 
 
 def test_a_quarter_points_date_reads_one_game(tqp_ctx: AnswerContext) -> None:
-    result = team_quarter_points(tqp_ctx, slots_reading({"team": "Knicks", "period": 1, "date": f"{S}-01-15"}))
+    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
     assert result.data["games"] == [{"date": f"{S}-01-15", "opponent": "Los Angeles Lakers", "points": 25}]
     assert f"{S}-01-15" in (result.answer or "")
 
