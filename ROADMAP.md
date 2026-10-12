@@ -640,6 +640,48 @@ renderers keyed by shape (22 become one per shape); the browser check run;
 `docs/architecture.rst` rewritten. `AGENTS.md` is updated with each slice,
 not here: agents work from it throughout.
 
+**Phase 4, the expected steps (DRAFT, written 2026-10-12 by the lead,
+before the phase, for Jeff to accept, reorder or strike; each step is
+re-planned in its own row as it lands, as Phases 2 and 3's were).** The
+paragraph above was written on 2026-09-30, when "close out" meant the
+label and the page. Three phases and two reviews later the done table
+still shows debt no row owns - records 10 against 4, 80 hand-written
+statements in 20 modules against "relations only", the point's
+`measures`/`aggregate` as the compiler's names, the grammar reading marks
+in place of typed values - and the Phase 3 review ranked the test doors
+first. So the rows below are two kinds: the close-out the paragraph
+named (steps 0-2 and 7), and the debt the done table measures (steps 3-6),
+each of which Jeff may defer past the close. What is NOT a row: the open
+P1 list (40 entries; the score moves there, one fix at a time under the
+cleanup's rules), and the feed's 91 held disagreements (#382's
+remainder, read when a step touches the subject reading). Every step
+keeps Phase 3's proof: the four populations against a fresh before-tree
+run, every move enumerated, the ledger not grown, the ratchets shrinking.
+Measured on `8f3f39b`: the label is read at 55 sites in 13 files
+(`reading.py` 12, `agent.py` 8, `parse.py` 7, `subject.py` 6, `say.py`
+4, `plan.py` 4, the page 3); `point.py` builds `measures=` 37 times and
+`aggregate=` 36, and `query/` reads `.measures` 84 times and `.aggregate`
+32; the test doors have 113 slot-dict, 22 retired-name and 91 routed
+call sites left (#385); `docs/architecture.rst` is 343 lines with 26
+"template" and 8 "router" mentions; the parent grammar's 23 rows and 16
+more `re` calls stand outside the lexicon (point 11, parse 5, line 1).
+
+| Step | What | Deletes | Proof |
+| --- | --- | --- | --- |
+| 0 | **The test doors go** (#385, the review's (b)1 remainder). The 226 call sites left state a Reading in the typed fields and a shape by its `PointShape`: `test_compose`'s `compose_answer`/`_scope` (43 calls, a label and a slot dict together, a model-era `threshold` dropped on the way) redesigned to take a typed Reading; `test_templates.py`'s 31 `slots_reading` the same; `tests/routed.py`'s helpers keep only what hands a test's own reading to `parse._reading` (`reading_of`, `with_subject`, `handed`), the slot-shaped ones gone. Tests only; the suite green after every file | `tests/slots.py`, `tests/shapes.py`, `tests/routed.py`'s `slots_route`/`ask_routed`/`default_query`/`default_reading`; the slot-door exemption in `test_reading` | the unit-test calls recorded before and after (moves are tests moving, counted per file); the 628, the 2,082 and the 2,710 identical |
+| 1 | **The answer carries its shape, and the page keys on it.** `Answer.shape` (the planned `PointShape`, beside the data) replaces `Answer.intent` as what the page and the trace read; `static/index.html`'s `RENDERERS` keyed by the shape - 22 become 7, one per `reading.SHAPE` (`scalar`, `rows`, `ranking`, `comparison`, `split`, `runs`, `chart`), each reading the typed body it is given, a chart's `kind` choosing its frame; the "Answered deterministically by a template (intent)" line says the shape; the freeze's renderer list becomes the seven. The browser check (`scripts/check_web_ui.py`, playwright, not a gate) run on the page before and after and its screenshots compared | 15 of the 22 renderers; `a.intent` on the page | the 628 and the 2,082 identical in every stage but `answer.intent`, ignored and listed; the page's API data unchanged but the field; the web tests; the browser check's run recorded |
+| 2 | **The label goes.** `Reading.intent`, `reading.labeled`, `reading.SHAPE_NAMES`, `asked_label`, the `intent` the trace writes and `coverage_caveat(intent=)` records, `Answer.intent`, the 25-name list in `test_frozen_shapes.py` (the 25 `PointShape` keys stay frozen); `tests/shapes.py`'s last reader of the table (step 0's remainder). A decline sentence that printed the label ("player_compare: ...") says the shape's words instead (ONE enumerated commit under the decline rule, the moved texts listed) | `Reading.intent` and the label table; the `intent` fields of the three records | the populations identical with `intent` ignored at every record path and its values listed, but the decline sentences enumerated; the live run (step 7) |
+| 3 | **The point's measures are the typed `Measure`** (`ROADMAP-TYPES.md`, Still open 13). `Reading.point.measures` (the compiler's column names) and `aggregate` (its reducer's name) become the Query's own typed fields: the measures a `tuple[Measure, ...]` read through the catalog where the compiler reads them (`stat_measure`, `measure_sql`, `_scalar_selects`, `_line_selects`), the aggregate a closed enum the skeleton derives from the shape (`plan.skeleton_of`), so the compiler's names are built in ONE place at compile time and no reader site builds them. 37 + 36 construction sites in `point.py` and 84 + 32 reads in `query/` move | the string names on the point; `_ROWS_BY`/`_COUNT_SHAPES`' name tables where the enum covers them | the four populations identical with `query.measures`/`query.aggregate` and the point's ignored and listed (the SQL the compiler builds compared text for text through a harness, as Phase 2's `exec_census.py` did) |
+| 4 | **Four records between question and answer** (the done table's row; today 10). The Reading, the Query-or-Cause, the Outcome and the Answer: `compose.plan.Planned` folds into the Query (a planned query or the cause it was refused by, one value), `answer.Reply` into `Answer`, and `normalizer.Normalized`, `names.NameIndex`, `subject.Subject` and `grammar.Asked` are counted as what they are - the reader's inputs and parts, not records between stages - with `tests/stage_calls.py` recording each boundary on both sides first | `Planned`, `Reply`; `Agent.planned` | the unit-test calls aligned across the fold (`calls_aligned.py`); the populations identical with the renamed record paths mapped |
+| 5 | **Every statement is a relation's.** The 80 hand-written statements in 20 modules (the SQL ratchet's list) move under the relation that owns their table - `season_line` (its own 7 and `compose.seasons`' 7, `compose.team_stats`' 9 over the team seasons), `compose.standings`' 4, `compose.periods`' 4 to the period relation, the NetPoints and shots relations' (`netpoints` 3, `shots` 3, `fingerprint` 3), `entities`' 4 to the index or the relation - and `compose/` executes only what the compiler or a relation hands it, so the ratchet's count reads the relation modules and nothing else. The largest row; three or four slices by relation, one agent per relation in its own worktree (disjoint tables) | the `rows_of`/`values_of` doors' hand statements in `compose/`; the ratchet entries for those modules | the four populations identical per slice; the ratchet shrunk per slice; the statement census (`exec_census.py`) before and after |
+| 6 | **The grammar reads typed values, not marks.** The parent grammar's 23 rows and the child grammars become predicates over the typed Reading the taggers already wrote (`LinesNamed`, the opponent, the companions, the window, the dated range: "a window stands here" asked by value, not by a private-use character at its position), the lexicon keeping the words each row still reads; the grammar's writes onto the subject (Still open 15: 30 + 24 + 1 readings) hand their names back typed; the point reader's 11 patterns and `parse.py`'s 5 move to the lexicon or go. Then `lexicon.mark_spans`, the six mark families and the intake strip (#383) are deleted, `regex_in_the_reader` reaches 0 and is deleted, and contract 6 is a fact | the marks, `marked_for_grammar`, `mark_companions`, `_window_spans`, `_date_spans`; the `re` sites outside the lexicon | the 2,710 readings identical, claims included (the ledger line for line on both populations); `route_family.py` re-run; `regex_in_the_reader` 17 -> 0 |
+| 7 | **The documents, the live run and the review.** `docs/architecture.rst` rewritten for the four stages (its "Templates" and router passages gone; the typed Reading, the taggers and the grammar, the planner, the relations and the sayer as they stand); AGENTS.md's "until Phase 3 ..." sentences dated or deleted and its router mentions rewritten (#386); the done table at measured values; then `live_parser30` graded blind against `live_parser29` and an independent review of the phase, as Phases 1-3 had | the architecture document's template-era text | 167/175, 156/166 not lower; the review's findings filed or fixed |
+
+Three rules hold throughout, Phase 3's: a decline or a refusal reworded
+is ONE enumerated commit; a boundary that moves is recorded in
+`tests/stage_calls.py` on both sides first; and the ratchets only shrink
+- a step that reaches 0 deletes its ratchet with the thing it held.
+
 ## How a note survives a rewording
 
 A note today is a sentence: a string appended to the answer and to

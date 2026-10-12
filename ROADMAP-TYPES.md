@@ -879,6 +879,7 @@ otherwise.
 | Phase 2, slice (iv), team shapes | "Still open" 5: `team_snapshots` |
 | Phase 2, slice (v), charts | "Still open" 6: two charts, not four |
 | Phase 3 (one reader) | the Filter union, `Measure`, `Window`, `Unsupported`: reviewed again with the shadow reader's diffs in hand |
+| Phase 4 (close out; its draft rows are in `ROADMAP.md`, 2026-10-12) | step 3: "Still open" 13, the point's `measures`/`aggregate` as the typed `Measure` and a closed aggregate on the Query; step 4: "The four records" - which of today's ten are records between stages and which are the reader's inputs; step 6: "Still open" 15 and 17, the grammar's writes onto the subject and the partial-overlap join, both retired with the marks; step 2: the label's last readers |
 
 ## What exists, in one table
 
