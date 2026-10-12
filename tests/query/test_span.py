@@ -13,16 +13,17 @@ import itertools
 from typing import Any
 
 import pytest
-from shapes import asked, stated
+from shapes import asked
 from slots import slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
+from association.query.compose.plan import cells_stated
 from association.query.player_relation import condition_scope, span_of
 from association.query.point import span_under
-from association.query.reading import Claim, Cuts, Reading, ScopeError, Span, unhonored_cells
+from association.query.reading import PLAYER_COMPARISON, PLAYER_LINE, PLAYER_LOG, PLAYER_RANKING, PRESENCE_SPLIT, TEAM_RANKING, TEAM_RECORD, Claim, Cuts, Reading, ScopeError, Span, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -121,12 +122,12 @@ def test_a_bare_last_n_games_log_reads_both_types() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "Payton Pritchard stats vs 76ers at home including playoffs game log"
-    read = span_under(asked("game_log"), read_span(question, SpanContext(versus=True)))
+    read = span_under(PLAYER_LOG, read_span(question, SpanContext(versus=True)))
     assert read.claims == (Claim(40, 58, "both"),) and question[40:58] == "including playoffs"  # the "playoffs" inside it folds in
     question = "kobe playoff stats from 02-03 to 06-07"
-    read = span_under(asked("player_stat"), read_span(question, SpanContext()))
+    read = span_under(PLAYER_LINE, read_span(question, SpanContext()))
     assert [(c.what, question[c.start : c.end]) for c in read.claims] == [("season_type", "playoff"), ("range", "02-03 to 06-07")]
-    read = span_under(asked("player_stat"), read_span("jokic career averages in 2023", SpanContext()))
+    read = span_under(PLAYER_LINE, read_span("jokic career averages in 2023", SpanContext()))
     assert [c.what for c in read.claims] == ["career", "season"]
     assert ["jokic career averages in 2023"[c.start : c.end] for c in read.claims] == ["career", "2023"]
 
@@ -143,7 +144,7 @@ def test_the_tagger_claims_the_characters_it_read_once() -> None:
     ],
 )
 def test_no_two_claims_overlap(question: str) -> None:
-    claims = span_under(asked("player_stat"), read_span(question, SpanContext())).claims
+    claims = span_under(PLAYER_LINE, read_span(question, SpanContext())).claims
     assert all(a.end <= b.start for a, b in itertools.pairwise(claims))
 
 
@@ -189,9 +190,9 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
 
 
 def test_the_relation_tables_declare_the_three_cells_once() -> None:
-    assert stated("game_log") >= Span.CELLS and stated("team_record") >= Span.CELLS
-    assert stated("leaderboard") & Span.CELLS == {"career"} and stated("player_compare") & Span.CELLS == frozenset()
-    assert stated("team_leaderboard") & Span.CELLS == {"range"} and stated("with_without") & Span.CELLS == {"career"}
+    assert cells_stated(PLAYER_LOG) >= Span.CELLS and cells_stated(TEAM_RECORD) >= Span.CELLS
+    assert cells_stated(PLAYER_RANKING) & Span.CELLS == {"career"} and cells_stated(PLAYER_COMPARISON) & Span.CELLS == frozenset()
+    assert cells_stated(TEAM_RANKING) & Span.CELLS == {"range"} and cells_stated(PRESENCE_SPLIT) & Span.CELLS == {"career"}
 
 
 # ---------------- the relation's one resolution ----------------
