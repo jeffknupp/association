@@ -19,7 +19,6 @@ from typing import Any, get_args
 
 import pytest
 from routed import staged as settle
-from slots import slots_scope
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
 from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
@@ -150,7 +149,7 @@ def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route()
     read = measure_under(PLAYER_RANKING, read_measure(question), MeasureContext())
     assert read.measure is not None and read.measure.as_typed == "netpoints_defense_per_100"
     assert [question[c.start : c.end] for c in read.claims] == ["defensive netpoints / 100", "/ 100"]
-    route = settle("leaderboard", {}, question)
+    route = settle(PLAYER_RANKING, question)
     # The rate's stretch inside the grammar's is the one reading, folded into one claim of it on the route.
     assert [(c.what, question[c.start : c.end]) for c in route.claims if c.what != "window"] == [("measure", "defensive netpoints / 100")]
     # Two stretches of one reading that overlap without one holding the other are one claim of it,
@@ -158,7 +157,7 @@ def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route()
     # reads the rate with either "100" or "possessions" gone, so neither is claimed, and both are
     # unread words, as the claims ledger counts them.
     question = "which players ranked in the top 10 for offensive netpoints per 100 possessions"
-    route = settle("leaderboard", {}, question)
+    route = settle(PLAYER_RANKING, question)
     assert [(c.what, question[c.start : c.end]) for c in route.claims if c.what != "window"] == [("measure", "offensive netpoints per")]
     # A word the split found between characters its pattern breaks on is read, with no characters to claim.
     assert named("most (3ot + 4ot) points in a game by a team nba") == ("points", Claim(17, 23, "measure"))
@@ -183,26 +182,28 @@ def test_the_two_readers_the_intent_stages_ask() -> None:
 
 
 def test_the_door_resolves_the_spelling_and_keeps_it() -> None:
-    folded = Reading(measure=Measure(key="netpoints", as_typed="netpoints_defense_per_100", how="per_100", side="defense")).measure
+    """The model's stat reaches the Reading through the measure's door
+    (:meth:`~association.query.reading.Measure.from_slots`, which the
+    parser reads it by): the catalog folds a side, a rate or a category
+    into the key and keeps the spelling it was given."""
+    folded = Measure.from_slots({"stat": "netpoints_defense_per_100"})
     assert folded == Measure(key="netpoints", as_typed="netpoints_defense_per_100", how="per_100", side="defense")
-    opponent = Reading(measure=Measure(key="points", as_typed="points_allowed", whose="opponent")).measure
+    opponent = Measure.from_slots({"stat": "points_allowed"})
     assert opponent == Measure(key="points", as_typed="points_allowed", whose="opponent")
-    unknown = Reading(measure=Measure(as_typed="career_playoffs")).measure
+    unknown = Measure.from_slots({"stat": "career_playoffs"})
     assert unknown == Measure(key=None, as_typed="career_playoffs")
-    fingerprint = Reading(measure=Measure(key="netpoints", as_typed="assist_o_net_pts", side="offense", category="assist")).measure
+    fingerprint = Measure.from_slots({"stat": "assist_o_net_pts"})
     assert fingerprint == Measure(key="netpoints", as_typed="assist_o_net_pts", side="offense", category="assist")
-    assert Reading().measure is None and Reading().measure is None
+    assert Measure.from_slots({"stat": ""}) is None and Measure.from_slots({}) is None
 
 
-def test_a_value_no_measure_can_hold_is_refused_at_the_door() -> None:
+def test_a_value_no_measure_can_hold_is_refused_by_the_measure() -> None:
     with pytest.raises(ScopeError):
-        slots_scope({"side": "middle"})
+        Measure(side="middle")  # type: ignore[arg-type]
     with pytest.raises(ScopeError):
-        slots_scope({"shot_value": 4})
+        Measure(shot_value=4)  # type: ignore[arg-type]
     with pytest.raises(ScopeError):
         Measure(key="points", as_typed="points", how="per_36")  # type: ignore[arg-type]
-    with pytest.raises(ScopeError):
-        slots_scope({"measure": measure_of("points"), "stat": "points"})
 
 
 def test_the_cell_its_decline_name_and_what_a_reader_leaves_unhonored() -> None:
@@ -281,11 +282,11 @@ def test_every_spelling_resolves_as_it_did_on_the_facets_its_vocabulary_reached(
 def test_a_metric_named_outright_keeps_its_form_and_a_total_asked_for_ranks_the_total() -> None:
     assert resolve_metric(measure_of("points")) == "avg_points" and resolve_metric(measure_of("points"), career=True) == "total_points"
     assert resolve_metric(measure_of("avg_points"), career=True) == "avg_points"
-    assert resolve_metric(Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")).measure) == "total_points"
+    assert resolve_metric(Measure(key="points", as_typed="points", how="total", unit="total")) == "total_points"
     # A total asked of a metric with no total form keeps the form it has (fouls per game), as the ranking read it.
-    assert resolve_metric(Reading(measure=Measure(key="fouls", as_typed="fouls", how="total", unit="total")).measure) == "avg_fouls"
+    assert resolve_metric(Measure(key="fouls", as_typed="fouls", how="total", unit="total")) == "avg_fouls"
     assert resolve_metric(measure_of("netpoints_defense")) == "netpoints_defense" and resolve_metric(measure_of("assist_o_net_pts")) == "assist_o_net_pts"
-    assert resolve_metric(Reading(measure=Measure(key="netpoints", as_typed="netpoints_defense", how="per_90", unit="/ 90", side="defense")).measure) == "netpoints_defense"
+    assert resolve_metric(Measure(key="netpoints", as_typed="netpoints_defense", how="per_90", unit="/ 90", side="defense")) == "netpoints_defense"
     assert resolve_team_metric(measure_of("points_allowed")) == "opponent_points" and resolve_team_metric(measure_of("rebounds allowed")) is None
     assert stat_measure(measure_of("wins")) == "won" and stat_measure(measure_of("points_allowed")) is None
 
@@ -317,7 +318,7 @@ def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None
     assert named_by_a_team_metric(measure_of("fgm")) and not named_by_a_team_metric(measure_of("fieldGoalsMade"))
     assert (
         _team_measure(
-            Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=Reading(measure=Measure(key="fieldGoalsMade", as_typed="fgm", how="total", unit="total")).measure),
+            Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=Measure(key="fieldGoalsMade", as_typed="fgm", how="total", unit="total")),
             "how many fgm did the magic have",
         )
         is None
