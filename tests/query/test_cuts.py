@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from routed import staged as settle
-from shapes import asked, stated
+from shapes import stated
 from slots import cuts_from_slots, slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
@@ -33,7 +33,9 @@ from association.query.reading import (
     PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_RANKING,
+    PLAYER_SPLITS,
     PRESENCE_SPLIT,
+    SHOT_DISTANCE,
     TEAM_LINE,
     TEAM_RECORD,
     Claim,
@@ -55,9 +57,9 @@ from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TE
 S = current_season()
 
 
-def _read(question: str, intent: str = "game_log", **context: Any) -> Cuts:
+def _read(question: str, shape: PointShape | None = PLAYER_LOG, **context: Any) -> Cuts:
     split = context.pop("split", None)
-    return cuts_under(asked(intent), read_cuts(question, CutsContext(**context)), split=split).cuts
+    return cuts_under(shape, read_cuts(question, CutsContext(**context)), split=split).cuts
 
 
 def _situation(text: str) -> Situation:
@@ -68,45 +70,45 @@ def _situation(text: str) -> Situation:
 
 
 @pytest.mark.parametrize(
-    ("question", "intent", "expected"),
+    ("question", "shape", "expected"),
     [
-        ("jokic stats", "game_log", Cuts()),
-        ("Knicks home record this season", "team_record", Cuts(venue="home")),
-        ("lebron road games", "game_log", Cuts(venue="away")),
-        ("lebron home and away splits", "player_splits", Cuts()),
-        ("How far away does Wembanyama shoot from?", "shot_distance", Cuts()),
+        ("jokic stats", PLAYER_LOG, Cuts()),
+        ("Knicks home record this season", TEAM_RECORD, Cuts(venue="home")),
+        ("lebron road games", PLAYER_LOG, Cuts(venue="away")),
+        ("lebron home and away splits", PLAYER_SPLITS, Cuts()),
+        ("How far away does Wembanyama shoot from?", SHOT_DISTANCE, Cuts()),
         # The one side beside a venue split on the splits reader is the split's half, not a cut.
-        ("tatum home splits", "player_splits", Cuts()),
-        ("Desmond bane march 17", "game_log", Cuts(date=f"{S}-03-17")),
-        ("bam adebayo november 11 2019", "game_log", Cuts(date="2019-11-11")),
-        ("jokic stats on october 25 in 2024", "player_stat", Cuts(date="2023-10-25")),
+        ("tatum home splits", PLAYER_SPLITS, Cuts()),
+        ("Desmond bane march 17", PLAYER_LOG, Cuts(date=f"{S}-03-17")),
+        ("bam adebayo november 11 2019", PLAYER_LOG, Cuts(date="2019-11-11")),
+        ("jokic stats on october 25 in 2024", PLAYER_LINE, Cuts(date="2023-10-25")),
         # A date on a career question fixes no year: a situation, refused by value.
-        ("lebron on march 17 all time", "game_log", Cuts(situation=_situation("march 17"))),
+        ("lebron on march 17 all time", PLAYER_LOG, Cuts(situation=_situation("march 17"))),
         # A day no calendar has names nothing, and is a situation.
-        ("lebron on february 31", "game_log", Cuts(situation=_situation("february 31"))),
-        ("lebron stats since january 31st", "player_stat", Cuts(situation=_situation("since january 31st"))),
-        ("towns home rec including playoffs since 1/26/20 vs spurs", "player_stat", Cuts(venue="home", situation=_situation("since 1/26/20"))),
-        ("lebron stats on christmas", "player_stat", Cuts(situation=_situation("christmas"))),
-        ("lebron ppg vs the west", "player_stat", Cuts(situation=_situation("vs the west"))),
-        ("giannis stats in the month of march", "player_stat", Cuts(situation=_situation("in the month of march"))),
-        ("lebron ppg as an 18 year old", "player_stat", Cuts(situation=_situation("18 year old"))),
-        ("tatum stats in the 2024 finals", "player_stat", Cuts(round="finals")),
-        ("knicks second round record", "team_record", Cuts(round="second round")),
-        ("Ayton stats in game 4 playoff games", "game_log", Cuts(game_n=4)),
-        ("his 18th season", "player_stat", Cuts(season_n=18)),
-        ("most points in 15th season played", "leaderboard", Cuts(season_n=15)),
+        ("lebron on february 31", PLAYER_LOG, Cuts(situation=_situation("february 31"))),
+        ("lebron stats since january 31st", PLAYER_LINE, Cuts(situation=_situation("since january 31st"))),
+        ("towns home rec including playoffs since 1/26/20 vs spurs", PLAYER_LINE, Cuts(venue="home", situation=_situation("since 1/26/20"))),
+        ("lebron stats on christmas", PLAYER_LINE, Cuts(situation=_situation("christmas"))),
+        ("lebron ppg vs the west", PLAYER_LINE, Cuts(situation=_situation("vs the west"))),
+        ("giannis stats in the month of march", PLAYER_LINE, Cuts(situation=_situation("in the month of march"))),
+        ("lebron ppg as an 18 year old", PLAYER_LINE, Cuts(situation=_situation("18 year old"))),
+        ("tatum stats in the 2024 finals", PLAYER_LINE, Cuts(round="finals")),
+        ("knicks second round record", TEAM_RECORD, Cuts(round="second round")),
+        ("Ayton stats in game 4 playoff games", PLAYER_LOG, Cuts(game_n=4)),
+        ("his 18th season", PLAYER_LINE, Cuts(season_n=18)),
+        ("most points in 15th season played", PLAYER_RANKING, Cuts(season_n=15)),
         # A day and its own month, both (ISSUES.md, "A month is read from the words of a day in it").
-        ("nba Anthony Davis most offensive rebound in march 24 2018", "single_game_high", Cuts(date="2018-03-24", situation=_situation("in march"))),
+        ("nba Anthony Davis most offensive rebound in march 24 2018", GAME_HIGHS, Cuts(date="2018-03-24", situation=_situation("in march"))),
     ],
 )
-def test_the_words_read_as_one_cuts(question: str, intent: str, expected: Cuts) -> None:
+def test_the_words_read_as_one_cuts(question: str, shape: PointShape | None, expected: Cuts) -> None:
     split = "home_away" if "splits" in question else None
-    assert _read(question, intent, split=split) == expected
+    assert _read(question, shape, split=split) == expected
 
 
 def test_a_venue_beside_a_venue_split_is_the_splits_half_on_the_splits_reader_only() -> None:
-    assert _read("tatum home splits", "player_splits", split="home_away") == Cuts()
-    assert _read("tatum home splits", "game_log", split="home_away") == Cuts(venue="home")
+    assert _read("tatum home splits", PLAYER_SPLITS, split="home_away") == Cuts()
+    assert _read("tatum home splits", PLAYER_LOG, split="home_away") == Cuts(venue="home")
 
 
 def test_the_opponent_is_the_subjects_word_unless_it_is_the_absent_teammates_again() -> None:
