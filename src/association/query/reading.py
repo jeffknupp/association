@@ -1432,6 +1432,7 @@ CAUSES: frozenset[str] = frozenset(
         "no_coach_table",
         "too_short",
         "championship",
+        "window_ends_contradict",
         "no_player_reading",
         "playoff_round",
         "non_calendar_situation",
@@ -1479,7 +1480,8 @@ missing thing, never only the slot"):
   :func:`~association.query.parse.too_short`);
 - a refusal the words come to before any reader runs
   (:attr:`Reading.refused`): a championship, which no table holds
-  (``championship``: ``intent``), or a player named on a question whose
+  (``championship``: ``intent``), both ends of the span named at once
+  (``window_ends_contradict``: ``ends``, the words of each), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
   ``intent``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,

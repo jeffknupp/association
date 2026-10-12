@@ -30,7 +30,7 @@ from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
-from association.query.window import MinimumRead, WindowContext, WindowRead, read_minimum, read_window
+from association.query.window import MinimumRead, WindowContext, WindowRead, contradicting_ends, read_minimum, read_window
 
 S = current_season()
 
@@ -325,3 +325,19 @@ def test_a_stated_minimum_stands_on_a_players_ranking_alone() -> None:
     assert minimum_under(asked("leaderboard"), read).minimum == Minimum(count=70, unit="games", word="games")
     assert minimum_under(asked("single_game_high"), read) == MinimumRead(None)
     assert minimum_under(asked("game_log"), read) == MinimumRead(None)
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # Both ends at once (ISSUES.md #378): the words of each, in the question's order.
+        ("lebron james last 5 first games stats", ["last 5", "first games"]),
+        ("first 10 games and last 5 games for curry", ["first 10", "first 10 games", "last 5", "last 5 games"]),
+        # One end, or a count of seasons beside a window of games, is no contradiction.
+        ("lebron james first 5 games stats", []),
+        ("lebron james last 5 games", []),
+        ("warriors first 10 games of the last 3 seasons", []),
+    ],
+)
+def test_a_question_naming_both_ends_is_found_by_the_words_of_each(question: str, expected: list[str]) -> None:
+    assert [question[claim.start : claim.end] for claim in contradicting_ends(question)] == expected

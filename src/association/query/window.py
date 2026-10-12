@@ -255,3 +255,27 @@ def read_minimum(question: str) -> MinimumRead:
             minimum = Minimum(count=count, unit="other", word=word)
         return MinimumRead(minimum, (Claim(match.start(), match.end(), "minimum"),))
     return MinimumRead(None)
+
+
+def contradicting_ends(question: str) -> tuple[Claim, ...]:
+    """The words of a question that name BOTH ends of the span at once -
+    "last 5" and "first games" in "lebron james last 5 first games stats"
+    (ISSUES.md #378) - each end's words (:data:`~association.query.lexicon.COUNTED_END`,
+    :data:`~association.query.lexicon.ORDER_WORDS`), or none where the words
+    name one end or none. No reading of one end is right over the other:
+    the parser refuses the question by a cause naming both
+    (``window_ends_contradict``), where the window tagger read "first
+    games" as the end and the log's default count - his first 10 games,
+    with "last" and "5" unread.
+
+    .. versionadded:: 6.0.0
+    """
+    found: dict[str, list[Claim]] = {"recent": [], "first": []}
+    for match in lexicon.COUNTED_END.finditer(question):
+        end = "first" if match.group(1).casefold() in lexicon.FIRST_END_WORDS else "recent"
+        found[end].append(Claim(match.start(), match.end(), "window"))
+    for end, pattern in lexicon.ORDER_WORDS.items():
+        found[end].extend(Claim(match.start(), match.end(), "window") for match in pattern.finditer(question))
+    if not found["recent"] or not found["first"]:
+        return ()
+    return tuple(sorted({*found["recent"], *found["first"]}, key=lambda claim: (claim.start, claim.end)))

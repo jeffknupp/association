@@ -448,6 +448,22 @@ ORDER_WORDS: dict[str, re.Pattern[str]] = {
    In the lexicon (``router.ORDER_WORDS`` until Phase 3, step 2).
 """
 
+# An end of the span with a count beside it, "games" or not: "last 5",
+# "first 10" - not a count of seasons ("last 3 seasons" is a span). Read
+# beside :data:`ORDER_WORDS` to find a question naming BOTH ends ("lebron
+# james last 5 first games stats", ISSUES.md #378), which answered his
+# first 10 games with "last" and "5" unread.
+COUNTED_END = re.compile(rf"\b(last|past|previous|most\s+recent|latest|final|first|opening|earliest)\s+{COUNT}\b(?!\s+(?:seasons?|years?|yrs?)\b)", re.IGNORECASE)
+"""An end of the span named with a count, by its word (group 1) and the count.
+
+.. versionadded:: 6.0.0
+"""
+FIRST_END_WORDS: frozenset[str] = frozenset({"first", "opening", "earliest"})
+"""The words of :data:`COUNTED_END` that name the oldest end; the rest name the newest.
+
+.. versionadded:: 6.0.0
+"""
+
 # One game at one end of the span, named as his: "his last game", "steph
 # curry's last regular season game", "the first game of the season". A
 # possessive names the subject as often as a pronoun does, and without it

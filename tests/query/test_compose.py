@@ -1964,6 +1964,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "no_ranking_measure": {"stat": "gizmos"},
     "ranking_floor_unit": {"unit": "attempts", "count": 100},
     "minimum_unranked": {"unit": "games", "count": 20},
+    "window_ends_contradict": {"ends": ["last 5", "first games"]},
     "ranking_unit": {"metric": "avg_points", "rate": "/ 90"},
     "needs_stat": {"intent": "single_game_high"},
     "unknown_stat": {"intent": "streak", "stat": "double_double"},

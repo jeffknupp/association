@@ -2280,14 +2280,6 @@ those were found.
 - **Priority:** P2 - a different figure than asked, with the unit said.
 - **GitHub:** #376
 
-### "lebron james last 5 first games stats" answers his FIRST 10 games, with "last" and "5" unread
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 5); one of the ten answer moves of `9da65c0` (Phase 3, step 4, slice (c)) that Jeff kept on 2026-10-11 - before it, his season line.
-- **Evidence:** the feed run and the probe on `4de1801`: "LeBron James, first 10 of 60 games of the 2026 regular season: ...", `Reading.unread` = last, 5, stats. The window tagger reads "first games" as the window's end and the log's default count, and the count beside the contradicting end is left. 1 feed question.
-- **User sees:** ten games where five were asked (the heading says 10).
-- **Next step:** a count the window tagger reads beside a contradicting end ("last ... first") is no window, or the count stands with the end the words give; the answer enumerated.
-- **Priority:** P2 - the right games, the wrong count, said.
-- **GitHub:** #378
-
 ### "warriors first 10 game record every season" answers the first 10 games of 2026 only, "every season" unread
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 6); one of the ten kept moves of `9da65c0` - before it a "cannot honor ['order']" refusal. #372's next step names this question as the one team reading slice (c) moved.
 - **Evidence:** the feed run and the probe on `4de1801`: "Golden State Warriors, first 10 games of the 2026 regular season (5-5): ...", `Reading.unread` = every, season. 1 feed question.

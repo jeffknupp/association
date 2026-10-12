@@ -96,7 +96,7 @@ from association.query.subject import (
     subject_claims,
     team_named_in,
 )
-from association.query.window import MinimumRead, WindowContext, read_minimum, read_window
+from association.query.window import MinimumRead, WindowContext, contradicting_ends, read_minimum, read_window
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
@@ -1102,10 +1102,19 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       the one player the words name and no real team
       (:func:`~association.query.subject.player_named_on_a_team_only_question`).
       Was the answering loop's own check.
+    - both ends of the span at once (``window_ends_contradict``): "lebron
+      james last 5 first games stats" answered his first 10 games, "last"
+      and "5" unread (ISSUES.md #378) - no end is right over the other, so
+      the refusal names both
+      (:func:`~association.query.window.contradicting_ends`).
 
-    The championship first, as the answering loop asked them."""
+    The championship first, as the answering loop asked them, then the
+    window's ends."""
     if _CHAMPIONSHIP.search(question) and not _TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"intent": reading.intent})
+    ends = contradicting_ends(question)
+    if ends:
+        return Cause(kind="window_ends_contradict", facts={"ends": [question[claim.start : claim.end] for claim in ends]})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)

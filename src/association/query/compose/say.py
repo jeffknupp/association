@@ -550,6 +550,14 @@ def _minimum_unranked(unit: str, count: int) -> str:
     return f"A minimum of {count} {unit} keeps the players a ranking ranks, and this question ranks none - ask without the floor, or for the leaders."
 
 
+def _window_ends_contradict(ends: Sequence[str]) -> str:
+    """The refusal for a question naming both ends of the span at once
+    ("lebron james last 5 first games stats", ISSUES.md #378): no end is
+    right over the other, so the sentence names both and asks for one."""
+    said = " and ".join(repr(end) for end in ends)
+    return f"The question names both ends of the games at once ({said}) - ask for the first games or the last ones, not both."
+
+
 def _ranking_unit(metric: str, rate: Any) -> str:
     """The refusal for a ranking in a unit the metric has no form of,
     naming the forms THIS metric has ("who were the top 10 in defensive
@@ -4258,6 +4266,7 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "no_ranking_measure": lambda facts: _no_ranking_for(facts["stat"]),
     "ranking_floor_unit": lambda facts: _ranking_floor_unit(facts["unit"], facts["count"]),
     "minimum_unranked": lambda facts: _minimum_unranked(facts["unit"], facts["count"]),
+    "window_ends_contradict": lambda facts: _window_ends_contradict(facts["ends"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
 }
 
