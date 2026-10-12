@@ -753,6 +753,19 @@ check measured on 2019-2026 and recorded in the module docstring:
    eight or nine ran out of players after simulated foul-outs (the engine
    fouls players out too often, to be re-measured after the fix) and two
    where fewer than eight players appeared.
+
+   **After the free-throw fix** (`results/validate_2025_from_2025-01-01_2026-10-11.md`,
+   734 games, 850 s): Brier 0.2268 (strength 0.2256, home rate 0.2490, ESPN
+   0.1987 on the same games) - the gap to the strength model closed from
+   0.0048 to 0.0012; margin sd 16.7 against 16.4, PIT 0.080-0.116; FTA per
+   FGA 0.280 (real 0.240); points per 100 possessions 115.7 (real 113.5);
+   turnovers a possession 0.131 (real 0.130). The possessions fell with the
+   free throws, 98.5 to 96.4 against a real 100.8, so the total's error
+   moved from +3.5 to -5.7: the pace shortfall is now the largest miss and
+   the next fix. Player coverage 0.739 / 0.785 / 0.852, minutes MAE 5.26,
+   unchanged. The game that ran out of players in the baseline (401705042)
+   completes on all 200 seeds; 12 games are still refused, listed in the
+   report.
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is
