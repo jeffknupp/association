@@ -126,14 +126,24 @@ was learned the hard way and is about the data, not the pipeline.
   throws at 0.371 per field-goal attempt against 0.240 - was fixed the same
   day (and-ones counted twice; three-shot trips at 40% instead of 3.5%),
   with the before and after reports side by side in `results/`.
-- **Next:** step 9, P3 (possessions and actions) and the fidelity upgrades
-  that need it - possession durations by start type (the pace runs light),
-  per-player on-court defense, usage per possession - each accepted only if
-  the validation does not get worse; and the open findings from the
-  baseline: points per 100 possessions high, foul-outs too frequent (six
-  of 738 replays ran a real eight-man roster out of players), player points
-  coverage 0.746 and assists 0.850 against 0.800, minutes mean absolute
-  error 5.3.
+- **Three validation runs so far** (`scripts/sim_p8/results/`): the
+  baseline, after the free-throw fix, and with `engine.PACE_CALIBRATION`.
+  The pace now matches (100.5 against 100.8 possessions); Brier 0.2269
+  against the strength model's 0.2260 and ESPN's 0.1993.
+- **Next**, in the order the last run ranks them: offensive efficiency
+  about 2% high (points per 100 possessions 115.7 against 113.4 - check
+  the make rates' home multiplier and the and-one and assisted draws
+  first, with `--explain`); free throws still 18% high (0.283 against
+  0.240 FTA per FGA - the non-shooting-foul bonus path and
+  `NON_SHOOTING_DEFENSIVE_SHARE`); too many foul-outs on eight-man real
+  rosters; the rotation's substitutions nineteen seconds into a game (a
+  minimum stint or early hysteresis in `rotation.RotationSettings`);
+  player points coverage 0.740 and assists 0.856 against 0.800; minutes
+  mean absolute error 5.3. Then step 9, P3 (possessions and actions) and
+  the upgrades that need it: durations by start type (replacing the
+  calibration constant), per-player on-court defense, usage per
+  possession. Every one is a `sim validate` run with the report
+  committed.
 - **Dispatching agents here:** make their worktrees by hand from the
   intended SHA (`git worktree add -b <branch> .claude/worktrees/<name>
   <sha>`); the Agent tool's own worktree isolation branched from master,

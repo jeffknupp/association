@@ -766,6 +766,22 @@ check measured on 2019-2026 and recorded in the module docstring:
    unchanged. The game that ran out of players in the baseline (401705042)
    completes on all 200 seeds; 12 games are still refused, listed in the
    report.
+
+   **With the pace calibration** (`engine.PACE_CALIBRATION` = 0.956 on the
+   duration mean, the ratio the run above measured;
+   `results/validate_2025_from_2025-01-01_2026-10-11_pace.md`, 738 games,
+   915 s): possessions 100.5 against 100.8; Brier 0.2269 (strength 0.2260,
+   home rate 0.2489, ESPN 0.1993 on the same games) - unchanged within
+   noise, as a pace change should be; margin sd 17.0 against 16.5; the
+   total's error +3.8, now carried by the efficiency excess (points per 100
+   possessions 115.7 against 113.4) and the free throws still 0.283 against
+   0.240 per field-goal attempt. 8 refused (6 eight-man rosters fouled out
+   of players, 2 with seven players). So after three runs the standing
+   misses, in order: offensive efficiency about 2% high; free throws about
+   18% high; too many foul-outs on short rosters; the rotation's early
+   substitutions; player points coverage 0.740 and assists 0.856 against
+   0.800; minutes mean absolute error 5.3; and the strength model still
+   0.001 ahead on Brier, ESPN 0.028.
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is

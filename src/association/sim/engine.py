@@ -165,6 +165,21 @@ offensive in recent seasons.
 .. versionadded:: 6.0.0
 """
 
+PACE_CALIBRATION = 0.956
+"""The factor on a possession's mean duration that makes the simulated
+possessions per game match the real ones. The mean is derived from the
+teams' pace as if every possession were one draw, but offensive-rebound
+continuations, foul restarts and a period's unused last seconds add time
+on top, so the game runs light: 4.5% in the toy league (step 5's sanity
+check), 4.4% on the 2025 replay validation after the free-throw fix
+(96.4 possessions a team-game by the box formula against a real 100.8,
+``scripts/sim_p8/results/validate_2025_from_2025-01-01_2026-10-11.md``).
+96.4 / 100.8 is 0.956. An interim calibration, measured, until P3's
+possession table supplies durations by start type.
+
+.. versionadded:: 6.0.0
+"""
+
 DURATION_SPREAD = 0.4
 """The standard deviation of a possession's duration as a share of its mean.
 
@@ -508,7 +523,7 @@ class _Game:
         mean_pace = (self.home.pace + self.away.pace) / 2.0
         if mean_pace <= 0.0:
             raise EngineError("a team's pace must be positive")
-        self.mean_duration = 1440.0 * _TENTHS / mean_pace
+        self.mean_duration = 1440.0 * _TENTHS / mean_pace * PACE_CALIBRATION
         self.period = 0
         self.period_length = 0
         self.clock = 0
