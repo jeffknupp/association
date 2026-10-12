@@ -84814,5 +84814,225 @@
     }
    }
   }
+ },
+ {
+  "name": "record_over_a_floor_of_minutes",
+  "why": "A record over a floor of minutes and no stat line beside it is keyed on the floor: \"record when playing 30 or more minutes\" was refused 'none was read' once the floor was read (ISSUES.md #374's family).",
+  "question": "victor wembanyama record when playing 30 or more minutes",
+  "names": [
+   "victor wembanyama"
+  ],
+  "stat": "",
+  "expected": {
+   "intent": "record_when",
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Victor Wembanyama"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "minutes",
+     "op": ">=",
+     "value": 30,
+     "period": null,
+     "as_typed": "playing 30 or more minutes",
+     "keyed": true,
+     "narrows": false
+    }
+   ],
+   "measure": {
+    "key": "minutes",
+    "as_typed": "minutes",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Victor Wembanyama"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "intent": "record_when",
+    "intent_reason": "the words 'record when playing 30 or more' name record_when",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Victor Wembanyama']; router players the question supports ['victor wembanyama']; question spells 'victor wembanyama' as 'Victor Wembanyama'; the words 'record when playing 30 or more' name record_when"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Victor Wembanyama"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "intent",
+     "before": "player_stat",
+     "after": "record_when",
+     "reason": "the words 'record when playing 30 or more' name record_when"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "intent": "record_when",
+    "relation": "player",
+    "on": "player_games",
+    "shape": "split",
+    "by": "line",
+    "measures": [
+     "minutes"
+    ],
+    "aggregate": "record",
+    "group": "none",
+    "predicates": [
+     [
+      "minutes",
+      ">=",
+      30
+     ]
+    ],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Victor Wembanyama"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "minutes",
+      "op": ">=",
+      "value": 30,
+      "period": null,
+      "as_typed": "playing 30 or more minutes",
+      "keyed": true,
+      "narrows": false
+     }
+    ],
+    "measure": {
+     "key": "minutes",
+     "as_typed": "minutes",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
  }
 ]

@@ -46,6 +46,22 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A player's "stats by season" or "every season" with no stat named answers one season's line: "james wiseman stats by season" answers his 2026 averages
+- **Found:** 2026-10-11, fixing #379 (the per-season window), probing "lebron stats every season".
+- **Evidence:** on `0c597b2`, feed run (no names, no stat): "james wiseman stats by season" -> "James Wiseman averaged 3.3 points, 2 rebounds and 0.8 assists per game in 4 games in the 2026 regular season." (unread: stats), "kevin love nba stats by year" -> his 2026 line, "ant games play each season" / "Jokic games play each season" / "lamelo games play each season" -> each one's 2026 line ("games", "play" unread); with the model's name, "lebron stats every season" -> "LeBron James averaged 20.9 points ... in 60 games in the 2026 regular season." The history child grammar names `player_history` from "by season"/"every season" (`lexicon.CHILD_PLAYER_HISTORY`), and the grammar's rule `grammar._line_and_record` turns a history with no stat named into the player's line ("Jokic career averages" is the whole line, not points by season) - the decision says "the words 'every season' name player_history, and the stages declined it", and the words are claimed by the child, so `Reading.unread` does not show them. 5 of the 2,082 feed questions, none of the 628.
+- **User sees:** one season's line, fluently, where every season's was asked.
+- **Next step:** a history with no stat named is the whole line season by season (the history reader over each of the line's measures, `compose/seasons.py`'s `Grouped` by season), or - until a reader reads it - refused by a cause naming the stat it needs; "career averages" stays the line. Each wording a reader case; the 5 feed answers enumerated.
+- **Priority:** P1 - a narrower question answered fluently.
+- **Source:** ours.
+
+### "per 36 minutes" is read as a floor of 36 minutes a game: "jayson tatum per 36 minutes stats" answers his 4 games of 36+ minutes
+- **Found:** 2026-10-11, fixing #374 (the floor of minutes), reading every feed question that names minutes.
+- **Evidence:** on `0c597b2`, feed run: "jayson tatum per 36 minutes stats" -> "Jayson Tatum averaged 38.2 minutes per game in 4 games with at least 36 minutes in the 2026 regular season." (unread: per, stats); "most free throw attempts per 36 minutes" and "... in 2025-2026" -> "every player with at least 36 minutes, 2026 regular season, by player (FTA per game, minimum 20 games)". `lexicon.ABOVE` reads any "N minutes" not after "than"/"under"/"below" as a floor; "per" before it is unread. The same pattern reads "field goal percentage last 5 minutes of a nba game" as games of 5+ minutes (a clutch figure the warehouse does not hold). 4 of the 2,082 feed questions, none of the 628.
+- **User sees:** a line or a ranking over the games he played 36 minutes, where a rate per 36 minutes was asked.
+- **Next step:** `ABOVE` reads no number after "per" or "last"/"final"; "per N minutes" is a unit the measure tagger reads (`Measure.unit`, beside "per 100" and "per 90", `lexicon.PER_90`) which the season-line ranking refuses by name (`ranking_unit`) and the line readers decline as the `rate` cell; "the last N minutes of a game" a situation nothing reads (`Reading.unsupported`). The 4 feed answers enumerated.
+- **Priority:** P1 - a different figure answered fluently.
+- **Source:** ours.
+
 ### A team's "last N seasons" is read as a log of its last N games: "raptors record last 10 season" answers the Raptors' last 10 games, 6-4
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c), enumerating the readings the window marks moved (the team's log row read "last 10" by its own words, and still does).
 - **Evidence:** the parent grammar's team log row reads `(last|past|previous|most recent) COUNT` with anything after the count, so "raptors record last 10 season", "portland trailblazers winning percentage last 10 seasons" and "hornets on the road vs magic last 2 seasons" (3 of the 2,082 feed questions, none of the 628) are `game_log`, and the window tagger reads the count as games: the feed answers are "Toronto Raptors, last 10 games (all-time, 2026 regular season) (6-4): ...", the Blazers' last 10 games (7-3) and the Hornets' last 4 games against the Magic. A span tagger reading of "last 10 seasons" as the window's count of SEASONS exists for a player's history (`Window.of == "seasons"`, "the past 5 years").

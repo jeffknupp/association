@@ -1772,18 +1772,40 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
         # "scores 30": the verb names the stat, whatever the model filed.
         found.append((scored[0].start, scored[0].line, scored[0].claim))
         stat = "points"
-    found.extend((candidate.start, candidate.line, candidate.claim) for candidate in read.of("phrase"))
-    plus = [candidate for candidate in pairs if candidate.how == "plus"]
-    if asked in _LINES_PAIR_NAMES_THE_STAT and len(plus) == 1:
-        stat = plus[0].line.measure
-    elif asked in _LINES_PAIR_NAMES_THE_STAT and stat is None and pairs and read.of("phrase"):
-        # The keyed line names the stat beside a floor or a ceiling on
-        # another one: "how many games did wemby have 30 points playing 30
-        # or more minutes" counted his 30-minute games, the longer word
-        # "minutes" read as the measure over the line's "points".
-        stat = pairs[0].line.measure
+    found.extend((candidate.start, candidate.line, candidate.claim) for candidate in _lines_phrases(asked, read, has_pair=bool(pairs or scored)))
+    stat = _lines_stat(asked, pairs, has_phrase=bool(read.of("phrase")), stat=stat)
     found.sort(key=lambda each: each[0])
     return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
+
+
+def _lines_phrases(asked: PointShape | None, read: LineCandidates, *, has_pair: bool) -> list[LineCandidate]:
+    """The floors of minutes and the lines under a number, on every key -
+    and under a record over a line with no "N stat" pair beside it, a lone
+    floor is the record's own line ("his record when playing 30 or more
+    minutes" splits his games at 30), keyed and narrowing nothing, which a
+    narrowing would empty of the games under it: it was refused "none was
+    read" until 2026-10-11."""
+    phrases = read.of("phrase")
+    if asked == LINE_RECORD and not has_pair and len(phrases) == 1 and not phrases[0].line.below and phrases[0].line.measure is not None:
+        return [replace(phrases[0], line=replace(phrases[0].line, keyed=True, narrows=False))]
+    return phrases
+
+
+def _lines_stat(asked: PointShape | None, pairs: list[LineCandidate], *, has_phrase: bool, stat: str | None) -> str | None:
+    """The measure a line names under a count or a record: the one "N+ stat"
+    pair's, or the keyed pair's beside a floor or a ceiling on another stat
+    ("how many games did wemby have 30 points playing 30 or more minutes"
+    counted his 30-minute games, the longer word "minutes" read as the
+    measure over the line's "points"); ``stat`` (the scoring verb's) or
+    None otherwise."""
+    if asked not in _LINES_PAIR_NAMES_THE_STAT:
+        return stat
+    plus = [candidate for candidate in pairs if candidate.how == "plus"]
+    if len(plus) == 1:
+        return plus[0].line.measure
+    if stat is None and pairs and has_phrase:
+        return pairs[0].line.measure
+    return stat
 
 
 def _lines_pairs(asked: PointShape | None, pairs: list[LineCandidate], *, beside_line: bool) -> list[tuple[int, Line, Claim]]:

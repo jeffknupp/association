@@ -94,6 +94,8 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
         ("collin murray-boyles stats this season when playing over 26 minutes", "player_stat", [("minutes", ">", 26, "playing over 26 minutes", False, True)], None),
         ("wemby game log with more than 30 minutes", "game_log", [("minutes", ">", 30, "with more than 30 minutes", False, True)], None),
         ("wemby game log with no more than 30 minutes", "game_log", [("minutes", "<=", 30, "no more than 30 minutes", False, True)], None),
+        # Under a record over a line, a floor and no pair beside it is the record's own line - which a narrowing would empty.
+        ("victor wembanyama record when playing 30 or more minutes", "record_when", [("minutes", ">=", 30, "playing 30 or more minutes", True, False)], None),
         # One "N+ stat" pair on a reader whose shape is not a line is read by nothing - the stages' rule, measured (a team's line carried no threshold).
         ("How many 10+ point leads did the Sacramento Kings have", "team_leaderboard", [], None),
         # ... but on a reader of a player's games one line stated outright narrows them (ISSUES.md #357, Phase 3,
