@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** a history with no stat named is the whole line season by season (the history reader over each of the line's measures, `compose/seasons.py`'s `Grouped` by season), or - until a reader reads it - refused by a cause naming the stat it needs; "career averages" stays the line. Each wording a reader case; the 5 feed answers enumerated.
 - **Priority:** P1 - a narrower question answered fluently.
 - **Source:** ours.
+- **GitHub:** #387
 
 ### "per 36 minutes" is read as a floor of 36 minutes a game: "jayson tatum per 36 minutes stats" answers his 4 games of 36+ minutes
 - **Found:** 2026-10-11, fixing #374 (the floor of minutes), reading every feed question that names minutes.
@@ -61,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** `ABOVE` reads no number after "per" or "last"/"final"; "per N minutes" is a unit the measure tagger reads (`Measure.unit`, beside "per 100" and "per 90", `lexicon.PER_90`) which the season-line ranking refuses by name (`ranking_unit`) and the line readers decline as the `rate` cell; "the last N minutes of a game" a situation nothing reads (`Reading.unsupported`). The 4 feed answers enumerated.
 - **Priority:** P1 - a different figure answered fluently.
 - **Source:** ours.
+- **GitHub:** #388
 
 ### A team's "last N seasons" is read as a log of its last N games: "raptors record last 10 season" answers the Raptors' last 10 games, 6-4
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c), enumerating the readings the window marks moved (the team's log row read "last 10" by its own words, and still does).
