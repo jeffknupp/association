@@ -17,7 +17,6 @@ from typing import Any
 
 import duckdb
 import pytest
-from shapes import asked
 from slots import companion_from_slot, line_from_period_slot
 from test_conditions import BROWN, TATUM, league, with_without  # noqa: F401 - the league fixture and the split's reader, imported by name
 from test_period_relation import SEASON as PERIOD_SEASON
@@ -36,9 +35,15 @@ from association.query.player_games import Narrowed, aggregate_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, _apply_period_condition, period_lines
 from association.query.point import THRESHOLD_ASKS, lines_under
 from association.query.reading import (
+    GAME_HIGHS,
     GAMES_COUNTED,
     LINE_RECORD,
+    LINE_RUNS,
+    PLAYER_LINE,
     PLAYER_LOG,
+    PLAYER_SPLITS,
+    PRESENCE_SPLIT,
+    TEAM_RANKING,
     Claim,
     Companion,
     Filtered,
@@ -70,56 +75,56 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
 
 
 @pytest.mark.parametrize(
-    ("question", "intent", "expected", "stat"),
+    ("question", "shape", "expected", "stat"),
     [
         # A reader whose shape is a line reads a bare "N stat" as its own (keyed) line.
-        ("how many 30 point games did maxey have", "threshold_count", [("points", ">=", 30, "30 point", True, False)], None),
-        ("warriors record when curry has 30 or more points", "record_when", [("points", ">=", 30, "30 or more points", True, False)], "points"),
+        ("how many 30 point games did maxey have", GAMES_COUNTED, [("points", ">=", 30, "30 point", True, False)], None),
+        ("warriors record when curry has 30 or more points", LINE_RECORD, [("points", ">=", 30, "30 or more points", True, False)], "points"),
         # "scores N": the verb names the stat, whatever the model filed.
-        ("76ers record when maxey scores 30", "record_when", [("points", ">=", 30, "scores 30", True, False)], "points"),
+        ("76ers record when maxey scores 30", LINE_RECORD, [("points", ">=", 30, "scores 30", True, False)], "points"),
         # Fouling out is fouls at six, the count's own line.
-        ("how many times has embiid fouled out", "threshold_count", [("fouls", ">=", 6, "fouled out", True, False)], None),
+        ("how many times has embiid fouled out", GAMES_COUNTED, [("fouls", ">=", 6, "fouled out", True, False)], None),
         # Two or more "N+ stat" pairs on one game narrow the games together, on every reader; under a count the first is the count's own too.
-        ("20+ point 5+ assist games for jokic", "game_log", [("points", ">=", 20, "20+ point", False, True), ("assists", ">=", 5, "5+ assist", False, True)], None),
-        ("most 20+ point 5+ assist games", "threshold_count", [("points", ">=", 20, "20+ point", True, True), ("assists", ">=", 5, "5+ assist", False, True)], None),
+        ("20+ point 5+ assist games for jokic", PLAYER_LOG, [("points", ">=", 20, "20+ point", False, True), ("assists", ">=", 5, "5+ assist", False, True)], None),
+        ("most 20+ point 5+ assist games", GAMES_COUNTED, [("points", ">=", 20, "20+ point", True, True), ("assists", ">=", 5, "5+ assist", False, True)], None),
         # A phrase kept under or over a number is a line the relation narrows by, on every reader.
-        ("sga games with under 14 fta", "threshold_count", [("freeThrowsAttempted", "<", 14, "under 14 fta", False, True)], None),
-        ("jokic games with at most 5 turnovers", "game_log", [("turnovers", "<=", 5, "at most 5 turnovers", False, True)], None),
-        ("curry games with 25 minutes", "game_log", [("minutes", ">=", 25, "with 25 minutes", False, True)], None),
+        ("sga games with under 14 fta", GAMES_COUNTED, [("freeThrowsAttempted", "<", 14, "under 14 fta", False, True)], None),
+        ("jokic games with at most 5 turnovers", PLAYER_LOG, [("turnovers", "<=", 5, "at most 5 turnovers", False, True)], None),
+        ("curry games with 25 minutes", PLAYER_LOG, [("minutes", ">=", 25, "with 25 minutes", False, True)], None),
         # "N or more minutes" and the lead "playing" are the same floor, on every reader (ISSUES.md #374): "stats when
         # playing 20 or more minutes" answered every game he played.
-        ("Victor wembanyama stats when playing 20 or more minutes playoffs", "player_stat", [("minutes", ">=", 20, "playing 20 or more minutes", False, True)], None),
-        ("wemby game log with 30 or more minutes", "game_log", [("minutes", ">=", 30, "with 30 or more minutes", False, True)], None),
-        ("wemby splits playing 30+ minutes", "player_splits", [("minutes", ">=", 30, "playing 30+ minutes", False, True)], None),
-        ("wemby stats playing at least 30 minutes", "player_stat", [("minutes", ">=", 30, "playing at least 30 minutes", False, True)], None),
-        ("wemby stats playing 30 minutes", "player_stat", [("minutes", ">=", 30, "playing 30 minutes", False, True)], None),
+        ("Victor wembanyama stats when playing 20 or more minutes playoffs", PLAYER_LINE, [("minutes", ">=", 20, "playing 20 or more minutes", False, True)], None),
+        ("wemby game log with 30 or more minutes", PLAYER_LOG, [("minutes", ">=", 30, "with 30 or more minutes", False, True)], None),
+        ("wemby splits playing 30+ minutes", PLAYER_SPLITS, [("minutes", ">=", 30, "playing 30+ minutes", False, True)], None),
+        ("wemby stats playing at least 30 minutes", PLAYER_LINE, [("minutes", ">=", 30, "playing at least 30 minutes", False, True)], None),
+        ("wemby stats playing 30 minutes", PLAYER_LINE, [("minutes", ">=", 30, "playing 30 minutes", False, True)], None),
         # "over N minutes" and "more than N minutes" keep the games OVER the number, where the number alone was read as a floor at it.
-        ("collin murray-boyles stats this season when playing over 26 minutes", "player_stat", [("minutes", ">", 26, "playing over 26 minutes", False, True)], None),
-        ("wemby game log with more than 30 minutes", "game_log", [("minutes", ">", 30, "with more than 30 minutes", False, True)], None),
-        ("wemby game log with no more than 30 minutes", "game_log", [("minutes", "<=", 30, "no more than 30 minutes", False, True)], None),
+        ("collin murray-boyles stats this season when playing over 26 minutes", PLAYER_LINE, [("minutes", ">", 26, "playing over 26 minutes", False, True)], None),
+        ("wemby game log with more than 30 minutes", PLAYER_LOG, [("minutes", ">", 30, "with more than 30 minutes", False, True)], None),
+        ("wemby game log with no more than 30 minutes", PLAYER_LOG, [("minutes", "<=", 30, "no more than 30 minutes", False, True)], None),
         # Under a record over a line, a floor and no pair beside it is the record's own line - which a narrowing would empty.
-        ("victor wembanyama record when playing 30 or more minutes", "record_when", [("minutes", ">=", 30, "playing 30 or more minutes", True, False)], None),
+        ("victor wembanyama record when playing 30 or more minutes", LINE_RECORD, [("minutes", ">=", 30, "playing 30 or more minutes", True, False)], None),
         # One "N+ stat" pair on a reader whose shape is not a line is read by nothing - the stages' rule, measured (a team's line carried no threshold).
-        ("How many 10+ point leads did the Sacramento Kings have", "team_leaderboard", [], None),
+        ("How many 10+ point leads did the Sacramento Kings have", TEAM_RANKING, [], None),
         # ... but on a reader of a player's games one line stated outright narrows them (ISSUES.md #357, Phase 3,
         # step 3), "at least N stat" as well as "N+ stat"; a bare "N stat" there stays unread ("harden 61 points").
-        ("lebron game log with 20+ points this season", "game_log", [("points", ">=", 20, "20+ points", False, True)], None),
-        ("anthony edwards log with at least 50 points", "game_log", [("points", ">=", 50, "50 points", False, True)], None),
+        ("lebron game log with 20+ points this season", PLAYER_LOG, [("points", ">=", 20, "20+ points", False, True)], None),
+        ("anthony edwards log with at least 50 points", PLAYER_LOG, [("points", ">=", 50, "50 points", False, True)], None),
         # A player's line is not among them ("lebron 20+ points this season" can ask whether he averages it).
-        ("lebron 20+ points per game this season", "player_stat", [], None),
-        ("2 threes in games Jamal Murray played", "player_stat", [], None),
+        ("lebron 20+ points per game this season", PLAYER_LINE, [], None),
+        ("2 threes in games Jamal Murray played", PLAYER_LINE, [], None),
         # A second and third bare line under a count are read, keyed on nothing and narrowing nothing: the league's multi-line listing alone applies them.
         (
             "most playoff games with 46 points 6 assists 6 rebounds",
-            "threshold_count",
+            GAMES_COUNTED,
             [("points", ">=", 46, "46 points", True, False), ("assists", ">=", 6, "6 assists", False, False), ("rebounds", ">=", 6, "6 rebounds", False, False)],
             None,
         ),
-        ("jokic stats", "player_stat", [], None),
+        ("jokic stats", PLAYER_LINE, [], None),
     ],
 )
-def test_the_words_read_as_lines(question: str, intent: str, expected: list[tuple[Any, ...]], stat: str | None) -> None:
-    read = lines_under(asked(intent), read_lines(question))
+def test_the_words_read_as_lines(question: str, shape: PointShape | None, expected: list[tuple[Any, ...]], stat: str | None) -> None:
+    read = lines_under(shape, read_lines(question))
     assert isinstance(read, LinesRead)
     assert [_shape(line) for line in read.lines] == expected
     assert read.stat == stat
@@ -138,7 +143,7 @@ def test_threshold_named_is_what_the_intent_stages_ask() -> None:
     assert threshold_named("76ers record when maxey scores 30") == 30
     assert threshold_named("how many times has embiid fouled out") == lexicon.FOUL_OUT_THRESHOLD == 6
     assert threshold_named("jokic stats") is None
-    assert {asked(name) for name in ("threshold_count", "record_when", "streak", "single_game_high")} == THRESHOLD_ASKS
+    assert {GAMES_COUNTED, LINE_RECORD, LINE_RUNS, GAME_HIGHS} == THRESHOLD_ASKS
 
 
 def test_a_line_in_a_quarter_is_read_by_the_parser_with_its_claim() -> None:
@@ -321,7 +326,7 @@ def test_the_companion_cell_changes_what_the_player_relation_reads(league: Answe
 
 
 def test_the_companion_cell_changes_what_the_team_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    split = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season_type=2), asked=asked("with_without")))
+    split = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season_type=2), asked=PRESENCE_SPLIT))
     assert not isinstance(split, str)
     groups = {row["group"]: row for row in split.data["splits"]["presence"]} if "presence" in split.data.get("splits", {}) else None
     assert "with" in split.answer.lower() and "without" in split.answer.lower()
