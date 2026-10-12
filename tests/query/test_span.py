@@ -13,7 +13,6 @@ import itertools
 from typing import Any
 
 import pytest
-from shapes import asked
 from slots import slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
@@ -23,7 +22,25 @@ from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.player_relation import condition_scope, span_of
 from association.query.point import span_under
-from association.query.reading import PLAYER_COMPARISON, PLAYER_LINE, PLAYER_LOG, PLAYER_RANKING, PRESENCE_SPLIT, TEAM_RANKING, TEAM_RECORD, Claim, Cuts, Reading, ScopeError, Span, unhonored_cells
+from association.query.reading import (
+    GAMES_COUNTED,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_MEETINGS,
+    PLAYER_RANKING,
+    PRESENCE_SPLIT,
+    SEASON_HISTORY,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Claim,
+    Cuts,
+    PointShape,
+    Reading,
+    ScopeError,
+    Span,
+    unhonored_cells,
+)
 from association.query.reading import Subject as Who
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -32,8 +49,8 @@ from association.query.team_relation import scoped_team, team_games
 S = current_season()
 
 
-def _read(question: str, intent: str = "player_stat", **context: Any) -> Span:
-    return span_under(asked(intent), read_span(question, SpanContext(**context))).span
+def _read(question: str, shape: PointShape | None = PLAYER_LINE, **context: Any) -> Span:
+    return span_under(shape, read_span(question, SpanContext(**context))).span
 
 
 # ---------------- the tagger: words to a Span ----------------
@@ -91,8 +108,8 @@ def test_the_words_read_as_one_span(question: str, expected: Span) -> None:
 
 
 def test_a_history_reads_the_past_n_seasons_as_its_count_not_a_range() -> None:
-    assert _read("sga's 2pt percentage for the past 5 years", intent="player_history") == Span(season_type=2)
-    assert _read("sga's 2pt percentage for the past 5 years", intent="game_log") == Span(season_type=2, since=S - 4)
+    assert _read("sga's 2pt percentage for the past 5 years", shape=SEASON_HISTORY) == Span(season_type=2)
+    assert _read("sga's 2pt percentage for the past 5 years", shape=PLAYER_LOG) == Span(season_type=2, since=S - 4)
 
 
 def test_a_range_opened_on_a_dated_day_starts_the_seasons_there() -> None:
@@ -102,19 +119,19 @@ def test_a_range_opened_on_a_dated_day_starts_the_seasons_there() -> None:
 
 
 def test_a_count_a_pair_and_a_log_imply_a_career_without_a_career_word() -> None:
-    assert _read("how many times has embiid fouled out?", intent="threshold_count", player_named=True, how_many=True).career
-    assert not _read("how many times has embiid fouled out this season?", intent="threshold_count", player_named=True, how_many=True).career
-    assert not _read("how many times has embiid fouled out in his 5th season?", intent="threshold_count", player_named=True, how_many=True, season_n=5).career
-    assert _read("steph curry record vs lebron", intent="player_matchup", record=True, versus=True).career
-    assert _read("jaylen brown last 8 games vs pistons", intent="game_log", versus=True, window_named=True).career
-    assert _read("prichard stats vs 76ers including playoffs game log", intent="game_log", versus=True).career
-    assert not _read("jaylen brown last 8 games vs pistons this season", intent="game_log", versus=True, window_named=True).career
+    assert _read("how many times has embiid fouled out?", shape=GAMES_COUNTED, player_named=True, how_many=True).career
+    assert not _read("how many times has embiid fouled out this season?", shape=GAMES_COUNTED, player_named=True, how_many=True).career
+    assert not _read("how many times has embiid fouled out in his 5th season?", shape=GAMES_COUNTED, player_named=True, how_many=True, season_n=5).career
+    assert _read("steph curry record vs lebron", shape=PLAYER_MEETINGS, record=True, versus=True).career
+    assert _read("jaylen brown last 8 games vs pistons", shape=PLAYER_LOG, versus=True, window_named=True).career
+    assert _read("prichard stats vs 76ers including playoffs game log", shape=PLAYER_LOG, versus=True).career
+    assert not _read("jaylen brown last 8 games vs pistons this season", shape=PLAYER_LOG, versus=True, window_named=True).career
 
 
 def test_a_bare_last_n_games_log_reads_both_types() -> None:
-    assert _read("knicks last 5 games", intent="game_log", order="recent", limit=5).both
-    assert not _read("knicks last 5 regular season games", intent="game_log", order="recent", limit=5).both
-    assert not _read("knicks last 5 games", intent="game_log", order="first", limit=5).both
+    assert _read("knicks last 5 games", shape=PLAYER_LOG, order="recent", limit=5).both
+    assert not _read("knicks last 5 regular season games", shape=PLAYER_LOG, order="recent", limit=5).both
+    assert not _read("knicks last 5 games", shape=PLAYER_LOG, order="first", limit=5).both
 
 
 # ---------------- the claims ----------------
