@@ -1633,7 +1633,13 @@ a shape:
   game relation's "no games" sentence call; `seasons_on_record`;
   `seasons_played`); `compose.core.values_of` (or `rows_of`, for a
   ranking's rows by name) executes every one through the compiler's one
-  `execute`, and nothing else runs a season-line statement. The line is a `Scalar` and
+  `execute`, and nothing else runs a season-line statement. The module
+  RUNS them too: since Phase 4, step 5 a reader in `compose/seasons.py`
+  names the read it takes (`season_line.season_row`, `career_row`,
+  `advanced_row`, `history_rows`, `history_total`, `netpoints_row` - the
+  statement run and its row or rows handed back) and executes nothing
+  itself, so the SQL ratchet counts those statements on `season_line`,
+  the relation that owns the table. The line is a `Scalar` and
   the history a `Grouped` by `season` with a career's `summary` part, the
   comparison a `Grouped` by `subject`, each on a `Span` whose `source` is
   `"seasons"`; the line's `Scalar.how` is `"season"`, which is how `say()`
@@ -1687,7 +1693,14 @@ a shape:
     `result.Refusal` or `result.Clarify` the sayer words; the one step that
     still phrases a note for the compiler's own sentence
     (`compose.core._box_notes`) takes the sayer's helper through a
-    call-time import, since `compose` imports the relations.
+    call-time import, since `compose` imports the relations. And a
+    statement a reader runs is the relation's to RUN as well as to build
+    (Phase 4, step 5): the reader calls a named read on the relation that
+    owns the table, which executes the statement through the compiler's
+    door and hands back rows or values - never a `Statement` the reader
+    executes itself, which the SQL ratchet counts in the reader's module.
+    The season line's reads are the first (`season_line.season_row` and
+    the five beside it).
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body

@@ -17,12 +17,15 @@ season's or a career's ranking with the rules it is ranked under (the
 qualifier, the traded-player dedup, the postseason copy, the career pool),
 and the seasons a player is on record for (the defaulted-season redirect,
 the first and last season the compiler and two charts read). Every
-statement is built here and executed through the compiler's one door
+statement is built AND run here, through the compiler's one door
 (:func:`~association.query.compose.core.values_of`, or
 :func:`~association.query.compose.core.rows_of` where a ranking reads its
-rows by column name): by a reader, or by the ranking and the redirect
-here, which run more than one statement and take the door at call time,
-since the compiler imports this module. Phase 2's slice (iii)
+rows by column name), taken at call time since the compiler imports this
+module: a reader names the read it takes (:func:`season_row`,
+:func:`career_row`, :func:`advanced_row`, :func:`history_rows`,
+:func:`history_total`, :func:`netpoints_row`) and executes nothing of its
+own - since Phase 4, step 5, when the six reads ``compose.seasons`` ran
+itself through the door moved here, the statements unchanged. Phase 2's slice (iii)
 (``ROADMAP.md``): the statements are the retired templates'
 (``templates.players._season_row``, ``_career_player_stat``,
 ``_player_stat_advanced``, ``_player_history_read``,
@@ -483,6 +486,83 @@ def seasons_played(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type:
     return _season_range(
         _values(con, Statement("SELECT MIN(season), MAX(season) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND gamesPlayed > 0", [athlete_id, season_type]))
     )
+
+
+# The reads the season line's readers (compose.seasons) take: each statement
+# above run here, through the compiler's one door, and handed back as the
+# rows or the one row the reader reads by position - so the SQL a reader runs
+# lives in the relation that owns its table and the reader names the read
+# (Phase 4, step 5: until then each reader ran the statement itself through
+# compose.core.values_of).
+
+
+def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
+    """A statement's first row, as ``fetchone`` gave the retired reads."""
+    return rows[0] if rows else None
+
+
+def season_row(con: duckdb.DuckDBPyConnection, athlete_id: str, columns: list[str], season: int, season_type: int) -> tuple[Any, ...] | None:
+    """One player's season line (:func:`season_statement`): ``columns`` in
+    their order, or ``None`` where the table holds no row for that season.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.seasons``' line and comparison readers until then.
+    """
+    return _first(_values(con, season_statement(athlete_id, columns, season, season_type)))
+
+
+def career_row(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int, wanted: list[str], shooting: ShootingStat | None) -> tuple[tuple[Any, ...] | None, str | None]:
+    """A career line summed from the season table (:func:`career_statement`):
+    its one row - ``None`` where the statement returns none - and the made
+    count's attempted column beside it, where there is one.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.seasons``' line reader until then.
+    """
+    statement, attempted_col = career_statement(athlete_id, season_type, wanted, shooting)
+    return _first(_values(con, statement)), attempted_col
+
+
+def advanced_row(con: duckdb.DuckDBPyConnection, athlete_id: str, span: ResolvedSpan, spec: AdvancedStat) -> tuple[Any, ...] | None:
+    """One player's computed advanced stat over ``span``
+    (:func:`advanced_statement`): its one row, or ``None``.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.seasons``' line reader until then.
+    """
+    return _first(_values(con, advanced_statement(athlete_id, span, spec)))
+
+
+def history_rows(con: duckdb.DuckDBPyConnection, athlete_id: str, stat: str, season_type: int, latest: int, seasons: int | None) -> list[tuple[Any, ...]]:
+    """A stat season by season, newest first (:func:`history_statement`):
+    each season, its games and the stat's columns.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.seasons``' history reader until then.
+    """
+    return _values(con, history_statement(athlete_id, stat, season_type, latest, seasons))
+
+
+def history_total(con: duckdb.DuckDBPyConnection, athlete_id: str, stat: str, season_type: int, latest: int) -> tuple[Any, ...] | None:
+    """The career total behind a per-season counting column
+    (:func:`history_total_statement`): its one row, or ``None``.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.seasons``' history reader until then.
+    """
+    return _first(_values(con, history_total_statement(athlete_id, stat, season_type, latest)))
+
+
+def netpoints_row(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, season_type: int) -> tuple[Any, ...] | None:
+    """One player's NetPoints summary for a comparison
+    (:func:`netpoints_statement`): its one row, or ``None``. Raises
+    ``duckdb.Error`` where the NetPoints table does not exist, which the
+    caller catches - the table exists only where the NetPoints fetch was run.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.seasons``' comparison reader until then.
+    """
+    return _first(_values(con, netpoints_statement(athlete_id, season, season_type)))
 
 
 # The ranking: a season's or a career's leaders by one metric, with every
