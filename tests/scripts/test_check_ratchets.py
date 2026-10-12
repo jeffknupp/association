@@ -136,6 +136,24 @@ def test_a_regex_outside_the_reader_is_found() -> None:
     assert ratchets.regex_outside_the_reader(modules) == {"refusals", "entities"}
 
 
+def test_a_regex_inside_the_reader_is_counted_per_module_and_the_lexicon_is_not() -> None:
+    """The Phase 3 review (2026-10-11): the step 4 exit "the reader's regexes
+    outside the lexicon are gone" was measured by ``regex_outside_the_reader``,
+    which counts modules OUTSIDE the reader and read 0 over 18 ``re`` calls
+    in ``point``, ``parse`` and ``line``. Every call of ``re`` in a reader
+    module but the lexicon counts; a flag or a type does not; a module
+    outside the reader is the other ratchet's."""
+    modules = _modules(
+        point="import re\n_VS = re.compile(r'vs', re.I)\n_LOG = re.compile('log')\ndef read(words: re.Pattern): ...",
+        line="import re\ndef words(stat):\n    return re.sub(r'\\s+', ' ', stat)",
+        lexicon="import re\nWORD = re.compile(r'\\w+')\nMARK = re.escape('x')",
+        measure="import re\ndef kind(p: re.Pattern) -> bool:\n    return p.flags & re.I != 0",
+        entities="import re\nX = re.compile('x')",
+    )
+    assert ratchets.regex_in_the_reader(modules) == {"point": 2, "line": 1}
+    assert ratchets.regex_outside_the_reader(modules) == {"entities"}
+
+
 def test_a_new_violation_and_a_listed_one_that_is_gone_both_fail() -> None:
     names = list(ratchets.CHECKS)
     clean = {name: ["a"] for name in names}
