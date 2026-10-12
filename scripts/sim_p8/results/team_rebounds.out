@@ -1,0 +1,21 @@
+Regular seasons 2024-2026: 7,386 team-games
+
+after                      rebound      player     team   (per team-game)
+free throw, not the last   offensive_rebound    0.000    2.327
+last free throw            defensive_rebound    1.982    0.091
+last free throw            offensive_rebound    0.233    0.154
+made shot                  defensive_rebound    0.001    0.000
+made shot                  offensive_rebound    0.010    0.000
+missed shot                defensive_rebound   30.749    2.157
+missed shot                offensive_rebound   10.757    3.459
+other                      defensive_rebound    0.061    0.063
+other                      offensive_rebound    0.017    0.080
+
+missed shot: the offense keeps 0.3017 of rebounded misses (player lines alone say 0.2592);
+  team share of offensive rebounds 0.2433, of defensive 0.0656; odds of the player-line share 0.3498
+last free throw: the offense keeps 0.1575 of rebounded misses (player lines alone say 0.1052);
+  team share of offensive rebounds 0.3987, of defensive 0.0437; odds of the player-line share 0.1176
+
+odds ratio, free-throw miss to field-goal miss, on the player-line offensive share: 0.336
+player-line offensive share over all rebounds (the estimator's rate): 0.2514, odds 0.3358
+  odds multiplier for a missed field goal 1.042, for a missed last free throw 0.350

@@ -153,6 +153,57 @@ forty-six misses in recent seasons.
 .. versionadded:: 6.0.0
 """
 
+
+@dataclass(frozen=True)
+class ReboundSplit:
+    """How the rebounds of one kind of miss divide: the odds multiplier on
+    the estimator's player-line offensive share (which is over all player
+    rebounds, missed free throws included, so a field goal's is a little
+    above one and a free throw's a third), and the share of each side's
+    rebounds that are the team's - a ball out of bounds, a dead ball -
+    credited to nobody. Player box lines omit team rebounds, so the
+    estimator's ``offensive_rebound_rate`` understates how often the offense
+    keeps a miss; :meth:`retention` widens it back.
+
+    .. versionadded:: 6.0.0
+    """
+
+    odds: float
+    team_offensive: float
+    team_defensive: float
+
+    def retention(self, player_line_share: float) -> float:
+        """The probability the offense keeps the ball after this miss, from
+        the player-line offensive share against this defense: each side's
+        player rebounds are grossed up by the team rebounds they omit."""
+        share = min(max(player_line_share, 1e-6), 1.0 - 1e-6)
+        offensive = share * self.odds / (1.0 - self.team_offensive)
+        defensive = (1.0 - share) / (1.0 - self.team_defensive)
+        return offensive / (offensive + defensive)
+
+
+FIELD_GOAL_REBOUNDS = ReboundSplit(odds=1.042, team_offensive=0.243, team_defensive=0.066)
+"""A missed field goal's rebounds. Measured 2026-10-11 on the 2024-2026
+regular seasons (7,386 team-games, ``scripts/sim_p8/team_rebounds.py``):
+per team-game 10.76 player and 3.46 team offensive rebounds, 30.75 player
+and 2.16 team defensive, so the offense keeps 30.2% of rebounded misses
+where player lines alone say 25.9% (25.1% over all player rebounds, the
+estimator's rate: odds 1.042 times its odds), and the team's share is
+24.3% of offensive rebounds and 6.6% of defensive.
+
+.. versionadded:: 6.0.0
+"""
+
+FREE_THROW_REBOUNDS = ReboundSplit(odds=0.350, team_offensive=0.399, team_defensive=0.044)
+"""A missed last free throw's rebounds, same measurement: 0.23 player and
+0.15 team offensive, 1.98 player and 0.09 team defensive a team-game - the
+offense keeps 15.8%, the odds of the player-line share 0.35 of the
+estimator's. The 2.33 dead-ball team rebounds a team-game after a missed free
+throw that is not the last are not events here.
+
+.. versionadded:: 6.0.0
+"""
+
 NON_SHOOTING_DEFENSIVE_SHARE = 0.67
 """Of the personal fouls the five defenders commit per minute beyond the
 shooting-foul trips the offense draws (its free-throw trips per minute),
@@ -170,17 +221,21 @@ until the league record holds it.
 .. versionadded:: 6.0.0
 """
 
-PACE_CALIBRATION = 0.956
+PACE_CALIBRATION = 0.980
 """The factor on a possession's mean duration that makes the simulated
-possessions per game match the real ones. The mean is derived from the
-teams' pace as if every possession were one draw, but offensive-rebound
-continuations, foul restarts and a period's unused last seconds add time
-on top, so the game runs light: 4.5% in the toy league (step 5's sanity
-check), 4.4% on the 2025 replay validation after the free-throw fix
-(96.4 possessions a team-game by the box formula against a real 100.8,
-``scripts/sim_p8/results/validate_2025_from_2025-01-01_2026-10-11.md``).
-96.4 / 100.8 is 0.956. An interim calibration, measured, until P3's
-possession table supplies durations by start type.
+possessions per game, by the box formula over the simulated box lines,
+match the real ones. The mean is derived from the teams' pace as if every
+possession were one draw, but offensive-rebound continuations, foul
+restarts and a period's unused last seconds add time on top, while the
+box formula counts a team offensive rebound as a possession not taken, so
+the two never agree by construction. Measured twice (2026-10-11): 0.956
+when every rebound was a player's (96.4 possessions a team-game against a
+real 100.8, ``scripts/sim_p8/results/validate_2025_from_2025-01-01_2026-10-11.md``),
+then 0.980 once :data:`FIELD_GOAL_REBOUNDS` made a quarter of the offensive
+rebounds the team's, which the formula counts as possessions (102.8
+against 100.3 on the first 150 held-out games at 0.956; 0.956 x 100.3 /
+102.8). An interim calibration until P3's possession table supplies
+durations by start type.
 
 .. versionadded:: 6.0.0
 """
@@ -318,7 +373,7 @@ def league_points_per_possession(league: LeagueParams) -> float:
     shot_points += make * league.and_one_rate * league.free_throw_rate
     trip_points = (2.0 + THREE_SHOT_TRIP_SHARE) * league.free_throw_rate
     per_use = p_shot * shot_points + league.foul_rate * trip_points
-    continued = p_shot * (1.0 - make) * league.offensive_rebound_rate
+    continued = p_shot * (1.0 - make) * FIELD_GOAL_REBOUNDS.retention(league.offensive_rebound_rate)
     return per_use / (1.0 - min(continued, 0.99))
 
 
@@ -785,7 +840,7 @@ class _Game:
                 actors["blocker"] = blocker.id
                 outcome = "blocked"
         self._emit("shot", offense.team_id, actors, zone, outcome)
-        return self._rebound(offense, defense)
+        return self._rebound(offense, defense, FIELD_GOAL_REBOUNDS)
 
     def _made(self, offense: _Side, defense: _Side, shooter: _Player, zone: str, points: int) -> str | None:
         shooter.fgm += 1
@@ -806,21 +861,34 @@ class _Game:
             return self._free_throws(offense, defense, shooter, 1)
         return _MADE_SHOT
 
-    def _rebound(self, offense: _Side, defense: _Side) -> str | None:
+    def _rebound(self, offense: _Side, defense: _Side, split: ReboundSplit) -> str | None:
         """After a miss: ``None`` on an offensive rebound (the possession
-        continues), the defensive-rebound start type otherwise. A side whose
-        five carry no rebound weight takes a team rebound."""
-        if self._chance("offensive_rebound", defense.oreb_against, {"league": self.league.offensive_rebound_rate}):
-            rebounder = self._pick_noted("rebounder", offense.floor, [p.oreb_w for p in offense.floor])
-            if rebounder is not None:
-                rebounder.oreb += 1
-            self._emit("rebound", offense.team_id, {} if rebounder is None else {"rebounder": rebounder.id}, outcome="offensive")
+        continues), the defensive-rebound start type otherwise. The offense
+        keeps ``split.retention`` of the misses - the player-line share
+        against this defense widened by the team rebounds player lines
+        omit - and ``split``'s team shares of each side's rebounds are the
+        team's, credited to nobody; a side whose five carry no rebound weight
+        takes a team rebound too."""
+        retention = split.retention(defense.oreb_against)
+        if self._chance("offensive_rebound", retention, {"player_lines": defense.oreb_against, "league": self.league.offensive_rebound_rate, "odds": split.odds}):
+            self._credit_rebound(offense, "offensive", split.team_offensive)
             return None
-        rebounder = self._pick_noted("rebounder", defense.floor, [p.dreb_w for p in defense.floor])
-        if rebounder is not None:
-            rebounder.dreb += 1
-        self._emit("rebound", defense.team_id, {} if rebounder is None else {"rebounder": rebounder.id}, outcome="defensive")
+        self._credit_rebound(defense, "defensive", split.team_defensive)
         return _DEFENSIVE_REBOUND
+
+    def _credit_rebound(self, side: _Side, outcome: str, team_share: float) -> None:
+        """The rebound event: the team's with probability ``team_share``,
+        else one of the five weighted by their rebounds per minute."""
+        rebounder = None
+        if not self._chance("team_rebound", team_share):
+            weights = [p.oreb_w if outcome == "offensive" else p.dreb_w for p in side.floor]
+            rebounder = self._pick_noted("rebounder", side.floor, weights)
+        if rebounder is not None:
+            if outcome == "offensive":
+                rebounder.oreb += 1
+            else:
+                rebounder.dreb += 1
+        self._emit("rebound", side.team_id, {} if rebounder is None else {"rebounder": rebounder.id}, outcome=outcome)
 
     def _turnover(self, offense: _Side, defense: _Side, user: _Player) -> str:
         user.tov += 1
@@ -862,7 +930,9 @@ class _Game:
 
     def _free_throws(self, offense: _Side, defense: _Side, shooter: _Player, count: int) -> str | None:
         """``count`` free throws, the dead ball before the last; a made last
-        one hands the ball over, a missed one is a rebound."""
+        one hands the ball over, a missed one is a rebound
+        (:data:`FREE_THROW_REBOUNDS`); a missed earlier one is a dead ball
+        and no event."""
         for attempt in range(1, count + 1):
             if attempt == count:
                 self._dead_ball()
@@ -876,7 +946,7 @@ class _Game:
             else:
                 self._emit("free_throw", offense.team_id, {"shooter": shooter.id}, outcome="missed")
                 if attempt == count:
-                    return self._rebound(offense, defense)
+                    return self._rebound(offense, defense, FREE_THROW_REBOUNDS)
         raise AssertionError("a trip has at least one free throw")
 
     # -- periods and the game -------------------------------------------------------

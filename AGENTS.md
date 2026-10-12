@@ -126,31 +126,37 @@ was learned the hard way and is about the data, not the pipeline.
   throws at 0.371 per field-goal attempt against 0.240 - was fixed the same
   day (and-ones counted twice; three-shot trips at 40% instead of 3.5%),
   with the before and after reports side by side in `results/`.
-- **Four validation runs so far** (`scripts/sim_p8/results/`): the
-  baseline, after the free-throw fix, with `engine.PACE_CALIBRATION`, and
-  after the bonus-trip fix (`_trips`). The pace matches (100.2 against
-  100.8 possessions), free throws are 0.251 against 0.241 per field-goal
-  attempt, points per 100 possessions 114.8 against 113.5, the total +1.2;
-  Brier 0.2266 against the strength model's 0.2252 and ESPN's 0.1989. Each
-  fix was found by decomposing the run's JSON per team-game (points, FGA,
-  FTA, rebounds, turnovers, real against simulated) and confirmed with
-  `--explain` on a replay; do the same before changing a constant.
-- **Next**, in the order the last run ranks them: team rebounds (the
-  engine credits every rebound to a player, so defensive rebounds run
-  37.5 a team-game against 32.9 on box lines that exclude the ~5 team
-  rebounds; that is the rebound coverage 0.777, the offensive-rebound rate
-  0.242 against 0.255, and most of the remaining per-100 gap, since the
-  box formula counts the extra offensive rebounds as possessions not
-  taken); too many foul-outs on eight-man real rosters (5 games refused);
-  the rotation's substitutions nineteen seconds into a game (a minimum
-  stint or early hysteresis in `rotation.RotationSettings`); player points
-  coverage 0.740 and assists 0.855 against 0.800; minutes mean absolute
-  error 5.3; threes 0.409 against 0.419 per attempt and free throws still
-  4% high (`NON_SHOOTING_DEFENSIVE_SHARE`, or the bonus path's trip
-  length). Then step 9, P3 (possessions and actions) and the upgrades that
-  need it: durations by start type (replacing the calibration constant),
-  per-player on-court defense, usage per possession. Every one is a `sim
-  validate` run with the report committed.
+- **Six validation runs so far** (`scripts/sim_p8/results/`): the
+  baseline, after the free-throw fix, with `engine.PACE_CALIBRATION`,
+  after the bonus-trip fix (`_trips`), and two with team rebounds
+  (`_teamreb`, `_teamreb_odds` as committed). The pace matches (100.5
+  against 100.8 possessions), free throws are 0.250 against 0.240 per
+  field-goal attempt, points per 100 possessions 113.0 against 113.5,
+  rebounds per team-game 10.5 + 32.9 against 11.2 + 32.8, the total -1.9;
+  Brier 0.2261 against the strength model's 0.2242 and ESPN's 0.1979, and
+  two runs of one setup differed by 0.002, so treat smaller Brier moves as
+  noise. Each fix was found by decomposing the run's JSON per team-game
+  (points, FGA, FTA, rebounds, turnovers, real against simulated) and
+  confirmed with `--explain` on a replay; do the same before changing a
+  constant, and re-derive `PACE_CALIBRATION` when a change alters what the
+  box formula counts.
+- **Next**, in the order the last run ranks them: the offensive-rebound
+  share (0.243 simulated against 0.255: the player-line share rises a
+  point a season and the equal-weighted three-season window lags it -
+  weight `game.window_for` toward the latest season or shorten it for
+  team and league rates, the first "recent seasons first" change the
+  harness asks for; it is also the total's -1.9 and the 1.4 missing
+  field-goal attempts a team-game); too many foul-outs on eight-man real
+  rosters (8 games refused); the rotation's substitutions nineteen seconds
+  into a game (a minimum stint or early hysteresis in
+  `rotation.RotationSettings`); player points coverage 0.740 and assists
+  0.851 against 0.800; minutes mean absolute error 5.3; threes 0.409
+  against 0.420 per attempt and free throws 4% high
+  (`NON_SHOOTING_DEFENSIVE_SHARE`, or the bonus path's trip length). Then
+  step 9, P3 (possessions and actions) and the upgrades that need it:
+  durations by start type (replacing the calibration constant), per-player
+  on-court defense, usage per possession. Every one is a `sim validate`
+  run with the report committed.
 - **Dispatching agents here:** make their worktrees by hand from the
   intended SHA (`git worktree add -b <branch> .claude/worktrees/<name>
   <sha>`); the Agent tool's own worktree isolation branched from master,

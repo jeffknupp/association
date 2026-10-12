@@ -296,3 +296,34 @@ def test_events_carry_the_actors_and_zones_a_renderer_needs() -> None:
     assists = sum(1 for e in game.events if e.kind == "shot" and "assister" in e.actors)
     assert assists == game.home.ast + game.away.ast > 0
     assert sum(1 for e in game.events if e.kind == "shot" and e.outcome == "blocked") == game.home.blk + game.away.blk > 0
+
+
+def test_the_rebound_split_widens_the_player_line_share_by_the_team_rebounds() -> None:
+    # The measured population (scripts/sim_p8/team_rebounds.py): the estimator's player-line share over all rebounds
+    # is 25.1%; after a missed field goal the offense kept 30.2% of misses, after a missed last free throw 15.8%.
+    assert engine.FIELD_GOAL_REBOUNDS.retention(0.2514) == pytest.approx(0.3017, abs=0.001)
+    assert engine.FREE_THROW_REBOUNDS.retention(0.2514) == pytest.approx(0.1575, abs=0.002)
+    # Degenerate shares stay probabilities.
+    assert engine.FIELD_GOAL_REBOUNDS.retention(0.0) < 1e-5 and engine.FIELD_GOAL_REBOUNDS.retention(1.0) > 1.0 - 1e-5
+    # No team rebounds and even odds give the share back.
+    assert engine.ReboundSplit(1.0, 0.0, 0.0).retention(0.3) == pytest.approx(0.3)
+
+
+def test_team_rebounds_are_nobodys_at_the_measured_shares() -> None:
+    offensive = defensive = team_offensive = team_defensive = 0
+    for seed in range(300):
+        for e in simulate(toy.setup(), seed).events:
+            if e.kind != "rebound":
+                continue
+            if e.outcome == "offensive":
+                offensive += 1
+                team_offensive += "rebounder" not in e.actors
+            else:
+                defensive += 1
+                team_defensive += "rebounder" not in e.actors
+    assert team_offensive / offensive == pytest.approx(engine.FIELD_GOAL_REBOUNDS.team_offensive, abs=0.02)
+    assert team_defensive / defensive == pytest.approx(engine.FIELD_GOAL_REBOUNDS.team_defensive, abs=0.01)
+    # The box lines carry only the players' rebounds, as real box lines do.
+    game = simulate(toy.setup(), 3)
+    credited = sum(1 for e in game.events if e.kind == "rebound" and "rebounder" in e.actors)
+    assert credited == sum(line.oreb + line.dreb for line in game.lines) < sum(1 for e in game.events if e.kind == "rebound")

@@ -412,6 +412,24 @@ player-games with minutes; with technicals counted, 94.9-96.3% - a
 technical is not a personal foul in the box either. 728 of 268,044 stints
 touch an unresolved segment.
 
+**0.12 Team rebounds (2026-10-11, 2024-2026 regular seasons, 7,386
+team-games, `scripts/sim_p8/team_rebounds.py`).** Per team-game, a missed
+shot is followed by 10.76 player and 3.46 team offensive rebounds and 30.75
+player and 2.16 team defensive ones: the offense keeps 30.2% of rebounded
+misses, player lines alone say 25.9%, and the team's share is 24.3% of
+offensive and 6.6% of defensive rebounds. A missed last free throw: 0.23 +
+0.15 offensive against 1.98 + 0.09 defensive (15.8% kept, 40% of the
+offensive ones the team's). Over all player rebounds, the share the
+estimator's `offensive_rebound_rate` measures, the offense has 25.14%: a
+field goal's player-line odds are 1.042 times that share's, a last free
+throw's 0.350. A missed free throw that is not the last is
+followed by a team offensive rebound 2.33 times a team-game (the dead
+ball). Rebounds after anything else are 0.2 a team-game. The player-line
+offensive share rises a point a season - 0.2325 (2022), 0.2402, 0.2424,
+0.2520, 0.2600 (2026) over `player_box_stats_deduped` regular seasons - so
+an equal-weighted three-season window estimates the current season's share
+about 0.01 low.
+
 **0.9 Shot positions (for P4.1).** From 2015, 99.95-100% of charted field
 goals carry a position; 2022's `points_attempted` is 0 on 96% of shots
 (`SHOT_VALUE_SQL` handles it); and from 2019 the shot chart holds exactly
@@ -807,6 +825,38 @@ check measured on 2019-2026 and recorded in the module docstring:
    0.740 and assists 0.855 against 0.800; minutes MAE 5.3; threes 0.409
    against 0.419 per attempt and free throws still 4% high; the strength
    model 0.0014 ahead on Brier, ESPN 0.028.
+
+   **With team rebounds** (`engine.ReboundSplit`, `FIELD_GOAL_REBOUNDS`,
+   `FREE_THROW_REBOUNDS`, measured by `scripts/sim_p8/team_rebounds.py`,
+   section 0b item 0.12; `engine.PACE_CALIBRATION` 0.956 -> 0.980 because
+   the box formula counts a team offensive rebound as a possession on both
+   sides now). Two runs: `results/..._teamreb.md` with the odds taken
+   against the field-goal player-line share by mistake (the estimator's
+   share is over all player rebounds) and `..._teamreb_odds.md` as
+   committed, 736 games, 10 refused (8 eight-man rosters fouled out, 2
+   with seven players; the same seeds gave 5-8 across runs). As committed:
+   Brier 0.2261 (strength 0.2242, home rate 0.2487, ESPN 0.1979 on the
+   same games) - the mistaken run gave 0.2243 for the same setup, so Brier
+   differences under 0.002 between runs are the simulation's own noise at
+   200 games a matchup; margin sd 16.7 against 16.4 (from 17.0), PIT
+   0.067-0.128; defensive rebounds 32.9 a team-game against a real 32.8
+   (from 37.5), offensive 10.5 against 11.2; rebound coverage 0.788 (from
+   0.777), points 0.740, assists 0.851; points per 100 possessions 113.0
+   against 113.5 (from 114.8); possessions 100.5 against 100.8; FTA per
+   FGA 0.250 against 0.240; minutes MAE 5.26. The total's error moved from
+   +1.2 to -1.9, a change beyond noise with a reason: the simulated
+   offense keeps 0.243 of player-line misses against 0.255 real, which is
+   the window's lag behind a share rising a point a season (0.12), and the
+   pace constant that used to run possessions fast enough to hide the lost
+   second chances is now measured honestly, so the shortfall shows as 1.4
+   field-goal attempts a team-game. Standing misses after six runs, in
+   order: the offensive-rebound share (weight the window toward the
+   latest season, or shorten it for team and league rates - the first
+   "recent seasons first" change the harness asks for); foul-outs on
+   eight-man rosters; the rotation's early substitutions; player points
+   coverage 0.740 and assists 0.851 against 0.800; minutes MAE 5.3; threes
+   0.409 against 0.420 per attempt and free throws 4% high; the strength
+   model 0.002 ahead on Brier, ESPN 0.028.
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is
