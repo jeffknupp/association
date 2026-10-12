@@ -71,6 +71,11 @@ PLAYS = [
     _play("601", 10, "9:00", "H", "h2", "h2", "Shooting Foul", "h2 shooting foul"),
     _play("601", 11, "9:00", "A", "a1", "a1", "Free Throw - 1 of 2", "a1 makes free throw 1 of 2", True),
     _play("601", 12, "9:00", "A", "a1", "a1", "Free Throw - 2 of 2", "a1 misses free throw 2 of 2"),
+    # A bonus trip: a non-shooting foul in the penalty, then two free throws. The engine's
+    # non-shooting-foul path awards these, so the estimator must NOT count it as a1's trip.
+    _play("601", 16, "8:45", "H", "h2", "h2", "Personal Foul", "h2 personal foul"),
+    _play("601", 17, "8:45", "A", "a1", "a1", "Free Throw - 1 of 2", "a1 makes free throw 1 of 2", True),
+    _play("601", 18, "8:45", "A", "a1", "a1", "Free Throw - 2 of 2", "a1 makes free throw 2 of 2", True),
     _play("601", 13, "8:30", "A", "a1", "a1,h1", "Bad Pass\nTurnover", "a1 bad pass (h1 steals)"),  # live
     _play("601", 14, "8:00", "A", "a1", "a1", "Traveling", "a1 traveling"),  # dead
     _play("601", 15, "0:01", "A", "a2", "a2", "Jump Shot", "a2 misses 40-foot three point jumper"),  # the heave
@@ -262,7 +267,7 @@ def test_a_players_rates_are_his_counts_shrunk_toward_the_league(estimates: rate
     assert set(h1.zone_mix.probabilities) == set(ZONES)
     a1 = estimates.players["a1"]
     _check_rate(a1.live_ball_share, 1, 2, 1 / 2)
-    _check_rate(a1.free_throw_trips_per_minute, 1, 72, league.per_minute["free_throw_trips_per_minute"])  # the 1-of-2 is one trip
+    _check_rate(a1.free_throw_trips_per_minute, 1, 72, league.per_minute["free_throw_trips_per_minute"])  # the shooting-foul 1-of-2 is one trip; the bonus trip at 8:45 is not
 
 
 def test_a_two_shot_player_is_near_the_prior_and_shrunk_toward_it(estimates: rates.Estimates) -> None:

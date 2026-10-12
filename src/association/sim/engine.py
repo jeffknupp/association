@@ -153,14 +153,19 @@ forty-six misses in recent seasons.
 .. versionadded:: 6.0.0
 """
 
-NON_SHOOTING_DEFENSIVE_SHARE = 0.65
+NON_SHOOTING_DEFENSIVE_SHARE = 0.67
 """Of the personal fouls the five defenders commit per minute beyond the
-shooting fouls the offense draws (its free-throw trips per minute), the
-share that are defensive fouls stopping play with the offense keeping the
-ball - the rest are offensive and loose-ball fouls, which the turnover and
-rebound rates already carry. A constant until the league record holds it;
-about 20 fouls a team-game of which about 10 are shooting fouls and 3 or 4
-offensive in recent seasons.
+shooting-foul trips the offense draws (its free-throw trips per minute),
+the share that are defensive fouls stopping play with the offense keeping
+the ball - the rest are and-one, offensive and loose-ball fouls, which the
+and-one, turnover and rebound draws already carry. Measured 2026-10-11 on
+2024-2026 regular seasons: 7.51 non-shooting personal fouls a team-game
+(1.77 of them in the penalty, 3.54 free throws) against 10.01 shooting
+fouls (7.65 trips on misses, 2.47 and-ones) and 1.47 offensive; the
+simulation at 0.65 produced 6.46 non-shooting fouls a team-game with trips
+counted as every two-shot trip, and the share is set to the ratio that
+puts it at 7.5 once trips are the shooting-foul trips alone. A constant
+until the league record holds it.
 
 .. versionadded:: 6.0.0
 """

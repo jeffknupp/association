@@ -143,15 +143,31 @@ from association.sim import shrink, zones
 from association.sim.database import WAREHOUSE
 from association.sim.params import ZONES, LeagueParams, Mix, PlayerParams, Rate, TeamParams, Window
 
-TRIP_START_SQL = "(sp.type LIKE 'Free Throw - %1 of %' AND sp.type NOT LIKE '%1 of 1')"
+TRIP_START_SQL = "(sp.type LIKE 'Free Throw - %1 of %' AND sp.type NOT LIKE '%1 of 1' AND sc.event_id IS NOT NULL)"
 """The first attempt of a free-throw trip DRAWN BY A SHOOTING FOUL ON A MISS
-in ``sim_plays`` (aliased ``sp``): ``1 of 2``, ``1 of 3``, the flagrant and
-clear-path trips' first attempts. A ``1 of 1`` is left out: 95.7-98.0% of
-them are and-ones (section 0b, 0.10), which the engine draws from
-``and_one_rate`` on a MADE shot - counting them as trips too gave every
-and-one a second trip of two or three free throws, and the first replay
-validation (2026-10-11) simulated 0.377 free-throw attempts per field-goal
-attempt against a real 0.211. A technical has no "of" and is no trip.
+in ``sim_plays`` (aliased ``sp``, joined to :data:`SHOOTING_CLOCKS_SQL` as
+``sc``): a ``1 of 2`` or ``1 of 3`` at a clock where a shooting foul was
+called. Two kinds of trip are left out, each because the engine produces
+it another way and counting it here simulated it twice. A ``1 of 1``:
+95.7-98.0% are and-ones (section 0b, 0.10), drawn from ``and_one_rate`` on a
+made shot - counting them as trips gave every and-one a second trip, and
+the first replay validation (2026-10-11) simulated 0.377 free-throw
+attempts per field-goal attempt against a real 0.211. A BONUS trip, a
+``1 of 2`` after a non-shooting foul in the penalty: the engine's
+non-shooting-foul path awards those, and counting them as the shooter's own
+trips kept 0.283 attempts per field-goal attempt against 0.240 after the
+first fix. Measured on 2024-2026 regular seasons, per team-game: 7.65
+shooting-foul trips, 1.77 bonus trips, 2.47 one-of-ones, 0.07 flagrant;
+only 14 of 70,156 two- and three-shot trips had no foul of either kind at
+their clock. A technical has no "of" and is no trip.
+
+.. versionadded:: 6.0.0
+"""
+
+SHOOTING_CLOCKS_SQL = "SELECT DISTINCT event_id, season, period, clock_remaining FROM sim_plays WHERE kind = 'foul_shooting'"
+"""The clocks at which a shooting foul was called, which is how a free-throw
+trip is told from a bonus trip (ESPN's shooting-foul rows name only the
+fouler, 0b 0.10, so the trip is matched on the clock, not the player).
 
 .. versionadded:: 6.0.0
 """
@@ -303,6 +319,8 @@ def _read_plays(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, counts:
                count(*) FILTER (WHERE sp.kind = 'turnover' AND sp.live_ball) AS live_tov
         FROM sim_plays sp
         JOIN player_games pg ON pg.athlete_id = sp.athlete_id AND pg.event_id = sp.event_id AND pg.season = sp.season
+        LEFT JOIN ({SHOOTING_CLOCKS_SQL} AND season IN {seasons}) sc
+          ON sc.event_id = sp.event_id AND sc.season = sp.season AND sc.period = sp.period AND sc.clock_remaining = sp.clock_remaining
         WHERE sp.season IN {seasons} AND sp.kind IN ('turnover', 'free_throw')
         GROUP BY 1, 2, 3
     """).fetchall()
@@ -373,6 +391,8 @@ def _read_team_games(con: duckdb.DuckDBPyConnection, ctes: str, seasons: str, co
                    count(*) FILTER (WHERE sp.kind = 'turnover' AND sp.team_play) AS team_tov,
                    count(*) FILTER (WHERE {TRIP_START_SQL}) AS trips
             FROM sim_plays sp JOIN games g ON g.event_id = sp.event_id AND g.season = sp.season
+            LEFT JOIN ({SHOOTING_CLOCKS_SQL} AND season IN {seasons}) sc
+              ON sc.event_id = sp.event_id AND sc.season = sp.season AND sc.period = sp.period AND sc.clock_remaining = sp.clock_remaining
             WHERE sp.season IN {seasons} AND sp.kind IN ('turnover', 'free_throw') AND sp.team_id IS NOT NULL
             GROUP BY 1, 2, 3
         ),

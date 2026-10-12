@@ -782,6 +782,31 @@ check measured on 2019-2026 and recorded in the module docstring:
    substitutions; player points coverage 0.740 and assists 0.856 against
    0.800; minutes mean absolute error 5.3; and the strength model still
    0.001 ahead on Brier, ESPN 0.028.
+
+   **After the bonus-trip fix** (`rates.TRIP_START_SQL` counts a two- or
+   three-shot trip only at a clock where a shooting foul was called, so the
+   1.77 bonus trips a team-game stop being simulated twice;
+   `engine.NON_SHOOTING_DEFENSIVE_SHARE` 0.65 -> 0.67;
+   `results/validate_2025_from_2025-01-01_2026-10-11_trips.md`, 739 games,
+   7 refused): Brier 0.2266 (strength 0.2252, home rate 0.2486, ESPN 0.1989
+   on the same games); margin sd 17.0 against 16.4, PIT 0.066-0.119; the
+   total's error +1.2 from +3.8; FTA per FGA 0.251 against 0.241 (from
+   0.283); points per 100 possessions 114.8 against 113.5 (from 115.7);
+   possessions 100.2 against 100.8 (from 100.5: the box formula counts 0.44
+   of the free throws that went away). Per team-game from the JSON: points
+   +0.6 (from +1.9), of which free throws +0.8 attempts and field-goal
+   points per attempt +0.006; the rest of the per-100 gap is the box
+   formula's possession count running 0.7 low on the simulated lines,
+   because the engine credits every rebound to a player (offensive +0.7,
+   defensive +4.7 a team-game against box lines that exclude team
+   rebounds). Coverage 0.740 / 0.777 / 0.855 and minutes MAE 5.26,
+   unchanged. Standing misses after four runs, in order: team rebounds (the
+   rebound coverage, the offensive-rebound rate 0.242 against 0.255 and the
+   per-100 gap all trace to it); foul-outs on eight-man rosters (5 games
+   refused); the rotation's early substitutions; player points coverage
+   0.740 and assists 0.855 against 0.800; minutes MAE 5.3; threes 0.409
+   against 0.419 per attempt and free throws still 4% high; the strength
+   model 0.0014 ahead on Brier, ESPN 0.028.
 9. **P3, possessions and actions**, then the P4 upgrades that need them:
    possession duration by start type (D10), per-player on-court defensive
    factors (D6 option 2), usage as a share of lineup possessions. Each is
