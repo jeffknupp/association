@@ -47,7 +47,19 @@ target"):
     live in the lexicon. 6 when it was written; 0 since Phase 3, step 4,
     slice (b) (2026-10-10: ``entities``' last pattern moved to the lexicon,
     ``lexicon.word_start``, and its LIKE reading needs none), the list held
-    empty so a new one fails.
+    empty so a new one fails. Blind, by its definition, to a pattern INSIDE
+    the reader: the next ratchet counts those.
+``regex_in_the_reader``
+    How many ``re`` calls each reader module outside the lexicon makes, by
+    module (``re.compile``, ``re.sub``, ``re.escape``, ...). Contract 6
+    again, from the inside: the Phase 3 review (2026-10-11) found the step 4
+    exit "the reader's regexes outside the lexicon are gone" false - 18
+    calls in ``point`` (12), ``parse`` (5, one compiling the parent
+    grammar's 23 rows kept there) and ``line`` (1) - and measured by the
+    ratchet above, which cannot see them. Counted per module so a listed
+    module cannot grow patterns freely; a new grammar ROW does not raise it
+    (one call compiles them all), which Phase 4 closes by moving the rows
+    to the lexicon as predicates over typed values.
 ``con_in_the_reader``
     A reader function that takes a DuckDB connection. Contract 3: names are
     recognized from an in-memory index, not by query. 23 when it was
@@ -347,10 +359,45 @@ def regex_outside_the_reader(modules: dict[str, ast.Module]) -> set[str]:
     return found
 
 
+#: The one reader module a pattern may be built or applied in (contract 6).
+LEXICON = "lexicon"
+
+
+def _is_re_call(node: ast.AST) -> bool:
+    """Whether ``node`` calls the ``re`` module: ``re.compile(...)``,
+    ``re.sub(...)``, ``re.escape(...)`` - any attribute of the name ``re``
+    called. A flag (``re.I``) or a type (``re.Pattern``) is no call."""
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "re"
+
+
+def regex_in_the_reader(modules: dict[str, ast.Module]) -> dict[str, int]:
+    """How many ``re`` calls each reader module outside the lexicon makes
+    (:func:`_is_re_call`), for the modules that make any. Contract 6 says
+    the lexicon holds every pattern the reader is read by; the Phase 3
+    review (2026-10-11) found the exit "the reader's regexes outside the
+    lexicon are gone" measured by :func:`regex_outside_the_reader`, which
+    counts modules OUTSIDE the reader and so read 0 while ``point.py`` kept
+    12 compiled patterns, ``parse.py`` 5 calls (one of them compiling the
+    parent grammar's 23 rows, kept there) and ``line.py`` one ``re.sub``.
+    Counted per module, as the SQL is, so a listed module cannot grow
+    patterns freely; the grammar's rows are strings one call compiles, so a
+    new ROW does not raise this count - moving the rows to the lexicon is
+    Phase 4's, with the rows as predicates over typed values."""
+    found: dict[str, int] = {}
+    for name, tree in modules.items():
+        if name not in READER or name == LEXICON:
+            continue
+        calls = sum(1 for node in ast.walk(tree) if _is_re_call(node))
+        if calls:
+            found[name] = calls
+    return found
+
+
 CHECKS: dict[str, Callable[[dict[str, ast.Module]], set[str] | dict[str, int]]] = {
     "question_outside_the_reader": question_outside_the_reader,
     "sql_outside_the_relations": sql_outside_the_relations,
     "regex_outside_the_reader": regex_outside_the_reader,
+    "regex_in_the_reader": regex_in_the_reader,
     "con_in_the_reader": con_in_the_reader,
 }
 

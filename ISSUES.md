@@ -2970,14 +2970,6 @@ those were found.
 - **Priority:** P3 - tooling.
 - **GitHub:** #380
 
-### Contract 6 ("regexes only in the lexicon") has no gate inside the reader, and the step 4 exit was measured by a ratchet that cannot see it
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 8).
-- **Evidence:** the review's `harness/regex_sites.py` on `4de1801`: `re.` call sites in `query/` 209 - `lexicon` 191, `point.py` 12 compiled patterns (`_TOP_IN_A_GAME`, `_NOT_PLAYERS`, `_HOW_MANY_OR_OFTEN`, `_WON`, `_FEWEST`, `_TOTAL`, `_VS`, `_RANKING`, `_LOG`, `_AT_LEAST`, `_BOOLEAN_GAME_RANKING`, `_TEAM_NOT_SUBJECT`), `parse.py` 5 (which compile `PARENT_GRAMMAR`'s 23 regex rows kept there, `_PLAYER_LOG`, `_PAIR_MEETING`, `_SLASHED_DAY`, `_CHAMPIONSHIP`, `_TITLE_ODDS` and `_BENCH_WORD`), `line.py:290` one `re.sub`. `scripts/check_ratchets.py`'s `regex_outside_the_reader` counts modules OUTSIDE `READER`, so it reads 0 and is blind to these; the step 4 row's "the regex ratchet 6 -> 0" read that ratchet. `87cc782` had 211 sites (router 111, subject 27, point 20, parse 18, entities 12, ...), so the phase moved the reader's patterns to the lexicon but for these.
-- **User sees:** nothing.
-- **Next step:** a ratchet of `re.` call sites per reader module outside `lexicon.py`, at today's counts (point 12, parse 5, line 1), that fails on growth; the grammar rows move to the lexicon when the rows become predicates over typed values (Phase 4).
-- **Priority:** P3 - a contract with no gate.
-- **GitHub:** #381
-
 ### The claims ledger's agreement and unread-number checks hold on the 628 alone: on the 2,082 the Reading's unread and the deletion disagree on 91 questions, and 191 hold an unread number
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 9).
 - **Evidence:** `claims_ledger.py run --recorded stages/feed_recorded.jsonl` on `4de1801` (the review's `data/ledger-feed-4de1801.jsonl.gz` and its report): the Reading's `unread` and the deletion disagree on 91 of 2,082 (`report` exits 1 there); 191 feed questions hold an unread number (203 on `87cc782`). The "N or more minutes", the stated minimum and the "per 50 possessions" entries above are among them.

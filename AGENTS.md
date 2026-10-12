@@ -135,13 +135,21 @@ this tree:
   pattern (6, then 4 since `refusals.py` went, 3 since `calendar.py`'s
   patterns moved to the lexicon with the games' cuts, 0 since Phase 3,
   step 4, slice (b): `entities`' last pattern is `lexicon.word_start`, and
-  its LIKE reading needs none), and a reader function that takes a DuckDB
-  connection, by its name or its annotation (23, 0 since the same slice:
-  the reader takes the names' in-memory index, `names.NameIndex`, which
-  the answering loop reads before the parser runs, `entities.names_of`).
-  The two at zero are held as empty lists, so a new one fails. A
-  fifth ratchet, a private name `compose/` took from `templates/`, reached
-  0 and was deleted with `templates/` (step 6). It fails
+  its LIKE reading needs none), how many `re` calls each reader module
+  outside the lexicon makes, by module (`regex_in_the_reader`, since
+  2026-10-11: `point` 12 compiled patterns, `parse` 5 - one compiling the
+  parent grammar's 23 rows kept there - `line` 1; the Phase 3 review found
+  the step 4 exit "the reader's regexes outside the lexicon are gone"
+  measured by the ratchet before it, which counts modules OUTSIDE the
+  reader and so read 0 over these 18; a new grammar ROW does not raise the
+  count, since one call compiles them all - Phase 4 moves the rows to the
+  lexicon as predicates over typed values), and a reader function that
+  takes a DuckDB connection, by its name or its annotation (23, 0 since
+  slice (b): the reader takes the names' in-memory index,
+  `names.NameIndex`, which the answering loop reads before the parser
+  runs, `entities.names_of`). The two at zero are held as empty lists, so
+  a new one fails. A sixth ratchet, a private name `compose/` took from
+  `templates/`, reached 0 and was deleted with `templates/` (step 6). It fails
   on a NEW one or a count that grew, and on a listed one that is GONE or a
   count that fell, so the lists only shrink. A NEW failure is fixed in the
   code - pass the Reading, not the question; narrow through the relation's
@@ -1071,10 +1079,11 @@ a shape:
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader - a contract no gate holds INSIDE the reader yet:
-  `point.py` keeps 12 compiled patterns, `parse.py` the parent grammar's 23
-  rows and 5 `re.` sites, `line.py` one, measured 2026-10-11 by the Phase 3
-  review, `ISSUES.md`; the regex ratchet counts modules OUTSIDE the reader). **A tagger reads the words alone, never the key
+  layer of the reader - held inside the reader by the `regex_in_the_reader`
+  ratchet since 2026-10-11, at the counts the Phase 3 review found:
+  `point.py` 12 compiled patterns, `parse.py` 5 `re` calls with the parent
+  grammar's 23 rows, `line.py` one; `regex_outside_the_reader` counts
+  modules OUTSIDE the reader and read 0 over them). **A tagger reads the words alone, never the key
   the words ask** (Phase 3, step 4, slice (b)): each family is read twice
   over in `parse._tagged` - the tagger reads every candidate the words
   hold (`line.LineCandidates`, `window.WindowCandidates`,
