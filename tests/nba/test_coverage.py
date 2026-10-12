@@ -11,8 +11,6 @@ ranked a league of seven players.
 
 from __future__ import annotations
 
-from slots import slots_scope
-
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
 from association.query.measure import measure_of
@@ -32,6 +30,7 @@ from association.query.reading import (
     PointShape,
     Reading,
     Span,
+    situation_of,
 )
 from association.query.reading import Subject as Who
 
@@ -143,8 +142,13 @@ def test_the_floor_follows_the_relation_the_point_reader_named() -> None:
     from association.query.compose.plan import point_shape
     from association.query.point import default_point
 
-    for narrowing in ({"situation": "on tuesdays"}, {"since": 1989}, {"game_n": 3}):
-        point = default_point(PLAYER_LINE, slots_scope({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON, **narrowing}))
+    season = Span(season=1990, season_type=2)
+    for narrowing in (
+        {"cuts": Cuts(situation=situation_of("on tuesdays")), "span": season},
+        {"span": Span(season=1990, season_type=2, since=1989)},
+        {"cuts": Cuts(game_n=3), "span": season},
+    ):
+        point = default_point(PLAYER_LINE, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), **narrowing))
         assert point.on == "player_games", narrowing
         refused = check_coverage(point_shape(point), point)
         assert refused is not None and refused.startswith("Player game logs only go back to 1994"), narrowing
