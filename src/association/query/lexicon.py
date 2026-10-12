@@ -1836,10 +1836,12 @@ MEASURE_GRAMMAR: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
         # "%" is not a word character, so it takes no \b: "who had the highest
         # 3pt % this season" read as 3-pointers made while it did.
-        (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b3p%|\b3pt%", "threePointFieldGoalPct"),
-        (r"\b(2|two)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b2p%|\b2pt%", "twoPointFieldGoalPct"),
-        (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fieldGoalPct"),
-        (r"\bft ?%|\bfree throw percentage\b", "freeThrowPct"),
+        # "percent" spelled out is the percentage too ("highest single season
+        # 3pt percent" ranked 3-pointers made, "fg percent" read nothing).
+        (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercent(age)?\b|\bpct\b|%)|\b3p%|\b3pt%", "threePointFieldGoalPct"),
+        (r"\b(2|two)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercent(age)?\b|\bpct\b|%)|\b2p%|\b2pt%", "twoPointFieldGoalPct"),
+        (r"\bfg ?%|\bfg (percent(age)?|pct)\b|\bfield goal (percent(age)?|pct)\b", "fieldGoalPct"),
+        (r"\bft ?%|\bft (percent(age)?|pct)\b|\bfree throw (percent(age)?|pct)\b", "freeThrowPct"),
         # What a team gives up is the opponent's line, never its own: "rebounds
         # allowed per team" read as the teams' own rebounds and was answered with
         # them, best first. Points allowed is a team metric; the rest name a key

@@ -143,6 +143,10 @@ def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route()
     assert named("most (3ot + 4ot) points in a game by a team nba") == ("points", Claim(17, 23, "measure"))
     assert named("who averages the most TO per game") == ("turnovers", Claim(22, 24, "measure"))
     assert named("compared to other teams") is None
+    # "percent" spelled out is the percentage: "3pt percent" ranked 3-pointers made, "fg percent" read nothing.
+    assert named("highest single season 3pt percent") == ("threePointFieldGoalPct", Claim(22, 33, "measure"))
+    assert named("highest fg percent in nba history") == ("fieldGoalPct", Claim(8, 18, "measure"))
+    assert named("highest ft pct") == ("freeThrowPct", Claim(8, 14, "measure"))
 
 
 def test_the_two_readers_the_intent_stages_ask() -> None:
