@@ -47,7 +47,7 @@ url = f"http://127.0.0.1:{server.server_address[1]}/index.html"
 STUB = """
 window.EventSource = class {
   constructor(u) { this.ls = {}; setTimeout(() => {
-    const payload = JSON.stringify({text: "an answer", answered_by: "fast", intent: "leaderboard",
+    const payload = JSON.stringify({text: "an answer", answered_by: "fast", intent: "leaderboard", shape: {relation: "player_seasons", shape: "ranking", by: "player"},
       timing: {total_seconds: 0.5}, data: {}, artifacts: [], history_file: "stub-0000000000000000.log"});
     (this.ls["answer"] || []).forEach(f => f({data: payload}));
   }, 5); }

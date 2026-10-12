@@ -501,6 +501,14 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #394
 
+### "vs top 3 seed teams" is read as a window of the last 3 games: "luka dončić stats vs top 3 seed teams in the 2026 season" answers his last 3 games
+- **Found:** 2026-10-12, Phase 4, step 1 (lane B), the one answer whose page rendering moved: drawn as a log table where it was prose, which showed what it answered.
+- **Evidence:** on `aaa0a8a`, feed run (`scripts/stage_snapshots.py run --feed`, no names, no stat): the reading's window is `count 3, of games` from "top 3", `Reading.unread` is `stats, seed, teams, season`, no cut is set, and the answer is "Luka Doncic, last 3 of 64 games of the 2026 regular season:" with those three games. 1 of the 2,082 feed questions; "seed" occurs in no other.
+- **User sees:** a wrong answer - his last three games, fluently, where his line against the top-three seeds was asked.
+- **Next step:** the window tagger reads "top N" as a window only where the words rank (a ranking's "top 5"); "vs top N seed teams" is an opponent alignment nothing reads, so refused by a cause naming it (the situation's unread words) until a cut of opponents by seed exists - the reader seam's (lane A's) files, `query/window.py` and the lexicon.
+- **Priority:** P1 - a different question answered fluently.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A matchup of two players who did not play this season answers "<player> has no games in the 2026 regular season"
@@ -2011,61 +2019,39 @@ those were found.
 - **GitHub:** #123
 ### No future template gets a renderer for free
 - **Found:** 2026-09-18, scoping study requested ("richer HTML answers -
-  cards, sparklines, tables"). Originally filed together with
-  "`player_netpoints` still renders as a `<pre>` block", which is now fixed
-  (see below) - what remains is the design point the old title's second
-  half named, so the entry is narrowed to that rather than closed outright.
-- **Status:** stage 1 (a renderer per existing shape) shipped 2026-09-18.
-  `player_netpoints`, the one intent stage 1 left as a `<pre>` block, got its
-  own renderer 2026-09-25 (`RENDERERS.player_netpoints`,
-  `web/static/index.html`): a stat card for the season totals
-  (`data.totals`) plus an Offense/Defense table of the six partition
-  categories and a table of the overlapping play-type detail, all read
-  straight off `data.fingerprint`'s own stable keys (each row now also
-  carries `partition: bool`, so the page and the printed CLI table split
-  offense/defense the same way without a second copy of
-  `FINGERPRINT_PARTITION`). `data.headline` is now the display sentence
-  (`answer.split("\n")[0]`), not the raw six-number SQL row it used to be
-  stored under that key, and `data.notes` carries the season line's own
-  minutes/games/per-100-rate detail, what units the category rows are in,
-  and the play-type overlap disclaimer -
-  `query/templates/netpoints.py`'s `_netpoints_totals`/`_netpoints_notes` then; `compose/netpoints.py` and `compose.say._netpoints_totals` since Phase 2.
-  Not the radar-chart route the entry originally proposed as "stage 2": its
-  own stated risk (reusing `radar.py`'s per-game-vs-per-100 `Unit` labeling
-  for a season aggregate without checking the scale first) is exactly the
-  failure shape this project keeps producing, and a table read off
-  `fingerprint`'s own keys carries none of it. `RENDERERS` now covers all 24
-  `TEMPLATES` entries but `coach`, which stays prose by design (nothing
-  structured to show).
-- **What remains is a design point, not a fix for anything wrong today.**
-  Every one of the 24 typed intents already has a hand-written renderer, so
-  nothing is currently stuck behind a generic fallback - the gap is only for
-  the NEXT template. Today, shipping one with no `RENDERERS` entry falls
-  through to `el("pre", null, a.text)` - correct, but back to unstyled
-  terminal text - rather than drawing a table/card for free from its own
-  `data` shape, the way the original request asked for once and for all.
-  1. **A generic fallback formatter** for any `data` dict with no
-     `RENDERERS` entry: flat scalar keys as a small card grid, and any
-     list-of-dicts key as a table, generically, in `renderBody`'s `null`
-     branch. **Risk:** a generic renderer is more likely to produce a
-     confusing layout for a shape nobody has looked at (the recurring
-     failure shape here is a too-narrow answer, and a too-generic one is the
-     same risk turned around) - ship it behind the same `try/catch` fallback
-     to `<pre>` so a bad generic render never loses the correct sentence,
-     and look at a handful of real answers per intent before trusting it.
-  2. **Refusal-shaped payloads stay prose**, excluded from the generic
-     renderer explicitly (a `message`/`unanswerable` pair, or any answer
-     with `answered_by != "fast"`) rather than letting it try and fall back
-     silently - a silent fallback reads as "nothing to show" when the real
-     content is the sentence itself.
-- **User sees:** nothing wrong today - every current intent has a renderer.
-  The gap only reaches a reader once a new template ships with no
-  `RENDERERS` entry of its own.
+  cards, sparklines, tables"); rewritten 2026-10-12 with Phase 4, step 1,
+  which keyed the page's renderers by the planned shape.
+- **Status:** the page renders by `Answer.shape` - one renderer per
+  `reading.Shape` (`static/index.html`, `RENDERERS`: 7, where 22 were keyed
+  by the label) - but each renderer still names the BODIES its shape's
+  readers say (`bodies`: 28 bodies over 23 draws, each with its `needs`, chosen by `by`, the
+  relation where two readers of one `by` differ, and the compiler's
+  `skeleton`), because `Answer.data` is each sayer's own dict (`leaders`
+  with `display_name`/`value` for one ranking, `player`/`games` for
+  another, `teams` with `display` for a third), not the typed body the
+  reader returned (`result.Result`: `Grouped`, `Rows`, `Scalar`, `Runs`,
+  `Chart`). So a new reader under an existing shape gets nothing for free:
+  its data falls back to the sentence until its body is drawn.
+- **Evidence:** measured on `phase4-laneB` (the two populations' 2,710 fast
+  and refused answers rendered through the page in Chromium,
+  `~/association-research/stages/page_renders.py`): 1,881 draw a body, by 23
+  draws across the 7 renderers; the 22 retired renderers' code survives as
+  those draws (2 merged: a player's quarter game by game and a team's
+  quarter total are one draw, `figureGamesBody`; the compiler's three
+  skeletons one, `compiledBody`; a chart's frames moved into its renderer).
+- **Next step:** carry the typed body on the API beside `data`
+  (`ROADMAP-TYPES.md`, Still open 7: "Phase 4's renderers take the body,
+  the cells and the cause, and both go") - the `Result`'s parts serialized
+  with their `by`/`how`/`kind` - and draw each shape's body generically from
+  it: a ranking's rows by its `by` and measure, a split's groups, a
+  scalar's values; then delete the per-reader draws one shape at a time,
+  each proved by `page_renders.py` before and after. That is an API data
+  change (an added field), which step 1 was told not to make.
+- **User sees:** nothing wrong today - every reader's body is drawn. The
+  gap reaches a reader once a new reader ships with a data dict no body
+  reads.
 - **Priority note:** P3 (placed beside #69, the page's other structural
-  gap) - a design point, not a bug; no template today is affected.
-- **Could not verify:** whether a generic fallback formatter looks good for
-  every shape in practice needs eyes on real output rather than a data-shape
-  read, and is unstarted.
+  gap) - a design point, not a bug.
 - **GitHub:** #110 - heading changed from "`player_netpoints` still renders
   as a `<pre>` block, and no future template gets a renderer for free" to
   this one; the issue's title needs the same update
