@@ -14,7 +14,6 @@ from typing import Any
 import duckdb
 import pytest
 from routed import staged as settle
-from slots import slots_scope
 from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.query.compose.plan import cells_stated, cells_unhonored
@@ -101,23 +100,25 @@ def test_which_period_is_the_one_reader_the_condition_reader_and_the_stage_share
 
 
 def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route() -> None:
-    route = settle("period_split", {"player": "Tyrese Maxey"}, "tyrese maxey first half games this season")
+    route = settle(PERIOD_LOG, "tyrese maxey first half games this season", who=Who(kind="player", players=("Tyrese Maxey",)))
     assert route.period == Period(number=1, half=True)
     assert [c for c in route.claims if c.what == "period"] == [Claim(13, 23, "period")]
     assert "tyrese maxey first half games this season"[13:23] == "first half"
     # The window's "last game" and the period's "second half" are two claims, neither inside the other.
-    route = settle("period_split", {"player": "Miles Bridges"}, "miles bridges stats vs raptors second half last game")
+    route = settle(PERIOD_LOG, "miles bridges stats vs raptors second half last game", who=Who(kind="player", players=("Miles Bridges",)))
     assert route.period == Period(number=2, half=True)
     assert {c.what for c in route.claims} >= {"period", "window"}
 
 
-def test_a_model_era_period_slot_is_dropped_at_the_stages_door_and_the_words_read() -> None:
-    """A route's ``period``/``half`` keys (a test's payload; a settled route
-    run again) are the words' to read: "Celtics 2nd half scoring" with the
-    model's ``period: 2`` is the second HALF, not the second quarter."""
-    route = settle("team_quarter_points", {"team": "Boston Celtics", "period": 2}, "Celtics 2nd half scoring this season")
+def test_a_teams_half_is_read_from_the_words() -> None:
+    """A team's period is the words' to read: "Celtics 2nd half scoring" is
+    the second HALF, not the second quarter, and with no period word there
+    is none. Until Phase 4, step 0 the test handed the model's ``period: 2``
+    beside the words, which the stages dropped; the rules take no period
+    at all since."""
+    route = settle(TEAM_PERIOD_TOTAL, "Celtics 2nd half scoring this season", who=Who(kind="team", teams=("Boston Celtics",)))
     assert route.period == Period(number=2, half=True)
-    route = settle("team_quarter_points", {"team": "Boston Celtics", "period": 2}, "Celtics scoring this season")
+    route = settle(TEAM_PERIOD_TOTAL, "Celtics scoring this season", who=Who(kind="team", teams=("Boston Celtics",)))
     assert route.period is None
 
 
@@ -133,24 +134,6 @@ def test_the_value_is_one_quarter_or_one_half_and_says_so_when_it_is_neither() -
         Period(number=3, half=True)
     with pytest.raises(ScopeError):
         Period(number="1", half=False)  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize("slots", [{"period": 1}, {"period": 4}, {"half": 1}, {"half": 2}, {"period": 5}])
-def test_the_two_slots_type_through_the_door_as_one_period(slots: dict[str, Any]) -> None:
-    scope = slots_scope(slots)
-    assert scope.period is not None and (scope.period.number, scope.period.half) == (slots.get("period", slots.get("half")), "half" in slots)
-    assert slots_scope({"period": scope.period}) == scope
-
-
-def test_a_typed_period_and_a_slot_at_once_or_both_slots_or_a_bad_value_is_refused_at_the_door() -> None:
-    with pytest.raises(ScopeError):
-        slots_scope({"period": Period(number=1), "half": 2})
-    with pytest.raises(ScopeError):
-        slots_scope({"period": 1, "half": 1})
-    with pytest.raises(ScopeError):
-        slots_scope({"half": 3})
-    with pytest.raises(ScopeError):
-        slots_scope({"period": "first"})
 
 
 def test_the_cell_and_what_a_reader_leaves_unhonored() -> None:
