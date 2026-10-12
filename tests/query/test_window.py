@@ -14,7 +14,6 @@ import itertools
 from typing import Any
 
 import pytest
-from slots import slots_scope, window_from_slots
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -204,36 +203,15 @@ def test_the_windows_claims_and_the_spans_fold_and_never_cross(question: str) ->
     assert all(a.end <= b.start for a, b in itertools.pairwise(merged))
 
 
-# ---------------- the slot door and the projection ----------------
+# ---------------- the typed value ----------------
 
 
-@pytest.mark.parametrize(
-    "slots",
-    [
-        {},
-        {"order": "recent", "limit": 10},
-        {"limit": 5},
-        {"order": "first", "limit": 1},
-        {"rank": "most"},
-        {"ranked_by": "points", "limit": 10},
-        {"ranked_by": "points", "rank": "best", "order": "recent", "limit": 3},
-    ],
-)
-def test_the_four_slots_type_through_the_door_as_the_window(slots: dict[str, Any]) -> None:
-    scope = slots_scope(slots)
-    assert (scope.window.by, scope.window.rank, scope.window.order, scope.window.count) == (slots.get("ranked_by"), slots.get("rank"), slots.get("order"), slots.get("limit"))
-    assert slots_scope({"window": scope.window}) == scope
-
-
-def test_a_typed_window_and_a_slot_at_once_or_a_count_below_one_is_refused_at_the_door() -> None:
-    with pytest.raises(ScopeError, match="typed window"):
-        slots_scope({"window": Window(count=5), "limit": 5})
-    with pytest.raises(ScopeError, match="below 1"):
-        slots_scope({"limit": 0})
+def test_a_count_below_one_is_refused_by_the_window() -> None:
+    """A window keeps at least one row, and a count says of what - games
+    unless the tagger read seasons (``Window.of``)."""
     with pytest.raises(ScopeError, match="below 1"):
         Window(count=0)
-    assert slots_scope({"window": Window(count=5)}).window.count == 5
-    assert window_from_slots({"limit": 4}).of == "games"
+    assert Window(count=4).of == "games"
 
 
 def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
