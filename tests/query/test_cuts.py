@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 from routed import staged as settle
-from shapes import stated
 from slots import cuts_from_slots, slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
@@ -29,12 +28,15 @@ from association.query.reading import (
     GAME_HIGHS,
     GAMES_COUNTED,
     NETPOINTS_FINGERPRINT,
+    NETPOINTS_RATINGS,
     PERIOD_RANKING,
+    PLAYER_COMPARISON,
     PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_RANKING,
     PLAYER_SPLITS,
     PRESENCE_SPLIT,
+    SEASON_HISTORY,
     SHOT_DISTANCE,
     TEAM_LINE,
     TEAM_RECORD,
@@ -219,8 +221,8 @@ def test_the_relation_tables_declare_the_cuts_once() -> None:
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
         assert all("own_team" not in row.unstated and "round" not in row.unstated for row in table.values())
     # A reader whose words state fewer cuts than the relation's says so in its shape's row, with a reason per cut.
-    for words in ("leaderboard", "player_history", "player_compare", "player_netpoints", "single_game_high"):
-        assert stated(words) & Cuts.CELLS == frozenset(), words
+    for shape in (PLAYER_RANKING, SEASON_HISTORY, PLAYER_COMPARISON, NETPOINTS_RATINGS, GAME_HIGHS):
+        assert cells_stated(shape) & Cuts.CELLS == frozenset(), shape
     assert (
         cells_stated(GAMES_COUNTED) & Cuts.CELLS == {"season_n"} and cells_stated(NETPOINTS_FINGERPRINT) & Cuts.CELLS == {"date"} and cells_stated(PERIOD_RANKING) & Cuts.CELLS == {"opponent", "venue"}
     )
