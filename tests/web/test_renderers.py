@@ -16,49 +16,89 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import asked
-from slots import slots_scope
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext, Reply
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.entities import names_of
 from association.query.parse import with_point
-from association.query.reading import SHAPE_NAMES, Reading
+from association.query.reading import (
+    GAME_HIGHS,
+    GAMES_COUNTED,
+    LINE_RECORD,
+    LINE_RUNS,
+    NETPOINTS_RATINGS,
+    PERIOD_LOG,
+    PERIOD_RANKING,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_MEETINGS,
+    PLAYER_RANKING,
+    PLAYER_SPLITS,
+    PRESENCE_SPLIT,
+    SEASON_HISTORY,
+    SHAPE_NAMES,
+    SHOT_DISTANCE,
+    TEAM_LINE,
+    TEAM_MEETINGS,
+    TEAM_OUTLOOK,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Companion,
+    Line,
+    Measure,
+    Period,
+    PointShape,
+    Reading,
+    Span,
+    Window,
+)
+from association.query.reading import Subject as Who
 from association.query.subject import read_subject
 from association.web.app import INDEX_HTML
 
-# One set of slots per intent that has a renderer, chosen to produce the shape
+# One case per renderer - the key and the typed reading - chosen to produce the shape
 # the renderer expects rather than an empty or refusing one.
-CASES: dict[str, dict[str, Any]] = {
-    "leaderboard": {"stat": "points", "limit": 3},
-    "threshold_count": {"stat": "points", "threshold": 30},
-    "single_game_high": {"stat": "points"},
-    "player_history": {"player": "Ada Star", "stat": "points"},
-    "player_compare": {"players": ["Ada Star", "Bo Wall"]},
-    "game_log": {"player": "Ada Star", "limit": 3},
-    "team_record": {"team": "Rockets", "season": 2026},
-    "player_stat": {"player": "Ada Star", "stat": "points", "season": 2026},
-    "player_netpoints": {"player": "Ada Star", "season": 2026},
-    "shot_distance": {"player": "Ada Star", "season": 2026},
-    "head_to_head": {"teams": ["Rockets", "Mavericks"], "season": 2026},
-    "team_quarter_points": {"team": "Rockets", "period": 1, "season": 2026},
-    "period_split": {"player": "Ada Star", "period": 1, "season": 2026},
-    "period_leaderboard": {"period": 1, "season": 2026},
-    "player_splits": {"player": "Ada Star", "split": "wins_losses", "season": 2026},
-    "with_without": {"team": "Rockets", "with_player": "Ada Star", "season": 2026},
-    "record_when": {"player": "Ada Star", "stat": "points", "threshold": 32, "season": 2026},
-    "player_matchup": {"players": ["Ada Star", "Bo Wall"], "season": 2026},
-    "streak": {"team": "Rockets", "kind": "win", "season": 2026},
-    "team_stat": {"team": "Rockets", "stat": "points", "season": 2026},
-    "team_leaderboard": {"stat": "record", "season": 2026},
-    "team_outlook": {"team": "Rockets", "season": 2026},
+CASES: dict[str, tuple[PointShape, Reading]] = {
+    "leaderboard": (PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), window=Window(count=3))),
+    "threshold_count": (GAMES_COUNTED, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"))),
+    "single_game_high": (GAME_HIGHS, Reading(measure=Measure(key="points", as_typed="points"))),
+    "player_history": (SEASON_HISTORY, Reading(who=Who(kind="player", players=("Ada Star",)), measure=Measure(key="points", as_typed="points"))),
+    "player_compare": (PLAYER_COMPARISON, Reading(who=Who(kind="pair", players=("Ada Star", "Bo Wall")))),
+    "game_log": (PLAYER_LOG, Reading(who=Who(kind="player", players=("Ada Star",)), window=Window(count=3))),
+    "team_record": (TEAM_RECORD, Reading(who=Who(kind="team", teams=("Rockets",)), span=Span(season=2026))),
+    "player_stat": (PLAYER_LINE, Reading(who=Who(kind="player", players=("Ada Star",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))),
+    "player_netpoints": (NETPOINTS_RATINGS, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026))),
+    "shot_distance": (SHOT_DISTANCE, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026))),
+    "head_to_head": (TEAM_MEETINGS, Reading(who=Who(kind="teams", teams=("Rockets", "Mavericks")), span=Span(season=2026))),
+    "team_quarter_points": (TEAM_PERIOD_TOTAL, Reading(who=Who(kind="team", teams=("Rockets",)), span=Span(season=2026), period=Period(number=1))),
+    "period_split": (PERIOD_LOG, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026), period=Period(number=1))),
+    "period_leaderboard": (PERIOD_RANKING, Reading(span=Span(season=2026), period=Period(number=1))),
+    "player_splits": (PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Ada Star",)), span=Span(season=2026), split="wins_losses")),
+    "with_without": (PRESENCE_SPLIT, Reading(who=Who(kind="team", teams=("Rockets",)), companions=(Companion(player="Ada Star"),), span=Span(season=2026))),
+    "record_when": (
+        LINE_RECORD,
+        Reading(
+            who=Who(kind="player", players=("Ada Star",)),
+            lines=(Line(measure="points", value=32, as_typed="32 points", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+            span=Span(season=2026),
+        ),
+    ),
+    "player_matchup": (PLAYER_MEETINGS, Reading(who=Who(kind="pair", players=("Ada Star", "Bo Wall")), span=Span(season=2026))),
+    "streak": (LINE_RUNS, Reading(who=Who(kind="team", teams=("Rockets",)), measure=Measure(won=True), span=Span(season=2026))),
+    "team_stat": (TEAM_LINE, Reading(who=Who(kind="team", teams=("Rockets",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))),
+    "team_leaderboard": (TEAM_RANKING, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season=2026))),
+    "team_outlook": (TEAM_OUTLOOK, Reading(who=Who(kind="team", teams=("Rockets",)), span=Span(season=2026))),
 }
 
 
@@ -307,11 +347,11 @@ def ctx(tmp_path: Path) -> AnswerContext:
 
 
 def _answered(ctx: AnswerContext, intent: str) -> Reply:
-    """``intent``'s answer to its case: the compiler's
-    (``compose.COMPILED_INTENTS``), with no question words to move its own
-    point."""
-    slots = dict(CASES[intent])
-    result = compose_answer(ctx, with_point("", Reading(**(slots_scope(slots)).filters(), asked=asked(intent), subject=read_subject(names_of(ctx.con), "", asked(intent), slots_scope(slots)))))
+    """The answer to the case of the renderer named ``intent``: the
+    compiler's, over the key and the typed reading the case states, with no
+    question words to move its own point."""
+    asked, scope = CASES[intent]
+    result = compose_answer(ctx, with_point("", replace(scope, asked=asked, subject=read_subject(names_of(ctx.con), "", asked, scope))))
     assert result is not None, f"the compiler has no reading of {intent}'s case"
     return result
 
