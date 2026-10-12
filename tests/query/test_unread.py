@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import duckdb
 import pytest
-from shapes import asked
 
 from association.query.entities import names_of
 from association.query.lexicon import content_tokens, content_words, read_by_the_model, unread_words, without_possessive
 from association.query.parse import read_route
-from association.query.reading import Reading
+from association.query.reading import PLAYER_LOG, SHOT_CHART, Reading
 
 
 @pytest.fixture
@@ -109,7 +108,7 @@ def test_a_claim_stops_short_of_a_word_its_rule_did_not_need() -> None:
     from association.query.window import WindowContext, read_window
 
     question = "tatum last 10 games"
-    key = asked("game_log")
+    key = PLAYER_LOG
     read = window_under(key, read_window(question, WindowContext()))
     assert [question[c.start : c.end] for c in read.claims] == ["last 10 games"]
     assert [question[c.start : c.end] for c in needed(question, read.claims, lambda q: window_under(key, read_window(q, WindowContext())).window)] == ["last 10"]
@@ -127,7 +126,7 @@ def test_a_word_outside_every_claim_the_rule_turns_on_is_claimed_beside_them() -
     from association.query.window import WindowContext, read_window
 
     question = "create a shot chart of steph curry's last regular season game"
-    key = asked("shot_chart")
+    key = SHOT_CHART
     read = window_under(key, read_window(question, WindowContext()))
     trimmed = needed(question, read.claims, lambda q: window_under(key, read_window(q, WindowContext())).window, outside="window")
     assert sorted(question[c.start : c.end] for c in trimmed) == ["curry's", "game", "last"]
