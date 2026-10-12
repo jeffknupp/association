@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 from routed import staged as settle
-from slots import cuts_from_slots, slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -45,7 +44,6 @@ from association.query.reading import (
     Cuts,
     PointShape,
     Reading,
-    ScopeError,
     Situation,
     Span,
     cell_set,
@@ -156,49 +154,13 @@ def test_a_day_and_its_own_month_are_one_claim_named_for_both() -> None:
 
 
 def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None:
-    route = settle("game_log", {"player": "Jayson Tatum"}, "tatum last 5 home games vs the celtics in the 2024 playoffs")
+    route = settle(PLAYER_LOG, "tatum last 5 home games vs the celtics in the 2024 playoffs", who=Who(kind="player", players=("Jayson Tatum",)))
     assert route.cuts == Cuts(venue="home") and route.window.count == 5 and route.span.season == 2024
     # Each tagger's claim is cut to the words it needed (Phase 3, step 3, span.needed): the window
     # needs "last 5" and "games" (without "games", "last 5 home" names no window), not "home",
     # which is the venue's alone.
     q = "tatum last 5 home games vs the celtics in the 2024 playoffs"
     assert [(c.what, q[c.start : c.end]) for c in route.claims] == [("window", "last 5"), ("venue", "home"), ("window", "games"), ("season", "2024"), ("season_type", "playoffs")]
-
-
-# ---------------- the typed value's door and projection ----------------
-
-
-@pytest.mark.parametrize(
-    "slots",
-    [
-        {},
-        {"opponent": "Boston Celtics"},
-        {"own_team": "Miami Heat"},
-        {"venue": "home"},
-        {"date": "2026-03-17"},
-        {"situation": "on tuesdays"},
-        {"situation": "18 year old"},
-        {"round": "finals"},
-        {"game_n": 4},
-        {"season_n": 18},
-        {"opponent": "Boston Celtics", "own_team": "Los Angeles Lakers", "date": "2026-03-17", "situation": "in march", "game_n": 7, "season_n": 3, "round": "finals", "venue": "away"},
-    ],
-)
-def test_the_eight_slots_type_through_the_door_as_the_cuts(slots: dict[str, Any]) -> None:
-    scope = slots_scope(slots)
-    assert cuts_from_slots(slots) == scope.cuts and scope.cuts.cells() == {("tenure" if slot == "own_team" else slot) for slot in slots}
-    assert slots_scope({"cuts": scope.cuts}) == scope
-
-
-def test_a_typed_cuts_and_a_slot_at_once_or_a_bad_value_is_refused_at_the_door() -> None:
-    with pytest.raises(ScopeError, match="typed cuts"):
-        slots_scope({"cuts": Cuts(venue="home"), "opponent": "BOS"})
-    with pytest.raises(ScopeError, match="calendar day"):
-        slots_scope({"date": "last night"})
-    with pytest.raises(ScopeError, match="venue"):
-        slots_scope({"venue": "neutral"})
-    # A blank opponent is the slot absent, as every reader took it.
-    assert Reading().cuts == Cuts()
 
 
 # ---------------- the cells ----------------

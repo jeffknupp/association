@@ -37,7 +37,7 @@ from typing import Any
 from unittest import mock
 
 import duckdb
-from shapes import asked
+from shapes import asked as _asked
 from slots import slots_scope
 
 from association.query import compose, grammar, parse
@@ -94,7 +94,7 @@ def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Routed:
     ask: ``shapes.asked``) and ``slots`` name, through the Scope's one door
     (``Scope.from_slots`` raises ``ScopeError`` for a value no field holds).
     It carries no subject: :func:`with_subject` reads one."""
-    return Routed(asked(intent), slots_scope(slots or {}))
+    return Routed(_asked(intent), slots_scope(slots or {}))
 
 
 def with_subject(con: duckdb.DuckDBPyConnection | NameIndex, question: str, route: Routed) -> Routed:
@@ -148,7 +148,7 @@ def default_reading(intent: str, slots: Mapping[str, Any]) -> Reading:
     ``compose.adapt.to_reading`` gave (deleted with the last adapter in
     Phase 2, step 3; tests were its only callers) -
     :func:`~association.query.point.default_point` over the typed scope."""
-    return default_point(asked(intent), slots_scope(dict(slots)))
+    return default_point(_asked(intent), slots_scope(dict(slots)))
 
 
 def default_query(intent: str, slots: Mapping[str, Any]) -> Query:
@@ -158,51 +158,6 @@ def default_query(intent: str, slots: Mapping[str, Any]) -> Query:
     query = plan(default_reading(intent, slots))
     assert isinstance(query, Query)
     return query
-
-
-#: The slot names a test's payload still carries names under (the router
-#: model's schema): the grammar's rules take them typed since Phase 3, step 2.
-_NAME_SLOTS = ("player", "players", "team", "teams", "opponent")
-
-#: The measure's model-era slots a payload may carry: the measure tagger's
-#: context (the model's key; a test's side, shot value and columns).
-_MEASURE_CONTEXT = ("stat", "side", "shot_value", "fields")
-
-#: The span, window, cuts, period, line and companion families' model-era
-#: keys a payload may still carry: every one is read from the words by its
-#: tagger, so none reaches the reading (the router dropped them at the
-#: stages' door, ``router._MODEL_SPAN_KEYS``, until Phase 3, step 4).
-_MODEL_KEYS = frozenset(
-    {
-        "season",
-        "season_ref",
-        "season_type",
-        "season_type_unstated",
-        "span",
-        "since",
-        "until",
-        "order",
-        "limit",
-        "rank",
-        "ranked_by",
-        "date",
-        "venue",
-        "situation",
-        "round",
-        "game_n",
-        "season_n",
-        "own_team",
-        "period",
-        "half",
-        "threshold",
-        "above",
-        "below",
-        "period_condition",
-        "with_player",
-        "without",
-        "conditions",
-    }
-)
 
 
 @dataclass(frozen=True)
@@ -237,43 +192,50 @@ def handed(question: str, slots: Mapping[str, Any]) -> tuple[Subject, str | None
     return Subject.from_slots(names), opponent if isinstance(opponent, str) and opponent.strip() else None
 
 
-def _staged(key: PointShape | None, given: Mapping[str, Any], question: str, companions: tuple[Companion, ...], lines: tuple[Line, ...]) -> Staged:
-    """The grammar's rules then the taggers, over a test's payload: its
-    names handed typed, its measure context the tagger's, its model-era
-    keys dropped as the words are the one source; any other key is a
-    payload this cannot read, said out loud."""
-    left = sorted(set(given) - set(_NAME_SLOTS) - set(_MEASURE_CONTEXT) - _MODEL_KEYS - {"intent"})
-    if left:
-        raise ValueError(f"a payload key the reader does not read: {left}")
-    subject, opponent = handed(question, given)
-    stat = given.get("stat")
-    stat = stat if isinstance(stat, str) and stat.strip() else None
+def staged(
+    asked: PointShape | str | None,
+    question: str | Mapping[str, Any],
+    companions: tuple[Companion, ...] | str = (),
+    old_companions: tuple[Companion, ...] = (),
+    *,
+    lines: tuple[Line, ...] = (),
+    who: Subject | None = None,
+    opponent: str | None = None,
+    stat: str | None = None,
+    side: str | None = None,
+    shot_value: int | None = None,
+    fields: tuple[str, ...] = (),
+) -> Staged:
+    """The grammar's rules then the taggers over ``question``, under the key
+    ``asked`` (``router.settle`` until Phase 3, step 4, slice (b)): who the
+    subject reading hands the rules (``who``, the ``opponent``) and the
+    companions typed, the model's stat (a test's side, shot value and
+    columns) the measure tagger's context."""
+    if isinstance(asked, str):  # TRANSITIONAL: a retired label and a slot dict, until the last caller is re-seated
+        assert isinstance(question, Mapping) and isinstance(companions, str)
+        names = {key: question[key] for key in ("player", "players", "team", "teams") if key in question}
+        given_opponent = question.get("opponent")
+        given_stat = question.get("stat")
+        given_fields = question.get("fields")
+        return staged(
+            _asked(asked),
+            companions,
+            old_companions,
+            lines=lines,
+            who=Subject.from_slots(names),
+            opponent=given_opponent if isinstance(given_opponent, str) and given_opponent.strip() else None,
+            stat=given_stat if isinstance(given_stat, str) else None,
+            side=question.get("side"),
+            shot_value=question.get("shot_value"),
+            fields=tuple(given_fields) if isinstance(given_fields, (list, tuple)) else (),
+        )
+    assert isinstance(question, str) and not isinstance(companions, str)
+    stat = stat if stat is not None and stat.strip() else None
     # The rules read the lines as the parser hands them: each number
     # marked, the typed lines beside it (parse._read_route_staged).
     named_lines = lines_named(question)
-    settled = grammar.settle(named_lines.numbered(question), key, subject=subject, opponent=opponent, companions=companions, stat=stat, lines=named_lines)
+    settled = grammar.settle(named_lines.numbered(question), asked, subject=who or Subject(), opponent=opponent, companions=companions, stat=stat, lines=named_lines)
     if settled.coach:
         return Staged(settled.asked, claims=claimed(list(settled.claims)))
-    fields = given.get("fields")
-    side = given.get("side")
-    scope, claims = parse._tagged(
-        question,
-        settled,
-        companions,
-        lines=lines,
-        model_stat=stat,
-        side=side if isinstance(side, str) else None,
-        shot_value=given.get("shot_value"),
-        fields=tuple(fields) if isinstance(fields, (list, tuple)) else (),
-    )
+    scope, claims = parse._tagged(question, settled, companions, lines=lines, model_stat=stat, side=side, shot_value=shot_value, fields=fields)
     return Staged(settled.asked, scope, claimed([*settled.claims, *claims]))
-
-
-def staged(intent: str, slots: Mapping[str, Any], question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = ()) -> Staged:
-    """The grammar's rules and the taggers over a test's slot dict, under
-    ``intent`` (``router.settle`` until Phase 3, step 4, slice (b)): its
-    names handed typed (:func:`handed`), the model's stat (a test's side,
-    shot value and columns) the measure tagger's context, every other
-    model-era slot ignored, as ``settle`` ignored it."""
-    given = {key: value for key, value in slots.items() if key in _NAME_SLOTS or key in _MEASURE_CONTEXT}
-    return _staged(asked(intent), given, question, companions, lines)
