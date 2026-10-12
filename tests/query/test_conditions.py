@@ -25,7 +25,6 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from slots import slots_reading, slots_scope
 from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -234,10 +233,6 @@ def league(tmp_path: Path) -> AnswerContext:
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
     return AnswerContext(con=c, out_dir=tmp_path)
-
-
-def _slots(**given: Any) -> dict[str, Any]:
-    return {"season_type": 2, **given}
 
 
 def _rows(result: Reply, split: str) -> dict[str, dict[str, Any]]:
@@ -606,12 +601,6 @@ def test_a_team_subject_refuses_a_condition_rather_than_silently_dropping_it(lea
         player_splits(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum", predicate="started"),), span=Span(season_type=2)))
 
 
-def test_an_unknown_split_is_refused(league: AnswerContext) -> None:
-    # Refused at the Reading's door (Scope.from_slots) before any template runs.
-    with pytest.raises(ValueError, match="split"):
-        player_splits(league, slots_reading(_slots(player="Jayson Tatum", split="by_weekday")))
-
-
 def test_a_stat_the_standard_line_does_not_carry_gets_its_own_column(league: AnswerContext) -> None:
     """F159 (ISSUES.md): "Quentin Grimes individual gamelog usage rating
     without joel embiid" showed the standard split columns, which have no
@@ -836,18 +825,20 @@ def test_record_when_divides_his_games_by_the_threshold(league: AnswerContext) -
 
 def test_record_when_refuses_what_it_cannot_whitelist(league: AnswerContext) -> None:
     # Each refused by the fact missing (Phase 2, step 3).
+    tatum = Who(kind="player", players=("Jayson Tatum",))
     said = [
-        record_when(league, slots_reading(_slots(player="Jayson Tatum", **slots))).answer
-        for slots in ({"stat": "double_double", "threshold": 1}, {"stat": "points"}, {"stat": "points", "threshold": 0})
+        record_when(league, Reading(who=tatum, span=Span(season_type=2), **scope)).answer
+        for scope in (
+            {"lines": (TypedLine(measure=None, as_typed="1 double_double", keyed=True),), "measure": measure_of("double_double")},
+            {"measure": measure_of("points")},
+            {"lines": (TypedLine(measure="points", value=0, as_typed="0 points", keyed=True),), "measure": measure_of("points")},
+        )
     ]
     assert said == [
         "A record in the games over a line cannot be read over 'double_double' - it has no per-game box-score column.",
         "A record in the games over a line needs the number of points each game has to reach, and none was read.",
         "A threshold of 0 counts every game - there is no line there to keep games past.",
     ]
-    # A threshold that is not a number never gets as far as the template.
-    with pytest.raises(ValueError, match="threshold"):
-        slots_reading(_slots(player="Jayson Tatum", stat="points", threshold=True))
 
 
 # ---------------- record_when, the relation's cells (step 3, C2) ----------------
@@ -1371,14 +1362,16 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: AnswerContext) 
     `scope_from_question` exactly as the pipeline runs it."""
     from association.query.subject import apply_subject, read_subject
 
-    def answered(question: str, **slots: Any) -> str:
-        given = slots_scope(_slots(**slots))
+    def answered(question: str, given: Reading) -> str:
         applied = apply_subject(read_subject(names_of(league.con), question, LINE_RECORD, given), given, asked=LINE_RECORD)
         return (record_when(league, Reading(**applied.scope.filters())).answer or "").splitlines()[0]
 
-    named = answered("celtics record with 20+ points from jayson tatum", stat="points", threshold=20, team="Boston Celtics")
+    celtics = Who(kind="team", teams=("Boston Celtics",))
+    twenty = (TypedLine(measure="points", value=20, as_typed="20 points", keyed=True),)
+    named = answered("celtics record with 20+ points from jayson tatum", Reading(who=celtics, lines=twenty, measure=measure_of("points"), span=Span(season_type=2)))
     assert "Jayson Tatum had 20+ points" in named
-    team = answered("celtics record when they scored 100 points", stat="points", threshold=100, team="Boston Celtics")
+    hundred = (TypedLine(measure="points", value=100, as_typed="100 points", keyed=True),)
+    team = answered("celtics record when they scored 100 points", Reading(who=celtics, lines=hundred, measure=measure_of("points"), span=Span(season_type=2)))
     assert "when they had 100+ points" in team
 
 
@@ -1503,8 +1496,15 @@ def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: Answ
     """ "Most consecutive double-doubles" must not come back as the Celtics'
     best run of wins."""
     # Each refused by the fact missing (Phase 2, step 3).
+    celtics = Who(kind="team", teams=("Boston Celtics",))
     said = [
-        streak(league, slots_reading(_slots(team="Boston Celtics", **slots))).answer for slots in ({"stat": "double_double"}, {"stat": "points"}, {"threshold": 30}, {"stat": "points", "threshold": 0})
+        streak(league, Reading(who=celtics, span=Span(season_type=2), **scope)).answer
+        for scope in (
+            {"measure": measure_of("double_double")},
+            {"measure": measure_of("points")},
+            {"lines": (TypedLine(measure=None, value=30, as_typed="30", keyed=True),)},
+            {"lines": (TypedLine(measure="points", value=0, as_typed="0 points", keyed=True),), "measure": measure_of("points")},
+        )
     ]
     assert said == [
         "A streak cannot be read over 'double_double' - it has no per-game box-score column.",
@@ -1853,8 +1853,9 @@ def test_a_playoff_season_label_no_longer_refuses_and_finds_nothing_with_no_matc
     played in (``team_games.py``) - so asking under the OLD label finds
     nothing, when nothing was actually played in that calendar year, rather
     than a claim about which year the label really means."""
-    for template, slots in ((streak, {"team": "Boston Celtics", "kind": "win"}), (streak, {"kind": "win"}), (player_splits, {"team": "Boston Celtics"})):
-        answer = template(league, slots_reading({**slots, "season": season, "season_type": 3})).answer or ""
+    celtics = Who(kind="team", teams=("Boston Celtics",))
+    for template, scope in ((streak, {"who": celtics, "measure": Measure(won=True)}), (streak, {"measure": Measure(won=True)}), (player_splits, {"who": celtics})):
+        answer = template(league, Reading(span=Span(season=season, season_type=3), **scope)).answer or ""
         assert "postseason is the" not in answer  # the old misfiled-label refusal
         assert "no games" in answer.lower() or "no team has a game" in answer.lower()
 
@@ -1865,14 +1866,16 @@ def test_a_postseason_labeled_1990_is_read_as_the_1991_playoffs_by_calendar_year
     LABEL finds nothing (nothing was played in calendar year 1990); asking
     for 1991, the year it was actually played, finds it - for all three team
     branches this step ports (step 3, C4)."""
-    for template, slots in (
-        (streak, {"team": "Boston Celtics", "kind": "win"}),
-        (player_splits, {"team": "Boston Celtics"}),
-        (record_when, {"team": "Boston Celtics", "stat": "points", "threshold": 50}),
+    celtics = Who(kind="team", teams=("Boston Celtics",))
+    fifty = (TypedLine(measure="points", value=50, as_typed="50 points", keyed=True),)
+    for template, scope in (
+        (streak, {"who": celtics, "measure": Measure(won=True)}),
+        (player_splits, {"who": celtics}),
+        (record_when, {"who": celtics, "lines": fifty, "measure": measure_of("points")}),
     ):
-        empty = template(old_postseason_and_cup_final, slots_reading({**slots, "season": 1990, "season_type": 3}))
+        empty = template(old_postseason_and_cup_final, Reading(span=Span(season=1990, season_type=3), **scope))
         assert empty.data.get("games") == 0, f"{template.__name__} found a game under the 1990 LABEL, which is really 1991"
-        found = template(old_postseason_and_cup_final, slots_reading({**slots, "season": 1991, "season_type": 3}))
+        found = template(old_postseason_and_cup_final, Reading(span=Span(season=1991, season_type=3), **scope))
         assert found.data.get("games") != 0, f"{template.__name__} found no game under 1991, the calendar year old1 was actually played"
 
 
@@ -2227,42 +2230,41 @@ def test_a_matchup_whose_second_player_is_the_absent_teammate_says_so(league: An
 # on the other side in e1, e2, e5, e7.
 
 
-def _brown_games(league: AnswerContext, *conditions: dict[str, Any]) -> int:
-    return player_splits(league, slots_reading(_slots(player="Jaylen Brown", split="home_away", conditions=list(conditions)))).data["games"]
+def _brown_games(league: AnswerContext, *companions: Companion) -> int:
+    return player_splits(league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=companions, span=Span(season_type=2), split="home_away")).data["games"]
 
 
 def test_a_teammates_start_bench_and_line_are_conditions(league: AnswerContext) -> None:
-    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "started"}) == 2  # e1, e7
-    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "bench"}) == 1  # e4
-    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "played"}) == 3  # e1, e4, e7
-    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 31}) == 2  # e4 (35), e7 (31)
+    assert _brown_games(league, Companion(player="Jayson Tatum", predicate="started")) == 2  # e1, e7
+    assert _brown_games(league, Companion(player="Jayson Tatum", predicate="bench")) == 1  # e4
+    assert _brown_games(league, Companion(player="Jayson Tatum", predicate="played")) == 3  # e1, e4, e7
+    assert _brown_games(league, Companion(player="Jayson Tatum", predicate="reached", line=TypedLine(measure="points", value=31))) == 2  # e4 (35), e7 (31)
 
 
 def test_an_opponent_side_condition_reads_the_other_teams_box_score(league: AnswerContext) -> None:
-    assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "played"}) == 3  # e1, e2, e7
-    assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "absent"}) == 2  # e3, e4 vs PHI
+    assert _brown_games(league, Companion(player="LeBron James", side="opponent", predicate="played")) == 3  # e1, e2, e7
+    assert _brown_games(league, Companion(player="LeBron James", side="opponent", predicate="absent")) == 2  # e3, e4 vs PHI
     # ANDed: LeBron on the other side and Tatum starting beside him.
-    assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "played"}, {"player": "Jayson Tatum", "side": "own", "predicate": "started"}) == 2
+    assert _brown_games(league, Companion(player="LeBron James", side="opponent", predicate="played"), Companion(player="Jayson Tatum", predicate="started")) == 2
 
 
-def test_the_absent_condition_is_the_without_slot_word_for_word(league: AnswerContext) -> None:
-    """The teammate absence every template read before is the own-side
-    absent condition: the same games, the same phrase, tenure included."""
-    old = player_splits(
+def test_an_absent_teammate_keeps_the_games_he_missed(league: AnswerContext) -> None:
+    """The teammate absence every template read before (the ``without``
+    slot) is the own-side absent companion: the games he missed, said with
+    his name. Until Phase 4, step 0 this read the two slots that typed into
+    it side by side, a comparison the typed value leaves nothing to make."""
+    read = player_splits(
         league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2), split="home_away")
     )
-    new = player_splits(
-        league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2), split="home_away")
-    )
-    assert old.data["games"] == new.data["games"] == 2 and old.answer == new.answer  # e2 (DNP), e3 (no line)
+    assert read.data["games"] == 2 and "Jayson Tatum" in (read.answer or "")  # e2 (DNP), e3 (no line)
 
 
 def test_a_condition_the_relation_cannot_read_refuses(league: AnswerContext) -> None:
-    # A predicate the relation does not read is refused at the Reading's door.
+    # A predicate the relation does not read is refused by the companion itself.
     with pytest.raises(ValueError, match="predicate"):
-        _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
+        _brown_games(league, Companion(player="Jayson Tatum", predicate="dunked"))  # type: ignore[arg-type]
     with pytest.raises(Unsupported, match="reached condition"):
-        _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
+        _brown_games(league, Companion(player="Jayson Tatum", predicate="reached", line=TypedLine(measure="vibes", value=3)))
     # A history's words state no condition (its shape's row, compose.plan.cells_unhonored):
     # its presenter steps aside, and the compiler's sentence says what it read.
     assert [
