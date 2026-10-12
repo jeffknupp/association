@@ -11,13 +11,29 @@ ranked a league of seven players.
 
 from __future__ import annotations
 
-from shapes import asked, key
+from shapes import key
 from slots import slots_scope
 
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
 from association.query.measure import measure_of
-from association.query.reading import Cuts, PointRelation, PointShape, Reading, Span
+from association.query.reading import (
+    GAMES_COUNTED,
+    NETPOINTS_FINGERPRINT,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_RANKING,
+    SHOT_CHART,
+    TEAM_MEETINGS,
+    Cuts,
+    Line,
+    Measure,
+    PointRelation,
+    PointShape,
+    Reading,
+    Span,
+)
+from association.query.reading import Subject as Who
 
 
 def test_every_covered_table_is_a_real_table() -> None:
@@ -46,9 +62,9 @@ def test_a_reading_with_no_point_is_neither_refused_nor_caveated() -> None:
     nothing, so a coverage floor has no purchase on it. Appending "there is
     no data for 1996" to a sentence that already explains what is missing
     would name a second, wrong cause."""
-    assert sources_for(None, slots_scope({"season": 1996})) == ()
-    assert check_coverage(None, slots_scope({"season": 1996, "season_type": REGULAR_SEASON})) is None
-    assert coverage_caveat(None, slots_scope({"season": 2015})) is None
+    assert sources_for(None, Reading(span=Span(season=1996))) == ()
+    assert check_coverage(None, Reading(span=Span(season=1996, season_type=2))) is None
+    assert coverage_caveat(None, Reading(span=Span(season=2015))) is None
 
 
 def test_every_declared_source_has_a_floor() -> None:
@@ -71,7 +87,7 @@ def test_every_declared_source_has_a_floor() -> None:
 
 
 def test_a_season_below_the_floor_is_refused() -> None:
-    got = check_coverage(key("shot_chart"), slots_scope({"season": 1996, "season_type": REGULAR_SEASON}))
+    got = check_coverage(SHOT_CHART, Reading(span=Span(season=1996, season_type=2)))
     assert got is not None
     assert "2002" in got and "1996" in got
 
@@ -79,17 +95,17 @@ def test_a_season_below_the_floor_is_refused() -> None:
 def test_the_refusal_says_no_pull_would_help() -> None:
     """The distinction that matters to somebody reading it: this is ESPN's gap,
     not a season nobody has fetched yet."""
-    got = check_coverage(key("fingerprint"), slots_scope({"season": 2005, "season_type": REGULAR_SEASON}))
+    got = check_coverage(NETPOINTS_FINGERPRINT, Reading(span=Span(season=2005, season_type=2)))
     assert got is not None and "no pull would add any" in got
 
 
 def test_a_covered_season_is_not_refused() -> None:
-    assert check_coverage(key("shot_chart"), slots_scope({"season": 2003, "season_type": REGULAR_SEASON})) is None
-    assert check_coverage(key("leaderboard"), slots_scope({"stat": "points", "season": 1994, "season_type": REGULAR_SEASON})) is None
+    assert check_coverage(SHOT_CHART, Reading(span=Span(season=2003, season_type=2))) is None
+    assert check_coverage(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season=1994, season_type=2))) is None
 
 
 def test_an_absent_season_slot_means_the_current_season_and_is_never_refused() -> None:
-    assert check_coverage(key("shot_chart"), slots_scope({"season_type": REGULAR_SEASON})) is None
+    assert check_coverage(SHOT_CHART, Reading(span=Span(season_type=2))) is None
 
 
 # ---------------- the two floors that are not one ----------------
@@ -99,12 +115,20 @@ def test_a_ranking_is_refused_where_a_named_player_is_not() -> None:
     """The sharpest line in the data. player_season_stats holds Michael
     Jordan's real 1990 line, so his own average is answerable from it; the pool
     it would RANK is 217 players against a ~350-player league, and 7 in 1980."""
-    assert check_coverage(PointShape("player_seasons", "scalar", "line"), slots_scope({"season": 1990, "season_type": REGULAR_SEASON})) is None
-    assert check_coverage(key("player_compare"), slots_scope({"season": 1990, "season_type": REGULAR_SEASON})) is None
-    assert check_coverage(key("leaderboard"), slots_scope({"stat": "points", "season": 1990, "season_type": REGULAR_SEASON})) is not None
+    assert check_coverage(PointShape("player_seasons", "scalar", "line"), Reading(span=Span(season=1990, season_type=2))) is None
+    assert check_coverage(PLAYER_COMPARISON, Reading(span=Span(season=1990, season_type=2))) is None
+    assert check_coverage(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season=1990, season_type=2))) is not None
     # The ranking's floor is the shape's: a named player's count of 30-point
     # games over the same tables is refused in the box scores' words.
-    refused = check_coverage(key("threshold_count"), slots_scope({"player": "Michael Jordan", "stat": "points", "threshold": 30, "season": 1990, "season_type": REGULAR_SEASON}))
+    refused = check_coverage(
+        GAMES_COUNTED,
+        Reading(
+            who=Who(kind="player", players=("Michael Jordan",)),
+            lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+            span=Span(season=1990, season_type=2),
+        ),
+    )
     assert refused is not None and refused.startswith("Player game logs")
 
 
@@ -120,11 +144,11 @@ def test_the_floor_follows_the_relation_the_point_reader_named() -> None:
     from association.query.point import default_point
 
     for narrowing in ({"situation": "on tuesdays"}, {"since": 1989}, {"game_n": 3}):
-        point = default_point(asked("player_stat"), slots_scope({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON, **narrowing}))
+        point = default_point(PLAYER_LINE, slots_scope({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON, **narrowing}))
         assert point.on == "player_games", narrowing
         refused = check_coverage(point_shape(point), point)
         assert refused is not None and refused.startswith("Player game logs only go back to 1994"), narrowing
-    unnarrowed = default_point(asked("player_stat"), slots_scope({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON}))
+    unnarrowed = default_point(PLAYER_LINE, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(season=1990, season_type=2)))
     assert unnarrowed.on == "player_seasons" and check_coverage(point_shape(unnarrowed), unnarrowed) is None
 
 
@@ -136,17 +160,29 @@ def test_a_game_level_ranking_is_floored_by_the_box_scores_it_reads() -> None:
     none - it answered "No games for every player in the 1986 regular
     season", the wrong cause."""
     game_level = PointShape("player_games", "ranking", "player")
-    assert sources_for(game_level, slots_scope({"stat": "points", "threshold": 30, "season": 1986})) == ("player_game_log", "player_box_stats", "games", "team_alignment")
-    refused = check_coverage(game_level, slots_scope({"stat": "points", "threshold": 30, "season": 1986, "season_type": REGULAR_SEASON}))
+    assert sources_for(game_level, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season=1986))) == (
+        "player_game_log",
+        "player_box_stats",
+        "games",
+        "team_alignment",
+    )
+    refused = check_coverage(
+        game_level, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season=1986, season_type=2))
+    )
     assert refused is not None and refused.startswith("Player game logs only go back to 1994")
-    assert check_coverage(game_level, slots_scope({"stat": "points", "threshold": 30, "season": 1994, "season_type": REGULAR_SEASON})) is None
+    assert (
+        check_coverage(
+            game_level, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season=1994, season_type=2))
+        )
+        is None
+    )
 
 
 def test_the_ranking_refusal_does_not_claim_the_data_is_missing() -> None:
     """It is not missing - it is unrepresentative, and saying "no data for
     1980" about a warehouse holding Moses Malone's real 1980 line would be the
     same false-cause answer in the opposite direction."""
-    got = check_coverage(key("leaderboard"), slots_scope({"stat": "points", "season": 1980, "season_type": REGULAR_SEASON}))
+    got = check_coverage(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season=1980, season_type=2)))
     assert got is not None
     assert "no data for 1980" not in got
     assert "would not be one" in got and "for a player you name are still available" in got
@@ -155,7 +191,7 @@ def test_the_ranking_refusal_does_not_claim_the_data_is_missing() -> None:
 def test_a_ranking_over_a_table_with_no_survivor_problem_uses_the_plain_floor() -> None:
     """netpoints ranks over net_points_player, which is league-wide from its
     first season - so its refusal is about missing rows, not about the pool."""
-    got = check_coverage(key("leaderboard"), slots_scope({"stat": "netpoints", "season": 2010, "season_type": REGULAR_SEASON}))
+    got = check_coverage(PLAYER_RANKING, Reading(measure=Measure(key="netpoints", as_typed="netpoints"), span=Span(season=2010, season_type=2)))
     assert got is not None and "no pull would add any" in got
 
 
@@ -163,8 +199,8 @@ def test_the_playoffs_reach_further_back_than_the_regular_season() -> None:
     """`games` holds full 16-team brackets to 1988 while its regular seasons
     before 1994 are one team's schedule. One floor would either refuse real
     playoff data or admit 82 games as a season."""
-    assert check_coverage(key("head_to_head"), slots_scope({"season": 1990, "season_type": POSTSEASON})) is None
-    assert check_coverage(key("head_to_head"), slots_scope({"season": 1990, "season_type": REGULAR_SEASON})) is not None
+    assert check_coverage(TEAM_MEETINGS, Reading(span=Span(season=1990, season_type=3))) is None
+    assert check_coverage(TEAM_MEETINGS, Reading(span=Span(season=1990, season_type=2))) is not None
 
 
 def test_the_narrowest_table_decides() -> None:
@@ -183,15 +219,15 @@ def test_a_table_with_no_declared_floor_is_skipped_rather_than_assumed() -> None
 
 
 def test_a_half_season_is_answered_with_a_caveat_rather_than_refused() -> None:
-    assert check_coverage(key("shot_chart"), slots_scope({"season": 2002, "season_type": REGULAR_SEASON})) is None
-    note = coverage_caveat(key("shot_chart"), slots_scope({"season": 2002}))
+    assert check_coverage(SHOT_CHART, Reading(span=Span(season=2002, season_type=2))) is None
+    note = coverage_caveat(SHOT_CHART, Reading(span=Span(season=2002)))
     assert note is not None and "part of the year" in note
 
 
 def test_a_full_season_carries_no_caveat() -> None:
     # 2005, not 2003: measured, 2003 has located shots for only 986 of its 1,190
     # games, and is a partial season itself.
-    assert coverage_caveat(key("shot_chart"), slots_scope({"season": 2005})) is None
+    assert coverage_caveat(SHOT_CHART, Reading(span=Span(season=2005))) is None
     assert caveat(("shot_chart",), 2005) is None
 
 
@@ -199,14 +235,14 @@ def test_the_first_playoffs_on_record_is_1989_and_the_refusal_says_why() -> None
     """ESPN's archive files the 1989 playoffs under 1988 and has no 1987-88
     postseason at all, so "the 1988 playoffs" is refused - in the postseason's
     own words, not the regular season's "one team's 82 games"."""
-    got = check_coverage(key("head_to_head"), slots_scope({"season": 1988, "season_type": POSTSEASON}))
+    got = check_coverage(TEAM_MEETINGS, Reading(span=Span(season=1988, season_type=3)))
     assert got is not None and got.startswith("Playoff games only go back to 1989") and "82 games" not in got
-    assert check_coverage(key("head_to_head"), slots_scope({"season": 1989, "season_type": POSTSEASON})) is None
+    assert check_coverage(TEAM_MEETINGS, Reading(span=Span(season=1989, season_type=3))) is None
 
 
 def test_2003_shots_carry_a_partial_season_caveat() -> None:
-    assert coverage_caveat(key("shot_chart"), slots_scope({"season": 2003})) is not None
-    assert coverage_caveat(key("shot_chart"), slots_scope({"season": 2004})) is None
+    assert coverage_caveat(SHOT_CHART, Reading(span=Span(season=2003))) is not None
+    assert coverage_caveat(SHOT_CHART, Reading(span=Span(season=2004))) is None
 
 
 def test_a_postseason_that_stops_early_is_caveated_on_postseason_questions() -> None:
@@ -215,7 +251,7 @@ def test_a_postseason_that_stops_early_is_caveated_on_postseason_questions() -> 
     and no pull adds them:
     the scoreboard endpoint, which had the whole 2000 Final, answers 23 of
     those days with nothing at all."""
-    note = coverage_caveat(key("head_to_head"), slots_scope({"season": 2001, "season_type": POSTSEASON}))
+    note = coverage_caveat(TEAM_MEETINGS, Reading(span=Span(season=2001, season_type=3)))
     assert note is not None and "2001 playoffs" in note
 
 
@@ -224,8 +260,8 @@ def test_the_same_season_carries_no_caveat_for_its_regular_season() -> None:
     season is complete (1,190 games), so a note about missing playoff games
     would be a claim about the wrong half of the year - and one shared tuple
     would also exempt that complete season from its own floor check."""
-    assert coverage_caveat(key("head_to_head"), slots_scope({"season": 2001, "season_type": REGULAR_SEASON})) is None
-    assert coverage_caveat(key("head_to_head"), slots_scope({"season": 2001})) is None
+    assert coverage_caveat(TEAM_MEETINGS, Reading(span=Span(season=2001, season_type=2))) is None
+    assert coverage_caveat(TEAM_MEETINGS, Reading(span=Span(season=2001))) is None
 
 
 def test_the_recovered_2000_postseason_carries_no_caveat() -> None:
@@ -233,7 +269,7 @@ def test_the_recovered_2000_postseason_carries_no_caveat() -> None:
     endpoint even though no team's schedule lists them, so they were fetched
     rather than caveated. Declaring it partial would be an apology for data
     that is now there."""
-    assert coverage_caveat(key("head_to_head"), slots_scope({"season": 2000, "season_type": POSTSEASON})) is None
+    assert coverage_caveat(TEAM_MEETINGS, Reading(span=Span(season=2000, season_type=3))) is None
 
 
 def test_a_postseason_caveat_covers_the_team_box_as_well_as_the_game_list() -> None:
@@ -250,9 +286,12 @@ def test_the_2001_caveat_reaches_the_templates_that_never_read_the_game_list() -
     "4 games with 30+ points" was stated as fact over 11 of the 16 playoff
     games he played."""
     for intent in ("single_game_high", "threshold_count"):
-        note = coverage_caveat(key(intent), slots_scope({"season": 2001, "season_type": POSTSEASON, "player": "Shaquille O'Neal", "stat": "points"}))
+        note = coverage_caveat(key(intent), Reading(who=Who(kind="player", players=("Shaquille O'Neal",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=3)))
         assert note is not None and "2001 playoffs" in note, intent
-        assert coverage_caveat(key(intent), slots_scope({"season": 2001, "season_type": REGULAR_SEASON, "player": "Shaquille O'Neal", "stat": "points"})) is None
+        assert (
+            coverage_caveat(key(intent), Reading(who=Who(kind="player", players=("Shaquille O'Neal",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=2)))
+            is None
+        )
 
 
 def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
@@ -294,11 +333,14 @@ def test_an_empty_playoff_box_score_is_caveated_from_1995_to_1998() -> None:
     zero athlete lines where control games in the same seasons return 24.
     Michael Jordan's 1997 postseason reads 14 games against ESPN's own 19."""
     for season in (1995, 1996, 1997, 1998):
-        note = coverage_caveat(key("threshold_count"), slots_scope({"season": season, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"}))
+        note = coverage_caveat(GAMES_COUNTED, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(season=season, season_type=3)))
         assert note is not None and "empty box score" in note, season
         # The regular seasons of those years are whole.
-        assert coverage_caveat(key("threshold_count"), slots_scope({"season": season, "season_type": REGULAR_SEASON, "player": "Michael Jordan", "stat": "points"})) is None, season
-    assert coverage_caveat(key("threshold_count"), slots_scope({"season": 1999, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"})) is None
+        assert (
+            coverage_caveat(GAMES_COUNTED, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(season=season, season_type=2)))
+            is None
+        ), season
+    assert coverage_caveat(GAMES_COUNTED, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(season=1999, season_type=3))) is None
 
 
 def test_the_game_list_is_not_caveated_for_an_empty_box_score() -> None:
@@ -308,7 +350,7 @@ def test_the_game_list_is_not_caveated_for_an_empty_box_score() -> None:
     for data that is there. 2001 is the opposite case: those games are absent
     from `games` too."""
     assert caveat(("games",), 1997, POSTSEASON) is None
-    assert coverage_caveat(key("head_to_head"), slots_scope({"season": 1997, "season_type": POSTSEASON})) is None
+    assert coverage_caveat(TEAM_MEETINGS, Reading(span=Span(season=1997, season_type=3))) is None
     assert caveat(("games",), 2001, POSTSEASON) is not None
 
 
@@ -318,10 +360,10 @@ def test_a_2013_to_2018_shooting_board_says_who_is_missing_from_it() -> None:
     21-33 players a season clear the qualifying floor by ESPN's own season
     totals and fall under it here. The board dropped them silently."""
     for season in (2013, 2015, 2018):
-        note = coverage_caveat(key("leaderboard"), slots_scope({"season": season, "stat": "ts_pct"}))
+        note = coverage_caveat(PLAYER_RANKING, Reading(measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(season=season)))
         assert note is not None and "missing from this ranking" in note, season
     for season in (2012, 2019):
-        assert coverage_caveat(key("leaderboard"), slots_scope({"season": season, "stat": "ts_pct"})) is None, season
+        assert coverage_caveat(PLAYER_RANKING, Reading(measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(season=season))) is None, season
 
 
 def test_the_shooting_caveats_ranking_sentence_is_left_off_a_lookup() -> None:
@@ -342,7 +384,7 @@ def test_the_shooting_caveat_does_not_reach_a_board_ranked_from_espns_own_totals
     board reads it, so caveating one would apologize for data that is right,
     and it is the table the shortfall is measured against."""
     for season in (2013, 2015, 2018):
-        assert coverage_caveat(key("leaderboard"), slots_scope({"season": season, "stat": "points"})) is None, season
+        assert coverage_caveat(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season=season))) is None, season
     assert caveat(("player_season_stats",), 2015) is None
 
 
