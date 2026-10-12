@@ -18,6 +18,8 @@ from shapes import key, stated
 
 from association.query.compose.meetings import read_head_to_head
 from association.query.compose.periods import read_team_quarter_points
+from association.query.compose.plan import cells_stated
+from association.query.reading import TEAM_MEETINGS, TEAM_PERIOD_TOTAL, TEAM_RANKING, TEAM_RECORD
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
 
@@ -45,10 +47,10 @@ def test_team_templates_declare_scoping_through_the_shared_table() -> None:
             assert reason.strip(), f"{words} excludes {cell!r} without a reason"
         assert stated(words) == (TEAM_RELATION_SCOPING | extra) - set(row.unstated), f"{words} declares scoping of its own rather than through its row"
     # What the readers' words state, as their retired declarations had it.
-    assert stated("team_record") == (TEAM_RELATION_SCOPING | {"split"}) - {"date", "window", "period"}
-    assert stated("team_leaderboard") == {"venue", "range"}
-    assert stated("head_to_head") == TEAM_RELATION_SCOPING - {"window", "game_n", "situation", "period", "both"}
-    assert stated("team_quarter_points") == TEAM_RELATION_SCOPING - {"both"}
+    assert cells_stated(TEAM_RECORD) == (TEAM_RELATION_SCOPING | {"split"}) - {"date", "window", "period"}
+    assert cells_stated(TEAM_RANKING) == {"venue", "range"}
+    assert cells_stated(TEAM_MEETINGS) == TEAM_RELATION_SCOPING - {"window", "game_n", "situation", "period", "both"}
+    assert cells_stated(TEAM_PERIOD_TOTAL) == TEAM_RELATION_SCOPING - {"both"}
 
 
 def _source_with_private_steps(handler: Any) -> str:
