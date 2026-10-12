@@ -11,6 +11,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changelog-per-commit:
+    # The CHANGES rule held per pushed commit (ISSUES.md #380): the
+    # pre-commit hook sees the index it runs on, never a commit, and three
+    # Phase 3 commits held src/ changes with no entry. Its own job because it
+    # needs the whole history (fetch-depth 0), which the checks job does not.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Every commit that changes src/ touches CHANGES.md
+        # A push reads BEFORE..AFTER (the pushed head alone after a force-push
+        # or on a new branch); a pull request its own commits. History before
+        # the check existed is not held to it (scripts/check_changes_per_commit.py, FLOOR).
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: uv run python scripts/check_changes_per_commit.py
+
   checks:
     runs-on: ubuntu-latest
     steps:

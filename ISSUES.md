@@ -2982,14 +2982,6 @@ those were found.
 - **Next step:** one query over `team_box_stats`: rows where `fieldGoalsAttempted` is set and `assists`, a rebound column or `threePointFieldGoalsMade` is NULL, by season. If any, count per column.
 - **GitHub:** #312
 
-### Three Phase 3 commits carry seven other fixes' source under a different message
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 7), which ran both populations whole at every one of the phase's 69 `src` commits.
-- **Evidence:** `bfe09f7` (message: two ISSUES entries closed) holds #36's `compose/sentence.py`, #254's `compose/shots.py` ORDER BY and #337's `conditions.box_source` cache, touches `src/` and not `CHANGES.md` (the hook was bypassed); `6aa0dca` (#257) holds #262's and #297's code; `d1078c8` (#315, message "628 of 628, 2,082 of 2,082 ... identical") holds #285/#217's `compose/logs.py` and `say.py` and #336's `team_records.py`, and moves 13 recorded and 62 feed answers. Their CHANGES entries are in CHANGES-only commits with identical timestamps (`f9b1ca2`, `63e66c5`, `e14c589`; `e360c81`, `04cb52d`; `b6661ad`, `774321f`): a rebase that let one commit absorb its neighbors' source. Every move is enumerated in `CHANGES.md`; the commits' own messages do not carry it. `ROADMAP-HISTORY.md` entry 36 records which commit holds which fix.
-- **User sees:** nothing; a bisect or a revert lands on the wrong fix.
-- **Next step:** a CI job that checks every pushed commit in the range for the CHANGES rule the local hook enforces (the hook sees the working tree, never a commit), as `check_conflict_markers.sh` became a gate after the merges it names.
-- **Priority:** P3 - tooling.
-- **GitHub:** #380
-
 ### The feed's 91 questions whose Reading and deletion disagree are held but not read one by one
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 9).
 - **Evidence:** `claims_ledger.py run --feed`: the Reading's `unread` and the deletion disagree on 91 of the 2,082 feed questions (the 628's 3 are `HELD_DISAGREEMENTS`, each with its reason). Since the cleanup's (b)5 (2026-10-12) they are held by question (`scripts/ledger_held.json`; `report` exits 1 on a new one or a held one gone), with the unread words (3,660) and the 177 questions holding an unread number - which (b)5 read one by one: 6 fixed there (a span "to" a bare year, "2015 16"), the rest filed by shape (the five P1 entries of 2026-10-12 above, and the "Feed numbers" lines on #369, #371, #357, #345, #270, #388, #189 and #146) or not bugs (a typo nothing reads, a number restating a season read, a refusal whose number the refusal needs no reading of: "finals", "27 years old").

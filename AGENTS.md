@@ -417,6 +417,17 @@ weekly, so an advisory against an unchanged lock still turns up. Run it by hand
 after changing `uv.lock`. An accepted advisory goes in its `IGNORED` list with
 a comment saying why it does not apply.
 
+A second is not a hook because a hook cannot see it: the CHANGES rule held
+per COMMIT (`scripts/check_changes_per_commit.py`, the `changelog-per-commit`
+job in `ci.yml`). The hook reads the index it runs on; a rebase that folds
+neighbors together, or a hook skipped once, leaves a commit holding `src/`
+with no entry - `bfe09f7` did (ISSUES.md #380, the Phase 3 review). The job
+reads every non-merge commit a push or a pull request carries (the pushed
+head alone after a force-push), history before 2026-10-12 left out. Run it
+on a branch before pushing: `uv run python scripts/check_changes_per_commit.py
+--range origin/master..HEAD`. A commit it names is amended or split; it
+cannot be fixed by a later commit.
+
 That equivalence is not automatic, and it has broken three times. All three
 were the local run being *weaker* than CI, never the reverse, so the failure
 mode is always the same: green locally, red on the PR.
