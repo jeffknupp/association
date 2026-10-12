@@ -16,7 +16,6 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
-from shapes import asked
 from slots import slots_scope
 from test_compose import cx_ctx  # noqa: F401 - the fixture with positions, imported by name
 from test_conditions import league  # noqa: F401 - the league fixture, imported by name
@@ -28,7 +27,7 @@ from association.query.entities import names_of
 from association.query.grammar import settle
 from association.query.parse import read_route
 from association.query.player_relation import POSITION_CODES
-from association.query.reading import Filtered, Reading, ScopeError, Span
+from association.query.reading import GAME_HIGHS, PLAYER_LINE, Cuts, Filtered, Reading, ScopeError, Span
 from association.query.reading import Subject as Who
 from association.query.subject import is_team_name, subject_claims, subject_named_in, team_named_in_text, team_words_in
 from association.query.team_relation import scoped_team
@@ -58,9 +57,9 @@ def test_a_router_era_slot_shape_is_typed_by_its_names() -> None:
     and ``teams``, are slot dicts no reader of the words writes (0 of the
     2,710 readings): the typed subject holds the names, each once, and its
     kind is what they hold."""
-    assert slots_scope({"players": ["Luka Doncic"]}).who == Who(kind="player", players=("Luka Doncic",))
-    assert slots_scope({"team": "Knicks", "teams": ["Celtics"]}).who.teams == ("Knicks", "Celtics")
-    assert slots_scope({"team": "Knicks", "teams": ["Knicks"]}).who == Who(kind="team", teams=("Knicks",))
+    assert Reading(who=Who(kind="player", players=("Luka Doncic",))).who == Who(kind="player", players=("Luka Doncic",))
+    assert Reading(who=Who(kind="teams", teams=("Knicks", "Celtics"))).who.teams == ("Knicks", "Celtics")
+    assert Reading(who=Who(kind="team", teams=("Knicks",))).who == Who(kind="team", teams=("Knicks",))
 
 
 def test_the_subject_holds_its_kind_its_names_and_its_position_to_their_sets() -> None:
@@ -81,7 +80,7 @@ def test_the_grammars_rules_take_the_names_typed() -> None:
     """The rules read the subject the reading hands them, typed - a name is
     never a slot (``router.settle`` refused one passed as a slot until Phase
     3, step 4, slice (b), when its slot dict went)."""
-    settled = settle("embiid stats", asked("player_stat"), subject=Who(kind="player", players=("Joel Embiid",)))
+    settled = settle("embiid stats", PLAYER_LINE, subject=Who(kind="player", players=("Joel Embiid",)))
     assert settled.subject.players == ("Joel Embiid",)
 
 
@@ -91,10 +90,10 @@ def test_the_rules_settle_a_dropped_subject_from_the_grammar_the_reading_read() 
     single game's player."""
     question = "most points curry scored in a game this season"
     assert subject_named_in(question) == "curry"
-    assert settle(question, asked("single_game_high")).subject.player == "curry"
+    assert settle(question, GAME_HIGHS).subject.player == "curry"
     # With nobody in the question's grammar, nobody is settled.
     assert subject_named_in("most points scored in a game this season") is None
-    assert settle("most points scored in a game this season", asked("single_game_high")).subject.players == ()
+    assert settle("most points scored in a game this season", GAME_HIGHS).subject.players == ()
 
 
 def test_the_words_the_reading_reads_a_team_and_a_dropped_subject_by() -> None:
@@ -118,15 +117,18 @@ def test_the_subject_reading_claims_the_names_and_the_position_it_settled(league
     def said(question: str, scope: Filtered) -> list[tuple[str, str]]:
         return [(question[c.start : c.end], c.what) for c in subject_claims(teams, question, scope)]
 
-    assert said("jayson tatum stats vs the lakers", slots_scope({"player": "Jayson Tatum", "opponent": "Los Angeles Lakers"})) == [
+    assert said("jayson tatum stats vs the lakers", Reading(who=Who(kind="player", players=("Jayson Tatum",)), cuts=Cuts(opponent="Los Angeles Lakers"))) == [
         ("jayson tatum", "player"),
         ("vs the lakers", "opponent"),
     ]
     # A near spelling where no word of the name stands as typed; a team's
     # nickname and its abbreviation; a team named "for".
-    assert said("embid's points", slots_scope({"player": "Joel Embiid"})) == [("embid", "player")]
-    assert said("sixers record vs BOS", slots_scope({"team": "Philadelphia 76ers", "opponent": "Boston Celtics"})) == [("sixers", "team"), ("vs BOS", "opponent")]
-    assert said("lebron stats for the lakers", slots_scope({"player": "LeBron James", "own_team": "Los Angeles Lakers"})) == [("lebron", "player"), ("for the lakers", "tenure")]
+    assert said("embid's points", Reading(who=Who(kind="player", players=("Joel Embiid",)))) == [("embid", "player")]
+    assert said("sixers record vs BOS", Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), cuts=Cuts(opponent="Boston Celtics"))) == [("sixers", "team"), ("vs BOS", "opponent")]
+    assert said("lebron stats for the lakers", Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(tenure="Los Angeles Lakers"))) == [
+        ("lebron", "player"),
+        ("for the lakers", "tenure"),
+    ]
     # The position group's words.
     assert said("most rebounds by a center", replace(Reading(), who=Who(kind="position", position="C"))) == [("center", "position")]
     # A name the scope does not settle claims nothing.
