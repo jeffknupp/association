@@ -14,7 +14,6 @@ import itertools
 from typing import Any
 
 import pytest
-from shapes import asked
 from slots import slots_scope, window_from_slots
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
@@ -27,9 +26,17 @@ from association.query.point import ORDER_ASKS, minimum_under, span_under, windo
 from association.query.reading import (
     GAME_HIGHS,
     LINE_RUNS,
+    NETPOINTS_FINGERPRINT,
+    NETPOINTS_RATINGS,
+    PERIOD_LOG,
+    PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_RANKING,
     SEASON_HISTORY,
+    SHOT_CHART,
+    SHOT_DISTANCE,
+    TEAM_MEETINGS,
+    TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
     Claim,
@@ -52,84 +59,84 @@ from association.query.window import MinimumRead, WindowContext, WindowRead, con
 S = current_season()
 
 
-def _read(question: str, intent: str = "game_log", **context: Any) -> Window:
-    return window_under(asked(intent), read_window(question, WindowContext(**context))).window
+def _read(question: str, shape: PointShape | None = PLAYER_LOG, **context: Any) -> Window:
+    return window_under(shape, read_window(question, WindowContext(**context))).window
 
 
 # ---------------- the tagger: words to a Window ----------------
 
 
 @pytest.mark.parametrize(
-    ("question", "intent", "expected"),
+    ("question", "shape", "expected"),
     [
-        ("jokic stats", "game_log", Window()),
-        ("How did the Celtics do in their last 10 games?", "game_log", Window(order="recent", count=10)),
-        ("what did Nikola Jokic do in his last game?", "game_log", Window(order="recent", count=1)),
-        ("What was Curry's first game of the season?", "game_log", Window(order="first", count=1)),
-        ("Lakers opening game of the season", "game_log", Window(order="first", count=1)),
-        ("josh hart gamelog season opener", "game_log", Window(order="first", count=1)),  # codespell:ignore hart - a surname
-        ("magic vs nets last 10", "game_log", Window(order="recent", count=10)),
-        ("Steph Curry's final two regular season games", "game_log", Window(order="recent", count=2)),
-        ("Jrue holiday last fifty games as a starter", "game_log", Window(order="recent", count=50)),
-        ("tyrese maxey last twenty-five games", "game_log", Window(order="recent", count=25)),
-        ("Knicks last 5 playoff games", "game_log", Window(order="recent", count=5)),
+        ("jokic stats", PLAYER_LOG, Window()),
+        ("How did the Celtics do in their last 10 games?", PLAYER_LOG, Window(order="recent", count=10)),
+        ("what did Nikola Jokic do in his last game?", PLAYER_LOG, Window(order="recent", count=1)),
+        ("What was Curry's first game of the season?", PLAYER_LOG, Window(order="first", count=1)),
+        ("Lakers opening game of the season", PLAYER_LOG, Window(order="first", count=1)),
+        ("josh hart gamelog season opener", PLAYER_LOG, Window(order="first", count=1)),  # codespell:ignore hart - a surname
+        ("magic vs nets last 10", PLAYER_LOG, Window(order="recent", count=10)),
+        ("Steph Curry's final two regular season games", PLAYER_LOG, Window(order="recent", count=2)),
+        ("Jrue holiday last fifty games as a starter", PLAYER_LOG, Window(order="recent", count=50)),
+        ("tyrese maxey last twenty-five games", PLAYER_LOG, Window(order="recent", count=25)),
+        ("Knicks last 5 playoff games", PLAYER_LOG, Window(order="recent", count=5)),
         # "top N" is a count and no end of the span.
-        ("top 5 rebounders on the Lakers in the playoffs", "leaderboard", Window(count=5)),
-        ("top twelve scorers", "leaderboard", Window(count=12)),
+        ("top 5 rebounders on the Lakers in the playoffs", PLAYER_RANKING, Window(count=5)),
+        ("top twelve scorers", PLAYER_RANKING, Window(count=12)),
         # "who led the league" sets no count: the ranking leads with the one and names the next.
-        ("who led the league in assists this season?", "leaderboard", Window()),
-        ("how many points does embiid average", "player_stat", Window()),
+        ("who led the league in assists this season?", PLAYER_RANKING, Window()),
+        ("how many points does embiid average", PLAYER_LINE, Window()),
         # A count of seasons is the span's, not a window of games - except for a history, whose count IS seasons.
-        ("Luka's ppg over the last 10 seasons", "player_stat", Window()),
-        ("Luka's ppg over the last 10 seasons", "player_history", Window(count=10, of="seasons")),
-        ("show tyrese maxey's games against boston in the past two seasons", "game_log", Window()),
-        ("tatum's last 5 games in the past two seasons", "game_log", Window(order="recent", count=5)),
+        ("Luka's ppg over the last 10 seasons", PLAYER_LINE, Window()),
+        ("Luka's ppg over the last 10 seasons", SEASON_HISTORY, Window(count=10, of="seasons")),
+        ("show tyrese maxey's games against boston in the past two seasons", PLAYER_LOG, Window()),
+        ("tatum's last 5 games in the past two seasons", PLAYER_LOG, Window(order="recent", count=5)),
         # A range the words name wins over a history's relative count.
-        ("lebron's ppg since 2020 over the last 5 seasons", "player_history", Window()),
+        ("lebron's ppg since 2020 over the last 5 seasons", SEASON_HISTORY, Window()),
         # A line's own number is no count of games, and a period's ordinal is no window.
-        ("mikal bridges game log with less than 15 fga and with less than 35 minutes", "game_log", Window()),
-        ("Portis vs bulls 2019-20 to 2023-24", "player_stat", Window()),
-        ("harrison barnes 1st quarter stats each game vs magic", "period_split", Window()),
-        ("Rudy gobert first half games this season", "period_split", Window()),
-        ("zach collins first quarter stats last 5 games as a starter", "period_split", Window(order="recent", count=5)),
-        ("evan mobley avg against bucks", "player_stat", Window()),
+        ("mikal bridges game log with less than 15 fga and with less than 35 minutes", PLAYER_LOG, Window()),
+        ("Portis vs bulls 2019-20 to 2023-24", PLAYER_LINE, Window()),
+        ("harrison barnes 1st quarter stats each game vs magic", PERIOD_LOG, Window()),
+        ("Rudy gobert first half games this season", PERIOD_LOG, Window()),
+        ("zach collins first quarter stats last 5 games as a starter", PERIOD_LOG, Window(order="recent", count=5)),
+        ("evan mobley avg against bucks", PLAYER_LINE, Window()),
     ],
 )
-def test_the_words_read_as_one_window(question: str, intent: str, expected: Window) -> None:
-    assert _read(question, intent) == expected
+def test_the_words_read_as_one_window(question: str, shape: PointShape | None, expected: Window) -> None:
+    assert _read(question, shape) == expected
 
 
 def test_one_game_of_a_players_line_is_the_end_and_a_count_of_one() -> None:
     """ "his last game" on player_stat is one game at one end of the span,
     which the line answers by handing the question to the log - and the
     log needs BOTH parts, since an end alone would list his last ten."""
-    assert _read("how many points did curry score in his last game", "player_stat") == Window(order="recent", count=1)
-    assert _read("curry's stats in his first game of 2026", "player_stat") == Window(order="first", count=1)
-    assert _read("steph curry's last regular season game", "player_stat") == Window(order="recent", count=1)
+    assert _read("how many points did curry score in his last game", PLAYER_LINE) == Window(order="recent", count=1)
+    assert _read("curry's stats in his first game of 2026", PLAYER_LINE) == Window(order="first", count=1)
+    assert _read("steph curry's last regular season game", PLAYER_LINE) == Window(order="recent", count=1)
     # "last N games" is a count, not a single game: the count stays and this rule keeps out of it.
-    assert _read("curry stats in his last 5 games", "player_stat") == Window(order="recent", count=5)
+    assert _read("curry stats in his last 5 games", PLAYER_LINE) == Window(order="recent", count=5)
 
 
 def test_an_end_the_grammar_missed_is_read_on_a_reader_that_honors_one() -> None:
     """On an intent whose reader honors an end (ORDER_ASKS) the looser
     ORDER_WORDS fill one the grammar read none for; on the four where an
     end means ONE game it stands only beside a game the words name."""
-    assert _read("curry's latest games", "game_log") == Window(order="recent")
-    assert _read("curry's latest games", "player_stat") == Window()
+    assert _read("curry's latest games", PLAYER_LOG) == Window(order="recent")
+    assert _read("curry's latest games", PLAYER_LINE) == Window()
     # A filler end costs a chart the season (#153): "a shot chart of steph curry's
     # 2025 season for 3 point shots" drew one game where 2025 held hundreds.
-    assert _read("show a shot chart of steph curry's 2025 season for 3 point shots", "shot_chart") == Window()
-    assert _read("Create a shot chart for steph curry's last two games of the regular season", "shot_chart") == Window(count=2)
-    assert _read("show me a fingerprint for steph curry's last game in 2026", "fingerprint") == Window(order="recent", count=1)
+    assert _read("show a shot chart of steph curry's 2025 season for 3 point shots", SHOT_CHART) == Window()
+    assert _read("Create a shot chart for steph curry's last two games of the regular season", SHOT_CHART) == Window(count=2)
+    assert _read("show me a fingerprint for steph curry's last game in 2026", NETPOINTS_FINGERPRINT) == Window(order="recent", count=1)
     # One game named as his in a phrasing the grammar misses is that game on these readers too (2026-10-09: the
     # chart drew the season's home games, the log listed ten, with nothing saying "last" went unread).
-    assert _read("curry's shot chart for his last home game", "shot_chart") == Window(order="recent", count=1)
-    assert _read("jokic game log for his first road game", "game_log") == Window(order="first", count=1)
-    assert _read("curry's shot chart for his last home game", "head_to_head") == Window()
+    assert _read("curry's shot chart for his last home game", SHOT_CHART) == Window(order="recent", count=1)
+    assert _read("jokic game log for his first road game", PLAYER_LOG) == Window(order="first", count=1)
+    assert _read("curry's shot chart for his last home game", TEAM_MEETINGS) == Window()
     # A quarter's ordinal sits where that rule allows two words: the period readers never take it.
-    assert _read("harrison barnes's first quarter per game against the magic", "period_split") == Window()
-    assert _read("rudy gobert's first half game log", "period_split") == Window()
-    assert _read("fingerprint for curry's first game of 2026", "fingerprint") == Window(order="first", count=1)
+    assert _read("harrison barnes's first quarter per game against the magic", PERIOD_LOG) == Window()
+    assert _read("rudy gobert's first half game log", PERIOD_LOG) == Window()
+    assert _read("fingerprint for curry's first game of 2026", NETPOINTS_FINGERPRINT) == Window(order="first", count=1)
 
 
 def test_an_end_on_a_reader_with_no_window_of_its_own_is_dropped_beside_a_larger_count() -> None:
@@ -137,26 +144,26 @@ def test_an_end_on_a_reader_with_no_window_of_its_own_is_dropped_beside_a_larger
     for a reader that takes a count and refuses an end: the end goes, the
     count stands - as it did when the stages dropped it; beside a count of
     one, or an end said with "games" outright, both stand."""
-    assert _read("lakers vs mavs record last 10 home games played", "head_to_head") == Window(count=10)
-    assert _read("damian lillard stats vs magic last 10", "player_stat") == Window(count=10)
-    assert _read("Warriors vs Mavs record last 10 games", "head_to_head") == Window(order="recent", count=10)
+    assert _read("lakers vs mavs record last 10 home games played", TEAM_MEETINGS) == Window(count=10)
+    assert _read("damian lillard stats vs magic last 10", PLAYER_LINE) == Window(count=10)
+    assert _read("Warriors vs Mavs record last 10 games", TEAM_MEETINGS) == Window(order="recent", count=10)
     # ORDER_WORDS read the count as digits alone, so "last ten games" keeps only its count here - as the stages left it.
-    assert _read("Warriors vs Mavs record last ten games", "head_to_head") == Window(count=10)
-    assert _read("Divencezo season opener stats career", "player_stat") == Window(order="first", count=1)
+    assert _read("Warriors vs Mavs record last ten games", TEAM_MEETINGS) == Window(count=10)
+    assert _read("Divencezo season opener stats career", PLAYER_LINE) == Window(order="first", count=1)
 
 
 def test_a_team_rankings_end_and_a_boolean_rankings_measure() -> None:
-    assert _read("nba team with least playoff wins since 2022", "team_leaderboard") == Window(rank="fewest")
-    assert _read("Best record from 2010-11 to 2018-19 nba", "team_leaderboard") == Window(rank="best")
-    assert _read("Detroit Pistons most points in a first half this season", "team_quarter_points") == Window(rank="most")
-    assert _read("least points scored by the wizards in the first half this season", "team_quarter_points") == Window(rank="fewest")
+    assert _read("nba team with least playoff wins since 2022", TEAM_RANKING) == Window(rank="fewest")
+    assert _read("Best record from 2010-11 to 2018-19 nba", TEAM_RANKING) == Window(rank="best")
+    assert _read("Detroit Pistons most points in a first half this season", TEAM_PERIOD_TOTAL) == Window(rank="most")
+    assert _read("least points scored by the wizards in the first half this season", TEAM_PERIOD_TOTAL) == Window(rank="fewest")
     # The table's order decides where two words stand: "worst" before "best", "fewest" before "most".
-    assert _read("best and worst records", "team_leaderboard") == Window(rank="worst")
-    assert _read("most free throws this season by teams", "leaderboard") == Window()
-    assert _read("players with the highest scoring triple doubles", "leaderboard", boolean_stat=True) == Window(by="points")
-    assert _read("most rebounds in a triple double", "leaderboard", boolean_stat=True) == Window(by="rebounds")
-    assert _read("most triple doubles", "leaderboard", boolean_stat=True) == Window()
-    assert _read("players with the highest scoring triple doubles", "leaderboard", boolean_stat=False) == Window()
+    assert _read("best and worst records", TEAM_RANKING) == Window(rank="worst")
+    assert _read("most free throws this season by teams", PLAYER_RANKING) == Window()
+    assert _read("players with the highest scoring triple doubles", PLAYER_RANKING, boolean_stat=True) == Window(by="points")
+    assert _read("most rebounds in a triple double", PLAYER_RANKING, boolean_stat=True) == Window(by="rebounds")
+    assert _read("most triple doubles", PLAYER_RANKING, boolean_stat=True) == Window()
+    assert _read("players with the highest scoring triple doubles", PLAYER_RANKING, boolean_stat=False) == Window()
 
 
 # ---------------- the claims ----------------
@@ -190,9 +197,9 @@ def test_the_windows_claims_and_the_spans_fold_and_never_cross(question: str) ->
     """The two taggers claim the same question: a span claim inside a window
     claim ("playoff" in "last 5 playoff games") folds, and a partial overlap
     would be two rules reading one word, which fails the reader."""
-    intent = "player_history" if "past" in question else "game_log"
-    window = window_under(asked(intent), read_window(question, WindowContext()))
-    span = span_under(asked(intent), read_span(question, SpanContext(window_named=window.window.count is not None, order=window.window.order, limit=window.window.count)))
+    shape = SEASON_HISTORY if "past" in question else PLAYER_LOG
+    window = window_under(shape, read_window(question, WindowContext()))
+    span = span_under(shape, read_span(question, SpanContext(window_named=window.window.count is not None, order=window.window.order, limit=window.window.count)))
     merged = claimed([*window.claims, *span.claims])
     assert all(a.end <= b.start for a, b in itertools.pairwise(merged))
 
@@ -246,7 +253,7 @@ def test_the_relation_tables_declare_the_window_cell_once() -> None:
     assert "window" not in cells_stated(TEAM_RECORD) and "window" in cells_stated(PointShape("team_games", "rows", "date"))
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
         assert all("order" not in row.unstated and "limit" not in row.unstated for row in table.values())
-    assert {asked(name) for name in ("fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points")} >= ORDER_ASKS
+    assert {NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL} >= ORDER_ASKS
 
 
 # ---------------- the relation's one resolution ----------------
