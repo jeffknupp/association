@@ -20,7 +20,7 @@ from association.query.lines import threshold_of
 from association.query.measure import named
 from association.query.parse import classify_span, marked_for_grammar, read_route
 from association.query.parse import parent_asked as _parent_asked
-from association.query.reading import Companion, PointShape, Reading, asked_label
+from association.query.reading import LINE_RECORD, PRESENCE_SPLIT, TEAM_RECORD, Companion, PointShape, Reading, asked_label
 from association.query.reading import Subject as Who
 from association.query.subject import Subject
 
@@ -455,12 +455,13 @@ def test_a_record_with_a_teammate_out_is_the_split_from_the_other_side() -> None
     record with no line arrives as: "with X out" is the with/without split
     by his absence - never a teammate who played, named "draymond green
     out" or "draymond green" with the absence dropped."""
-    for intent in ("record_when", "team_record"):
-        route = settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out", (Companion(player="draymond green", predicate="absent"),))
+    warriors = Who(kind="team", teams=("Golden State Warriors",))
+    for asked in (LINE_RECORD, TEAM_RECORD):
+        route = settle(asked, "warriors record with draymond green out", (Companion(player="draymond green", predicate="absent"),), who=warriors)
         # The stages settle the split and write no name: the subject reading writes him onto the Reading (apply_subject).
-        assert (route.intent, route.companions) == ("with_without", ()), intent
+        assert (route.asked, route.companions) == (PRESENCE_SPLIT, ()), asked
         # Who sat out is the subject reading's: with nobody beside the team, the record stays a record.
-        assert settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out").intent == intent
+        assert settle(asked, "warriors record with draymond green out", who=warriors).asked == asked
 
 
 def test_a_companion_who_played_is_a_condition_where_with_player_is_read_by_nothing(con: duckdb.DuckDBPyConnection) -> None:
