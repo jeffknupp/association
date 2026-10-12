@@ -14,7 +14,6 @@ from typing import Any
 
 import duckdb
 import pytest
-from shapes import key
 from slots import slots_reading
 from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
 
@@ -22,7 +21,16 @@ from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
-from association.query.reading import Measure, Period, Reading, Span, period_narrowing
+from association.query.reading import (
+    TEAM_MEETINGS,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Measure,
+    Period,
+    Reading,
+    Span,
+    period_narrowing,
+)
 from association.query.reading import Subject as Who
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
@@ -394,9 +402,9 @@ def test_a_team_read_without_shots_knows_only_the_linescore(team_con: duckdb.Duc
 
 def test_period_is_a_team_relation_cell_and_every_exclusion_says_why() -> None:
     assert Period.CELLS <= TEAM_RELATION_SCOPING
-    for words in ("team_record", "head_to_head", "team_leaderboard"):
-        assert TEAM_RELATION_SCOPING_EXCLUDED[key(words)].unstated["period"].strip(), f"{words} excludes period without a reason"
-        assert "half" not in TEAM_RELATION_SCOPING_EXCLUDED[key(words)].unstated, f"{words}: a half is the period cell since Phase 3, step 2"
+    for shape in (TEAM_RECORD, TEAM_MEETINGS, TEAM_RANKING):
+        assert TEAM_RELATION_SCOPING_EXCLUDED[shape].unstated["period"].strip(), f"{shape} excludes period without a reason"
+        assert "half" not in TEAM_RELATION_SCOPING_EXCLUDED[shape].unstated, f"{shape}: a half is the period cell since Phase 3, step 2"
 
 
 def test_the_team_agreement_table_names_only_period_columns_and_real_percentages() -> None:
