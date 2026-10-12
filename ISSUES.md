@@ -508,6 +508,7 @@ those were found.
 - **Next step:** the window tagger reads "top N" as a window only where the words rank (a ranking's "top 5"); "vs top N seed teams" is an opponent alignment nothing reads, so refused by a cause naming it (the situation's unread words) until a cut of opponents by seed exists - the reader seam's (lane A's) files, `query/window.py` and the lexicon.
 - **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
+- **GitHub:** #396
 
 ## P2: misleading or incomplete
 
