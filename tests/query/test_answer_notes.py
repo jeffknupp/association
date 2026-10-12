@@ -8,13 +8,14 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from routed import ask_routed, slots_route
+from routed import Routed, ask_routed
 
 from association.query import notes
 from association.query.agent import Agent
 from association.query.answer import Reply
 from association.query.decisions import Decision
 from association.query.notes import Note, collect, decided, note, unsaid
+from association.query.reading import PLAYER_RANKING, Measure, Reading
 
 
 def test_a_writer_gets_its_sentence_back_unchanged_and_records_nothing_when_nobody_listens() -> None:
@@ -99,13 +100,13 @@ def test_the_answer_carries_what_was_written_for_it_and_the_agent_names_what_was
 
     monkeypatch.setattr("association.query.compose.answer", answered)
     agent = _agent(tmp_path)
-    answer = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
+    answer = ask_routed(agent, "who scored the most points", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
     assert answer.notes == (Note("games_unseen", {"games": 5, "why": "empty_box_score"}), Note("floor", {"table": "box_scores", "first": 1994}))
     assert [(d.kind, d.after, d.facts) for d in answer.decisions if d.kind] == [("minimum", 20, {"of": "games"})]
     assert agent.unsaid == ["floor"]
     # The next question starts clean.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={}, answer="plain"))
-    plain = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
+    plain = ask_routed(agent, "who scored the most points", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
     assert plain.notes == () and agent.unsaid == [] and not [d for d in plain.decisions if d.kind]
 
 
