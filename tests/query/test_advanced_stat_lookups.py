@@ -14,14 +14,14 @@ from pathlib import Path
 
 import duckdb
 import pytest
-from shapes import asked
-from slots import slots_reading, slots_scope
+from slots import slots_reading
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.coverage import _ADVANCED_STAT_NAMES, check_coverage, sources_for
-from association.query.reading import PointShape, Reading, Unsupported
+from association.query.reading import PLAYER_LINE, Cuts, Measure, PointShape, Reading, Span, Unsupported
+from association.query.reading import Subject as Who
 from association.query.season_line import ADVANCED_STATS
 
 
@@ -78,7 +78,7 @@ def test_an_empty_advanced_season_names_the_zeroed_box_scores_not_the_1994_floor
     con = advanced_ctx.con
     con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     con.execute("INSERT INTO player_box_stats VALUES ('e1', 2015, 2, '11', NULL, FALSE), ('e2', 2015, 2, '11', NULL, FALSE), ('e3', 2015, 2, '10', 30, FALSE)")
-    result = player_stat(advanced_ctx, slots_reading({"player": "Joakim Noah", "stat": "usage_pct", "season": 2015}))
+    result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Joakim Noah",)), measure=Measure(key="usage_pct", as_typed="usage_pct"), span=Span(season=2015)))
     assert result.answer.startswith(
         "Joakim Noah has no usage rate on record in the 2015 regular season: ESPN serves 2 of his box scores that season with every line zeroed, and the rate is computed from them."
     )
@@ -91,7 +91,7 @@ def test_an_empty_defaulted_advanced_season_redirects_to_the_seasons_on_record(a
     con = advanced_ctx.con
     con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
     con.execute("INSERT INTO player_season_stats_deduped VALUES ('11', 2014, 2), ('11', 2015, 2), ('11', 2016, 2)")
-    result = player_stat(advanced_ctx, slots_reading({"player": "Joakim Noah", "stat": "usage_pct"}))
+    result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Joakim Noah",)), measure=Measure(key="usage_pct", as_typed="usage_pct")))
     assert result.answer.startswith(f"Joakim Noah has no usage rate on record in the {current_season()} regular season. He last appears in 2016.")
     assert "1994" not in result.answer
 
@@ -101,7 +101,7 @@ def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: 
     (.5 x 100 + .7 x 900 + .9 x 50) / 1,050 = .690. The mean of .500, .700 and
     .900 is .700 - a number no reader could reproduce from the volumes printed
     beside it, and the one an average of averages would give."""
-    result = player_stat(advanced_ctx, slots_reading({"player": "Klay Thompson", "stat": "ts_pct", "span": "career"}))
+    result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
     assert result.data["stats"]["ts_pct"] == pytest.approx(725 / 1050)
     assert ".690 true shooting percentage" in result.answer
     assert ".700" not in result.answer
@@ -111,7 +111,7 @@ def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: AnswerContext) 
     """1993's rows are identical copies of 1994's. Counted, they would add 50
     attempts at .900 twice and pull the career figure up; excluded, the career
     covers 1994-2025 and the 1994 row is counted once."""
-    result = player_stat(advanced_ctx, slots_reading({"player": "Klay Thompson", "stat": "ts_pct", "span": "career"}))
+    result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
     assert result.data["seasons"] == [1994, 2025]
     # 1,050 attempts, not 1,100: (.5 x 100 + .7 x 900 + .9 x 50) / 1050.
     assert "on 1,050 true-shooting attempts" in result.answer
@@ -120,7 +120,7 @@ def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: AnswerContext) 
 def test_efg_is_weighted_by_field_goal_attempts_not_true_shooting_ones(advanced_ctx: AnswerContext) -> None:
     """Each rate takes its OWN denominator. Weighting eFG% by true-shooting
     attempts would give .6857 here; by field-goal attempts it is .6860."""
-    result = player_stat(advanced_ctx, slots_reading({"player": "Klay Thompson", "stat": "efg_pct", "span": "career"}))
+    result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="efg_pct", as_typed="efg_pct"), span=Span(career=True)))
     assert "field-goal attempts" in result.answer
     assert result.data["stats"]["efg_pct"] == pytest.approx((0.4 * 80 + 0.6 * 720 + 0.9 * 40) / 840)
 
@@ -154,7 +154,9 @@ def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx:
     reading = with_point(
         "",
         Reading(
-            **(slots_scope({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"})).filters(), asked=asked("player_stat"), subject=Subject("player", players=("Klay Thompson",))
+            **(Reading(who=Who(kind="player", players=("Klay Thompson",)), cuts=Cuts(opponent="Boston Celtics"), measure=Measure(key="ts_pct", as_typed="ts_pct"))).filters(),
+            asked=PLAYER_LINE,
+            subject=Subject("player", players=("Klay Thompson",)),
         ),
     )
     assert reading.point is not None and reading.point.on == "player_games" and reading.point.measures == ["ts_pct"]
@@ -165,12 +167,16 @@ def test_an_advanced_stat_is_charged_its_own_floor_not_the_season_lines() -> Non
     Refusing a 1980 true-shooting question in the season line's words would
     name a floor the question does not depend on."""
     line = PointShape("player_seasons", "scalar", "line")
-    assert sources_for(line, slots_scope({"player": "Kareem Abdul-Jabbar", "stat": "ts_pct", "season": 1980})) == ("player_season_advanced_stats",)
-    refusal = check_coverage(line, slots_scope({"player": "Kareem Abdul-Jabbar", "stat": "ts_pct", "season": 1980, "season_type": 2}))
+    assert sources_for(line, Reading(who=Who(kind="player", players=("Kareem Abdul-Jabbar",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(season=1980))) == (
+        "player_season_advanced_stats",
+    )
+    refusal = check_coverage(line, Reading(who=Who(kind="player", players=("Kareem Abdul-Jabbar",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(season=1980, season_type=2)))
     assert refusal is not None
     assert "Advanced season stats only go back to 1994" in refusal
     # A stat the season line does hold still reads from the season line.
-    assert sources_for(line, slots_scope({"player": "Kareem Abdul-Jabbar", "stat": "points", "season": 1980})) == ("player_season_stats_deduped",)
+    assert sources_for(line, Reading(who=Who(kind="player", players=("Kareem Abdul-Jabbar",)), measure=Measure(key="points", as_typed="points"), span=Span(season=1980))) == (
+        "player_season_stats_deduped",
+    )
 
 
 def test_the_two_advanced_stat_vocabularies_agree() -> None:
@@ -188,7 +194,7 @@ def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: AnswerContex
     no attempts and a NULL rate. Counting its games would credit the rate with
     60 games it never saw, and naming the span 2014-2016 without a word about
     the hole is the fluent-but-narrower answer this project refuses."""
-    result = player_stat(advanced_ctx, slots_reading({"player": "Joakim Noah", "stat": "ts_pct", "span": "career"}))
+    result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Joakim Noah",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
     assert "in 120 games" in result.answer, "the empty season's 60 games must not be counted"
     assert "180 games" not in result.answer
     assert result.data["seasons_missing"] == 1
@@ -199,7 +205,7 @@ def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: AnswerContex
 def test_a_career_with_nothing_missing_says_nothing_about_it(advanced_ctx: AnswerContext) -> None:
     """The note is a caveat, not a disclaimer: a complete career does not carry
     a sentence about seasons that are all present."""
-    assert "not counted" not in player_stat(advanced_ctx, slots_reading({"player": "Klay Thompson", "stat": "ts_pct", "span": "career"})).answer
+    assert "not counted" not in player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True))).answer
 
 
 def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: AnswerContext) -> None:
@@ -207,7 +213,7 @@ def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: AnswerContex
     years the answer claims. Gibson has data for 2014 and 2016 only; saying
     "2013-2017" would name two years the rate never saw, which is the same
     fluent overreach as counting their games."""
-    result = player_stat(advanced_ctx, slots_reading({"player": "Taj Gibson", "stat": "ts_pct", "span": "career"}))
+    result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Taj Gibson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
     assert result.data["seasons"] == [2014, 2016]
     assert "(2014-2016 regular seasons)" in result.answer
     assert "2013" not in result.answer
