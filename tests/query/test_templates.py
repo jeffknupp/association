@@ -10,7 +10,6 @@ import duckdb
 import pytest
 from routed import default_query, default_reading
 from routed import planned_answer as compose_answer
-from shapes import asked, key, unhonored
 from slots import slots_reading, slots_scope
 
 from association.fetch.repairs import real_games
@@ -41,16 +40,25 @@ from association.query.point import default_point
 from association.query.reading import (
     GAME_HIGHS,
     GAMES_COUNTED,
+    LINE_RECORD,
+    LINE_RUNS,
     NETPOINTS_FINGERPRINT,
+    NETPOINTS_RATINGS,
     PERIOD_LOG,
+    PERIOD_RANKING,
     PLAYER_COMPARISON,
+    PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_MEETINGS,
     PLAYER_RANKING,
+    PLAYER_SPLITS,
+    PRESENCE_SPLIT,
     SEASON_HISTORY,
     SHOT_CHART,
     SHOT_DISTANCE,
+    TEAM_MEETINGS,
     TEAM_PERIOD_TOTAL,
+    TEAM_RECORD,
     Companion,
     Cuts,
     Filtered,
@@ -71,8 +79,8 @@ from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
 
 
-def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
-    """``intent`` answered the way its retired template was called - a
+def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Reply]:
+    """The shape ``shape`` names answered the way its retired template was called - a
     Reading in, a Reply out, ``Unsupported`` with the
     reason where the compiler has no reading of the point - now that the
     compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
@@ -84,38 +92,38 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
         scope = reading
         named = scope.who.players
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.who.team else "everyone"
-        if kind == "team" and intent == "leaderboard":
+        if kind == "team" and shape == PLAYER_RANKING:
             kind = "team_players"  # a ranking within a team: its players, never its own figure
         subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=asked(intent), subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
         if result is None:
-            raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+            raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
         return result
 
     return answered
 
 
-game_log = _compiled("game_log")
-leaderboard = _compiled("leaderboard")
-period_split = _compiled("period_split")
-player_compare = _compiled("player_compare")
-player_history = _compiled("player_history")
-player_splits = _compiled("player_splits")
-player_matchup = _compiled("player_matchup")
-player_stat = _compiled("player_stat")
-streak = _compiled("streak")
-player_netpoints = _compiled("player_netpoints")
-fingerprint = _compiled("fingerprint")
-head_to_head = _compiled("head_to_head")
-team_quarter_points = _compiled("team_quarter_points")
-shot_distance = _compiled("shot_distance")  # the shot relation's reader (compose.shots), its template retired
-shot_chart = _compiled("shot_chart")  # the shot relation's reader and draw step (compose.shots), its template retired
-period_leaderboard = _compiled("period_leaderboard")
-team_record = _compiled("team_record")
-with_without = _compiled("with_without")
-single_game_high = _compiled("single_game_high")
-threshold_count = _compiled("threshold_count")
+game_log = _compiled(PLAYER_LOG)
+leaderboard = _compiled(PLAYER_RANKING)
+period_split = _compiled(PERIOD_LOG)
+player_compare = _compiled(PLAYER_COMPARISON)
+player_history = _compiled(SEASON_HISTORY)
+player_splits = _compiled(PLAYER_SPLITS)
+player_matchup = _compiled(PLAYER_MEETINGS)
+player_stat = _compiled(PLAYER_LINE)
+streak = _compiled(LINE_RUNS)
+player_netpoints = _compiled(NETPOINTS_RATINGS)
+fingerprint = _compiled(NETPOINTS_FINGERPRINT)
+head_to_head = _compiled(TEAM_MEETINGS)
+team_quarter_points = _compiled(TEAM_PERIOD_TOTAL)
+shot_distance = _compiled(SHOT_DISTANCE)  # the shot relation's reader (compose.shots), its template retired
+shot_chart = _compiled(SHOT_CHART)  # the shot relation's reader and draw step (compose.shots), its template retired
+period_leaderboard = _compiled(PERIOD_RANKING)
+team_record = _compiled(TEAM_RECORD)
+with_without = _compiled(PRESENCE_SPLIT)
+single_game_high = _compiled(GAME_HIGHS)
+threshold_count = _compiled(GAMES_COUNTED)
 
 
 @pytest.fixture
@@ -3552,17 +3560,17 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
     NetPoints for "his last game" reported all 43, and a record "over their last
     10" would have covered the full season. The routing check cannot catch
     those - routing was right every time."""
-    for intent, slots in [
-        ("threshold_count", {"date": "2026-04-12"}),
-        ("team_record", {"order": "recent"}),
-        ("leaderboard", {"order": "first"}),
+    for shape, scope in [
+        (GAMES_COUNTED, Reading(cuts=Cuts(date="2026-04-12"))),
+        (TEAM_RECORD, Reading(window=Window(order="recent"))),
+        (PLAYER_RANKING, Reading(window=Window(order="first"))),
         # player_stat honored `date` from step 3, C2 on; a template with no
         # relation behind it still refuses one.
-        ("player_history", {"date": "2026-04-12"}),
+        (SEASON_HISTORY, Reading(cuts=Cuts(date="2026-04-12"))),
     ]:
         # Each reader's retired words state none of these: it steps aside,
         # and the planner refuses what the relation cannot honor.
-        assert unhonored(intent, slots_scope(slots)), intent
+        assert cells_unhonored(scope, shape), shape
 
 
 def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
@@ -3791,20 +3799,20 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: AnswerContext)
 
 
 @pytest.mark.parametrize(
-    ("intent", "slots"),
+    ("shape", "scope"),
     [
         # game_log and shot_distance answer the real queries behind these now
         # ("jaylen brown last 8 games vs pistons", "Jaylen Brown's average
         # shot distance against the Detroit Pistons" - step 3, C5), so the
         # refusal is checked on templates that still cannot narrow that way.
-        ("player_netpoints", {"player": "Brandin Podziemski", "without": "curry"}),
-        ("player_history", {"player": "Nikola Jokic", "stat": "points", "opponent": "Boston Celtics"}),
+        (NETPOINTS_RATINGS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="curry", predicate="absent"),))),
+        (SEASON_HISTORY, Reading(who=Who(kind="player", players=("Nikola Jokic",)), cuts=Cuts(opponent="Boston Celtics"), measure=Measure(key="points", as_typed="points"))),
     ],
 )
-def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slots: dict[str, Any]) -> None:
+def test_scope_guard_refuses_what_the_question_text_narrowed_to(shape: PointShape, scope: Reading) -> None:
     """The real StatMuse queries behind these slots were each answered for
     every opponent, every venue, one season, or every game respectively."""
-    assert unhonored(intent, slots_scope(slots))
+    assert cells_unhonored(scope, shape)
 
 
 def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
@@ -3947,9 +3955,15 @@ def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: Answer
     )
 
 
-@pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
-def test_a_split_or_a_range_is_refused_where_nothing_honors_it(intent: str, slots: dict[str, Any]) -> None:
-    assert unhonored(intent, slots_scope(slots))
+@pytest.mark.parametrize(
+    ("shape", "scope"),
+    [
+        (PointShape("player_games", "scalar", "line"), Reading(who=Who(kind="player", players=("Joe Ingles",)), split="starter_bench")),
+        (PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(since=2020))),
+    ],
+)
+def test_a_split_or_a_range_is_refused_where_nothing_honors_it(shape: PointShape, scope: Reading) -> None:
+    assert cells_unhonored(scope, shape)
 
 
 # ---------------- one player's games: game_log and player_stat, narrowed ----------------
@@ -4676,7 +4690,7 @@ def test_player_stat_on_one_date_is_that_games_line(pg_ctx: AnswerContext) -> No
     # The compiler reads the date the same way - the slot's season replaced,
     # not read beside a career span (#230: it declined "a career span and
     # the {s} season at once").
-    assert _compiled("player_stat")(pg_ctx, slots_reading({"player": "Brandin Podziemski", "stat": "points", "date": f"{s - 1}-02-28", "season": s})).answer == last.answer
+    assert _compiled(PLAYER_LINE)(pg_ctx, slots_reading({"player": "Brandin Podziemski", "stat": "points", "date": f"{s - 1}-02-28", "season": s})).answer == last.answer
     none = player_stat(pg_ctx, slots_reading({"player": "Brandin Podziemski", "date": f"{s}-07-04"}))
     assert none.answer.startswith(f"No regular season game on {s}-07-04 found for Brandin Podziemski")
 
@@ -6358,8 +6372,8 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
             assert cells_stated(shape) == (table | row.taken) - set(row.unstated)
     # The player relation's own readers take nothing beyond its table: what
     # their words state is the relation's set less their exclusions.
-    for words in ("game_log", "player_stat", "period_split", "player_splits", "record_when", "streak", "shot_chart", "shot_distance"):
-        assert not RELATION_SCOPING_EXCLUDED[key(words)].taken, words
+    for shape in (PLAYER_LOG, PointShape("player_games", "scalar", "line"), PERIOD_LOG, PLAYER_SPLITS, LINE_RECORD, LINE_RUNS, SHOT_CHART, SHOT_DISTANCE):
+        assert not RELATION_SCOPING_EXCLUDED[shape].taken, shape
     for shape, route in compose._ROUTES.items():
         assert "stated" not in inspect.signature(route.reader).parameters, f"{shape}'s reader takes a list of its own"
 
