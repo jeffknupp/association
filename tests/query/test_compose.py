@@ -24,7 +24,7 @@ import duckdb
 import pytest
 from routed import default_query, reading_of, slots_route, with_subject
 from shapes import asked
-from slots import slots_reading, slots_scope
+from slots import slots_scope
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -43,7 +43,27 @@ from association.query.line import read_lines
 from association.query.notes import collect
 from association.query.parse import with_point
 from association.query.point import _asc_or_desc, lines_under, minimum_under, read_point, team_read_point
-from association.query.reading import Cause, Filtered, PointRefused, Reading, Span, _career_scope
+from association.query.reading import (
+    GAME_HIGHS,
+    GAMES_COUNTED,
+    LINE_RECORD,
+    LINE_RUNS,
+    PERIOD_RANKING,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_RANKING,
+    PRESENCE_SPLIT,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Cause,
+    Filtered,
+    Measure,
+    PointRefused,
+    Reading,
+    Span,
+    _career_scope,
+)
 from association.query.reading import Subject as Who
 from association.query.result import Refusal
 from association.query.subject import Subject, read_subject
@@ -837,7 +857,7 @@ def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: A
     # retired template did.
     # The point reads the subject's kind as the parser read it (Phase 3,
     # step 2): "any_team" is no team the words name, so the league.
-    named = slots_scope({"stat": "rebounds", "team": "any_team", "season_type": 2})
+    named = Reading(who=Who(kind="team", teams=("any_team",)), measure=Measure(key="rebounds", as_typed="rebounds"), span=Span(season_type=2))
     assert move_point(team_cx_ctx.con, "team_stat", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team") == TeamSeasonQuery(
         **(replace(named, who=replace(named.who, kind="everyone"))).filters(), relation="team_seasons", shape="scalar"
     )
@@ -1630,7 +1650,7 @@ def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: AnswerCo
     _add_condition_tables(cx_ctx.con)
     cx_ctx.con.execute("ALTER TABLE player_box_stats ADD COLUMN usage_pct DOUBLE")
     cx_ctx.con.execute("UPDATE player_box_stats SET usage_pct = CASE event_id WHEN 'g1' THEN 24.35 ELSE 18.0 END WHERE athlete_id = ?", [PODZ])
-    split = player_splits(cx_ctx, slots_reading({"player": "Brandin Podziemski", "stat": "usage_pct", "split": "home_away"}))
+    split = player_splits(cx_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="usage_pct", as_typed="usage_pct"), split="home_away"))
     away = next(row for row in split.data["splits"]["home_away"] if row["group"] == "away")
     assert away["games"] == 1 and away["usage_pct"] == pytest.approx(24.35)
     log = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski", "stat": "usage_pct"}, "podziemski usage game log")
@@ -1755,15 +1775,15 @@ def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player
     from association.query.point import default_point
 
     with pytest.raises(PointRefused) as no_stat:
-        default_point(asked("single_game_high"), slots_scope({"player": "Brice Sensabaugh", "span": "career"}))
-    assert no_stat.value.cause == Cause(kind="needs_stat", facts={"shape": asked("single_game_high")})
+        default_point(GAME_HIGHS, Reading(who=Who(kind="player", players=("Brice Sensabaugh",)), span=Span(career=True)))
+    assert no_stat.value.cause == Cause(kind="needs_stat", facts={"shape": GAME_HIGHS})
     assert refusal_result(no_stat.value.cause).answer == "A single-game high needs a stat to rank games by, and none was read."
     with pytest.raises(PointRefused) as unknown:
-        default_point(asked("single_game_high"), slots_scope({"player": "Brice Sensabaugh", "stat": "asistss"}))
-    assert unknown.value.cause == Cause(kind="unknown_stat", facts={"shape": asked("single_game_high"), "stat": "asistss"})
+        default_point(GAME_HIGHS, Reading(who=Who(kind="player", players=("Brice Sensabaugh",)), measure=Measure(as_typed="asistss")))
+    assert unknown.value.cause == Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": "asistss"})
     assert refusal_result(unknown.value.cause).answer == "A single-game high cannot rank games by 'asistss' - only by a box-score stat each game has a number for."
     with pytest.raises(Unsupported, match="needs a named player"):
-        default_point(asked("single_game_high"), slots_scope({"stat": "points"}))
+        default_point(GAME_HIGHS, Reading(measure=Measure(key="points", as_typed="points")))
 
 
 def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(cx_ctx: AnswerContext) -> None:
@@ -1919,8 +1939,6 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     shape declares."""
     from dataclasses import replace
 
-    from shapes import key
-
     from association.query import compose
     from association.query.reading import SHAPE_NAMES
 
@@ -1954,8 +1972,8 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     shots = {"shot_chart", "shot_distance"}
     assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots | {"coach"}
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
-    assert compose._read(cx_ctx.con, key("single_game_high"), narrowed) is None
-    assert compose._read(cx_ctx.con, key("single_game_high"), replace(narrowed, **(replace(narrowed, cuts=replace(narrowed.cuts, opponent=None))).filters())) is not None
+    assert compose._read(cx_ctx.con, GAME_HIGHS, narrowed) is None
+    assert compose._read(cx_ctx.con, GAME_HIGHS, replace(narrowed, **(replace(narrowed, cuts=replace(narrowed.cuts, opponent=None))).filters())) is not None
 
 
 #: One example of each cause's facts, for the sentence check below.
@@ -1967,31 +1985,31 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "window_ends_contradict": {"ends": ["last 5", "first games"]},
     "window_per_season": {"window": "first 10 game", "per": "every season"},
     "ranking_unit": {"metric": "avg_points", "rate": "/ 90"},
-    "needs_stat": {"shape": asked("single_game_high")},
-    "unknown_stat": {"shape": asked("streak"), "stat": "double_double"},
-    "needs_threshold": {"shape": asked("record_when"), "stat": "points"},
-    "threshold_needs_stat": {"shape": asked("game_log"), "threshold": 15},
-    "threshold_counts_every_game": {"shape": asked("threshold_count"), "threshold": 0},
+    "needs_stat": {"shape": GAME_HIGHS},
+    "unknown_stat": {"shape": LINE_RUNS, "stat": "double_double"},
+    "needs_threshold": {"shape": LINE_RECORD, "stat": "points"},
+    "threshold_needs_stat": {"shape": PLAYER_LOG, "threshold": 15},
+    "threshold_counts_every_game": {"shape": GAMES_COUNTED, "threshold": 0},
     "line_names_no_stat": {"phrase": "under 30 gizmos", "side": "under"},
     "needs_line": {},
     "career_place_needs_player": {"season_n": 15},
-    "needs_subject": {"shape": asked("record_when")},
+    "needs_subject": {"shape": LINE_RECORD},
     "team_streak_of_stat": {"stat": "points"},
     "matchup_needs_two": {"names": ["Jayson Tatum"]},
     "no_period_stat": {"stat": "minutes"},
     "no_coach_table": {"unanswerable": "coach"},
     "too_short": {"asked": "Tatum rec"},
-    "championship": {"shape": asked("team_leaderboard")},
-    "no_player_reading": {"player": "Alperen Sengun", "shape": asked("team_leaderboard")},
-    "playoff_round": {"shape": asked("game_log"), "round": "finals"},
-    "non_calendar_situation": {"shape": asked("player_stat"), "situation": "18 year old", "reads_as": "age"},
-    "period_stat": {"shape": asked("period_leaderboard"), "stat": "minutes", "period": 4, "half": None},
-    "period_as_condition": {"shape": asked("other")},
-    "team_period_stat": {"shape": asked("team_quarter_points"), "stat": "plusMinus"},
-    "bench_points": {"shape": asked("team_leaderboard")},
-    "team_boolean_count": {"shape": asked("leaderboard"), "stat": "triple_double"},
-    "cannot_honor": {"shape": asked("with_without"), "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "why": "it would answer for a different span than was asked"},
-    "no_reading_of_point": {"shape": asked("team_record"), "name": "team_record"},
+    "championship": {"shape": TEAM_RANKING},
+    "no_player_reading": {"player": "Alperen Sengun", "shape": TEAM_RANKING},
+    "playoff_round": {"shape": PLAYER_LOG, "round": "finals"},
+    "non_calendar_situation": {"shape": PLAYER_LINE, "situation": "18 year old", "reads_as": "age"},
+    "period_stat": {"shape": PERIOD_RANKING, "stat": "minutes", "period": 4, "half": None},
+    "period_as_condition": {"shape": None},
+    "team_period_stat": {"shape": TEAM_PERIOD_TOTAL, "stat": "plusMinus"},
+    "bench_points": {"shape": TEAM_RANKING},
+    "team_boolean_count": {"shape": PLAYER_RANKING, "stat": "triple_double"},
+    "cannot_honor": {"shape": PRESENCE_SPLIT, "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "why": "it would answer for a different span than was asked"},
+    "no_reading_of_point": {"shape": TEAM_RECORD, "name": "team_record"},
 }
 
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence
@@ -2029,14 +2047,14 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
         Cause(
             kind="cannot_honor",
             facts={
-                "shape": asked("streak"),
+                "shape": LINE_RUNS,
                 "cells": [{"cell": "situation", "words": "on tuesdays"}],
                 "without": "team or player",
                 "why": "the league-wide streak has no single subject to narrow",
             },
         )
     ).answer == ("Nothing here answers this question: streak: the games 'on tuesdays' cannot be read here with no named team or player - the league-wide streak has no single subject to narrow.")
-    assert refusal_result(Cause(kind="needs_threshold", facts={"shape": asked("streak"), "stat": "threePointFieldGoalsMade"})).answer == (
+    assert refusal_result(Cause(kind="needs_threshold", facts={"shape": LINE_RUNS, "stat": "threePointFieldGoalsMade"})).answer == (
         "A streak needs the number of 3-pointers each game has to reach, and none was read."
     )
 
@@ -2046,6 +2064,8 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
     ranking's refusal, a sentence the ranking reader wrote until the point
     reader carried its cause (``ranking_unit``) - said by the planner, word
     for word as before."""
-    reading = with_point("top 10 in points / 90", Reading(**(slots_scope({"stat": "points", "rate": "/ 90"})).filters(), asked=asked("leaderboard"), subject=Subject("everyone")))
+    reading = with_point(
+        "top 10 in points / 90", Reading(**(Reading(measure=Measure(key="points", as_typed="points", how="per_90", unit="/ 90"))).filters(), asked=PLAYER_RANKING, subject=Subject("everyone"))
+    )
     assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
     assert refusal_result(reading.point_refusal).answer == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."
