@@ -125,6 +125,32 @@ class TeamTotals:
 
 
 @dataclass(frozen=True)
+class Decision:
+    """One draw the engine made, recorded when it is asked to trace: which
+    event it led to (``event_index``, the index in ``SimGame.events`` of the
+    next event emitted), what kind of decision (``duration``, ``user``,
+    ``action``, ``zone``, ``make``, ``block``, ``blocker``, ``assisted``,
+    ``assister``, ``and_one``, ``offensive_rebound``, ``rebounder``,
+    ``live_ball``, ``stealer``, ``three_shot_trip``, ``free_throw``,
+    ``fouler``, ``fouled``, ``non_shooting_foul``, ``last_action``,
+    ``rotation``), what was chosen, the uniform draw that chose it (``nan``
+    where the choice was a weighted pick whose draw is internal), the
+    candidates with their probabilities, and the inputs the probability was
+    computed from (a make's player, defense and league rates and the home
+    multiplier; a duration's mean and spread).
+
+    .. versionadded:: 6.0.0
+    """
+
+    event_index: int
+    kind: str
+    chosen: str
+    draw: float
+    probabilities: Mapping[str, float]
+    inputs: Mapping[str, float]
+
+
+@dataclass(frozen=True)
 class SimGame:
     """A simulated game: the seed it was played from, the final score, the
     periods played (4, or more with overtime), every event in order, a box
@@ -144,6 +170,7 @@ class SimGame:
     lines: tuple[BoxLine, ...]
     home: TeamTotals
     away: TeamTotals
+    decisions: tuple[Decision, ...] = ()
 
     @property
     def overtimes(self) -> int:

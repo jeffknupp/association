@@ -701,7 +701,19 @@ check measured on 2019-2026 and recorded in the module docstring:
    (the roster rule reads the current season, as D4 intends). Nothing is
    validated yet: step 8 is the measurement. Two warehouse facts the team
    resolver needed: ESPN's `teams.nickname` holds the city and `teams.name`
-   the team name.
+   the team name. **Added the same day, at Jeff's ask: a trace.**
+   `engine.simulate(..., trace=True)` records every draw as an
+   `events.Decision` (the event it led to, the kind, the candidates and
+   their probabilities, the inputs, the uniform draw), consuming no
+   randomness, so a traced game equals the untraced one; `--explain` prints
+   them under each line of play-by-play and `--pbp-seed` chooses the game
+   printed. `scripts/sim_p7/results/explain_401705042_seed7_2026-10-11.out`
+   is a whole explained replay. The first thing it shows worth fixing: the
+   rotation model substitutes nineteen seconds into the game (a 0.89-scored
+   bench player replacing a 0.08-scored starter at the first dead ball),
+   which the P6 calibration's minutes targets allow but no coach would do -
+   a minimum stint or a stronger early-game hysteresis belongs in the P6
+   upgrades.
 8. **P8, validation** - the replay harness with BOTH baselines (home-win
    rate and a team-strength logistic fit on net rating or
    `team_power_index`), run on 2025 from January 1. This is the first

@@ -22,7 +22,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from association.sim.events import BoxLine, SimEvent, SimGame
+from association.sim.events import BoxLine, Decision, SimEvent, SimGame
 from association.sim.params import HEAVE
 
 SCHEMA_VERSION = "sim.1"
@@ -187,14 +187,61 @@ def _free_throw_positions(events: Sequence[SimEvent]) -> dict[int, tuple[int, in
     return positions
 
 
-def play_by_play(game: SimGame, names: Names) -> str:
+_PICK_KINDS = frozenset({"user", "fouler", "fouled", "blocker", "assister", "rebounder", "stealer"})
+
+
+def _label(key: str, kind: str, names: Names) -> str:
+    """A candidate's label: a player's name for a pick, the zone's phrase
+    for a zone, the key itself otherwise."""
+    if kind in _PICK_KINDS or kind == "rotation":
+        return names.player(key)
+    if kind == "zone":
+        return ZONE_PHRASES.get(key, key)
+    return key
+
+
+def _inputs_text(d: Decision) -> str:
+    if d.kind == "make" and "player" in d.inputs:
+        return f" = odds(player {d.inputs['player']:.3f} x defense {d.inputs['defense']:.3f} / league {d.inputs['league']:.3f}) x home {d.inputs['home']:.3f}"
+    if d.kind == "duration":
+        return f" (mean {d.inputs['mean']:.1f}s, sd {d.inputs['sd']:.1f}s, clipped {d.inputs['floor']:.0f}-{d.inputs['cap']:.0f}s{', put-back' if d.inputs.get('put_back') else ''})"
+    if d.inputs:
+        return " (" + ", ".join(f"{k} {v:.3g}" for k, v in d.inputs.items()) + ")"
+    return ""
+
+
+def explain(d: Decision, names: Names) -> str:
+    """One decision in a line: the kind, the candidates with their
+    probabilities (or the probability of a yes/no), the inputs, the draw and
+    what was chosen.
+
+    .. versionadded:: 6.0.0
+    """
+    draw = "" if d.draw != d.draw else f"; draw {d.draw:.3f}"  # nan has no draw to show
+    if d.kind == "duration":
+        return f"duration {d.chosen}{_inputs_text(d)}; drew {d.draw:.1f}s"
+    if set(d.probabilities) == {"yes", "no"}:
+        return f"{d.kind} p={d.probabilities['yes']:.3f}{_inputs_text(d)}{draw} -> {d.chosen}"
+    ranked = sorted(d.probabilities.items(), key=lambda kv: -kv[1])
+    candidates = " | ".join(f"{_label(k, d.kind, names)} {v:.2f}" for k, v in ranked[:8])
+    more = f" | +{len(ranked) - 8} more" if len(ranked) > 8 else ""
+    chosen = d.chosen if d.kind == "rotation" else _label(d.chosen, d.kind, names)
+    return f"{d.kind}: {candidates}{more}{_inputs_text(d)}{draw} -> {chosen}"
+
+
+def play_by_play(game: SimGame, names: Names, explain_decisions: bool = False) -> str:
     """The game as lines of play-by-play: period and clock, the play, the
-    score after it (away first, as ESPN prints it).
+    score after it (away first, as ESPN prints it). With
+    ``explain_decisions`` and a traced game, each line is followed by the
+    decisions that produced it, indented.
 
     .. versionadded:: 6.0.0
     """
     home, away = names.abbreviation(game.home_team), names.abbreviation(game.away_team)
     positions = _free_throw_positions(game.events)
+    decisions: dict[int, list[Decision]] = {}
+    for d in game.decisions:
+        decisions.setdefault(d.event_index, []).append(d)
     lines = [f"{away} at {home} - simulated game, seed {game.seed}"]
     for i, e in enumerate(game.events):
         text = describe(e, names, positions.get(i), last_period=e.period == game.periods)
@@ -202,6 +249,10 @@ def play_by_play(game: SimGame, names: Names) -> str:
             continue
         score = f"{away} {e.away_score}-{e.home_score} {home}"
         lines.append(f"{period_label(e.period):>3} {clock_text(e.clock_remaining):>5}  {text:<64} {score}")
+        if explain_decisions:
+            lines.extend(f"{'':>12}| {explain(d, names)}" for d in decisions.get(i, ()))
+    if explain_decisions and not game.decisions:
+        lines.append("(no decisions recorded: the game was not simulated with trace=True)")
     return "\n".join(lines)
 
 
@@ -292,4 +343,5 @@ def game_json(game: SimGame, names: Names, meta: Mapping[str, Any]) -> dict[str,
         "events": [{**asdict(e), "actors": dict(e.actors)} for e in game.events],
         "lines": [{**asdict(line), "name": names.player(line.athlete_id)} for line in game.lines if line.seconds > 0],
         "totals": {"home": asdict(game.home), "away": asdict(game.away)},
+        "decisions": [{**asdict(d), "probabilities": dict(d.probabilities), "inputs": dict(d.inputs)} for d in game.decisions],
     }

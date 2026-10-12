@@ -107,7 +107,15 @@ was learned the hard way and is about the data, not the pipeline.
   `rates.estimate` -> `rotation.RotationModel` -> `engine.simulate`;
   `association.sim.render` words it). `uv run association sim game NY BOS
   --n 1000 --pbp` is the quickest way to see the whole thing run (7 s).
-  Nothing is validated yet.
+  **To debug a game, add `--explain`**: every line of play-by-play is
+  followed by the decisions that produced it - the candidates with their
+  probabilities, the inputs (a make's player, defense and league rates and
+  the home multiplier), the draw and what was chosen - and `--pbp-seed K`
+  picks which game of the run is printed. A run that the engine refuses
+  names the failing seed; `sim replay EVENT --n 1 --seed K --pbp --explain`
+  replays exactly that game. Programmatically: `engine.simulate(setup,
+  seed, trace=True)` puts the same records on `SimGame.decisions`, and
+  `game.traced(prepared, seed)` does it for a prepared matchup.
 - **Step 8 done 2026-10-11:** `association sim validate --season 2025
   --from 2025-01-01 --n 200 --out scripts/sim_p8/results/<name>.md` is the
   simulator's yardstick (`association.sim.validate`; about 15 minutes for

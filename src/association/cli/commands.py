@@ -318,24 +318,26 @@ def sim_build(seasons: str | None, db_path: str, sim_path: str, log_level: str) 
     click.echo(f"wrote {sim_path}")
 
 
-def _sim_output(prepared: Any, games: list[Any], summary: Any, *, pbp: bool, as_json: bool, meta: dict[str, Any]) -> None:
-    """Print a run: the summary (and, with ``--pbp``, the first game's
-    play-by-play and box score), as text or as JSON."""
+def _sim_output(prepared: Any, summary: Any, *, pbp: bool, explain: bool, pbp_seed: int, as_json: bool, meta: dict[str, Any]) -> None:
+    """Print a run: the summary and, with ``--pbp`` or ``--explain``, the
+    game played from ``pbp_seed`` (its play-by-play, with every decision
+    under its line when explaining, and its box score), as text or JSON."""
     import json
 
     from association.sim import game as sim_game_module
     from association.sim import render
 
+    shown = sim_game_module.traced(prepared, pbp_seed) if explain else (sim_game_module.run(prepared, 1, pbp_seed)[0] if pbp else None)
     if as_json:
         payload: dict[str, Any] = {"summary": sim_game_module.summary_json(summary, prepared.names)}
-        if pbp:
-            payload["game"] = render.game_json(games[0], prepared.names, meta)
+        if shown is not None:
+            payload["game"] = render.game_json(shown, prepared.names, meta)
         click.echo(json.dumps(payload, indent=2))
         return
-    if pbp:
-        click.echo(render.play_by_play(games[0], prepared.names))
+    if shown is not None:
+        click.echo(render.play_by_play(shown, prepared.names, explain_decisions=explain))
         click.echo("")
-        click.echo(render.box_score(games[0], prepared.names, prepared.near_prior))
+        click.echo(render.box_score(shown, prepared.names, prepared.near_prior))
         click.echo("")
     click.echo(sim_game_module.summary_text(summary, prepared.names))
 
@@ -343,7 +345,9 @@ def _sim_output(prepared: Any, games: list[Any], summary: Any, *, pbp: bool, as_
 def _sim_run_options[F: Callable[..., Any]](f: F) -> F:
     f = click.option("--n", type=int, default=1000, show_default=True, help="How many games to simulate.")(f)
     f = click.option("--seed", type=int, default=7, show_default=True, help="Game i of n is played from seed + i.")(f)
-    f = click.option("--pbp", is_flag=True, help="Also print the first game's play-by-play and box score.")(f)
+    f = click.option("--pbp", is_flag=True, help="Also print one game's play-by-play and box score (the game played from --pbp-seed, by default --seed).")(f)
+    f = click.option("--explain", is_flag=True, help="With the play-by-play, print under each line the decisions that produced it: candidates, probabilities, inputs, the draw.")(f)
+    f = click.option("--pbp-seed", type=int, default=None, help="The seed of the game --pbp/--explain print; defaults to --seed (game 1 of the run).")(f)
     f = click.option("--json", "as_json", is_flag=True, help="Emit JSON (schema sim.1) instead of text.")(f)
     f = click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file, attached read-only.")(f)
     return click.option("--sim-path", default=DEFAULT_SIM_PATH, show_default=True, help="The simulator's own DuckDB file (`association sim build`).")(f)
@@ -357,7 +361,22 @@ def _sim_run_options[F: Callable[..., Any]](f: F) -> F:
 @click.option("--home-roster", default=None, help="Comma-separated athlete ids to play for the home side instead of its regulars.")
 @click.option("--away-roster", default=None, help="Comma-separated athlete ids to play for the away side instead of its regulars.")
 @_sim_run_options
-def sim_game(home: str, away: str, season: int | None, as_of: Any, home_roster: str | None, away_roster: str | None, n: int, seed: int, pbp: bool, as_json: bool, db_path: str, sim_path: str) -> None:
+def sim_game(
+    home: str,
+    away: str,
+    season: int | None,
+    as_of: Any,
+    home_roster: str | None,
+    away_roster: str | None,
+    n: int,
+    seed: int,
+    pbp: bool,
+    explain: bool,
+    pbp_seed: int | None,
+    as_json: bool,
+    db_path: str,
+    sim_path: str,
+) -> None:
     """Simulate HOME against AWAY (abbreviations, nicknames or names) N times
     from the last three seasons' rates and print the summary.
 
@@ -381,13 +400,13 @@ def sim_game(home: str, away: str, season: int | None, as_of: Any, home_roster: 
         con.close()
     games = sim_game_module.run(prepared, n, seed)
     summary = sim_game_module.summarize(games, prepared, seed)
-    _sim_output(prepared, games, summary, pbp=pbp, as_json=as_json, meta={"window": window.describe(), "season": chosen})
+    _sim_output(prepared, summary, pbp=pbp, explain=explain, pbp_seed=seed if pbp_seed is None else pbp_seed, as_json=as_json, meta={"window": window.describe(), "season": chosen})
 
 
 @sim.command("replay")
 @click.argument("event_id")
 @_sim_run_options
-def sim_replay(event_id: str, n: int, seed: int, pbp: bool, as_json: bool, db_path: str, sim_path: str) -> None:
+def sim_replay(event_id: str, n: int, seed: int, pbp: bool, explain: bool, pbp_seed: int | None, as_json: bool, db_path: str, sim_path: str) -> None:
     """Replay a real game N times: the players who appeared, rates from the
     games before that day, and the real result beside the simulated one.
 
@@ -410,7 +429,13 @@ def sim_replay(event_id: str, n: int, seed: int, pbp: bool, as_json: bool, db_pa
     if not as_json:
         click.echo(f"real result, {real.date.isoformat()}: {names.abbreviation(real.away)} {real.away_score}, {names.abbreviation(real.home)} {real.home_score}")
     _sim_output(
-        prepared, games, summary, pbp=pbp, as_json=as_json, meta={"window": prepared.window.describe(), "event_id": event_id, "real": {"home_score": real.home_score, "away_score": real.away_score}}
+        prepared,
+        summary,
+        pbp=pbp,
+        explain=explain,
+        pbp_seed=seed if pbp_seed is None else pbp_seed,
+        as_json=as_json,
+        meta={"window": prepared.window.describe(), "event_id": event_id, "real": {"home_score": real.home_score, "away_score": real.away_score}},
     )
 
 

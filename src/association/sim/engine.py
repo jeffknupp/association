@@ -82,7 +82,7 @@ from dataclasses import dataclass
 from random import Random
 
 from association.sim import shrink
-from association.sim.events import BoxLine, SimEvent, SimGame, TeamTotals
+from association.sim.events import BoxLine, Decision, SimEvent, SimGame, TeamTotals
 from association.sim.params import HEAVE, ZONES, LeagueParams, PlayerGameState, PlayerParams, RotationContext, RotationPolicy, TeamParams, value_of
 from association.sim.plays import OVERTIME_PERIOD_SECONDS, REGULATION_PERIOD_SECONDS
 from association.sim.zones import HEAVE_SECONDS
@@ -374,6 +374,7 @@ class _Player:
         "id",
         "live",
         "make",
+        "make_inputs",
         "on_floor",
         "oreb",
         "oreb_w",
@@ -411,6 +412,7 @@ class _Player:
         self.p_shot = max(0.0, 1.0 - self.p_to - self.p_trip)
         self.zones = self._zones(params, defense, league)
         self.make = {z: _clamp01(adjusted(params.make_rate[z].value, defense.allowed_make_rate[z].value, league.make_rate[z]) * multiplier) for z in ZONES}
+        self.make_inputs = {z: {"player": params.make_rate[z].value, "defense": defense.allowed_make_rate[z].value, "league": league.make_rate[z], "home": multiplier} for z in ZONES}
         self.ft = _clamp01(params.free_throw_rate.value * multiplier)
         self.and_one, self.assisted, self.live = params.and_one_rate.value, params.assisted_rate.value, params.live_ball_share.value
         self.ast_w, self.oreb_w, self.dreb_w = params.assists_per_minute.value, params.offensive_rebounds_per_minute.value, params.defensive_rebounds_per_minute.value
@@ -492,10 +494,11 @@ class _Side:
 class _Game:
     """The state machine. ``play`` runs the game; ``result`` packs it."""
 
-    def __init__(self, setup: GameSetup, seed: int, debug: bool) -> None:
+    def __init__(self, setup: GameSetup, seed: int, debug: bool, trace: bool = False) -> None:
         self.rng = Random(seed)
         self.seed = seed
         self.debug = debug
+        self.trace: list[Decision] | None = [] if trace else None
         self.league = setup.league
         home_mult, away_mult = home_court_multipliers(setup.league)
         self.home = _Side(setup.home, setup.away.team, setup.league, home_mult)
@@ -529,7 +532,52 @@ class _Game:
         cap = (PUTBACK_CLOCK_SECONDS if put_back else SHOT_CLOCK_SECONDS) * _TENTHS
         floor = 1.0 if put_back else POSSESSION_FLOOR_SECONDS * _TENTHS
         draw = self.rng.gauss(mean, DURATION_SPREAD * mean)
-        return round(min(max(draw, floor), cap))
+        tenths = round(min(max(draw, floor), cap))
+        if self.trace is not None:
+            self._note(
+                "duration",
+                f"{tenths / _TENTHS:.1f}s",
+                {},
+                draw / _TENTHS,
+                {"mean": mean / _TENTHS, "sd": DURATION_SPREAD * mean / _TENTHS, "floor": floor / _TENTHS, "cap": cap / _TENTHS, "put_back": 1.0 if put_back else 0.0},
+            )
+        return tenths
+
+    # -- the trace -----------------------------------------------------------------
+
+    def _note(self, kind: str, chosen: str, probabilities: Mapping[str, float], draw: float = float("nan"), inputs: Mapping[str, float] | None = None) -> None:
+        """Record a decision (only when tracing); it belongs to the next event emitted."""
+        if self.trace is not None:
+            self.trace.append(Decision(len(self.events), kind, chosen, draw, dict(probabilities), dict(inputs or {})))
+
+    def _chance(self, kind: str, probability: float, inputs: Mapping[str, float] | None = None) -> bool:
+        """A yes/no draw at ``probability``, noted when tracing."""
+        draw = self.rng.random()
+        hit = draw < probability
+        if self.trace is not None:
+            self._note(kind, "yes" if hit else "no", {"yes": probability, "no": 1.0 - probability}, draw, inputs)
+        return hit
+
+    def _pick_noted(self, kind: str, players: Sequence[_Player], weights: Sequence[float], skip: _Player | None = None, or_any: bool = False) -> _Player | None:
+        """A weighted pick, noted when tracing with each candidate's probability."""
+        chosen = _pick_or_any(self.rng, players, weights) if or_any else _pick(self.rng, players, weights, skip)
+        if self.trace is not None:
+            candidates = [(p, w) for p, w in zip(players, weights, strict=True) if p is not skip]
+            total = sum(w for _, w in candidates)
+            probabilities = {p.id: (w / total if total > 0 else (1.0 / len(candidates) if or_any else 0.0)) for p, w in candidates}
+            self._note(kind, chosen.id if chosen is not None else "nobody", probabilities)
+        return chosen
+
+    def _zone_noted(self, shooter: _Player) -> str:
+        """The shooter's zone draw, noted with his mix against this defense."""
+        zone = shooter.zone(self.rng)
+        if self.trace is not None:
+            probabilities, previous = {}, 0.0
+            for threshold, z in shooter.zones:
+                probabilities[z] = threshold - previous
+                previous = threshold
+            self._note("zone", zone, probabilities)
+        return zone
 
     # -- events and the box ---------------------------------------------------
 
@@ -572,16 +620,27 @@ class _Game:
         for side in (self.home, self.away):
             if side.available() < 5:
                 raise EngineError(f"team {side.team_id} has only {side.available()} players available in period {self.period}; the engine does not play four")
-            wanted = side.policy.lineup(self._context(side))
+            context = self._context(side)
+            wanted = side.policy.lineup(context)
             self._validate(side, wanted)
             incoming = [side.players[a] for a in wanted if not side.players[a].on_floor]
             outgoing = [p for p in side.floor if p.id not in wanted]
+            if self.trace is not None:
+                self._note_rotation(side, context, wanted, incoming, outgoing)
             for out, into in zip(outgoing, incoming, strict=True):
                 self._leave(side, out)
                 self._enter(side, into)
                 self._emit("substitution", side.team_id, {"in": into.id, "out": out.id})
             if incoming:
                 side.refresh()
+
+    def _note_rotation(self, side: _Side, context: RotationContext, wanted: Sequence[str], incoming: Sequence[_Player], outgoing: Sequence[_Player]) -> None:
+        """The policy's answer at a dead ball, with its scores where it has
+        any (``RotationModel.scores``), else the five it named."""
+        scores = getattr(side.policy, "scores", None)
+        probabilities: Mapping[str, float] = scores(context) if callable(scores) else dict.fromkeys(wanted, 1.0)
+        change = f"in {', '.join(p.id for p in incoming)}; out {', '.join(p.id for p in outgoing)}" if incoming else "no change"
+        self._note("rotation", f"{side.team_id}: {change}", probabilities, inputs={"margin": float(context.margin), "elapsed": context.elapsed, "period": float(context.period)})
 
     def _validate(self, side: _Side, wanted: Sequence[str]) -> None:
         if len(wanted) != 5 or len(set(wanted)) != 5:
@@ -642,6 +701,7 @@ class _Game:
         :data:`HEAVE_SECONDS` or less, a normal action otherwise, at the
         buzzer either way."""
         heave = self.clock <= HEAVE_SECONDS * _TENTHS
+        self._note("last_action", "heave" if heave else "normal", {}, inputs={"clock": self.clock / _TENTHS, "heave_under": HEAVE_SECONDS})
         self._advance(self.clock)
         self._action(offense, defense, heave=heave)
         return _PERIOD_START
@@ -657,11 +717,16 @@ class _Game:
         :data:`NON_SHOOTING_DEFENSIVE_SHARE`."""
         per_minute = max(defense.fouls_pm - offense.trips_pm, 0.0)
         probability = per_minute * 48.0 / offense.pace * NON_SHOOTING_DEFENSIVE_SHARE if offense.pace > 0 else 0.0
-        if probability <= 0.0 or self.rng.random() >= probability:
+        if probability <= 0.0 or not self._chance(
+            "non_shooting_foul",
+            probability,
+            {"defense_fouls_per_minute": defense.fouls_pm, "offense_trips_per_minute": offense.trips_pm, "share": NON_SHOOTING_DEFENSIVE_SHARE, "team_fouls": float(defense.team_fouls[-1])},
+        ):
             return None
         self._advance(int(self.rng.random() * duration))
-        fouler = _pick_or_any(self.rng, defense.floor, [p.foul_w for p in defense.floor])
-        fouled = _pick_or_any(self.rng, offense.floor, offense.usage)
+        fouler = self._pick_noted("fouler", defense.floor, [p.foul_w for p in defense.floor], or_any=True)
+        fouled = self._pick_noted("fouled", offense.floor, offense.usage, or_any=True)
+        assert fouler is not None and fouled is not None
         self._charge_foul(defense, fouler, fouled, "non_shooting")
         if self._bonus(defense):
             ended = self._free_throws(offense, defense, fouled, 2)
@@ -671,27 +736,30 @@ class _Game:
 
     def _action(self, offense: _Side, defense: _Side, heave: bool) -> str | None:
         """The user and what he does; ``None`` when the possession goes on."""
-        user = _pick_or_any(self.rng, offense.floor, offense.usage)
+        user = self._pick_noted("user", offense.floor, offense.usage, or_any=True)
+        assert user is not None
         draw = self.rng.random()
-        if draw < user.p_to:
+        chosen = "turnover" if draw < user.p_to else ("trip" if draw < user.p_to + user.p_trip else "shot")
+        self._note("action", chosen, {"shot": user.p_shot, "trip": user.p_trip, "turnover": user.p_to}, draw)
+        if chosen == "turnover":
             return self._turnover(offense, defense, user)
-        if draw < user.p_to + user.p_trip:
+        if chosen == "trip":
             return self._trip(offense, defense, user)
         return self._shot(offense, defense, user, heave)
 
     def _shot(self, offense: _Side, defense: _Side, shooter: _Player, heave: bool) -> str | None:
-        zone = HEAVE if heave else shooter.zone(self.rng)
+        zone = HEAVE if heave else self._zone_noted(shooter)
         make = HEAVE_MAKE_RATE if heave else shooter.make[zone]
         points = value_of(zone)
         shooter.fga += 1
         if points == 3:
             shooter.tpa += 1
-        if self.rng.random() < make:
+        if self._chance("make", make, {"heave": 1.0} if heave else shooter.make_inputs[zone]):
             return self._made(offense, defense, shooter, zone, points)
         actors = {"shooter": shooter.id}
         outcome = "missed"
-        if self.rng.random() < BLOCK_SHARE_OF_MISSES:
-            blocker = _pick(self.rng, defense.floor, [p.blk_w for p in defense.floor])
+        if self._chance("block", BLOCK_SHARE_OF_MISSES):
+            blocker = self._pick_noted("blocker", defense.floor, [p.blk_w for p in defense.floor])
             if blocker is not None:
                 blocker.blk += 1
                 actors["blocker"] = blocker.id
@@ -705,14 +773,15 @@ class _Game:
             shooter.tpm += 1
         self._score(offense, shooter, points)
         actors = {"shooter": shooter.id}
-        if self.rng.random() < shooter.assisted:
-            assister = _pick(self.rng, offense.floor, [p.ast_w for p in offense.floor], skip=shooter)
+        if self._chance("assisted", shooter.assisted):
+            assister = self._pick_noted("assister", offense.floor, [p.ast_w for p in offense.floor], skip=shooter)
             if assister is not None:
                 assister.ast += 1
                 actors["assister"] = assister.id
         self._emit("shot", offense.team_id, actors, zone, "made", points)
-        if self.rng.random() < shooter.and_one:
-            fouler = _pick_or_any(self.rng, defense.floor, [p.foul_w for p in defense.floor])
+        if self._chance("and_one", shooter.and_one):
+            fouler = self._pick_noted("fouler", defense.floor, [p.foul_w for p in defense.floor], or_any=True)
+            assert fouler is not None
             self._charge_foul(defense, fouler, shooter, "and_one", zone)
             return self._free_throws(offense, defense, shooter, 1)
         return _MADE_SHOT
@@ -721,13 +790,13 @@ class _Game:
         """After a miss: ``None`` on an offensive rebound (the possession
         continues), the defensive-rebound start type otherwise. A side whose
         five carry no rebound weight takes a team rebound."""
-        if self.rng.random() < defense.oreb_against:
-            rebounder = _pick(self.rng, offense.floor, [p.oreb_w for p in offense.floor])
+        if self._chance("offensive_rebound", defense.oreb_against, {"league": self.league.offensive_rebound_rate}):
+            rebounder = self._pick_noted("rebounder", offense.floor, [p.oreb_w for p in offense.floor])
             if rebounder is not None:
                 rebounder.oreb += 1
             self._emit("rebound", offense.team_id, {} if rebounder is None else {"rebounder": rebounder.id}, outcome="offensive")
             return None
-        rebounder = _pick(self.rng, defense.floor, [p.dreb_w for p in defense.floor])
+        rebounder = self._pick_noted("rebounder", defense.floor, [p.dreb_w for p in defense.floor])
         if rebounder is not None:
             rebounder.dreb += 1
         self._emit("rebound", defense.team_id, {} if rebounder is None else {"rebounder": rebounder.id}, outcome="defensive")
@@ -735,8 +804,8 @@ class _Game:
 
     def _turnover(self, offense: _Side, defense: _Side, user: _Player) -> str:
         user.tov += 1
-        if self.rng.random() < user.live:
-            stealer = _pick(self.rng, defense.floor, [p.stl_w for p in defense.floor])
+        if self._chance("live_ball", user.live):
+            stealer = self._pick_noted("stealer", defense.floor, [p.stl_w for p in defense.floor])
             actors = {"player": user.id}
             if stealer is not None:
                 stealer.stl += 1
@@ -752,9 +821,10 @@ class _Game:
         with probability :data:`THREE_SHOT_TRIP_SHARE`, else two. The zone
         recorded on the foul is a three-point zone for a three-shot trip and
         one of the shooter's two-point zones otherwise."""
-        count = 3 if self.rng.random() < THREE_SHOT_TRIP_SHARE else 2
+        count = 3 if self._chance("three_shot_trip", THREE_SHOT_TRIP_SHARE) else 2
         zone = self._trip_zone(shooter, count)
-        fouler = _pick_or_any(self.rng, defense.floor, [p.foul_w for p in defense.floor])
+        fouler = self._pick_noted("fouler", defense.floor, [p.foul_w for p in defense.floor], or_any=True)
+        assert fouler is not None
         self._charge_foul(defense, fouler, shooter, "shooting", zone)
         return self._free_throws(offense, defense, shooter, count)
 
@@ -777,7 +847,7 @@ class _Game:
             if attempt == count:
                 self._dead_ball()
             shooter.fta += 1
-            if self.rng.random() < shooter.ft:
+            if self._chance("free_throw", shooter.ft, {"attempt": float(attempt), "of": float(count)}):
                 shooter.ftm += 1
                 self._score(offense, shooter, 1)
                 self._emit("free_throw", offense.team_id, {"shooter": shooter.id}, outcome="made", points=1)
@@ -849,6 +919,7 @@ class _Game:
             lines,
             self._totals(self.home, lines),
             self._totals(self.away, lines),
+            tuple(self.trace or ()),
         )
 
     @staticmethod
@@ -880,17 +951,21 @@ class _Game:
         )
 
 
-def simulate(setup: GameSetup, seed: int, debug: bool = False) -> SimGame:
+def simulate(setup: GameSetup, seed: int, debug: bool = False, trace: bool = False) -> SimGame:
     """Play one game from ``setup`` with ``random.Random(seed)``: the same
     seed and inputs give an equal :class:`~association.sim.events.SimGame`.
     ``debug`` checks the invariants after every possession (five a side, no
     fouled-out player on the floor, the score equal to the events' points)
-    and raises :class:`InvariantError` on the first failure.
+    and raises :class:`InvariantError` on the first failure. ``trace``
+    records every draw as a :class:`~association.sim.events.Decision` on
+    ``SimGame.decisions`` - the candidates, their probabilities, the inputs
+    and the uniform draw - without changing the game: tracing consumes no
+    randomness, so a traced game equals the untraced one event for event.
 
     .. versionadded:: 6.0.0
     """
     if setup.home.team.team_id == setup.away.team.team_id:
         raise EngineError(f"a team cannot play itself ({setup.home.team.team_id})")
-    game = _Game(setup, seed, debug)
+    game = _Game(setup, seed, debug, trace)
     game.play()
     return game.result()

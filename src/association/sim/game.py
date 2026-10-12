@@ -319,6 +319,16 @@ def run(prepared: Prepared, n: int, seed: int) -> list[SimGame]:
     return games
 
 
+def traced(prepared: Prepared, seed: int) -> SimGame:
+    """One game from ``seed`` with every decision recorded
+    (``SimGame.decisions``), for ``--explain``: the same game ``run`` plays
+    from that seed, since tracing consumes no randomness.
+
+    .. versionadded:: 6.0.0
+    """
+    return simulate(prepared.setup(), seed, trace=True)
+
+
 def quantiles(values: Sequence[float], points: Sequence[float] = (0.1, 0.25, 0.5, 0.75, 0.9)) -> dict[str, float]:
     """Linear-interpolation quantiles of ``values`` at ``points``, keyed
     ``p10``, ``p25``, ...
