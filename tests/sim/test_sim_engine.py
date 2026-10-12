@@ -421,3 +421,25 @@ def test_the_defense_is_the_five_on_the_floor_and_the_team_when_unknown() -> Non
         d.inputs["defense"] / league.make_rate[traced.events[d.event_index].zone] for d in traced.decisions if d.kind == "make" and "player" in d.inputs and traced.events[d.event_index].team == "home"
     }
     assert all(0.79 < f < 0.98 for f in seen) and len(seen) >= 2
+
+
+def test_a_games_tempo_is_one_draw_that_widens_the_spread_of_possessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    traced = simulate(toy.setup(), seed=4, trace=True)
+    tempos = [d for d in traced.decisions if d.kind == "tempo"]
+    assert len(tempos) == 1 and tempos[0].event_index == 0 and tempos[0].inputs == {"sd": engine.GAME_TEMPO_SD}
+    tempo = float(tempos[0].chosen)
+    assert 0.9 < tempo < 1.1
+    # Every use duration carries the same tempo; a rebound's gap does not.
+    for d in traced.decisions:
+        if d.kind == "duration":
+            situation = d.chosen.split(" ", 1)[1]
+            assert d.inputs["tempo"] == pytest.approx(tempo, abs=1e-3)
+            if situation in ("rebound", "free_throw_rebound"):
+                assert d.inputs["factor"] == 1.0  # the ball in the air is not a team's tempo
+            else:
+                assert d.inputs["factor"] == pytest.approx(tempo, abs=1e-3)  # the toy teams' own factor is one
+    with_tempo = [simulate(toy.setup(), s).home.possessions for s in range(150)]
+    monkeypatch.setattr(engine, "GAME_TEMPO_SD", 0.0)
+    without = [simulate(toy.setup(), s).home.possessions for s in range(150)]
+    sd = lambda xs: (sum((x - sum(xs) / len(xs)) ** 2 for x in xs) / (len(xs) - 1)) ** 0.5  # noqa: E731
+    assert sd(with_tempo) > 1.15 * sd(without)

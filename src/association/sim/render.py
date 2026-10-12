@@ -204,7 +204,7 @@ def _inputs_text(d: Decision) -> str:
     if d.kind == "make" and "player" in d.inputs:
         return f" = odds(player {d.inputs['player']:.3f} x defense {d.inputs['defense']:.3f} / league {d.inputs['league']:.3f}) x home {d.inputs['home']:.3f}"
     if d.kind == "duration":
-        return f" (histogram mean {d.inputs['mean']:.1f}s, team factor {d.inputs['factor']:.2f}, cap {d.inputs['cap']:.0f}s)"
+        return f" (histogram mean {d.inputs['mean']:.1f}s, factor {d.inputs['factor']:.2f} with the game's tempo {d.inputs.get('tempo', 1.0):.3f}, cap {d.inputs['cap']:.0f}s)"
     if d.inputs:
         return " (" + ", ".join(f"{k} {v:.3g}" for k, v in d.inputs.items()) + ")"
     return ""

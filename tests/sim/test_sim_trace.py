@@ -52,7 +52,7 @@ def test_explain_renders_each_kind() -> None:
     text = render.play_by_play(traced, NAMES, explain_decisions=True)
     assert "| make p=" in text and "odds(player" in text
     assert "| user: Player " in text and "-> Player " in text
-    assert "| duration " in text and "team factor" in text and "histogram mean" in text
+    assert "| duration " in text and "the game's tempo" in text and "histogram mean" in text
     assert "| action: shot " in text
     assert "| rotation: " in text
     # The untraced game says so rather than printing nothing.

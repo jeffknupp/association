@@ -1128,6 +1128,26 @@ check measured on 2019-2026 and recorded in the module docstring:
    against 113.5, possessions 101.3 against 100.8, total +0.7, coverage
    0.745 / 0.788 / 0.861, minutes MAE 5.25. The gap to ESPN is 0.017.
 
+   **With a game-level tempo factor** (`engine.GAME_TEMPO_SD` = 0.031,
+   measured by `scripts/sim_p9/tempo.py` as the spread of real possessions
+   across games less the teams' factors and the draws' own noise;
+   `results/validate_2025_from_2025-01-01_2026-10-12_tempo.md`, 740 games,
+   6 refused): the total's z-scores have a standard deviation of 1.014
+   (from 1.071; 1 is calibrated) and the simulated total's spread within a
+   game is 18.2 against the real 19.5 (from 17.2); Brier 0.2166 against the
+   strength model's 0.2260 (unchanged within noise, as a spread change
+   should be), league rates unchanged, coverage 0.749 / 0.790 / 0.860.
+   That closes the three items that preceded the v2 list: the rotation's
+   share is measured (worth up to 0.005), the offensive-rebound drift is
+   understood and unreachable from the data before the hold-out, and the
+   totals are calibrated. Open, in order: the rotation model against the
+   real-minutes ceiling; star scoring (the high-usage player's share and
+   efficiency - 0.69 coverage for 20+ scorers even with real minutes);
+   player ACCURACY metrics in the harness (mean absolute error of the
+   simulated mean by tier, a CRPS) beside the coverage, so changes are
+   ranked on the box score too; the position-group prior for the deep
+   bench; then section 4.
+
 Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
 agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.
 

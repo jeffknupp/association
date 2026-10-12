@@ -50,8 +50,10 @@ league's (a team runs its offense 10% faster or slower than the mean,
 ``scripts/sim_p9/results/durations.out``), capped at :data:`SHOT_CLOCK_SECONDS`
 (:data:`PUTBACK_CLOCK_SECONDS` for a put-back). A missed shot or free throw
 then spends its ``rebound`` / ``free_throw_rebound`` draw in the air and
-the scramble before the rebound is taken (no team factor on those). The
-histograms are measured from ``sim_possessions`` and ``sim_actions``
+the scramble before the rebound is taken (no team factor on those). One
+game-level tempo factor, ``exp(gauss(0, GAME_TEMPO_SD))``, multiplies every
+duration to a use for both teams, the game-to-game pace variation the
+teams' factors and the draws do not carry. The histograms are measured from ``sim_possessions`` and ``sim_actions``
 (build-order step 9): 16.6 s after a period start, 15.8 after a made shot,
 14.3 after a made free throw, 13.5 after a dead-ball turnover, 9.1 after a
 defensive rebound, 6.5 after a live-ball turnover, 2.9 for a put-back, 9.5
@@ -90,6 +92,7 @@ plan names, in use until the rotation model (step 6) lands.
 
 from __future__ import annotations
 
+import math
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -232,6 +235,20 @@ simulation at 0.65 produced 6.46 non-shooting fouls a team-game with trips
 counted as every two-shot trip, and the share is set to the ratio that
 puts it at 7.5 once trips are the shooting-foul trips alone. A constant
 until the league record holds it.
+
+.. versionadded:: 6.0.0
+"""
+
+GAME_TEMPO_SD = 0.031
+"""The standard deviation of a game's tempo factor: one log-normal draw a
+game, ``exp(gauss(0, GAME_TEMPO_SD))``, multiplying every duration to a use
+(not a rebound's gap) for both teams. Real games vary in pace beyond their
+teams' tempos and the draws' own noise - blowouts, foul-heavy nights -
+and without this the simulated total's spread ran 17.2 against the real
+19.5. Measured 2026-10-12 (``scripts/sim_p9/tempo.py``, the 2025 replay):
+real possessions per team-game spread 5.22 across games, the simulated
+means 2.32 (the teams' factors), one matchup's 200 simulations 3.47 (the
+draws), and ``sqrt(5.22^2 - 2.32^2 - 3.47^2) / 100.8`` is 0.031.
 
 .. versionadded:: 6.0.0
 """
@@ -649,6 +666,10 @@ class _Game:
         self.period_started_at = 0
         self.events: list[SimEvent] = []
         self.event_points = 0
+        # The game's tempo: one draw, before any possession (module docstring, GAME_TEMPO_SD).
+        tempo_draw = self.rng.gauss(0.0, 1.0)
+        self.tempo = math.exp(GAME_TEMPO_SD * tempo_draw)
+        self._note("tempo", f"{self.tempo:.3f}", {}, tempo_draw, {"sd": GAME_TEMPO_SD})
 
     # -- time ---------------------------------------------------------------
 
@@ -672,10 +693,10 @@ class _Game:
         second = bisect_left(cumulative, u)
         tenths = second * _TENTHS + (self.rng.randrange(_TENTHS) if second < DURATION_BINS - 1 else 0)
         cap = (PUTBACK_CLOCK_SECONDS if key == _PUTBACK else SHOT_CLOCK_SECONDS) * _TENTHS
-        factor = 1.0 if key in (_REBOUND, _FREE_THROW_REBOUND) else offense.duration_factor
+        factor = 1.0 if key in (_REBOUND, _FREE_THROW_REBOUND) else offense.duration_factor * self.tempo
         tenths = int(max(1, min(round(tenths * factor), cap)))
         if self.trace is not None:
-            self._note("duration", f"{tenths / _TENTHS:.1f}s {key}", {}, u, {"mean": self.duration_means[key], "factor": factor, "cap": cap / _TENTHS})
+            self._note("duration", f"{tenths / _TENTHS:.1f}s {key}", {}, u, {"mean": self.duration_means[key], "factor": factor, "tempo": self.tempo, "cap": cap / _TENTHS})
         return tenths
 
     # -- the trace -----------------------------------------------------------------

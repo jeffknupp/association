@@ -127,17 +127,21 @@ was learned the hard way and is about the data, not the pipeline.
   throws at 0.371 per field-goal attempt against 0.240 - was fixed the same
   day (and-ones counted twice; three-shot trips at 40% instead of 3.5%),
   with the before and after reports side by side in `results/`.
-- **Eleven validation runs so far** (`scripts/sim_p8/results/`): the
+- **Twelve validation runs so far** (`scripts/sim_p8/results/`): the
   baseline, after the free-throw fix, with a pace constant, after the
   bonus-trip fix (`_trips`), two with team rebounds (`_teamreb`,
   `_teamreb_odds`), with the season-weighted window (`2026-10-12_weights`),
   with durations by situation (`2026-10-12_durations`), with usage shares
-  (`2026-10-12_usage`), with on-court defense (`2026-10-12_defense`) and
-  with games weighted by age, half-life 180 days (`2026-10-12_halflife`,
-  the current state: possessions 101.3 against 100.8 with no constant,
-  total +0.7, Brier 0.2163 against the strength model's 0.2253 and ESPN's
-  0.1996; the real-minutes diagnostic `_real_minutes` sits beside the
-  defense run it was made against). Before that run the
+  (`2026-10-12_usage`), with on-court defense (`2026-10-12_defense`), with
+  games weighted by age, half-life 180 days (`2026-10-12_halflife`) and
+  with a game-level tempo factor (`2026-10-12_tempo`, the current state:
+  possessions 101.4 against 100.8 with no constant, total +0.7 and
+  calibrated, Brier 0.2166 against the strength model's 0.2260 and ESPN's
+  0.1994; the real-minutes diagnostic `_real_minutes` sits beside the
+  defense run it was made against). The harness scores wins (Brier),
+  margins and totals (error, spread, PIT), league box rates and player
+  interval coverage; it does not yet score player accuracy (the simulated
+  mean against the real line), which is the next harness piece. Before that run the
   pace matched by a constant (100.5
   against 100.8 possessions), free throws are 0.246 against 0.240 per
   field-goal attempt, threes 0.415 against 0.420, points per 100
@@ -177,7 +181,9 @@ was learned the hard way and is about the data, not the pipeline.
   is used): validated neutral, kept as the right unit. **Games are
   weighted by age** (`params.HALF_LIFE_DAYS` 180, inside every estimator
   query; `Window.half_life_days=None` for equal weights): Brier gain 0.005
-  a game, measured by `scripts/sim_p9/game_weights.py`. **On-court defense
+  a game, measured by `scripts/sim_p9/game_weights.py`. **A game-level
+  tempo factor** (`engine.GAME_TEMPO_SD` 0.031, `scripts/sim_p9/tempo.py`)
+  calibrates the totals' spread (z sd 1.01). **On-court defense
   done 2026-10-12** (D6 option 2): the defense an action meets is the five
   on the floor (`PlayerParams.defended_*`, `LeagueParams.defended`,
   `shrink.combine_defenders` with the measured mean - the possession
@@ -206,10 +212,10 @@ was learned the hard way and is about the data, not the pipeline.
   foul-trouble awareness; minutes MAE 5.3, substitutions nineteen seconds
   into a game, eight-man rosters fouling out), measured against the
   real-minutes ceiling; star scoring (usage or efficiency of the high-usage
-  player, `--explain` on a star's game); the simulated total's spread
-  within a game (17.2 against 19.5); a position-group prior for the deep
-  bench (plan 0b 0.16, `scripts/sim_p9/position_priors.py`); the
-  offensive-rebound share
+  player, `--explain` on a star's game); player accuracy metrics in the
+  harness (mean absolute error of the simulated mean by tier, a CRPS)
+  beside the coverage; a position-group prior for the deep bench (plan 0b
+  0.16, `scripts/sim_p9/position_priors.py`); the offensive-rebound share
   0.247 against 0.255, which is 2025's within-season drift that no
   weighting of the data before January 1 reaches (plan 0b 0.16) - leave
   it; threes and free throws now match.
