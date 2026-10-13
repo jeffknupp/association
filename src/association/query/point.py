@@ -1528,6 +1528,7 @@ def read_point(reading: Reading, question: str) -> Reading:
         # retired template answered past.
         point = team_season_point(reading.asked, replace(scope, who=scope.who.without_position()))
     _minimum_honored(scope, point)
+    _lines_name_a_stat(scope)
     if reading.asked in TEAM_SEASON_POINTS:
         # Whatever the words moved (a team's own total on the team relation),
         # the point is read and said as the team's own season's shape:
@@ -1889,6 +1890,20 @@ def minimum_under(asked: PointShape | None, read: MinimumRead) -> MinimumRead:
     .. versionadded:: 6.0.0
     """
     return read if asked == PLAYER_RANKING else MinimumRead(None)
+
+
+def _lines_name_a_stat(scope: Filtered) -> None:
+    """Refuse a point whose games are kept past a line on a percentage -
+    "more than 40 field goal percentage" - by the cause naming it
+    (``line_on_a_percentage``, :func:`~association.query.lines.measure_filters`),
+    on every key: a count's reader read the line first and said the cause,
+    where a log declined through the planner ("Nothing here answers this
+    question as a game log: relation: ..."). A line naming no stat at all
+    ("under 25 years old") is left to the reading's own causes, which name
+    what it asks (an age) better than "names no box-score stat" does."""
+    for line in relation_lines(scope):
+        if line.measure is None and lexicon.PERCENTAGE_WORDS.search(line.as_typed):
+            measure_filters(replace(scope, lines=(line,)))
 
 
 def _minimum_honored(scope: Filtered, point: Reading) -> None:

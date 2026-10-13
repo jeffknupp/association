@@ -960,3 +960,19 @@ def test_a_mark_typed_into_the_question_forges_no_value(con: duckdb.DuckDBPyConn
     spaced = question.format(*[" "] * question.count("{}"))
     assert _read(con, typed) == _read(con, spaced)
     assert _read(con, typed, ["nikola jokic"]) == _read(con, spaced, ["nikola jokic"])
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "kind", "phrase"),
+    [
+        ("kobe bryant career games with more than 40 field goal percentage", ["kobe bryant"], "line_on_a_percentage", "more than 40 field goal percentage"),
+        ("lebron james career games with more than 45 field goal percentage", ["lebron james"], "line_on_a_percentage", "more than 45 field goal percentage"),
+    ],
+)
+def test_a_line_on_a_percentage_is_the_points_cause_on_every_key(con: duckdb.DuckDBPyConnection, question: str, names: list[str], kind: str, phrase: str) -> None:
+    """ISSUES.md #371: a log kept past a line on a percentage was declined
+    through the planner ("Nothing here answers this question as a game log:
+    relation: ..."), where a count said the cause; the point reader says it
+    on every key now."""
+    reading = _read(con, question, names)
+    assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts["phrase"] == phrase
