@@ -29,7 +29,7 @@ other team reads in :mod:`association.query.conditions` (``_box_missing``).
 
 Narrowing composes: an opponent, a venue, a starter/bench half, a teammate's
 absence, a threshold on a stat, a month - each is one more clause over the
-same rows, so a new one reaches every template that reads the relation at
+same rows, so a new one reaches every reader of the relation at
 once. Entity binding is not here: this module takes ids the entity layer has
 already resolved, and never a name.
 
@@ -75,12 +75,13 @@ _RECORDED = "pgl.minutes IS NOT NULL"
 #: A ``season_type`` value meaning "both the regular season and the
 #: postseason at once" - a sentinel outside the two real values a game row
 #: carries (``REGULAR_SEASON`` 2, ``POSTSEASON`` 3), never written to a
-#: ``season_type`` column itself. Read the same way ``game_log`` already read
-#: a "last N games" question naming no season type at all
-#: (``router._route_game_log_recent_span``, ``season_type_unstated``), and
-#: now also for a question that asks for both outright ("including the
-#: playoffs", "regular season and playoffs") - see
-#: ``router._BOTH_SEASON_TYPES_WORDS``. :func:`season_type_clause` is the one
+#: ``season_type`` column itself. Read for a "last N games" log naming no
+#: season type at all, and for a question that asks for both outright
+#: ("including the playoffs", "regular season and playoffs") - the span
+#: tagger's :attr:`~association.query.reading.Span.both` (the
+#: ``season_type_unstated`` slot until Phase 3, step 2, set by
+#: ``router._route_game_log_recent_span`` and
+#: ``router._BOTH_SEASON_TYPES_WORDS``). :func:`season_type_clause` is the one
 #: place this turns into SQL; every other reader of the relation still sees a
 #: real ``season_type`` (2 or 3) or this sentinel, never a third meaning.
 #:
@@ -660,8 +661,8 @@ class Narrowed:
     extra_params: list[Any] = field(default_factory=list)
     opponent: Entity | None = None
     #: The player's OWN team the question narrowed to - "for the Miami Heat",
-    #: read only where the question names one and the router left no team
-    #: slot at all (yardstick-v2 F166). Distinct from ``opponent``: this keeps
+    #: read only where the question names one and the model left no team
+    #: at all (yardstick-v2 F166). Distinct from ``opponent``: this keeps
     #: only the games he played FOR this team, not games against it.
     team: Entity | None = None
     venue: str | None = None
@@ -1055,7 +1056,7 @@ def games_subquery(narrowed: Narrowed, box: BoxSource) -> tuple[str, list[Any]]:
     the Eastern ``day`` and the raw ``stamp`` beside every ``pgl`` column.
 
     This is what :func:`association.query.conditions._player_games` renders
-    for the templates that group a player's games by a condition (splits, a
+    for the readers that group a player's games by a condition (splits, a
     record above a threshold, a streak, with/without) - the same relation, the
     same guard, positional parameters instead of named ones so a
     :class:`Narrowed` can feed it. ``SELECT * REPLACE`` blanks the columns a
@@ -1378,9 +1379,10 @@ def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | N
     ), [value for stint in stints for value in stint]
 
 
-# Slot value -> real player_box_stats column. A whitelist, not a passthrough:
-# the router's `stat` slot is model-generated text, and this is the only place
-# it can reach SQL. Same reasoning as metrics.EXTRA_FIELD_COLUMNS.
+# Stat key -> real player_box_stats column. A whitelist, not a passthrough:
+# a stat key can be model-generated text (the normalizer's stat, the router's
+# `stat` slot before it), and this is the only place it can reach SQL.
+# Same reasoning as metrics.EXTRA_FIELD_COLUMNS.
 THRESHOLD_STAT_COLUMNS = {
     "points": "points",
     "rebounds": "rebounds",

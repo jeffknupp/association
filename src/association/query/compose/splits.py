@@ -33,7 +33,7 @@ from association.query.team_relation import condition_team_no_games, team_games,
 from .core import Compiled, Query, compile_over, compile_query, rows_of, unread_note
 from .team import TeamQuery, compile_team_over
 
-# Router stat name -> the standard split line's own key: naming one of these
+# Stat name (the router's, kept as the measure's spelling) -> the standard split line's own key: naming one of these
 # changes nothing about which columns are shown, since _PLAYER_LINE/_TEAM_LINE
 # already carry it. Kept apart from SPLIT_EXTRA_STATS below so a stat that IS
 # already on the table is neither refused nor given a redundant second column.
@@ -50,12 +50,13 @@ _SPLIT_LINE_STATS: dict[str, frozenset[str]] = {
 SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
     "usage_pct": ("usage_pct", "USG%", "AVG(p.usage_pct)"),
 }
-"""``player_splits`` extra-column stats, keyed by the router's stat name.
+"""``player_splits`` extra-column stats, keyed by the stat's name (the
+router's stat name when this was written).
 
 .. versionadded:: 4.4.0
 """
 
-#: The two halves the stages narrow ``starter_bench`` to when the question
+#: The two halves the split tagger narrows ``starter_bench`` to when the question
 #: names one. A splits answer is both groups side by side, so it folds them
 #: back to the category, while the log and the other filtering shapes read
 #: the half.
@@ -156,8 +157,8 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     compiler's settled player and narrowing (#228). ``None`` where the point
     is not the splits' own (a grouped record by venue or by starter on the
     player relation with no predicate), or names a stat the line has no column for (the
-    compiler's own point, said by its sentence); the template's own early
-    refusals stand (a window, a home/away split beside a venue). A
+    compiler's own point, said by its sentence); the retired template's own
+    early refusals stand (a window, a home/away split beside a venue). A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal.
 

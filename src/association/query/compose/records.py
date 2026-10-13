@@ -95,8 +95,9 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     if line is None:
         return None
     stat, _column, threshold = line
-    # The template's own scope - it names the span in the heading, the floor
-    # note and the unseen-games count - read off the same slots the same way.
+    # The retired template's own scope - what names the span in the heading,
+    # the floor note and the unseen-games count - read off the same filters
+    # the same way.
     covered = condition_scope(scope.span.as_career() if scope.cuts.season_n else scope.span, _PLAYER_GAME_TABLES)
     compiled = compile_query(con, replace(q, skeleton="grouped", group="line", measures=["margin"]))
     if compiled.player is None:

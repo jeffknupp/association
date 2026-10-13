@@ -14,7 +14,7 @@ question's own words - before anything reads them.
 
 Names are copied exactly as typed, never expanded or corrected. A typo is the
 entity index's to read (a single near spelling is that player, said in the
-answer), never the model's: the router's silent corrections are how "embiid"
+answer), never the model's: the router's silent corrections were how "embiid"
 became Ben Simmons (AGENTS.md, "Why embiid specifically"). Measured over the
 277 day10 wordings: 299 of 302 names copied verbatim, 0.8s a question on
 qwen2.5:3b (``~/association-research/parser-greenfield/RESULT.md``).

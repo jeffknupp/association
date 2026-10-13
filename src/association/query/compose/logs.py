@@ -311,7 +311,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unansw
         _game_log_lines(scope)
     except Unsupported:
         return None
-    # The router's own stat, which the log shows as its extra columns; a
+    # The reading's own stat, which the log shows as its extra columns; a
     # measure the question's words moved in instead is the compiler's point.
     if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.measure)]):
         return None

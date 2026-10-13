@@ -67,8 +67,8 @@ KNOWN_TABLES: frozenset[str] = frozenset(
     }
 )
 """Every table and view the query side reads. :data:`COVERAGE` is keyed by
-these names, and the tests hold each floor and each template's declared
-tables to it, so a typo is a floor that never fires rather than a name
+these names, and the tests hold each floor and each shape's declared
+tables (``query.coverage.SOURCES``) to it, so a typo is a floor that never fires rather than a name
 silently unmatched.
 
 .. versionadded:: 5.0.0
@@ -268,7 +268,7 @@ _EMPTY_BOX_SEASON_NOTES: Mapping[int, str] = MappingProxyType(
 # below against real row counts, because these are claims about the data and
 # not about the code.
 #
-# Only tables a template can read are listed. A table nothing queries needs no
+# Only tables a reader can read are listed. A table nothing queries needs no
 # floor, and inventing one would be an unverified claim.
 COVERAGE: dict[str, Coverage] = {
     "standings": Coverage(
@@ -295,7 +295,8 @@ COVERAGE: dict[str, Coverage] = {
             "it returns for 1994, so 1993 is a duplicate label rather than the 1992-93 season"
         ),
         # The postseason is selected by the calendar year it was played in
-        # (templates._season_games), which is why its floor reads 1989 where the
+        # (``query.team_relation.team_span_clause``; ``templates._season_games``
+        # until Phase 2), which is why its floor reads 1989 where the
         # first stored label is 1988.
         postseason_first_season=1989,
         postseason_subject="Playoff games",
@@ -334,7 +335,7 @@ COVERAGE: dict[str, Coverage] = {
         # The ten missing 2001 playoff games take their box scores with them, so
         # a player's postseason is short exactly where his team's is. Declared
         # here as well as on `games` because the caveat follows the TABLE a
-        # template reads: single_game_high and threshold_count never touch
+        # reader reads: single_game_high and threshold_count never touch
         # `games`, and without this a short count is stated as fact.
         postseason_partial=_PLAYER_POSTSEASON_NOTES,
         phantom=(1993,),

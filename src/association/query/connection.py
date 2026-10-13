@@ -20,7 +20,7 @@ def connect_read_only(db_path: str) -> duckdb.DuckDBPyConnection:
     ``glob('/home/<user>/*')`` lists dotfiles. That mattered most while a
     model wrote SQL from a question a stranger may have phrased; nothing
     writes SQL from a question any more, and the guard stays because it costs
-    nothing and keeps the warehouse the entire surface: no template reads a
+    nothing and keeps the warehouse the entire surface: no reader reads a
     Parquet file, attaches a database or copies anything. The fetch path is
     the opposite case and keeps its own connection: building the warehouse IS
     reading 208,000 files off disk.

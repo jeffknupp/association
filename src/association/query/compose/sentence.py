@@ -1,7 +1,7 @@
-"""One sentence per skeleton, carrying what the templates' sentences carry -
-the subject, the span, every narrowing the relation applied
+"""One sentence per skeleton, carrying what the retired templates' sentences
+carried - the subject, the span, every narrowing the relation applied
 (:meth:`~association.query.player_games.Narrowed.filters`), the measure names,
-and the count of games the numbers rest on. Not the templates' exact wording;
+and the count of games the numbers rest on. Not their exact wording;
 the shape a reader needs to see what was answered and correct it with a
 follow-up (`AGENTS.md`, "a default that chooses reasonably ...").
 
@@ -288,7 +288,7 @@ TEAM_LABELS: dict[str, str] = {
 
 def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     """The answer for a :class:`~association.query.compose.team.TeamQuery` -
-    the team subject's own sentence, carrying the same things a template's
+    the team subject's own sentence, carrying the same things a reader's
     does: the value, the span it covers, the games it rests on, and the
     narrowing that produced it, so a wrong scope is visible and correctable
     (`AGENTS.md`, "a default that chooses reasonably ...").
@@ -333,7 +333,8 @@ def _team_run_sentence(q: TeamQuery, result: TeamResult, span: str) -> str:
 def _run_sentence(q: Query, out: dict[str, Any]) -> str:
     """A ``run`` read: the longest runs of consecutive games the point's one
     condition held along - the compiler's own words for a streak, where the
-    streak presenter's do not apply."""
+    streak's reader and sayer (:mod:`association.query.compose.runs`) do not
+    answer."""
     rows = out["rows"]
     who = out["player"]
     where = out["narrowing"]
@@ -348,8 +349,8 @@ def _run_sentence(q: Query, out: dict[str, Any]) -> str:
 
 def _pair_sentence(q: Query, out: dict[str, Any]) -> str:
     """A ``pair`` read: two players' meetings, newest first, with each one's
-    line - the compiler's own words for a matchup, where the matchup
-    presenter's do not apply."""
+    line - the compiler's own words for a matchup, where the matchup's
+    reader and sayer (:mod:`association.query.compose.pairs`) do not answer."""
     rows = out["rows"]
     who = out["player"]
     where = out["narrowing"]

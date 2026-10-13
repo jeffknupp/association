@@ -79,7 +79,7 @@ def _team_record_month_and_split(split: str | None, situation: Situation | None,
             raise Unsupported("a month split already covers every month; narrowing it further to one weekday or holiday is not built")
     if limit and split is None and month is None and narrowing is None:
         # Measured over the corpus, a month narrowing or a by-month split
-        # never carries a real limit of its own (the router fills a default),
+        # never carried a real limit of its own (the router filled a default),
         # so only a bare limit is read as "last N games".
         raise Unsupported("a record over a limited set of games is a game_log question")
     return split, month, narrowing

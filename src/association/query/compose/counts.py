@@ -48,7 +48,7 @@ from .core import Query, compile_query, rows_of
 
 def _threshold_count_is_own_point(q: Query, column: str) -> bool:
     """Whether ``q`` counts exactly the games ``threshold_count`` counts: the
-    router's own stat at its own threshold (or a below/above line carrying
+    reading's own stat at its keyed line's number (or a below/above line carrying
     that threshold instead, which the count reads as the line), for one
     player or grouped by player over the league - nothing the question's
     words added."""

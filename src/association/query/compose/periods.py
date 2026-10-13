@@ -430,8 +430,8 @@ def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Fi
     """The team and the seasons its games come from - through
     :func:`~association.query.team_relation.scoped_team`, the order every
     team read settles them in, unless a ``date`` already names one game
-    outright: a date from a past season looked for inside the router's
-    current-season default finds nothing, so a named date reads every
+    outright: a date from a past season looked for inside the defaulted
+    current season finds nothing, so a named date reads every
     season on record instead."""
     if scope.cuts.date:
         team = resolved_team(con, scope.who.team, season=slot_season(scope))

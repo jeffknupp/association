@@ -32,10 +32,10 @@ if TYPE_CHECKING:
 AnsweredBy = Literal["fast", "refused"]
 """Whether the question was answered, or refused with no reading of it.
 
-``"fast"`` means parser -> template or compiler: deterministic, typically
-1-2s, and the only value that populates :attr:`Answer.shape` and
-:attr:`Answer.data`. It covers a template's or the compiler's own refusal
-too - a clarification, a "no match", a shape nothing here reads named by its
+``"fast"`` means parser -> planner -> a reader and the sayer, or the
+compiler's own sentence: deterministic, typically 1-2s, and the only value
+that populates :attr:`Answer.shape` and :attr:`Answer.data`. It covers a
+reader's or the compiler's own refusal too - a clarification, a "no match", a shape nothing here reads named by its
 cause - since looking at the question and having something to say about it
 is an answer. ``"refused"`` means nothing here had a reading of the question
 at all, and :attr:`Answer.text` names why
@@ -144,9 +144,9 @@ class Answer:
     ``text`` is exactly what the CLI prints, unchanged - the final prose, so
     the fast path makes NO model call after the normalizer. ollama keeps one
     KV cache slot per model, so a second call with a different system prompt
-    evicts the reader's prefix (measured: three consecutive router calls run
-    11.6s / 1.3s / 1.7s, but interleaving one narration call puts the next
-    back to 11.2s). Phrasing every answer on the answer side also removes the
+    evicts the reader's prefix (measured on the router's model, the normalizer's
+    since 5.0.0: three consecutive calls ran 11.6s / 1.3s / 1.7s, but
+    interleaving one narration call put the next back to 11.2s). Phrasing every answer on the answer side also removes the
     last place on this path where a number could be invented. Everything
     else is what the CLI never had a way to show: which path answered, and -
     on the fast path only - the shape it was read and said as and the
@@ -192,7 +192,7 @@ class Answer:
     #: .. versionadded:: 4.4.0
     history_file: str | None = None
     #: What was decided on the way to this answer - every reading of the
-    #: question and override of a routed field, as values
+    #: question and override of a field the model came back with, as values
     #: (:class:`~association.query.decisions.Decision`), in the order made.
     #:
     #: A decision the answer states - a name read as one player, a season

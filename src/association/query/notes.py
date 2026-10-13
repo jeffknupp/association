@@ -21,7 +21,7 @@ wrapping a writer moves no answer. One phrase per kind, written from the
 facts, is ``ROADMAP.md``'s Phase 2.
 
 Recorded only inside :func:`collect` - the answering loop's, around one
-question. A writer called directly (a test, a template on its own) records
+question. A writer called directly (a test, a reader on its own) records
 nothing and behaves the same.
 
 .. versionadded:: 5.0.0

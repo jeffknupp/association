@@ -5,8 +5,10 @@ connection, no relation, no question (``ROADMAP.md``, contract 3; the
 import contract "The compiler's sentence reads no warehouse" holds this
 module as it holds :mod:`association.query.compose.sentence`). Each note
 kind has ONE phrase, here (:func:`note_phrase`), so rewording a note is
-editing that phrase; the templates that still write their own sentences
-phrase their notes through it too (``compose.core._box_notes``).
+editing that phrase; the compiler's own sentence
+(:mod:`association.query.compose.sentence`), the one writer of a sentence
+outside this module, phrases its notes through it too
+(``compose.core._box_notes``).
 
 Phase 2's first slice (``ROADMAP.md``, "Phase 2, the expected steps",
 step 0): the game log's words, taken from the retired template's body
@@ -686,7 +688,7 @@ def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
 
 
 #: What a coach question is answered with, and why it is a refusal naming the
-#: source rather than one naming only the intent.
+#: source rather than one naming only the shape.
 #:
 #: No table here holds a coach - 20 base tables and 6 views, zero columns named
 #: anything like it - so a reader has nothing to find. Left to fall through,

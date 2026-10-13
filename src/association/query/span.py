@@ -1,9 +1,10 @@
 """The span tagger: the one reader of the seasons a question covers and the
 season type it reads (:class:`~association.query.reading.Span`), from the
 lexicon's words (:mod:`association.query.lexicon`) and the few facts of the
-question the stages settled before it - the intent, whether a player and a
-window were named, a date, a game of a series, an ordinal season, a range
-opened on a dated day. It claims the characters it read
+question read before it - whether a player and a window were named, a date,
+a game of a series, an ordinal season, a range opened on a dated day; what
+the words ask is the key's reading (:func:`~association.query.point.span_under`,
+since Phase 3, step 4, slice (b)). It claims the characters it read
 (:class:`~association.query.reading.Claim`), each once.
 
 Phase 3, step 2's first slice: until it, six stages of
@@ -333,7 +334,8 @@ def _relative_since(question: str) -> tuple[int, Claim] | None:
 
 def relative_seasons(question: str) -> int | None:
     """How many seasons "past/last N seasons" names, or None - what a
-    history's window counts (``router._route_relative_window``).
+    history's window counts (``router._route_relative_window`` read it
+    until Phase 3, step 2).
 
     .. versionadded:: 6.0.0
     """

@@ -72,9 +72,9 @@ from .core import Query, measure_names
 
 def player_line_reads(q: Query) -> bool:
     """Whether ``q`` is ``player_stat``'s own unnarrowed point on the season
-    line: a per-game scalar for one named player and the router's own stat
+    line: a per-game scalar for one named player and the reading's own stat
     - the default point's measures, or the question's word for that same
-    stat ("3pt percentage" is three_pct, which the router filed
+    stat ("3pt percentage" is three_pct, which the router filed as
     threePointFieldGoalPct). A measure the words moved in is a point the
     season line does not say; a narrowing beyond what its words state is
     the planner's check beside it (``compose.plan.cells_unhonored``).
@@ -88,8 +88,10 @@ def player_line_reads(q: Query) -> bool:
     """
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates or q.source != "seasons":
         return False
-    # At call time: the point reader imports this package for the adapter
-    # still here, so a module-level import would cycle.
+    # At call time: written when the point reader imported this package for
+    # an adapter (``compose.adapt``, deleted in Phase 2), where a
+    # module-level import would cycle; the point reader imports nothing from
+    # ``compose`` since, and the import was left where it stands.
     from association.query.point import default_point
 
     try:
@@ -287,7 +289,7 @@ def _advanced_empty(con: duckdb.DuckDBPyConnection, player: Entity, span: Resolv
 
 def player_history_reads(q: Query) -> bool:
     """Whether ``q`` is ``player_history``'s own point on the season line:
-    a history by season of the router's own stat, one with a per-season
+    a history by season of the reading's own stat, one with a per-season
     column. A stat with no per-season column or a measure the question's
     words moved in is the game-level reading's, and so is a narrowing
     beyond what its words state (``compose.plan.cells_unhonored``).
@@ -459,7 +461,8 @@ def _player_compare_netpoints(con: duckdb.DuckDBPyConnection, players: list[Enti
     supplementary rather than required: a player with no row contributes
     nothing and a season with no rows at all drops the section. That is
     also why ``net_points_player`` is deliberately NOT among the comparison's
-    TEMPLATE_SOURCES - listing it would put a 2019 coverage floor on every
+    declared tables (``coverage.SOURCES``; ``TEMPLATE_SOURCES`` until Phase 2,
+    step 6) - listing it would put a 2019 coverage floor on every
     comparison and refuse the 1994-2018 ones outright."""
     found: dict[str, dict[str, Any]] = {}
     for player in players:

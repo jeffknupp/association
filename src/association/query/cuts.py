@@ -3,12 +3,13 @@
 weekday, a month, a holiday, "since <day>", the opponent's conference or
 division, or words nothing narrows by), one calendar day, a playoff round, a
 game of a series, an ordinal season - from the lexicon's words
-(:mod:`association.query.lexicon`) and the facts of the question the stages
-settled before it: the intent, the split, the opponent the subject reading
-read and the teammates it read as absent. The opponent is the subject
-reading's word (``subject.read_subject``, the one reader of who stands
-against the subject) and the tenure is written by it after the stages
-(``subject._apply_own_team``): the tagger takes the first and claims
+(:mod:`association.query.lexicon`) and the facts of the question read
+before it: the opponent the subject reading read and the teammates it read
+as absent (:class:`CutsContext`; what the words ask is the key's reading,
+:func:`~association.query.point.cuts_under`, since Phase 3, step 4, slice
+(b)). The opponent is the subject reading's word (``subject.read_subject``,
+the one reader of who stands against the subject) and the tenure is written
+by it after the taggers (``subject._apply_own_team``): the tagger takes the first and claims
 nothing for either. It claims the characters it read
 (:class:`~association.query.reading.Claim`), each once.
 
@@ -43,8 +44,8 @@ from association.query.span import career_named
 
 @dataclass(frozen=True, kw_only=True)
 class CutsContext:
-    """What the stages settled before the cuts are read, and the tagger's
-    rules read beside the words: the opponent as the subject reading read
+    """What was read before the cuts are, and the tagger's rules read
+    beside the words: the opponent as the subject reading read
     it, and the teammates it read as absent (an "opponent" that is the
     ``without`` list again is no team). What the words ask is no context
     since Phase 3, step 4, slice (b): a venue beside the splits reader's

@@ -1,31 +1,36 @@
 """Who a question is about, read once from its own words.
 
 A question's subject - a player, two players, a team, two teams, a position
-group, or everyone - is today inferred in four places: the router's slots,
-``entities.scope_from_question`` (gone with 5.0.0) and its siblings in
+group, or everyone - was until 4.4.0 inferred in four places: the router's
+slots, ``entities.scope_from_question`` (gone with 5.0.0) and its siblings in
 ``agent._try_fast_path``, the compiler's ``move_point``, and the refusals.
-Each repairs what the one before it got wrong, and each was written for the
+Each repaired what the one before it got wrong, and each was written for the
 question that exposed it (AGENTS.md, "The router invents names"). This module
 is one reading of the subject instead, made from the question's own spans
-BEFORE any template runs, so that every name a template reads is a span of
-the question and the router's slots are a hint, never a source.
+BEFORE any reader runs, so that every name a reader reads is a span of the
+question and the model's names (the normalizer's,
+:mod:`association.query.normalizer`) are a hint, never a source.
 
 Measured before it was written (``~/association-research/subject-kinds/``,
-2026-09-25): over 290 recorded questions the reading agrees with what the
-repair chain hands the template on 279; of the eleven left, four are the
+2026-09-25): over 290 recorded questions the reading agreed with what the
+repair chain handed the template on 279; of the eleven left, four were the
 chain answering a different subject (a compare whose second player the
 router filed as the opponent, two position-group logs read as a team's,
-yardstick-v2 F114), six are the chain's slot encodings of the same subject,
+yardstick-v2 F114), six were the chain's slot encodings of the same subject,
 one a kind neither side had. The rules below are the ones that measurement
 needed, each named for the question that needed it.
 
-:func:`read_subject` is pure, takes the routed slots, and returns a
-:class:`Subject` with its evidence; :func:`apply_subject` writes the fields
-it has taken over from the chain into the slots the templates read - the
-players and a player filed as the opponent, so far - each write a recorded
-:class:`~association.query.decisions.Decision`. The rest of the chain still
-writes the other fields; each step goes as the reading takes its field over,
-proven by the golden (the roadmap's plan item 1).
+:func:`read_subject` is pure: it takes the model's names as the parser
+classified them (``parse._model_reading``: the players and the team the
+model copied, a second team as the opponent) and returns a :class:`Subject`
+with its evidence. :func:`settle_subject` writes what the words ask once the
+grammar's rules have settled it, and :func:`apply_subject` - in the parser's
+last step - writes the reading into the Reading's typed filters
+(:class:`~association.query.reading.Filtered`: the subject, the companions,
+the tenure), each write a recorded
+:class:`~association.query.decisions.Decision`. The repair chain it took its
+fields over from is gone (ROADMAP plan item 6, step (e)): the reading is the
+one writer of who a question is about.
 
 .. versionadded:: 4.4.0
 """
@@ -117,15 +122,15 @@ SUBJECT_KINDS: frozenset[str] = frozenset(get_args(SubjectKind))
 """
 
 #: What the words ask a "<team> when <player> reaches N" question under
-#: (the router's own `_WHEN_REACHES_REROUTABLE`, plus the splits the model
-#: files it as; ``None`` the grammar's "no shape") - each would answer the
+#: (the router's `_WHEN_REACHES_REROUTABLE` and the splits its model filed
+#: it as, until 5.0.0; ``None`` the grammar's "no shape") - each would answer the
 #: player's or the team's own line instead of the team's record under the
 #: condition.
 _RECORD_WHEN_PARENTS: frozenset[PointShape | None] = frozenset({PLAYER_LINE, PLAYER_SPLITS, PLAYER_LOG, TEAM_LINE, TEAM_RECORD, PRESENCE_SPLIT, None})
 
 #: Why a team's question with a companion's line is ``record_when``
 #: (:func:`child_named`), wherever that is said: the reading's own
-#: decision, and the parser's about the intent.
+#: decision, and the parser's about what the words ask.
 _TEAM_RECORD_WHEN = "a team's record in the games a player named beside it reached a line"
 
 _NOT_A_TEAM: frozenset[str] = SUBJECT_KINDS - {"team", "teams", "team_players"}
@@ -138,14 +143,15 @@ _PLAYER_RELATION_PARENTS: frozenset[PointShape | None] = frozenset({PLAYER_LOG, 
 #: assigned under). Intent names until Phase 3, step 4.
 #:
 #: Each child is a fixed point on a relation whose parent (``game_log``,
-#: ``player_stat``, ``leaderboard``, ``team_record``) the router still
-#: routes to; the words that tell the child from the parent are the ones
+#: ``player_stat``, ``leaderboard``, ``team_record``, as the retired
+#: intents named them) the parent grammar names; the words that tell the
+#: child from the parent are the ones
 #: below, and the subject's kind is what keeps a word grammar off the other
 #: relation's questions - "how many times did the 76ers play boston" is two
 #: TEAMS meeting, not a count of a player's games; "who lead the league in
 #: avg 3 point distance" names no PLAYER to measure. Measured over 352
 #: recorded (question, intent) pairs (``~/association-research/intent-shrink/``,
-#: 2026-09-25): with the gate, no question of another intent moves. The
+#: 2026-09-25): with the gate, no question of another intent moved. The
 #: precedence settles the two that overlap: "career most points in a game"
 #: is a single-game high before it is a count, and "how many 20+ point games
 #: ... in the past two seasons" a count before it is a history.
@@ -158,8 +164,9 @@ _CHILD_GRAMMARS: tuple[tuple[PointShape, lexicon.Ask, frozenset[str], frozenset[
     (LINE_RECORD, lexicon.CHILD_RECORD_WHEN_LINE, SUBJECT_KINDS, frozenset({TEAM_RECORD, TEAM_LINE, PRESENCE_SPLIT, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS),
     # A player's games won or lost: his team's record in the games he
     # played, which is record_when's read with no threshold ("how many
-    # playoff games has embiid won?" - answered right today only because
-    # the router misfiles it there). A player only: a TEAM's games won are
+    # playoff games has embiid won?" - answered right, when this was
+    # written, only because the router misfiled it there). A player only: a
+    # TEAM's games won are
     # team_record's own question.
     (
         LINE_RECORD,
@@ -196,11 +203,11 @@ words after them.
 
 
 class Applied(NamedTuple):
-    """What :func:`apply_subject` did: the typed scope with the reading
-    written into it, the decisions recorded, the router's names the question
-    never held that nothing could replace (the caller refuses by name), and
-    the intent the subject's shape settled on - the router's own where the
-    shape fits it.
+    """What :func:`apply_subject` did: the typed filters with the reading
+    written into them, the decisions recorded, the model's names the
+    question never held that nothing could replace (the caller refuses by
+    name), and what the words ask as the subject's shape settled it - the
+    key handed in where the shape fits it.
 
     .. versionadded:: 5.0.0
     """
@@ -222,13 +229,13 @@ class Subject(reading.Subject):
     why, the characters each finding was read from.
 
     ``kind`` is one of :data:`SUBJECT_KINDS`. ``players`` and ``teams`` are
-    the names as the question or the router gave them - resolution to an
+    the names as the question or the model gave them - resolution to an
     entity stays with :mod:`association.query.entities` - except that a
     model name the question's own span spells differently carries the
     question's spelling (a bare "Jokic" completed, "Jaylen Huff" cut back to
     the "Jay Huff" typed; see :func:`_spellings`). ``opponent`` is a
     team the subject is set against - the question's own "vs the Pistons",
-    or the router's ``opponent`` where it names a team the question holds
+    or the model's second team where it names a team the question holds
     (:func:`_read_opponent`); ``own_team`` the
     player's own ("for the Heat"); ``companions`` players named beside the
     subject with a role the question states ("without KD", "when Maxey
@@ -249,7 +256,8 @@ class Subject(reading.Subject):
 
     .. versionchanged:: 6.0.0
        A :class:`~association.query.reading.Subject` - the typed value the
-       Scope carries (Phase 3, step 2) - with the parser's fields beside it:
+       Reading carries (``Reading.who``, Phase 3, step 2; the ``Scope`` until
+       Phase 3, step 4, slice (b)) - with the parser's fields beside it:
        ``kind``, ``players``, ``teams`` and ``position`` are the typed
        subject's, as read.
     """
@@ -258,7 +266,7 @@ class Subject(reading.Subject):
     own_team: str | None = None
     companions: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
-    #: The router's player names - from ``player``, ``players`` and a player
+    #: The model's player names - the players it copied and a player
     #: filed as the ``opponent`` - that the question never held and that are
     #: not teams: fiction, as far as the question can tell ("Jusuf Nurkic" on
     #: "compare sga and embiid"). :func:`apply_subject` replaces or reports
@@ -266,12 +274,12 @@ class Subject(reading.Subject):
     invented: tuple[str, ...] = ()
     #: The season the question ITSELF names, if one - what the tenure rule
     #: reads ("for Miami" with no season is a career, not this season), and
-    #: never the router's own "current season" default.
+    #: never a defaulted "current season".
     named_season: int | None = None
     #: What the subject's shape settles the words to ask: a team's record in
     #: the games a companion reached a line (``record_when``), or a child the
     #: question's own words name for this kind of subject
-    #: (:data:`KIND_ASSIGNED_ASKS`); the route's own everywhere else.
+    #: (:data:`KIND_ASSIGNED_ASKS`); the key handed in everywhere else.
     #:
     #: .. versionadded:: 6.0.0
     asked: PointShape | None = None
@@ -295,7 +303,7 @@ class Subject(reading.Subject):
     #: The characters each companion was read from - the keyword, the
     #: names and the role's words, a reached one's line included
     #: (:class:`~association.query.reading.Claim`, ``what`` ``"companion"``),
-    #: which ride the Route onto ``Reading.claims``. The subject's own names
+    #: which ride onto ``Reading.claims``. The subject's own names
     #: are the subject slice's to claim.
     #:
     #: .. versionadded:: 6.0.0
@@ -311,13 +319,13 @@ class Subject(reading.Subject):
     #: .. versionadded:: 6.0.0
     companion_phrases: tuple[tuple[int, int, str], ...] = ()
 
-    #: The router's player names that are no name at all - a rank word or
+    #: The model's player names that are no name at all - a rank word or
     #: a phrase of the question ("most", "most 30+ point games";
     #: :func:`_not_a_name`), or a name the question holds only by a TEAM's
     #: word ("magic vs nets" is not Magic Johnson;
     #: :func:`~association.query.entities._named_only_by_a_team_word`) -
-    #: which :func:`apply_subject` takes out of the slots rather than leaves
-    #: for a template to resolve ("No player found matching 'most'").
+    #: which :func:`apply_subject` takes out of the typed subject rather than
+    #: leaves for a reader to resolve ("No player found matching 'most'").
     filler: tuple[str, ...] = ()
 
 
@@ -369,9 +377,10 @@ def question_supports(name: str, question: str) -> bool:
     """Whether ``question`` holds ``name``: any one word of it, a near
     spelling of one (three or more letters) within
     :func:`association.query.entities._edit_budget` (none for a short word,
-    one edit to six letters, two beyond - the router corrects typos, "embid"
-    is Embiid), a curated nickname for the player, or its initials ("SGA",
-    "kd"). The repair chain's grounding check, as a predicate.
+    one edit to six letters, two beyond - a model may correct a typo the
+    question made, as the router did silently, and "embid" is Embiid), a
+    curated nickname for the player, or its initials ("SGA", "kd"). The
+    retired repair chain's grounding check, as a predicate.
 
     .. versionadded:: 4.4.0
     """
@@ -398,8 +407,9 @@ def _near(name: str, text: str) -> bool:
 
 
 def _is_a_team(index: names.NameIndex, name: str) -> bool:
-    """A name the router filed that is a team and no player ("Alamhamed
-    Embiid" was filed under ``teams``; "Boston Celtics" under ``players``)."""
+    """A name the model handed back that is a team and no player (the router
+    filed "Alamhamed Embiid" under ``teams`` and "Boston Celtics" under
+    ``players``)."""
     return bool(find_teams(index.teams, name)) and not find_players(index.players, name)
 
 
@@ -461,7 +471,7 @@ def _question_players(index: names.NameIndex, question: str, routed: list[str], 
     the Celtics, not Brandon Boston Jr.; "magic" is Orlando, not Magic
     Johnson), and an ordinary word that happens to be somebody's whole name
     ("best" = Travis Best, "head" = Luther Head, "pointer", "jan") unless
-    the router read it as that player too or the question uses the
+    the model read it as that player too or the question uses the
     player's nickname."""
     q_words = [w.casefold() for w in _words(question)]
     dictionary = _dictionary()
@@ -480,15 +490,16 @@ def _question_players(index: names.NameIndex, question: str, routed: list[str], 
 
 
 def _merge_names(router_named: list[str], question_named: list[str]) -> tuple[str, ...]:
-    """The router's names the question supports (in the question's own
-    spelling, and once each - a player filed as both ``player`` and
+    """The model's names the question supports (in the question's own
+    spelling, and once each - a player filed as both a player and the
     ``opponent`` is one person), plus the names the question gives that are
-    not one of them already - the router's completion of a surname the
-    question gives is the same person, not a second one. The router's spelling leads on purpose:
-    :func:`~association.query.entities.players_named_in` reads "kareem stats
+    not one of them already - the model's completion of a surname the
+    question gives is the same person, not a second one. The model's spelling leads on purpose:
+    :func:`players_named_in` reads "kareem stats
     vs bob lanier" as naming Kareem Rush and Chaz Lanier, two real players by
     whole word and neither the one asked about (ISSUES.md #123), and the
-    router's "Kareem Abdul-Jabbar" is the better reading of "kareem"."""
+    router's "Kareem Abdul-Jabbar" was the better reading of "kareem".
+    (``router_named`` keeps the router's name for the model's names.)"""
     out: list[str] = []
     for name in (*router_named, *question_named):
         if not _same_person(name, out):
@@ -502,11 +513,11 @@ def _read_opponent(index: names.NameIndex, question: str, scope: Filtered, seaso
     gameloh" arrived as ``opponent="New Jersey Nets"``, which resolves to no
     team, "tatum vs lakers" once as the Trail Blazers, a real team the
     question never wrote, and "magic vs nets" with the two sides swapped;
-    the question's own wins each time. With no "vs" to read, the router's
-    ``opponent`` stands where it names a team the question holds
+    the question's own wins each time. With no "vs" to read, the model's
+    second team (the ``opponent`` the parser hands in) stands where it names a team the question holds
     (:func:`~association.query.entities._team_grounded`): "76ers 4th
     quarter points against boston" is ``team_quarter_points``' own slot. And
-    with a "vs" whose word resolves to nothing, the router's ``team`` stands
+    with a "vs" whose word resolves to nothing, the model's team stands
     as the opponent where the question holds it nowhere else - its reading
     of that word. A word after the "vs" that is a player's name the question
     names is the player, not a team it clips: "kevin garnett vs tim duncan
@@ -519,9 +530,9 @@ def _read_opponent(index: names.NameIndex, question: str, scope: Filtered, seaso
     if held_team is not None and _team_grounded(index.teams, question, held_team) and not _named_as_own(index.teams, question, held_team, season):
         return held_team.name
     # "karl towns stats vs netslast 5 games": the "vs" names a word nothing
-    # resolves, and the router read it as a team it filed in `team` - a team
-    # the question never holds otherwise, so the router's reading of that
-    # word is the one there is.
+    # resolves, and the model read it as a team (the parser's `team`) - a
+    # team the question never holds otherwise, so the model's reading of
+    # that word is the one there is.
     team = _team_named(index.teams, scope.who.team, season) if held_team is None else None
     if team is not None and lexicon.AGAINST_PHRASE.search(question) and not _team_grounded(index.teams, question, team):
         return team.name
@@ -540,7 +551,7 @@ def _named_as_own(teams: names.TeamIndex, question: str, team: Entity, season: i
 
 
 def _opponent_player(index: names.NameIndex, scope: Filtered) -> str | None:
-    """A route's ``opponent`` when it names a player and not a team ("jay
+    """The ``opponent`` handed in when it names a player and not a team ("jay
     huff game log vs Embiid" arrived from the router with Jokic there): a
     name to check against the question like the subject's own, never read
     as a team the subject is set against. A team opponent is a narrowing,
@@ -552,11 +563,12 @@ def _opponent_player(index: names.NameIndex, scope: Filtered) -> str | None:
 
 
 def _routed_names(index: names.NameIndex, scope: Filtered, question: str, opponent_player: str | None) -> tuple[list[str], list[str]]:
-    """The router's player names - from ``player``, ``players``, a player
-    filed as the ``opponent`` and one filed as the ``team`` - split into the
-    ones the question supports and
-    the ones it never held, minus any that is a team (the router files
-    "Boston Celtics" as a player; a team is a narrowing, not an invention)."""
+    """The model's player names - the players handed in, a player filed as
+    the ``opponent`` and one filed as the team - split into the ones the
+    question supports and the ones it never held, minus any that is a team
+    (the router filed "Boston Celtics" as a player; a team is a narrowing,
+    not an invention). Named ``routed`` for the router that filled them
+    until 5.0.0."""
     team_slot = _team_slot_player(index, scope)
     routed = [p for p in _routed_player_slots(scope) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(index, p) and not _not_a_name(p)]
     supported = [p for p in routed if question_supports(p, question)]
@@ -564,17 +576,17 @@ def _routed_names(index: names.NameIndex, scope: Filtered, question: str, oppone
 
 
 def _filler_names(index: names.NameIndex, scope: Filtered, question: str) -> tuple[str, ...]:
-    """The router's player names that are no name (:func:`_not_a_name`) or
+    """The model's player names that are no name (:func:`_not_a_name`) or
     that the question holds only by a team's word - :attr:`Subject.filler`."""
     return tuple(p for p in _routed_player_slots(scope) if _not_a_name(p) or (not _is_a_team(index, p) and _named_only_by_a_team_word(index.teams, question, p)))
 
 
 def _not_a_name(text: str) -> bool:
-    """A router ``player`` that is no name at all: a position phrase ("shooting
+    """A model's player name that is no name at all: a position phrase ("shooting
     guard" on "highest 3 point percentage ... by a shooting guard", F056 - the
-    position-group subject, which :attr:`Subject.position` carries) or the
-    router's filler word ("player" on "Most points in 15th season played",
-    F099). Neither is a player to read, replace or report."""
+    position-group subject, which :attr:`Subject.position` carries) or a
+    filler word ("player" on "Most points in 15th season played", F099, the
+    router's). Neither is a player to read, replace or report."""
     stripped = text.strip()
     if lexicon.NO_NAME_HAS.search(stripped):
         # "most 30+ point games", "most", "Most Player in 15th Season Played"
@@ -588,8 +600,8 @@ def _not_a_name(text: str) -> bool:
 
 
 def _team_slot_player(index: names.NameIndex, scope: Filtered) -> str | None:
-    """The router's ``team`` when it names a player and no team: "Podziemski
-    game log without curry" arrived as ``team='Podziemski'``, and "Will
+    """The model's team when it names a player and no team: "Podziemski
+    game log without curry" arrived from the router as ``team='Podziemski'``, and "Will
     Riley last 5 game s" as ``team='Riley'`` (a bare fragment, three
     players) - the subject, in the wrong slot."""
     team = scope.who.team
@@ -599,15 +611,15 @@ def _team_slot_player(index: names.NameIndex, scope: Filtered) -> str | None:
 
 
 def _spellings(players: names.PlayerIndex, question: str, routed: list[str]) -> dict[str, str]:
-    """The question's own spelling of each router name it supports, resolved
-    from the question's words anchored at the router's
+    """The question's own spelling of each model name it supports, resolved
+    from the question's words anchored at the model's
     (:func:`~association.query.entities._question_derived_player`): a bare
     "Jokic" completed, "Jaylen Huff" cut back to the "Jay Huff" typed, "Grady
     Dickinson" put right as Gradey Dick, and "Stephen Curry" for a "Seph
     Curry" the question itself misspelled - a typo of the QUESTION's, which
     no whole-word match finds. Anchored on purpose: a whole-word match reads
     "kareem stats vs bob lanier" as Kareem Rush and Chaz Lanier, while the
-    anchored span settles neither and the router's spelling stands."""
+    anchored span settles neither and the model's spelling stands."""
     out: dict[str, str] = {}
     for name in routed:
         derived = question_derived_player(players, question, name)
@@ -617,7 +629,7 @@ def _spellings(players: names.PlayerIndex, question: str, routed: list[str]) -> 
 
 
 def _spellings_owned(spelled: dict[str, str]) -> dict[str, str]:
-    """``spelled`` without a spelling one router name took from ANOTHER's
+    """``spelled`` without a spelling one model name took from ANOTHER's
     words: anchored at "sga" in "compare sga embiid", the window reaches
     "embiid" and reads Joel Embiid - the player "embiid" itself spells as -
     so "sga" read as him, and the pair came out in the other order with its
@@ -641,9 +653,10 @@ def _conditions(question: str, players: tuple[str, ...], scope: Filtered) -> tup
     """The players whose ROLE the question states beside the subject -
     "without X", "with X on the floor", "when X scored 20+" - each with that
     role (:class:`~association.query.reading.Companion`), read from the
-    question's own words, never from the router's ``without`` slot (which
-    filed Embiid under it on "Embiid's record against Boston"). The
-    companions a replayed route carries are consulted only for one the
+    question's own words, never from a model's slot (the router's
+    ``without`` filed Embiid under it on "Embiid's record against Boston").
+    The companions the reading handed in already carries (the model names
+    none; a caller's own reading may) are consulted only for one the
     question misspells ("without wembyanama"), where the phrase is a near
     spelling of the carried name. One phrase, one role: "when Embiid and
     Paul George start" is two ``started`` companions.
@@ -737,11 +750,11 @@ def _name_segments(text: str) -> list[str]:
     this season" is three; "a turnover" is none ("a" is no name's word);
     "and without Tatum" is none, a joiner with nothing before it.
 
-    This is what the stages' own reader of these phrases did until 5.0.0,
-    and why it is kept: a name read by position does not depend on the
-    model having copied it or on the word being nobody else's - "without
+    This is what the router's stages' own reader of these phrases did until
+    5.0.0, and why it is kept: a name read by position does not depend on
+    the model having copied it or on the word being nobody else's - "without
     curry" and "without Tatum and Brown" name ordinary words two or ten
-    players share, which no lookup settles and the template asks about."""
+    players share, which no lookup settles and the reader asks about."""
     names: list[str] = []
     words: list[str] = []
     for piece in lexicon.NAME_PIECES.findall(text):
@@ -765,8 +778,8 @@ def _companion_names(text: str, players: tuple[str, ...], scope: Filtered, predi
     holds by position (:func:`_name_segments`) as the player the question
     is known to hold where one supports it, then the known players its
     words support that no position held ("when Embiid plays with Paul
-    George"), then a router ``without``/``with_player`` name the phrase
-    misspells. A name by position that is no known player is kept as typed
+    George"), then a companion the reading handed in already carries
+    whose name the phrase misspells. A name by position that is no known player is kept as typed
     only for an ABSENCE ("without zzyzx" is refused by that name, never
     answered as though nobody had been named); for any other role it has to
     be one the reading found (:func:`_unrouted_companions`), since the words
@@ -819,8 +832,8 @@ def _versus_companions(question: str, players: tuple[str, ...], scope: Filtered,
     the companions and the characters each was read from (the versus word
     and the names)."""
     # A pair's summary reads two lines; three names or more are a subject
-    # and conditions whatever the words ask - and so is a scope a replayed
-    # route already carries them in.
+    # and conditions whatever the words ask - and so is a reading handed in
+    # that already carries them.
     carried = any(c.side == "opponent" for c in scope.companions)
     subjects = [p for p in players if not any(_same_person(p, [c.player]) for c in found)]
     if not _asks_for_games(question) and len(subjects) <= 2 and not carried:
@@ -853,7 +866,7 @@ def _unrouted_companions(index: names.NameIndex, question: str, players: tuple[s
     "wembyanama"). A word a team or a stat is named by is no player
     ("when the sixers ...", "with 20 points"), and one ordinary word that
     is no name is nobody ("with less", "when starting"). What is kept is
-    the QUESTION's spelling, never a resolution: the template resolves it
+    the QUESTION's spelling, never a resolution: the reader resolves it
     the way it resolves any open name and says how, so a bare "maxey" is
     Tyrese because he is the one who still plays - visible and correctable
     - and a word two active players share is asked about.
@@ -870,7 +883,7 @@ def _unrouted_companions(index: names.NameIndex, question: str, players: tuple[s
         absent = _condition_role(match.group(1).lower(), match.group(2))[0] == "absent"
         for segment in _name_segments(match.group(2)):
             # Already somebody: a player the question is known to hold, or a
-            # replayed route's own name for him, which the phrase misspells.
+            # carried companion's own name for him, which the phrase misspells.
             if any(_same_person(segment, [p]) for p in (*players, *found)) or any(_near(r, segment) for r in routed):
                 continue
             name = _unrouted_name(index, segment.split(), absent)
@@ -1003,7 +1016,7 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
 
 def _team_names(index: names.NameIndex, question: str, scope: Filtered, team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:
     """The team(s) the question is about: the word it names first, then the
-    router's ``team`` / ``teams`` where the question supports them and they
+    model's team (or teams) where the question supports them and they
     are teams - never the opponent or the player's own team over again."""
     names: list[str] = []
     if team_word and team_word not in (opponent, own_team):
@@ -1014,7 +1027,7 @@ def _team_names(index: names.NameIndex, question: str, scope: Filtered, team_wor
         and routed_team
         and not names
         and question_supports(routed_team, question)
-        and _team_named(index.teams, routed_team) is not None  # "any_team" is the router's placeholder, not a team
+        and _team_named(index.teams, routed_team) is not None  # "any_team" was the router's placeholder, not a team
         and not any(t and (question_supports(routed_team, t) or question_supports(t, routed_team)) for t in (opponent, own_team))
     ):
         names.append(routed_team)
@@ -1025,8 +1038,9 @@ def _team_names(index: names.NameIndex, question: str, scope: Filtered, team_wor
 
 
 def read_subject(index: names.NameIndex, question: str, asked: PointShape | None, scope: Filtered) -> Subject:
-    """One reading of the subject. The question's spans decide; a slot the
-    router filled (``scope``, the typed Scope a route carries) counts only
+    """One reading of the subject. The question's spans decide; a name the
+    model copied (``scope``, the reading of the model's names the parser
+    builds, ``parse._model_reading``) counts only
     where the question's own words support it
     (:func:`question_supports`), and never to invent a subject the question
     does not name. ``asked`` is read only to tell two teams meeting
@@ -1043,7 +1057,8 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
        place of a connection.
     """
     # The season a team's name is read in. The parser reads the subject
-    # BEFORE the stages settle the season (they are handed its companions),
+    # BEFORE the span tagger reads the season (the grammar's rules are
+    # handed its companions),
     # so the scope it reads from holds none: the question's own season is
     # read here, or "the hornets in 2008" is today's Charlotte Hornets and
     # Chris Paul's New Orleans team is asked about as a name nobody typed
@@ -1080,13 +1095,14 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     teams = _team_names(index, question, scope, team_word, opponent, own_team)
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
+        # "the router" is the model here, kept as recorded (:func:`_evidence`).
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
     decided = _decide(players, teams, position, opponent, own_team, companions, evidence, asked, question)
     subject = replace(decided, conditions=conditions, companion_phrases=phrases, claims=(*claims, *_decide_claims(decided, question)))
     # Read, not decided: what the subject's shape settles the words to ask
-    # is the parser's step (:func:`child_named`, with the stages run once
-    # under it), and :func:`settle_subject` writes it here. Until 5.0.0's
-    # last change this ran the stages under each child the words named,
+    # is the parser's step (:func:`child_named`, with the grammar's rules run
+    # once under it), and :func:`settle_subject` writes it here. Until 5.0.0's
+    # last change this ran the router's stages under each child the words named,
     # before the parser ran them at all.
     return replace(
         subject,
@@ -1128,16 +1144,18 @@ _NO_PARENT = _NoParent()
 
 
 def settle_subject(subject: Subject, asked: PointShape | None, *, parent: PointShape | _NoParent | None = _NO_PARENT, words: str | None = None) -> Subject:
-    """``subject``, already read, under what the stages settled the words to
-    ask (``asked``) - no name is read again, the warehouse is not asked and
-    the stages do not run (``ROADMAP.md``, Phase 1: the subject is read
-    once, the stages run once). What depends on it is written here: two
+    """``subject``, already read, under what the grammar's rules settled the
+    words to ask (``asked``) - no name is read again, the warehouse is not
+    asked and the rules do not run (``ROADMAP.md``, Phase 1: the subject is
+    read once, the stages - the grammar's rules since - run once). What
+    depends on it is written here: two
     teams meeting are the ``teams`` kind under ``head_to_head``, and the
     key itself with why it is not ``parent``'s - the ``words`` that named a child
     (:func:`child_named`), or the one move that names no words, a team's
     record in the games a companion reached a line. Who stands beside the
-    subject is the reading's too, and the stages take it from there
-    (:func:`beside`).
+    subject is the reading's too, and the grammar's rules and the taggers
+    are handed it typed (:attr:`Subject.conditions`; ``beside`` until Phase
+    3, step 2).
 
     .. versionadded:: 5.0.0
 
@@ -1181,7 +1199,7 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     played them narrows nothing. Only one, and only with no team anywhere:
     "the 76ers record when both Embiid and Paul George played" is the
     team's question with two companions ("76ers" is no word the team
-    reading finds, so the routed ``team`` slot is what says so). Split out
+    reading finds, so the model's team, handed in, is what says so). Split out
     of :func:`read_subject` for the complexity gate."""
     named_team = teams or scope.who.teams
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
@@ -1190,8 +1208,8 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
 def child_named(subject: Subject, parent: PointShape | None, question: str | lexicon.GrammarText, *, original: str | None = None) -> tuple[PointShape, str | None] | None:
     """The child of ``parent`` the subject's shape names, with the words
     that name it - or None where the parent stands. Decided from the
-    grammar alone; the parser runs the stages ONCE under the child, and
-    where they decline it (a count with no threshold in the text is a
+    grammar alone; the parser runs the grammar's rules ONCE under the child,
+    and where they decline it (a count with no threshold in the text is a
     ranking) runs them under the parent instead
     (:func:`~association.query.parse.read_route`). Two ways a child is
     named:
@@ -1200,14 +1218,14 @@ def child_named(subject: Subject, parent: PointShape | None, question: str | lex
       the sixers when maxey scores 20+ points" (yardstick-v2 F087) is the
       team's record in the games he reached it, which ``record_when``
       answers with HIM as its player.
-    - The question's own words name a child of the route's intent
+    - The question's own words name a child of the parent's key
       (:data:`_CHILD_GRAMMARS`, :data:`KIND_ASSIGNED_ASKS`) - and only
       where the grammar's rules, run under that child
       (:func:`~association.query.grammar.settle`), leave it there: a count of
       games with no threshold in the text is a ranking, and stays the
-      route's question.
+      parent's question.
 
-    The router's reroutes are gone - a player's record against a team read
+    The router's reroutes went with plan item 6 - a player's record against a team read
     as two teams meeting (#163), a pair filed with the second player as the
     ``opponent`` (F081, F142) or sent to ``with_without`` (F114), a
     comparison sent to ``player_stat``: measured over the 628 questions with
@@ -1253,7 +1271,15 @@ def _named_before(question: str, players: tuple[str, ...], at: int) -> bool:
 
 
 def _evidence(named: list[str], routed: list[str], spellings: dict[str, str], invented: list[str], team_word: str | None, opponent: str | None) -> tuple[str, ...]:
-    """What the reading rested on, one line per finding, for the trace."""
+    """What the reading rested on, one line per finding, for the trace.
+
+    The lines that say "router" mean the model's names, by the name of the
+    router that supplied them until 5.0.0: each line is a decision's
+    recorded reason (``tests/query/reader_cases.json``, the stage
+    snapshots), so rewording one is a recorded-reading move to enumerate
+    (ISSUES.md, "Docstrings and comments still name the router and the
+    Scope"). The same holds for the "router" in the subject's decision
+    reasons below."""
     return tuple(
         line
         for line in (
@@ -1307,24 +1333,23 @@ def _decide_claims(subject: Subject, question: str) -> tuple[Claim, ...]:
 
 
 def apply_subject(subject: Subject, scope: Filtered, *, asked: PointShape | None) -> Applied:
-    """Write what the subject reading settled into the typed scope a template
-    reads - the parser's last step
-    (:func:`~association.query.parse.reading_from_route`): the players the
-    question is about, in the shape the route already uses (``player`` or
-    ``players``); the one player a template that needs one was left
-    without; a player's own team, and the tenure it implies; the
+    """Write what the subject reading settled into the Reading's typed
+    filters (:class:`~association.query.reading.Filtered`) - in the parser's
+    last step (``parse._reading``): the players the question is about, on
+    the typed subject (``Reading.who``); the one player a shape that needs
+    one was left without; a player's own team, and the tenure it implies; the
     companions' roles; and a team's record in the games a companion reached
     a line. A name the question never held is replaced by the question's
     own spare name where there is exactly one per name, else reported, and
     the caller refuses by name rather than answering about it (AGENTS.md:
-    "when it cannot be repaired, say so - do not hand it to the agent").
+    "When it cannot be repaired, say so by name").
     Returns the scope with the reading written in (``scope`` itself is
     never changed), the decisions made, the names dropped, and what the
     subject settled the words to ask (:attr:`Subject.asked`), with the scope
     rewritten for it where it differs.
 
     A kept name is respelled as the question's own span spells it
-    (:func:`_spellings`), so a template reads "Jay Huff" and "Seth Curry"
+    (:func:`_spellings`), so a reader reads "Jay Huff" and "Seth Curry"
     where a model wrote "Jaylen Huff" and "Stephen Curry". Every step here is
     one the parser's output reaches: measured over the 628 questions with a
     recorded normalizer reply (ROADMAP plan item 6, step (d), part 3c), the
@@ -1391,8 +1416,9 @@ def _apply_team_record_when(subject: Subject, scope: Filtered, asked: PointShape
         scope,
         span=scope.span,
         # The venue stands; the router filed the subject's own team as the
-        # opponent ("sixers" beside its invented Joel Embiid), and the
-        # question sets the team against nobody.
+        # opponent ("sixers" beside its invented Joel Embiid) - a model's
+        # second team may do the same - and the question sets the team
+        # against nobody.
         cuts=Cuts(venue=scope.cuts.venue, opponent=scope.cuts.opponent if subject.opponent is not None else None),
         # The companion is the player the record is keyed on, beside the
         # team it is the record of.
@@ -1410,7 +1436,7 @@ def _apply_team_record_when(subject: Subject, scope: Filtered, asked: PointShape
     if asked != LINE_RECORD:
         return rewritten, [Decision("subject", "asked", key_path(asked), key_path(LINE_RECORD), _TEAM_RECORD_WHEN)], LINE_RECORD
     # Already the team's record (the parser settles it, _decide_intent): a
-    # decision only where the companion is not the player the route held -
+    # decision only where the companion is not the player the reading held -
     # the player read BEFORE the scope was rewritten, since after it is his
     # by construction.
     return rewritten, ([Decision("subject", "player", player, condition.player, _TEAM_RECORD_WHEN)] if player != condition.player else []), LINE_RECORD
@@ -1422,7 +1448,7 @@ def _apply_intent(subject: Subject, scope: Filtered, asked: PointShape | None) -
     (:func:`child_named`); returns the scope, the decisions and what the
     words ask the scope for now. A child the question's words name is the
     parser's own step (:func:`~association.query.parse.read_route` settles
-    the route under it), so it arrives here as the route's key and
+    the reading under it), so it arrives here as the key handed in and
     nothing moves."""
     if subject.asked == LINE_RECORD and subject.kind in ("team", "team_players") and any(c.predicate == "reached" for c in subject.conditions):
         return _apply_team_record_when(subject, scope, asked)
@@ -1430,8 +1456,8 @@ def _apply_intent(subject: Subject, scope: Filtered, asked: PointShape | None) -
 
 
 def _apply_restored_player(subject: Subject, scope: Filtered, asked: PointShape | None) -> tuple[Filtered, list[Decision]]:
-    """Put back the one player the question names where the router left the
-    player out - only for a template that cannot answer without one
+    """Put back the one player the question names where the model left the
+    player out - only for a shape that cannot answer without one
     (:data:`~association.query.reading.PLAYER_REQUIRED_ASKS`:
     "Sga record 36 plus points" came back with no player at all) or where an
     empty slot has a real, different answer, the league
@@ -1456,20 +1482,21 @@ def _apply_restored_player(subject: Subject, scope: Filtered, asked: PointShape 
 
 def _apply_own_team(subject: Subject, scope: Filtered, asked: PointShape | None) -> tuple[Filtered, list[Decision]]:
     """Put back a player's OWN team, where "for <team>" / "with the <team>"
-    names one beside him and the router filed neither ``team`` nor
+    names one beside him and the model handed in neither a team nor an
     ``opponent`` - yardstick-v2 F166, "lebron stats as a starter for Miami".
-    Written to ``own_team``, never ``team``: a router-supplied ``team``
-    beside an already-correct ``opponent`` is documented noise
-    (``templates/games.py``'s ``_team_slot_for_player``), and a template that
-    read ``team`` here would trust it - "lebron james 2 3 pointers all-time
-    vs jazz on tuesdays" carries ``team='Los Angeles Lakers'`` beside a real
+    Written to the tenure (``Cuts.tenure``, the ``own_team`` slot until
+    Phase 3, step 2), never the team: a router-supplied ``team`` beside an
+    already-correct ``opponent`` was documented noise (the retired
+    ``templates/games.py``'s ``_team_slot_for_player``), and a reader that
+    read the team here would trust it - "lebron james 2 3 pointers all-time
+    vs jazz on tuesdays" carried ``team='Los Angeles Lakers'`` beside a real
     ``opponent='Utah Jazz'``, and silently narrowed 9 meetings to 4 before
-    ``own_team`` existed. Only for the templates whose relation narrows by
+    ``own_team`` existed. Only for the shapes whose relation narrows by
     it (:data:`~association.query.reading.OWN_TEAM_RESTORABLE_ASKS`).
 
     A historical team names a TENURE, not "now": with no season named in
-    the question (:attr:`Subject.named_season`, never the router's own
-    "current season" default), ``span`` becomes "career" - "for Miami"
+    the question (:attr:`Subject.named_season`, never a defaulted
+    "current season"), ``span`` becomes "career" - "for Miami"
     fifteen years into a Lakers career is not asking about this season."""
     if asked not in OWN_TEAM_RESTORABLE_ASKS or subject.own_team is None or not scope.who.players:
         return scope, []
@@ -1484,13 +1511,13 @@ def _apply_own_team(subject: Subject, scope: Filtered, asked: PointShape | None)
 
 
 def _apply_filler_players(subject: Subject, scope: Filtered) -> tuple[Filtered, list[Decision], list[str]]:
-    """Take the router's no-names (:attr:`Subject.filler`) out of the player
-    slots - "most", "most 30+ point games" (what the model files as the
-    player for a ranking once nothing in its prompt shows one with none),
+    """Take the model's no-names (:attr:`Subject.filler`) out of the typed
+    subject's players - "most", "most 30+ point games" (what the model files
+    as a name for a ranking once nothing in its prompt shows one with none),
     or a team's word read as a player ("magic vs nets" as Magic Johnson) -
-    rather than leave them for a template to resolve into "No player found
-    matching 'most'". Returns the scope, the decisions and the names still
-    routed."""
+    rather than leave them for a reader to resolve into "No player found
+    matching 'most'". Returns the scope, the decisions and the model's
+    names still standing."""
     routed = _routed_player_slots(scope)
     if not any(r in subject.filler for r in routed):
         return scope, [], routed
@@ -1500,11 +1527,11 @@ def _apply_filler_players(subject: Subject, scope: Filtered) -> tuple[Filtered, 
 
 
 def _spare_names(subject: Subject, kept: list[str], asked: PointShape | None) -> list[str]:
-    """The question's own names not yet in the slots, which replace a router
-    invention one for one: the subject's players, and for ``record_when`` -
-    whose player IS the condition's - a reached companion too, whether the
-    router chose ``record_when`` or the reading settled it (the team's
-    question with a companion's line, under an invented player)."""
+    """The question's own names not yet on the typed subject, which replace
+    a model's invention one for one: the subject's players, and for
+    ``record_when`` - whose player IS the condition's - a reached companion
+    too, whether the words asked ``record_when`` or the reading settled it
+    (the team's question with a companion's line, under an invented player)."""
     spare = [p for p in subject.players if not _same_person(p, kept)]
     if LINE_RECORD in (asked, subject.asked):
         spare += [c.player for c in subject.conditions if c.predicate == "reached" and not _same_person(c.player, [*kept, *spare])]
@@ -1515,8 +1542,9 @@ def _apply_players(subject: Subject, scope: Filtered, asked: PointShape | None =
     """The ``player``/``players`` half of :func:`apply_subject`. For
     ``record_when``, whose player IS the condition's ("sixers record when
     maxey scored 20+"), a reached companion is a spare name the way the
-    subject's own are: the router invented Joel Embiid there (day5) and
-    the question's Maxey replaces him rather than the question refusing."""
+    subject's own are: the router invented Joel Embiid there (day5), a
+    model's name may do the same, and the question's Maxey replaces him
+    rather than the question refusing."""
     scope, decisions, routed = _apply_filler_players(subject, scope)
     if not routed:
         return scope, decisions, []
@@ -1526,7 +1554,7 @@ def _apply_players(subject: Subject, scope: Filtered, asked: PointShape | None =
     if dropped and len(spare) != len(dropped):
         return scope, [], dropped
     field = _players_slot(scope)
-    replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the router omitted: not put back here
+    replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the model omitted: not put back here
     decisions.extend(Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items())
     respelled = _respellings(kept, subject.players)
     replacement.update(respelled)
@@ -1543,7 +1571,7 @@ def _apply_companions(subject: Subject, scope: Filtered, asked: PointShape | Non
     side ("without KD", "when Embiid starts", "in games Maxey had 20+
     points", "with Draymond playing", "vs lebron") - onto the scope as the
     typed :class:`~association.query.reading.Companion`, whatever the
-    intent: the relation readers read each as a filter on the games, the
+    words ask: the relation readers read each as a filter on the games, the
     with/without split as the names it divides by (an absence, else the
     teammates who played) and the roles it holds each to ("record when
     Embiid and Paul George start": started against not), and an answer that
@@ -1552,7 +1580,7 @@ def _apply_companions(subject: Subject, scope: Filtered, asked: PointShape | Non
     them, a reader that asked what would answer before it wrote
     (``ROADMAP.md``, Phase 1): "how many times did the 76ers beat boston
     when embiid started" answered every meeting, the start gone without a
-    word. Until Phase 3, step 2 the stages wrote the absences and the split's
+    word. Until Phase 3, step 2 the router's stages wrote the absences and the split's
     names into two slots of their own, and the parser the other side's
     players: one writer now. A companion who is the subject himself (his
     name restored from the companion's phrase, "In his 18th season, how
@@ -1564,7 +1592,7 @@ def _apply_companions(subject: Subject, scope: Filtered, asked: PointShape | Non
     if not written:
         return scope, []
     # The scope holds every companion typed, the other side first, as the
-    # parser wrote them before the stages.
+    # parser wrote them before the router's stages did until Phase 3, step 2.
     ordered = [*(c for c in written if c.side == "opponent"), *(c for c in written if c.side == "own")]
     return replace(scope, companions=(*scope.companions, *ordered)), _apply_companions_decision(ordered, asked)
 
@@ -1619,9 +1647,9 @@ def _same_person(name: str, others: tuple[str, ...] | list[str]) -> bool:
 
 
 def _respellings(kept: list[str], players: tuple[str, ...]) -> dict[str, str]:
-    """A kept router name the subject spells differently - a bare "Jokic"
-    the router left bare, "Jaylen Tatum" for the question's "tatum", "Seph
-    Curry" resolved to Seth where the router wrote Stephen - mapped to the
+    """A kept model name the subject spells differently - a bare "Jokic"
+    the model left bare, "Jaylen Tatum" for the question's "tatum", "Seph
+    Curry" resolved to Seth where the model wrote Stephen - mapped to the
     subject's spelling of the same person (:func:`_spellings`)."""
     out: dict[str, str] = {}
     for r in kept:
@@ -1656,7 +1684,7 @@ def team_named_in(teams: names.TeamIndex, question: str) -> str | None:
     only an exact single match counts, and the first match wins, read left
     to right the way a question states its subject first.
 
-    Used to restore a team the router dropped entirely (F127, ISSUES.md:
+    Used to restore a team the model dropped entirely (F127, ISSUES.md:
     "how many 3 pointers have the magic made" routed with no ``team`` slot
     at all) - the same repair :func:`players_named_in`
     already makes for a dropped player.
@@ -1751,7 +1779,7 @@ def subject_named_in(question: str | lexicon.GrammarText) -> str | None:
 def team_words_in(question: str) -> tuple[str, ...]:
     """Every team nickname the question holds as a whole word
     (:data:`~association.query.lexicon.TEAM_NICKNAME`), as typed and
-    lowercased, in order - what the stages file as a team's quarter or half
+    lowercased, in order - what the grammar's rules file as a team's quarter or half
     where nothing else named the team, read here once.
 
     .. versionadded:: 6.0.0
@@ -1849,7 +1877,7 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
     name rather than three.
 
     Deliberately strict about what counts as naming somebody, because this is
-    used to overrule the router. A span matches only if it is a nickname key or
+    used to overrule the model's names. A span matches only if it is a nickname key or
     if every word of it equals a whole word of exactly one player's name -
     substring matching would read "What was the highest scoring game" as naming
     Jaron Blossomgame, and word-boundary matching would read "with" as naming
@@ -1894,7 +1922,7 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
 
 
 def _anchor_word_position(q_words: list[str], lowered_q: list[str], word: str) -> int | None:
-    """Where ``word`` (one word of the router's name) turns up in the
+    """Where ``word`` (one word of the model's name) turns up in the
     question - exactly, or the nearest near spelling within
     :func:`~association.query.entities._edit_budget` - or ``None`` when it turns up nowhere at all."""
     exact = next((i for i, w in enumerate(lowered_q) if w == word.casefold()), None)
@@ -1924,37 +1952,38 @@ def _resolve_word_span(players: names.PlayerIndex, span: list[str]) -> Entity | 
 
 def question_derived_player(players: names.PlayerIndex, question: str, name: str) -> Entity | None:
     """The one player a window of the question's OWN words - anchored to
-    wherever ``name`` (the router's guess, right or wrong) itself appears -
+    wherever ``name`` (the model's guess, right or wrong) itself appears -
     plausibly names, when that is confident enough to act on.
 
     Two faults this repairs, both structural, and both invisible to the
     "any one word is enough" check a name is otherwise held to
     (:func:`question_supports`), because that check
-    is deliberately generous: the router TRUNCATES a name the question spells in
+    is deliberately generous: the router TRUNCATED a name the question spells in
     full ("dennis schröder", typed correctly, arrived as just ``'Dennis'`` -
-    grounded, and a 7-way surname), and it FABRICATES a word next to a real
+    grounded, and a 7-way surname), and it FABRICATED a word next to a real
     one ("tatum rec home" arrived as ``'Jaylen Tatum'``, the league's only
     Tatum with an invented given name bolted on; "Grady dick" arrived as
-    ``'Grady Dickinson'``, grounded by its own typo'd given name). Neither
+    ``'Grady Dickinson'``, grounded by its own typo'd given name) - and a
+    model's name may still do either. Neither
     ever reaches a repair, because grounding already says yes.
 
-    So this reads the question instead of trusting the router's spelling: it
+    So this reads the question instead of trusting the model's spelling: it
     anchors each of ``name``'s own words to where it turns up nearby - exactly,
-    or within :func:`~association.query.entities._edit_budget`, since the router silently corrects typos
+    or within :func:`~association.query.entities._edit_budget`, since a model may silently correct a typo
     and a near spelling still marks the spot - and resolves the question's
-    literal words there against the roster, never the router's spelling.
+    literal words there against the roster, never the model's spelling.
 
     Deliberately anchored, never a sentence-wide scan: fuzzy-matching a
     question's leftover words was measured and rejected elsewhere in this
     module ("season" is one edit from Tari Eason, wherever it turns up), and
     what keeps this safe is that nothing is tried unless it sits next to a
-    word the router already pointed at - a name with no anchor at all is left
+    word the model already pointed at - a name with no anchor at all is left
     for the ungrounded path below to report, exactly as before.
 
     Two things measured against real corpus rows keep this from trusting too
     little of a coincidence:
 
-    - **Two or more of the router's own words anchoring is answered from
+    - **Two or more of the model's own words anchoring is answered from
       within exactly that range of the question, narrowed a word at a time -
       but never down to one word alone.** "kareem stats vs bob lanier"
       anchors both "bob" and "lanier" (the question's own words, spelled
@@ -1963,7 +1992,7 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
       Chaz Lanier, a real but wholly unrelated player - the same false-cause
       shape the Maxey example in the module docstring warns about, arrived at
       through this function instead of a nickname. The range still shrinks
-      rather than being tried whole-or-nothing, because the router's own
+      rather than being tried whole-or-nothing, because the model's own
       spelling can itself be the mismatch: "de'angelo russell" anchors "de",
       "angelo" and "russell" all exactly, and the full three-word span fails
       only because the roster spells the first of them "d", not "de" -
@@ -1976,7 +2005,7 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
       trusted regardless of where the anchor sits** - "Grady dick" anchors
       only on the given name "Grady", and the window's "grady dick" is what
       resolves it to Gradey Dick. What is trusted only when that anchor is
-      the LAST of the router's words, the position a surname sits in, is
+      the LAST of the model's words, the position a surname sits in, is
       falling all the way back to the anchor word ALONE, with nothing else
       corroborating it. "Jaylen Tatum" anchors only on "Tatum", its last
       word, and the league's only Tatum is trustworthy alone. "Kareem
@@ -1984,7 +2013,7 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
       alone is exactly as unrelated a near-miss as "lanier" alone above, for
       the identical reason - Kareem Abdul-Jabbar is the other player these
       two corpus rows have in common, and neither he nor Bob Lanier has a
-      row in `players` at all. A router-supplied given name with nothing
+      row in `players` at all. A model-supplied given name with nothing
       else in the question corroborating it is left alone here, for the
       "any one word" check to judge as it always has.
 
@@ -1992,7 +2021,7 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
         The one player the question's own words resolve to, or ``None`` when
         nothing anchors at all, when two or more anchored words do not
         resolve together, when a single anchor resolves only alone and is
-        not the last of the router's words, or when what is left resolves to
+        not the last of the model's words, or when what is left resolves to
         more than one player (left for :func:`~association.query.entities.resolve_player` to ask about)
         or to none.
 
@@ -2021,8 +2050,8 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
     except duckdb.CatalogException:
         # A warehouse without `players` (a partial load, or a test double) has
         # nothing here to resolve against - the same best-effort rule
-        # `_team_named` follows: finding nothing leaves the slots exactly as
-        # the router gave them, which is never worse than before this ran.
+        # `_team_named` follows: finding nothing leaves the names exactly as
+        # the model gave them, which is never worse than before this ran.
         return None
 
 
@@ -2032,7 +2061,7 @@ def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: se
     but never down to a single word alone. See
     :func:`question_derived_player`'s docstring's "kareem ... bob lanier"
     measurement for why: falling back that far is what named Chaz Lanier.
-    "de'angelo russell" is why the range still shrinks at all - the router's
+    "de'angelo russell" is why the range still shrinks at all - the model's
     own spelling of "De" does not match the roster's "D", and dropping it
     lets "angelo russell" resolve on its own. ``None`` when the anchors are
     too spread out to be one coherent name."""
@@ -2122,10 +2151,10 @@ def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list
 
 
 def _has_a_real_team(teams: names.TeamIndex, who: reading.Subject, season: int | None, question: str) -> bool:
-    """Whether ``slots`` carries a ``team``/``teams`` value that actually
-    resolves to a real franchise - not merely a non-empty string. The router
-    invents a team the way it invents a player (AGENTS.md, "the router
-    invents names"): "alperen şengün alltime record" arrived one run with no
+    """Whether ``who`` carries a team that actually resolves to a real
+    franchise - not merely a non-empty string. A model invents a team the
+    way it invents a player (AGENTS.md, "The router invents names", the
+    router's then and the normalizer's now): "alperen şengün alltime record" arrived one run with no
     `team` at all, and another with `team='Alperen Şengün'` - the player's
     own name, filed as though it were a franchise, which
     ``team_record``-shaped readers then refuse as "no team matching", the
@@ -2145,12 +2174,12 @@ def _has_a_real_team(teams: names.TeamIndex, who: reading.Subject, season: int |
 
 
 def player_named_on_a_team_only_question(players: names.PlayerIndex, teams: names.TeamIndex, question: str, who: reading.Subject, season: int | None) -> str | None:
-    """The one player a question names, when the routed intent has no
+    """The one player a question names, when what the words ask has no
     reading for him at all and the question names no REAL team either - or
     None.
 
     yardstick-v2 F111: "alperen şengün alltime record" routed to
-    ``team_leaderboard`` - no player slot exists on that intent at all, and
+    ``team_leaderboard`` - no player slot existed on that intent at all, and
     no ``team`` slot that resolves to a real franchise was filled either -
     and answered the league standings, entirely off the subject the
     question named. Diacritics are already handled: ``players_named_in``
@@ -2395,7 +2424,7 @@ def _team_grounded(teams: names.TeamIndex, question: str, team: Entity) -> bool:
     if carried & asked:
         return True
     # A clipped word is a trace too: "cav vs celtic last 10games" names both
-    # teams, and the router's expansion of "cav" to the Cavaliers is its job,
+    # teams, and a model's expansion of "cav" to the Cavaliers is its job,
     # not an invention. Three letters, so "la" and "no" ground nothing.
     return any(len(word) >= 3 and any(name.startswith(word) for name in carried) for word in asked)
 

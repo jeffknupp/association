@@ -335,9 +335,9 @@ def advanced_statement(athlete_id: str, span: ResolvedSpan, spec: AdvancedStat) 
 
 def history_seasons(scope: Filtered) -> int | None:
     """How many seasons a history reads: ``None`` for a career - every
-    season, however many: not the default four, and not a count the model
-    put in ``limit``, which the router asks it for on this intent whether or
-    not the question gave one - else the count asked for, up to
+    season, however many: not the default four, and not a count the router's
+    model put in ``limit`` (asked for on this intent whether or not the
+    question gave one, until 5.0.0) - else the count asked for, up to
     :data:`MAX_HISTORY_SEASONS`, or :data:`DEFAULT_HISTORY_SEASONS`.
 
     .. versionadded:: 5.0.0
@@ -566,7 +566,7 @@ SCHEDULE_BASE_GAMES = 82
 class LeaderboardError(Exception):
     """Carries a message naming what the ranking could not do - an unknown
     metric with the nearest real one, a season type out of range, a team
-    matching nothing - which the template answers with or refuses on."""
+    matching nothing - which the ranking's reader answers with or refuses on."""
 
 
 @dataclass
@@ -1262,10 +1262,10 @@ PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
     "blocks": ("avgBlocks", "blocks", "blocks"),
     "turnovers": ("avgTurnovers", "turnovers", "turnovers"),
     "minutes": ("avgMinutes", None, "minutes"),
-    # ROUTER_PROMPT lists `fouls` among the stat names it may emit, and without
+    # ROUTER_PROMPT listed `fouls` among the stat names it may emit, and without
     # a column here every question naming one fell through to the agent.
     "fouls": ("avgFouls", "fouls", "fouls"),
-    # The router emits these routinely; without them a question naming one was
+    # The router emitted these routinely; without them a question naming one was
     # silently answered with the default stat line instead.
     "threePointFieldGoalsMade": ("avgThreePointFieldGoalsMade", "threePointFieldGoalsMade", "3-pointers"),
     "fieldGoalsMade": ("avgFieldGoalsMade", "fieldGoalsMade", "field goals"),
@@ -1420,7 +1420,7 @@ percentage, so a season, a career and a set of games are all the same sum.
 
 # A made-count stat's attempted sibling column - the same name in the season
 # table and in player_game_log, exactly like SHOOTING_STATS' own pairs, but
-# for the three stats the router files as a plain COUNT ("3-pointers made")
+# for the three stats the router filed as a plain COUNT ("3-pointers made")
 # rather than a percentage. "Davion Mitchell 3 point stats" answered makes and
 # games and nothing else - not the attempts or the percentage they make,
 # both `must_include` in the yardstick key (F051, ISSUES.md). `player_stat`
@@ -1460,8 +1460,8 @@ class AdvancedStat:
 
 # These were RANKABLE and not LOOKUP-ABLE, which is one concept carrying two
 # vocabularies. `leaderboard` has ranked true shooting, effective FG% and usage
-# since 2.1.0, and the router emits their names correctly - "kevin durant true
-# shooting percentage career" arrives with `stat="ts_pct"` - but `player_stat`
+# since 2.1.0, and the router emitted their names correctly - "kevin durant true
+# shooting percentage career" arrived with `stat="ts_pct"` - but `player_stat`
 # knew only PLAYER_STAT_COLUMNS and refused it with "no per-game column for
 # stat 'ts_pct'". A stat the system can rank is one it should be able to look
 # up, and the gap was invisible because each half was correct on its own.

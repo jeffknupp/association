@@ -3,7 +3,8 @@ and his play-type fingerprint (``fingerprint``), read from ESPN Analytics'
 NetPoints tables into a :class:`~association.query.result.Result` -
 Phase 2's slice (v) (``ROADMAP.md``, step 5, and the decision "Charts are
 declared shapes": each keeps its own reader and renderer, declared with its
-relation, and is not ported onto a NetPoints relation before Phase 3).
+relation; the relation's own module, :mod:`association.query.netpoints`,
+holds its statements since Phase 4, step 5).
 
 ``fingerprint`` is a chart (:class:`~association.query.result.Chart`):
 one or more players' play-type fingerprints - a season's, from
@@ -261,13 +262,13 @@ def _netpoints_game(con: duckdb.DuckDBPyConnection, player: Entity, season: int,
     possessions and win probability added beside them), windowed to the
     first or most recent game - or a scalar of none where he has no row.
     It carries no play-type split of its own - that lives in the sibling
-    ``net_points_player_game_fingerprint``, which the ``fingerprint`` intent
+    ``net_points_player_game_fingerprint``, which the fingerprint's shape
     draws, and the answer says so."""
     try:
         row = game_line(con, player.id, season, season_type, order)
     except duckdb.Error as exc:
         # The table only exists if the daily NetPoints fetch was run. Saying
-        # so beats a refusal that names only the intent.
+        # so beats a refusal that names only the shape.
         raise Unsupported(f"per-game NetPoints unavailable: {exc}") from exc
     span = Span(season=season, season_type=season_type, phrase=season_phrase(season, season_type), source="netpoints")
     window = Window(limit=1, ascending=order == "first")
@@ -332,7 +333,7 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> Resul
     # A question about one game draws that game, from the long per-game table
     # rather than the season file - see fingerprint.load_game_fingerprints for
     # why its numbers are the game's own net points and not a per-100 rate. A
-    # `date` is not honored the same way: the router gives a calendar date and
+    # `date` is not honored the same way: the cuts tagger gives a calendar date and
     # the loader picks a player's first or last game, which are different
     # questions, so a dated request still says it cannot answer.
     order = scope.window.order
@@ -379,7 +380,7 @@ def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str
         if found is None:
             return unmatched(names_of(con), name)
         if isinstance(found, Ambiguous):
-            # The question back, in the sentence every chart and template asks it with.
+            # The question back, in the sentence every chart and reader asks it with.
             return Clarify(asked=name, candidates=tuple(found.candidates), active=found.active)
         player, also = found
         # The same name twice would draw one polygon over itself and report a

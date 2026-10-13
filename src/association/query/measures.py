@@ -368,8 +368,9 @@ attempts, and a percentage is computed from them per game.
 def log_extras(measure: Measure | None) -> tuple[str, ...]:
     """The columns a named measure adds to a player's log.
 
-    ``stat`` was required in ROUTER_SCHEMA, so the model filled it on every
-    question, including ones that name no stat at all - a measure no column
+    ``stat`` was required in ROUTER_SCHEMA, and is in ``NORMALIZER_SCHEMA``,
+    so the model fills it on every question, including ones that name no
+    stat at all - a measure no column
     list holds adds nothing. A REAL stat the log has no column for refuses instead:
     "luka ts% log" answered with no TS% in it would be the narrower answer
     passed off as the one asked for.

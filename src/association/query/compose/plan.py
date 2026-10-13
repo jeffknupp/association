@@ -250,9 +250,9 @@ def _cells_taken(key: PointShape, team: bool) -> frozenset[str]:
 
 def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
     """The point ``reading`` names, on the relation it names - see
-    :func:`_plan`. A team-season intent's point on another relation (a
+    :func:`_plan`. A team-season key's point on another relation (a
     team's own total, "how many 3-pointers have the Magic made") that the
-    relation declines is that intent's own team-season point instead, or
+    relation declines is that key's own team-season point instead, or
     the team-season reader's refusal of the narrowing (:func:`beyond_words`
     over :func:`cells_unhonored`, its shape's row): the retired template was
     tried before the compiler, so the compiler declining never decided such

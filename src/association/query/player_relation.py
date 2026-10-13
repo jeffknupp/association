@@ -53,10 +53,10 @@ from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Un
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
 
-# What the player-games relation narrows by, declared ONCE. Every template that
-# settles its player through `scoped_player` and his games through
-# `scoped_games` honors all of these, because the narrowing is done there and
-# not in the template: an opponent, his own team (a tenure), a venue, a
+# What the player-games relation narrows by, declared ONCE. Every reader (and
+# the compiler) that settles its player through `scoped_player` and his games
+# through `scoped_games` honors all of these, because the narrowing is done
+# there and not in the reader: an opponent, his own team (a tenure), a venue, a
 # teammate's absence, a named half of the starter/bench split, one game of
 # each playoff series, a line on a box-score column, one Eastern date, a
 # calendar or alignment situation, a span of seasons, a first season, an
@@ -74,8 +74,9 @@ from association.query.team_games import TeamNarrowed
 # This replaced six per-template lists that had drifted: game_log honored
 # twelve of these, single_game_high one, on the same relation - a slot taught
 # to one template at a time, which is the O(templates x slots) matrix the
-# algebra port exists to remove. A template on the relation that cannot honor
-# one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
+# algebra port exists to remove. A shape on the relation whose words cannot
+# honor one of these says so in its row of RELATION_SCOPING_EXCLUDED, with the
+# reason.
 #
 # The games' cuts (`reading.Cuts`, typed since Phase 3, step 2) are seven of
 # the eight by name: `round` is left out, since no game is labeled by its
@@ -530,11 +531,11 @@ class ResolvedSpan:
 
 def validated_until(until: int | None, since: int | None) -> int | None:
     """The validated ``until`` slot: an inclusive last season, named beside
-    ``since`` only - the router never emits one without the other (a decade,
-    or a named range like "2019-20 to 2023-24"), so a caller checks this
-    before ``since`` has necessarily reached :func:`span_of` itself (a
-    template that reads ``since`` through its own code path, the way
-    ``team_leaderboard`` does for a non-record metric, would otherwise drop
+    ``since`` only - the span tagger never reads one without the other (a
+    decade, or a named range like "2019-20 to 2023-24"; nor did the router),
+    so a caller checks this before ``since`` has necessarily reached
+    :func:`span_of` itself (a reader that reads ``since`` through its own
+    code path, the way ``team_leaderboard``'s did for a non-record metric, would otherwise drop
     ``until`` silently rather than refusing it - the failure shape AGENTS.md
     warns against).
 
@@ -640,7 +641,7 @@ def _narrow_player_games(
 
     Every narrowing here is a filter over the same set of player-games, which
     is why they compose: a new one becomes available to every caller at once
-    rather than being taught to each template separately. ``split`` was the
+    rather than being taught to each reader separately. ``split`` was the
     fourth, and it reaches both `game_log` and `player_stat` through this one
     change. ``conditions`` are the scope's typed companions but the
     absences (:class:`~association.query.reading.Companion`), each read by
@@ -728,16 +729,20 @@ def player_relation_season_type(scope: Filtered) -> int:
     """The ``season_type`` to read the player relation for: ``BOTH_SEASON_TYPES``
     when the question asked for both explicitly ("including the playoffs") or
     named none at all in a "last N games" question
-    (``season_type_unstated`` - ``router._BOTH_SEASON_TYPES_WORDS`` and
-    ``router._route_game_log_recent_span`` both set it, for the same honored
-    meaning), else the value the router read from the question's own words.
+    (:attr:`~association.query.reading.Span.both`, the span tagger's; the
+    ``season_type_unstated`` slot until Phase 3, step 2, which
+    ``router._BOTH_SEASON_TYPES_WORDS`` and
+    ``router._route_game_log_recent_span`` both set, for the same honored
+    meaning), else the season type the span tagger read from the question's
+    own words.
 
-    ``game_log``'s own "last N games" merge (``_player_game_log_mixed``) does
-    not call this - it interleaves two separate reads rather than reading one
-    relation with ``season_type IN (2, 3)``, because it needs each type's own
-    count for the header. Every other reader on the relation (``scoped_player``
-    here, and ``threshold_count``'s own league/one-player read in
-    ``templates/players.py``) wants exactly the single combined read this
+    The game log's own "last N games" merge
+    (``compose.logs._player_log_mixed``) does not call this - it interleaves
+    two separate reads rather than reading one relation with
+    ``season_type IN (2, 3)``, because it needs each type's own count for the
+    header. Every other reader on the relation (``scoped_player`` here, and
+    the count's league or one-player read, :mod:`association.query.compose.counts`)
+    wants exactly the single combined read this
     gives, which is simpler than a merge: an aggregate has no rows to
     interleave.
 
@@ -763,7 +768,7 @@ def scoped_player(
     The span comes first because it is what narrows an ambiguous name: a career
     keeps Dell Curry and this season does not. An ordinal season ("his 18th
     season") cannot be a year until he is known, so the name is narrowed over
-    his career and the ordinal settled after. Every template that reads a
+    his career and the ordinal settled after. Every template that read a
     player's games wrote these same steps out for itself; a fix to one - the
     raw ``season`` slot, not a defaulted one, is what narrows the name - had to
     be found and repeated in each.
@@ -842,8 +847,8 @@ def relation_window(scope: Filtered) -> tuple[str, int] | None:
     on ``scope.window``) names neither an end nor a count.
 
     A named end (``Window.order``) wins outright. Absent one, a count alone
-    still means "his last N games": measured against the router's own
-    traces for "Create a shot chart for Steph Curry's last two games of the
+    still means "his last N games": measured against the router's
+    traces, while it routed, for "Create a shot chart for Steph Curry's last two games of the
     regular season" (step 3, C5's finding) - four separate runs, three
     different builds, all emit ``{'limit': 2, ...}`` with no ``order`` at
     all, and the grammar reads it the same way now that the chart's one-game
@@ -951,17 +956,17 @@ def scoped_games(
     (``scope.cuts``), one step for every reader on the relation.
 
     Each is a filter over the same rows, so each means the same thing whatever
-    the template then does with the rows - list them, average them, count them.
-    That is why they are read from ``scope`` HERE and not by each template: a
-    slot this does not read is one no template on the relation can honor, and a
-    slot it does read reaches all of them at once. The planner has already
+    the reader then does with the rows - list them, average them, count them.
+    That is why they are read from ``scope`` HERE and not by each reader: a
+    cell this does not read is one no reader on the relation can honor, and a
+    cell it does read reaches all of them at once. The planner has already
     refused any the relation cannot honor, and a reader steps aside for one
     its words do not state, so nothing arrives here that is not claimed.
 
     ``opponent`` is passed because ``game_log`` may have rewritten it (a
-    ``team`` beside a named player is his opponent) and a template that needs
+    ``team`` beside a named player is his opponent) and a reader that needs
     the team's name before the read passes it already resolved; ``measures``
-    because each template decides what a bare ``threshold`` means before any
+    because each reader decides what a bare ``threshold`` means before any
     name is resolved. The tenure (``scope.cuts.tenure``, "lebron stats as a
     starter for Miami" - his games for that team, written by
     ``subject._apply_own_team`` for the one reader whose words state it) is
@@ -1130,18 +1135,18 @@ def condition_player(
     measures: list[MeasureFilter] | None = None,
     opponent: Entity | None = None,
 ) -> tuple[Entity, Narrowed] | Unanswered:
-    """The player a condition template is about, and his games in
+    """The player a condition read is about, and his games in
     ``condition_scope`` under the question's row-level narrowings, read off
-    ``scope``: for the templates that group a player's games by a condition
+    ``scope``: for the readers that group a player's games by a condition
     (splits, a record above a threshold, a streak, with/without) and read
     them as a subquery (:func:`association.query.player_games.games_subquery`).
 
-    ``condition_scope`` is the template's own ``_Scope``, kept because it reads "career
+    ``condition_scope`` is the retired template's own ``_Scope``, kept because it reads "career
     ... in 2015" as 2015 where ``span_of`` refuses the pair - the one place
     the two readers of a player's games disagreed, and not this refactor's to
     settle. ``team`` narrows to the games he played for that team. ``measures``
     is the lines a caller has already read off ``below``/``above`` with
-    :func:`measure_filters` - built in the template body, before any name is
+    :func:`measure_filters` - built by the caller, before any name is
     resolved, the same way :func:`player_stat` does it - and defaults to none
     so a caller that does not pass any keeps reading every game in scope.
     ``opponent`` is the team the games are against when the caller has
@@ -1658,7 +1663,7 @@ def team_slot_for_player(con: duckdb.DuckDBPyConnection, player: Entity, team_te
     """What a ``team`` slot means once ``player`` is named - see #147.
 
     An ``opponent`` already named wins outright: a ``team`` slot beside it is
-    the same noise the router routinely fills alongside an already-correct
+    the same noise the router routinely filled alongside an already-correct
     opponent, not a second fact to reconcile - measured on the filed corpus
     rows, it is Payton Pritchard's invented "Phoenix Suns" beside a correct
     "Philadelphia 76ers" opponent, and Kobe Bryant's own "Los Angeles Lakers"
@@ -1669,8 +1674,8 @@ def team_slot_for_player(con: duckdb.DuckDBPyConnection, player: Entity, team_te
 
     With no ``opponent`` already named, his own team narrows nothing, so it is
     dropped; a different, real team is his opponent (the Curry shape); and a
-    name nothing resolves to - the router inventing a team the way it
-    sometimes invents a player, see AGENTS.md's "the router invents names" -
+    name nothing resolves to - a model inventing a team the way it
+    sometimes invents a player, see AGENTS.md's "The router invents names" -
     or an ambiguous one, is dropped rather than guessed at or asked about: the
     player, not the team, is what the question is about.
 

@@ -9,7 +9,7 @@ names. So every game is filed under the right team, and every name printed from
 
 A neutral module rather than part of ``query``, because both packages need it:
 ``fetch/warehouse.py`` names teams in the ``player_game_log`` view, and the
-query templates name them everywhere else. Same reason ``season.py`` exists.
+query side names them everywhere else. Same reason ``season.py`` exists.
 
 .. versionadded:: 2.2.0
 

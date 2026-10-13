@@ -241,7 +241,8 @@ def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str],
         found = resolved_player(con, text, available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
         if isinstance(found, Unanswered):
             return found
-        # The router often repeats a teammate in `player`; that is not a subject.
+        # A teammate may stand among the players too (the router often
+        # repeated one in `player`); that is not a subject.
         if found.id not in {m.id for m in mates} and found.id not in {s.id for s in subjects}:
             subjects.append(found)
     if len(subjects) > 1:

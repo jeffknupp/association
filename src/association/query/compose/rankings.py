@@ -99,10 +99,10 @@ def leaderboard_reads(q: Query) -> bool:
 
 def _leaderboard_career(scope: Filtered) -> bool:
     """True for a career ranking, False for a one-season one; raises for a
-    career with a year named. The router keeps a year the question named
+    career with a year named. The router kept a year the question named
     alongside "career", so "most points ever in a game in 2024" (that
     season), "career leaders since 2015" (a range) and "career points
-    through 2010" (a cutoff) all arrive as the same two slots - answering
+    through 2010" (a cutoff) all arrived as the same two slots - answering
     any of them as one of the others is the substitution this refuses
     (``templates.players._career_span`` until the template's words moved)."""
     if not scope.span.career:
@@ -128,8 +128,9 @@ def _leaderboard_fields(scope: Filtered, metric: str) -> list[str]:
     box-score average (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`)
     or ``"team"`` (F017, ISSUES.md). An unknown field is refused rather than
     dropped ("top 10 in NetPoints ALONGSIDE their points per game" was once
-    answered without the second half, silently); a repeated one is the
-    router's slip and is said once, and one restating the ranked metric is
+    answered without the second half, silently); a repeated one (the
+    router's slip, when this was written) is said once, and one restating
+    the ranked metric is
     left out (it rendered the same 33.5 twice under two headings)."""
     requested = scope.measure.beside if scope.measure is not None else ()
     unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]

@@ -3,9 +3,11 @@
 here in code instead of re-derived by the model from prose on every query.
 
 Standalone (it imports nothing from the rest of query/) so every consumer can
-read it without a cycle: season_line.py builds the ranking's SQL from it, prompt.py lists the
-known metrics in the get_leaderboard tool description, the templates package validates
-router slots against it."""
+read it without a cycle: season_line.py builds the ranking's SQL from it, and
+the point reader, the ranking's reader and the sayer read a metric's facts
+from it. Until 5.0.0 prompt.py listed the known metrics in the
+get_leaderboard tool description, and until Phase 2 the templates package
+validated the router's slots against it."""
 
 from __future__ import annotations
 
@@ -435,7 +437,7 @@ def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: 
     )
 
 
-# Every stat name the router's prompt taught it that had no metric behind
+# Every stat name the router's prompt taught it (until 5.0.0) that had no metric behind
 # it - so every leaderboard question naming one fell through. Kept out of
 # CORE_METRIC_NAMES, which the agent's preamble once spelled out three times
 # against a token budget; the split is kept because the core set is what an

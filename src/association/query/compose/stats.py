@@ -60,7 +60,7 @@ def _player_stat_measures(q: Query) -> list[str] | None:
     rate a percentage names, or the stats wanted (the one named, or the
     default line) where they are the point's own - else ``None``, and the
     compiler's sentence answers. A stat with no per-game column is the
-    template's own decline, kept: ``None``, as the presenter returned."""
+    retired template's own decline, kept: ``None``, as its presenter returned."""
     stat = spelled(q.measure)
     if stat is not None and stat in ADVANCED_STATS:
         return None

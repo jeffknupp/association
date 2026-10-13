@@ -7,10 +7,12 @@ both behaviors stay available rather than one being picked for everyone:
     find_*    - every candidate, best first. The caller decides.
     resolve_* - one entity, or Ambiguous/NotFound. Never a guess.
 
-Templates use resolve_*, because a template's job is to be trusted with a
-number. Ambiguity is returned as a value, and the template asks a clarifying
-question (see :func:`clarification`) rather than guessing or falling through.
-Before asking, a template narrows the candidates to those with a row where its
+Readers use resolve_* (through :func:`resolved_player` and
+:func:`resolved_team`), because a reader's job is to be trusted with a
+number. Ambiguity is returned as a value, and the reader asks a clarifying
+question (see :func:`clarify`; the sayer words it,
+:func:`~association.query.compose.say.clarification`) rather than guessing or falling through.
+Before asking, a reader narrows the candidates to those with a row where its
 answer is read from, for the season it will answer about (see
 :func:`resolve_player`): a question about this season's Curry is not a
 question about Dell, who retired in 2002.
@@ -298,7 +300,7 @@ PLAYER_NICKNAMES = {
     # runs, so it settles the one case a plain search could not.
     "rui": "Rui Hachimura",
     # Players whose careers reach back toward the warehouse's 1993-94 floor.
-    # These are the ones the router gets wrong rather than merely misses: it
+    # These are the ones the router got wrong rather than merely missed: it
     # answered "The Answer" with Klay Thompson and "The Glove" with Jayson
     # Tatum, both confidently.
     "ai": "Allen Iverson",
@@ -465,13 +467,14 @@ _TEAM_NICKNAMES: dict[str, str] = {
     "nyk": "New York Knicks",
     "sas": "San Antonio Spurs",
     # ESPN stores the Clippers as "LA Clippers", so the full form the router
-    # writes - the prompt asks for full team names, and every other Los Angeles
-    # team has one - matched nothing at all.
+    # wrote - its prompt asked for full team names, and every other Los Angeles
+    # team has one - matched nothing at all; a question or a model's name may
+    # still spell it so.
     "los angeles clippers": "LA Clippers",
 }
 
 
-# Shorthand a question or the router uses for a former name.
+# Shorthand a question or the model uses for a former name.
 _ERA_ALIASES: dict[str, str] = {
     "sonics": "Seattle SuperSonics",
     "seattle sonics": "Seattle SuperSonics",
@@ -532,7 +535,7 @@ def franchise_by_name(text: str, season: int | None = None) -> list[Entity] | No
       caller asks: "Hornets" in 2014 was nobody, between id 3's last Hornets
       season and id 30's first.
 
-    ``season`` None means the current season, because every template defaults
+    ``season`` None means the current season, because every reader defaults
     to it and a question naming no year means now.
 
     .. versionadded:: 2.2.0
@@ -570,10 +573,10 @@ def _franchise_in(teams: names.TeamIndex, text: str, season: int | None) -> list
 def _by_nickname(teams: names.TeamIndex, text: str, season: int | None) -> Entity | None:
     """The one team a name's NICKNAME points to, when its city is garbled.
 
-    The router expands a question's nickname into a full name, and the city it
-    supplies is sometimes invented: "blazers" came back as "Portland Blazers"
-    (ESPN writes Portland TRAIL Blazers) and "kings" as "Los Angeles Kings".
-    Literal matching finds nothing for either.
+    The router expanded a question's nickname into a full name, and the city it
+    supplied was sometimes invented: "blazers" came back as "Portland Blazers"
+    (ESPN writes Portland TRAIL Blazers) and "kings" as "Los Angeles Kings";
+    a model's name may still. Literal matching finds nothing for either.
 
     The nickname decides, and the city may only confirm it or be unknown - it
     may never contradict it. "Portland Blazers" resolves, since Portland is the
@@ -677,8 +680,8 @@ def _team_named(teams: names.TeamIndex, text: Any, season: int | None = None) ->
         ][:2]
     except duckdb.CatalogException:
         # A warehouse without `teams` (a partial load) has no team to find.
-        # Everything here is best-effort: finding none leaves the slots exactly
-        # as the router gave them, which is never worse than before this ran.
+        # Everything here is best-effort: finding none leaves the names exactly
+        # as the model gave them, which is never worse than before this ran.
         return None
     if len(rows) == 1:
         return Entity(id=str(rows[0][0]), name=rows[0][1])
@@ -690,13 +693,13 @@ def _team_named(teams: names.TeamIndex, text: Any, season: int | None = None) ->
 
 
 def teammate_names(value: Any) -> list[str]:
-    """The teammates a ``without`` or ``with_player`` slot names, in order.
+    """The teammates a list of companions' names holds, in order (the
+    ``without`` or ``with_player`` slot's until Phase 3, step 2).
 
-    The router reads every name the phrase holds - "without Tatum and Brown" is
-    two people - so the slot is a list. A bare string is still read as one
-    name: slot values are advisory everywhere else in this package, and a
-    reader that understood only one shape would be one stray route away from
-    answering nothing.
+    The subject reading reads every name the phrase holds - "without Tatum
+    and Brown" is two people - so the value is a list. A bare string is
+    still read as one name: a reader that understood only one shape would
+    be one stray value away from answering nothing.
 
     .. versionadded:: 2.2.0
     """
@@ -769,8 +772,8 @@ def suggest_players(index: names.NameIndex, text: str) -> list[Entity]:
     to fail anyway. Two passes, in order, because they answer different
     failures:
 
-    1. **The surname alone.** The router invents the half of a name the
-       question does not contain. Asked to "compare sga and embid" it emitted
+    1. **The surname alone.** A model invents the half of a name the
+       question does not contain. Asked to "compare sga and embid" the router emitted
        ``'Jemel Embiid'`` - the surname corrected, the given name made up - and
        since every token must match, one fabricated word buried a player the
        warehouse holds. Dropping back to the last token is exact matching, not
@@ -818,7 +821,7 @@ def suggest_players(index: names.NameIndex, text: str) -> list[Entity]:
         # A team name is not a near miss on a player. "Hawks" is one edit
         # from Spencer Hawes, and "Most reb by a hawk player history"
         # answered "did you mean Spencer Hawes?" instead of naming the real
-        # cause: the question is about a team, and this template cannot
+        # cause: the question is about a team, and this reader cannot
         # answer that - the same false-cause shape the Maxey refusal note
         # above warns about, one step earlier. The caller already has `text`
         # to explain that with; guessing a person here can only mislead it.
@@ -902,7 +905,7 @@ def read_near_spelling(index: names.NameIndex, text: str) -> Entity | None:
     said so - or None, and the caller asks or refuses as it always did.
 
     For a name slot that matched nobody exactly. Typos are the entity index's
-    job, never the router model's: once names reach resolution as the question
+    job, never the model's: once names reach resolution as the question
     typed them, "embid" arrives as "embid", and asking "did you mean Joel
     Embiid?" of every typo would turn each one into a clarification. Jeff's
     rule (AGENTS.md, "A reasonable default beats a question") allows a default
@@ -1284,7 +1287,7 @@ def find_teams(teams: names.TeamIndex, text: str, season: int | None = None) -> 
     Two readings come before and after that. First, a name a renamed or
     relocated franchise carried is read for ``season`` - "Hornets" in 2008 is
     New Orleans, not today's Charlotte team (:func:`franchise_by_name`). Last,
-    when nothing matches literally, a name whose city the router garbled is
+    when nothing matches literally, a name whose city a model garbled is
     read by its nickname (:func:`_by_nickname`).
 
     .. versionchanged:: 2.2.0
@@ -1297,8 +1300,9 @@ def find_teams(teams: names.TeamIndex, text: str, season: int | None = None) -> 
     historic = _franchise_in(teams, text, season)
     if historic is not None:
         return historic
-    # "Sixers" and "Cavs" are no word of any ESPN team name; the router emits
-    # them verbatim often enough that they fell through to the agent.
+    # "Sixers" and "Cavs" are no word of any ESPN team name; the router emitted
+    # them verbatim often enough that they fell through to the agent, and the
+    # model copies them as the question types them.
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
 
     index = team_columns(teams, "team_id", "abbreviation", "display_name")
@@ -1353,7 +1357,7 @@ def collect_name_readings() -> Iterator[list[str]]:
     A default is only allowed where it is visible and correctable, so a name
     settled by "who played most recently" has to reach the answer as words: who
     it was read as, who else matched, and what to type to get the other one.
-    The reading happens several calls below the template, in 27 call sites that
+    The reading happens several calls below the reader, in 27 call sites that
     take a bare connection, so it is collected here rather than threaded
     through every signature - a ``ContextVar`` and not a module global because
     the web server and the tests run questions on more than one thread. Outside
@@ -1614,7 +1618,7 @@ def resolved_player(
     ambiguity a handled outcome: the caller answers with the question instead of
     guessing. Callers must forward it.
 
-    `available` is required, so no template can resolve a name without saying
+    `available` is required, so no reader can resolve a name without saying
     where its answer comes from: an ambiguous name is narrowed to the players
     with a row there, for `season` or any season up to `through`, before
     anybody is asked about. See entities.resolve_player - "Curry" this season
@@ -1631,7 +1635,7 @@ def resolved_player(
     except duckdb.CatalogException:
         # The NetPoints tables exist only if that opt-in fetch was run. With
         # nothing to narrow against the name is asked about as it always was,
-        # and the template's own query reports the missing table.
+        # and the reader's own query reports the missing table.
         resolution = resolve_player(con, text)
     match resolution:
         case Entity() as player:
@@ -1642,7 +1646,7 @@ def resolved_player(
             # A near miss is answered rather than passed along, for the same
             # reason ambiguity is: the agent would resolve the same name
             # against the same table, and a name nothing matches is a fact,
-            # not a shape this template happens not to cover.
+            # not a shape this reader happens not to cover.
             near = tuple(player.name for player in suggest_players(names_of(con), text))
             if near:
                 return Clarify(asked=text, candidates=near, why="near_spelling")
@@ -1675,7 +1679,7 @@ def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
 
 def slot_season(scope: Filtered) -> int | None:
     """The season a question's team names are read for: the one it named, or
-    None for "now" - the same default every template applies."""
+    None for "now" - the same default every reader applies."""
     return scope.span.season
 
 

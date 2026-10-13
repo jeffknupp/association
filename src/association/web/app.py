@@ -289,7 +289,7 @@ class CoverageResponse(BaseModel):
     Built from :data:`association.nba.coverage.COVERAGE` - the same enforced
     floors :func:`association.nba.coverage.unavailable` refuses a question
     against - rather than recomputed from row counts, so this page and a
-    template's own refusal cannot say two different things about the same
+    reader's own refusal cannot say two different things about the same
     season. ``tiers[i].tables`` is cumulative: the play-by-play tier's tables
     include the box score tier's, because a question that touches
     play-by-play can touch box scores too, and its floor is the narrowest
@@ -417,7 +417,7 @@ def _game_span(con: duckdb.DuckDBPyConnection) -> tuple[Any, ...] | None:
     placeholders, 23 team-slots naming an id no franchise has, phantom rows and
     a duplicate (``DATA.md``, "``games`` carries placeholder, duplicate and
     phantom rows"). Counting them made the page say 43,504 where 43,353 were
-    played. Every team template already reads ``real_games``; this is the last
+    played. Every team reader already reads ``real_games``; this was the last
     reader that did not.
 
     The fallback is not defensive noise: ``real_games`` is built at load time,

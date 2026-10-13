@@ -128,8 +128,10 @@ class RunHistory:
         self.log(f"  [timing] model inference #{self.model_calls}: {elapsed:.2f}s")
 
     def record_tool_call(self, name: str, elapsed: float) -> None:
-        """Count one tool or template call. Typically sub-millisecond, which is
-        the point: the timing split shows where the time is not going."""
+        """Count one compiled read - the answer side's, timed by the answering
+        loop (a tool or template call before 5.0.0, typically sub-millisecond,
+        which was the point: the timing split shows where the time is not
+        going)."""
         self.tool_calls += 1
         self.tool_seconds += elapsed
         self.log(f"  [timing] {name}: {elapsed:.2f}s")

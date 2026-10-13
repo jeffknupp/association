@@ -5,8 +5,10 @@ named by across the six vocabularies the slot was read against
 compiler's measure names, the leaderboard metrics', the team metrics'
 alias texts, the box-score words), and the one tagger that reads the
 family (:func:`read_measure`) from the lexicon's words
-(:mod:`association.query.lexicon`) and the facts the stages settled before
-it - the intent, the model's key as context, the lines read - into
+(:mod:`association.query.lexicon`) alone, and the key's reading of them
+(:func:`~association.query.point.measure_under`, since Phase 3, step 4,
+slice (b)) over what the words ask, the model's key as context and the
+lines read (:class:`MeasureContext`) - into
 :class:`~association.query.reading.Measure`, claiming the characters it
 read.
 
@@ -467,9 +469,9 @@ def team_metric_name(measure: Measure | None) -> str | None:
 
 def named_by_a_team_metric(measure: Measure | None) -> bool:
     """Whether ``measure`` was written as a team metric's alias text (the
-    stages' reading of "fgm", "ppg", "defensive rating" under a team's
-    intents) rather than by its own key: the team compiler's total reads a
-    measure by its key alone, as the stages' alias text never matched a
+    reading of "fgm", "ppg", "defensive rating" under a team's keys) rather
+    than by its own key: the team compiler's total reads a measure by its
+    key alone, as the router stages' alias text never matched a
     column name (ISSUES.md, "A team total named by a metric's alias").
 
     .. versionadded:: 6.0.0
@@ -585,8 +587,8 @@ class MeasureContext:
     source where the words name one - and where they name none, the key
     stands as it did, so no answer moves; the model's ``side`` and
     ``shot_value`` where a test hands them (the normalizer files neither);
-    the columns a test hands beside a ranking (``fields``, kept as given on
-    any intent, as the slot was); the stat the lines tagger read beside a line (``line_stat``: "scores
+    the columns a test hands beside a ranking (``fields``, kept as given
+    whatever the words ask, as the slot was); the stat the lines tagger read beside a line (``line_stat``: "scores
     30" is points; one "N+ stat" pair under a count or a record is that
     word's column); whether a line is keyed (a record over one reads the
     games won or lost only where none is); and whether a game of ordering

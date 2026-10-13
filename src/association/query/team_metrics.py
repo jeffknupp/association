@@ -2,7 +2,7 @@
 through, and where each number behind it comes from.
 
 The team counterpart to :mod:`association.query.metrics`. Kept apart from the
-templates because most of it is measurement rather than code - which of ESPN's
+readers because most of it is measurement rather than code - which of ESPN's
 115 ``team_season_stats`` columns can be believed, and from which season - and
 that is worth reading in one place.
 
@@ -171,8 +171,9 @@ DEFAULT_TEAM_LINE: tuple[str, ...] = (
 # The words a question names a team metric by are the lexicon's
 # (lexicon.TEAM_METRIC_WORDS), and which measure each names is the catalog's
 # (measure.ALIASES): a whitelist, not a fuzzy match - `stat` was the one
-# REQUIRED router slot, so the model filled it on every question with free
-# text, and an unlisted word refuses rather than being guessed at.
+# REQUIRED router slot, and is the normalizer's one required key, so the
+# model fills it on every question with free text, and an unlisted word
+# refuses rather than being guessed at.
 
 
 def resolve_team_metric(measure: Measure | None) -> str | None:

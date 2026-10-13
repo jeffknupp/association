@@ -452,7 +452,7 @@ _TEAM_LINE: tuple[tuple[str, str, str], ...] = (
     # offensiveRebounds + defensiveRebounds already equals ESPN's own
     # totalRebounds in every 2022+ row). offensiveRebounds and defensiveRebounds
     # are never NULL where totalRebounds is not, so this substitutes cleanly in
-    # every season a template can reach. See DATA.md, "The team
+    # every season a reader can reach. See DATA.md, "The team
     # `totalRebounds` column stops including team rebounds in 2022".
     ("rebounds", "REB", "AVG(t.offensiveRebounds + t.defensiveRebounds)"),
     ("assists", "AST", "AVG(t.assists)"),
@@ -637,8 +637,9 @@ def _with_without_team_games(scope: _Scope, teams: Sequence[str]) -> TeamNarrowe
     from, and no game in it lacks a ``team_box_stats`` row to join. The
     correction this port makes reachable in principle is the pre-1993-94
     postseason label; ``with_without``'s own coverage floor
-    (``TEMPLATE_SOURCES["with_without"]`` = ``_PLAYER_GAME_TABLES``, capped at
-    1994 by ``_game_scope``) refuses every question that would exercise it,
+    (``TEMPLATE_SOURCES["with_without"]`` = ``_PLAYER_GAME_TABLES`` when this
+    was written, ``coverage.SOURCES`` since; capped at 1994 by
+    ``_game_scope``) refuses every question that would exercise it,
     so no answer moves.
     """
     clause, params = _with_without_team_span_clause(scope)

@@ -28,7 +28,7 @@ keeping that visible:
   fetched one is indistinguishable from it, and every serious failure this
   project has had was an answer that looked exactly like a good one.
 - **Deliberately absent from** :data:`association.nba.coverage.KNOWN_TABLES`.
-  No template reads it by that name, and while a SQL-writing agent existed it
+  No reader reads it by that name, and while a SQL-writing agent existed it
   could neither query nor describe it. Do not add it there without first
   deciding what an answer should say about a derived
   number - "Anthony Davis scored 24" and "Anthony Davis probably scored about
@@ -38,7 +38,7 @@ keeping that visible:
   column named ``field_goals_made`` cannot be mistaken for ``fieldGoalsMade``
   at a glance, which is the point.
 - **No** :mod:`association.nba.coverage` **entry.** Floors exist to refuse
-  questions, and no template reads this, so there is no question to refuse.
+  questions, and no reader reads this, so there is no question to refuse.
 
 **A player who appears in no play is absent, not zero.** Minutes are gone, so
 "did not play" and "played and did nothing" cannot be told apart, and emitting

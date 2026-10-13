@@ -33,7 +33,7 @@ season line and box scores:
   (:data:`GAME_MEASURES`: points scored, points allowed, differential),
   through :func:`association.query.team_relation.scoped_team` and
   :func:`association.query.team_relation.team_games` - the same shared
-  steps every other team template narrows through, never a hand-written
+  steps every team reader narrows through, never a hand-written
   clause here.
 
 What this module does NOT do, on purpose, because it needs a join
@@ -41,10 +41,11 @@ What this module does NOT do, on purpose, because it needs a join
 made, rebounds, ...) narrowed to a window or an opponent - "3-pointers made
 by the Magic over their last 10 games" - refuses (``Unsupported``) rather than
 silently answering the season instead. A "last N games" question naming no
-season type (F128/F129's own shape) is answered by ``templates.games.team_game_log``'s
-existing team half directly (its ``_team_game_log_mixed`` already reads both
-season types and merges by date) rather than duplicated here; this module's
-narrowed reader is one season type at a time.
+season type (F128/F129's own shape) is answered by the team's log
+(``compose.logs._team_log_mixed``, ``templates.games.team_game_log``'s
+``_team_game_log_mixed`` until Phase 2, which reads both season types and
+merges by date) rather than duplicated here; this module's narrowed reader
+is one season type at a time.
 
 .. versionadded:: 4.4.0
 """
@@ -109,9 +110,9 @@ GAME_MEASURES: dict[str, str] = {
 
 #: A team measure name -> its ``team_season_stats`` column, for an
 #: UNNARROWED read - the season's own raw total. A whitelist, like
-#: ``THRESHOLD_STAT_COLUMNS`` keeps for a player's box columns: the router's
-#: ``stat`` slot is model-generated text, and this is the only place it can
-#: reach SQL.
+#: ``THRESHOLD_STAT_COLUMNS`` keeps for a player's box columns: a stat key
+#: can be model-generated text (the normalizer's stat, the router's ``stat``
+#: slot before it), and this is the only place it can reach SQL.
 SEASON_MEASURES: dict[str, str] = {
     "points": "points",
     "rebounds": "rebounds",
@@ -419,9 +420,9 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     clause written here. Resolves the team itself too (rather than reusing
     :func:`_resolved_team_subject`'s separate lookup), so the name and the
     span it is read against always come from the one call that settles both
-    together - the same order every other team template keeps."""
+    together - the same order every team reader keeps."""
     scope = q
-    # The shared steps read the slot dict until they take the typed filters.
+    # The shared steps take the typed filters: the query itself.
     settled = scoped_team(con, scope, "no team named")
     if isinstance(settled, Unanswered):
         raise Refused(settled)
@@ -543,7 +544,7 @@ _TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id"
 def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompiled:
     """The ``run`` shape as SQL: a named team's longest run of wins or
     losses (``Measure.won``) within a season, over the team-games relation
-    narrowed exactly as every team template narrows it
+    narrowed exactly as every team reader narrows it
     (:func:`_team_games_narrowed`) and read over every game in the span
     (``whole_span``) - or, with no team named, each team-season's own
     longest, the league's list. The runs are
@@ -797,7 +798,7 @@ def team_coverage_refusal(q: TeamQuery) -> Refusal | None:
     :func:`~association.query.coverage.check_coverage` (#197,
     ISSUES.md: compose read no coverage floor at all). Checked before the
     team itself is even resolved, the same order ``check_coverage`` runs in
-    ahead of every relation template.
+    ahead of every reader on a relation.
 
     .. versionadded:: 4.4.0
     """
@@ -816,7 +817,7 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     Raises :class:`~association.query.compose.core.Refused` when
     :func:`team_coverage_refusal` finds the season out of reach - checked
     first, the same order ``check_coverage`` runs in ahead of every
-    template.
+    reader.
 
     .. versionadded:: 4.4.0
 

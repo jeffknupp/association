@@ -40,8 +40,9 @@ WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "frid
 
 # A holiday spelled with the apostrophe a phone keyboard types ("new year\u2019s
 # eve") is the same holiday, and reaches this module as a straight one: the
-# parser folds it where a question enters (parse.read_route and
-# parse.reading_from_route, ISSUES.md #259), so no reader here keeps a
+# parser folds it where a question enters (parse.read_route, which
+# parse.reading_from_route was folded into in Phase 3, step 4, slice (b);
+# ISSUES.md #259), so no reader here keeps a
 # second, local fold.
 
 
@@ -105,10 +106,12 @@ class AlignmentNarrowing:
     A sibling of :class:`CalendarNarrowing`, read by :func:`parse_alignment`
     rather than :func:`parse_situation` - kept as a second function rather
     than folded into the first because ``team_record``'s own ``situation``
-    reading (``templates/teams.py``, over the standings table rather than
-    either relation) calls :func:`parse_situation` directly and types its
-    result as :class:`CalendarNarrowing` alone; widening that return type
-    would hand it a narrowing standings carries no column for. The shared
+    reading (the retired ``templates/teams.py``, over the standings table
+    rather than either relation) called :func:`parse_situation` directly and
+    typed its result as :class:`CalendarNarrowing` alone; widening that
+    return type would have handed it a narrowing standings carries no column
+    for. :func:`parse_situation`'s one caller since is the typed situation
+    (:func:`association.query.reading.situation_of`), which tries both. The shared
     relation steps that DO carry a conference or division
     (:func:`association.query.player_relation.scoped_games`,
     :func:`~association.query.player_relation.league_games`,

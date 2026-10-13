@@ -47,7 +47,8 @@ from .counts import box_score_span
 
 def _single_game_high_column(q: Query) -> str | None:
     """The column ``q`` ranks games by where it is ``single_game_high``'s
-    own point - the router's own stat, whitelisted, first among the
+    own point - the stat the reading measures (the measure tagger's; the
+    router's own stat until 5.0.0), whitelisted, first among the
     measures, top games first, nothing the question's words added - else
     ``None``."""
     stat = spelled(q.measure)

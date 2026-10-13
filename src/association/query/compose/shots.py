@@ -1,7 +1,8 @@
 """One player's located shots - drawn on a court (``shot_chart``) or
 averaged by distance from the rim (``shot_distance``): a declared relation
 with its own reader (``ROADMAP.md``, "Charts are declared shapes"), not
-ported onto the player-games relation until after Phase 3.
+ported onto the player-games relation; its statements are the shot
+relation's (:mod:`association.query.shots`) since Phase 4, step 5.
 
 The reader is the retired templates' read, moved whole
 (``templates/shots.py``, Phase 2, step 5): the player and the span settled

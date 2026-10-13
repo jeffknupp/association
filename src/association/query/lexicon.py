@@ -14,8 +14,8 @@ every other reader of a year goes through (:func:`season_spans`,
 :func:`season_from_text`). The window's followed (the second slice: a count of games
 or seasons and the end they are taken from, which end of a ranking, the
 measure a ranking of games is ordered by - :data:`WINDOW_GRAMMAR`,
-:data:`ORDER_WORDS`, :data:`SINGLE_GAME`, :data:`RANK_WORDS`, :data:`RANKED_BOOLEAN_GAMES`, and the family's intent
-guards). The other families' words follow, one slice each (``ROADMAP.md``,
+:data:`ORDER_WORDS`, :data:`SINGLE_GAME`, :data:`RANK_WORDS`, :data:`RANKED_BOOLEAN_GAMES`, and the family's guards on
+what the words ask). The other families' words follow, one slice each (``ROADMAP.md``,
 "Phase 3, the expected steps", step 2): the games' cuts, the period, the
 line and the companions, the subject's own - and, with Phase 3, step 4,
 slice (b), the grammar's rules' (``router.py``'s stages until then).
@@ -811,7 +811,7 @@ def count_of(word: str) -> int:
 # already leads with the one asked about and adds "Next: ..." (leaderboard,
 # threshold_count, single_game_high), and a limit of 1 cost those answers
 # their runners-up (the lead's offline run of the agent, 2026-09-27) - though
-# the router's references hold it.
+# the router's references held it.
 WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
     (
         re.compile(
@@ -843,8 +843,8 @@ winning; a ``limit`` of 0 is the count the words hold.
 # forms the router's model emitted (``recent``, ``first``). Tighter than the
 # grammar's rows (no venue or season type between the count and "games": "his
 # last home game" is a phrasing they miss), which is why a reader of ORDER
-# alone - the window on an intent whose reader honors one, filled where the
-# grammar read none - uses them, and the words that keep an intent off a
+# alone - the window on a shape whose reader honors one, filled where the
+# grammar read none - uses them, and the words that keep a question off a
 # split ("over the last 7 games" is a log, not a with/without) read them too.
 ORDER_WORDS: dict[str, re.Pattern[str]] = {
     "recent": re.compile(r"\b(?:last|latest|previous|most\s+recent)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
@@ -1012,8 +1012,8 @@ qualifying column counts (``metrics.QUALIFIER_UNITS``).
 .. versionadded:: 6.0.0
 """
 
-# The window family's guard words, read by the stages that choose an intent
-# (never a value): "games" or "last" beside a player's name is his log and
+# The window family's guard words, read by the grammar's rules that choose
+# what the words ask (never a value): "games" or "last" beside a player's name is his log and
 # not his line; "who ... the most", "top 10", "leaders" asked with no player
 # named is the league's ranking; "most"/"highest"/"top"/"best" beside a
 # quarter ranks players unless a team is named; a log word or a window
@@ -1458,7 +1458,7 @@ def season_spans(text: str) -> list[SeasonSpan]:
     that makes it one the league could have played - "25-26" is 2025-26,
     "95-96" is 1995-96, and "30-31" is none - and, written with a slash,
     only where it is not also a month and its day. "12/13" is December 13
-    to the router, which reads "since 12/13" as that date
+    to the cuts tagger, which reads "since 12/13" as that date
     (:data:`NUMERIC_DATE_RANGE`), and a season read from the same
     characters would answer another year's games.
 
@@ -1588,13 +1588,14 @@ def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
 # each game - one quarter or one half - read by one tagger,
 # ``query/period.py`` (``which_period`` names the one, ``read_period`` keeps
 # it under a reader that takes one). The rest of the family's words choose
-# the period intents (``router._route_period_intents``: a quarter or half
+# the period shapes in the grammar's rules (``grammar._period``;
+# ``router._route_period_intents`` until Phase 3, step 4: a quarter or half
 # named at all, a ranking of players by one, "by quarter" as a breakdown,
 # a period as a CONDITION on which games count) or name a cause
 # (``parse._unsupported_period_as_condition``), and read from here too, so
 # the family's words are declared once. A period used as a condition
 # ("after making one three in the first quarter") is the line slice's
-# value (``parse.read_period_condition``), read by PERIOD_CONDITION below
+# value (``line.read_period_line``), read by PERIOD_CONDITION below
 # and a `which_period` of its period.
 # ---------------------------------------------------------------------------
 
@@ -1627,8 +1628,10 @@ WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<
    ``router._WHICH_HALF`` until Phase 3, step 2.
 """
 
-# The words that name a quarter at all, which the intent stage reads
-# (period_split, period_leaderboard, team_quarter_points). Called
+# The words that name a quarter at all, which the grammar's rules read
+# (``grammar._period``: a player's quarter, players ranked by one, a team's
+# quarter - the retired period_split, period_leaderboard and
+# team_quarter_points). Called
 # `_AGENT_ONLY` until 5.0.0, for the tool-calling agent a quarter question
 # was once sent to. `[1-4]q` is the mirror of `q[1-4]` and was missing:
 # "Duncan Robison 1q log" and "Devin Vassell nba player per game stats 1q"
@@ -1636,10 +1639,10 @@ WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<
 # the same shape as the "4th qtr" gap that made these patterns grow
 # abbreviations in the first place. `td3s` used to be here too, sending
 # "luka td3s home" to the agent because nothing counted one player's
-# triple-doubles; the compiler does now, and the stages read the word.
+# triple-doubles; the compiler does now, and the grammar's rules read the word.
 QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
 """A quarter named at all - one, or every one ("by quarter"). Read over the
-lowercased question, as the stage reads it.
+lowercased question, as the grammar's rule reads it.
 
 .. versionadded:: 6.0.0
    ``router._QUARTER_WORDS`` until Phase 3, step 2.
@@ -1648,7 +1651,7 @@ lowercased question, as the stage reads it.
 # the model mapped "first half" onto period 1, which is wrong for a TEAM the
 # same way it would be for a player - so half words are kept apart from
 # QUARTER_WORDS, whose team exemption applies to quarters only, and always
-# route through the intent stage's override. "rj barrett 4th qtr log" is
+# route through the grammar's rule (``grammar._period``). "rj barrett 4th qtr log" is
 # why both patterns grew abbreviations - it slipped past "quarter" and
 # game_log answered with his whole last game.
 HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)[\s-]+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
@@ -2100,8 +2103,8 @@ ABSENCE_WORDS = (
 """
 # "with Embiid out", "when Tatum and Brown are injured", "in games Brown
 # missed": a player named before an absence word sat those games out - the
-# same teammates "without" names, written the other way round. The stages
-# read only that the question HAS this phrase (it is what makes a record a
+# same teammates "without" names, written the other way round. The grammar's
+# rules read only that the question HAS this phrase (it is what makes a record a
 # with/without split); WHO it names is the subject reading's. The names are
 # runs of words that are no stop word, so the absence word must follow them
 # directly - "with Embiid playing and Maxey out" names nobody absent rather
@@ -2317,7 +2320,7 @@ MEASURE_GRAMMAR: tuple[tuple[re.Pattern[str], str], ...] = tuple(
 before the normalizer's key so a phrase the closed vocabulary holds never
 depends on the model - the NetPoints family above all (the 3B misses most
 of it), then the derived rates and the words :data:`MEASURE_WORDS` does
-not hold. Each key is the spelling the stages wrote (the ``stat`` slot's),
+not hold. Each key is the spelling the router's stages wrote (the ``stat`` slot's),
 which the catalog resolves (``measure.key_of``).
 
 .. versionadded:: 6.0.0
@@ -2707,7 +2710,7 @@ TEAM_METRIC_NAMED: tuple[tuple[str, re.Pattern[str]], ...] = tuple((alias, re.co
 """Each team-metric alias with the pattern that finds it whole in the
 casefolded question, longest alias first: the LONGEST alias the question
 holds anywhere names the metric ("turnover percentage" beside "record"
-reads turnovers), as the stages read it - the model invents team stats
+reads turnovers), as the router's stages read it - the model invents team stats
 ("usage_pct_defense" for "lowest defensive rating"), and the question says
 which one it meant.
 
@@ -2726,14 +2729,14 @@ HOW_MANY_GAMES = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 """A count asked outright ("how many") - beside a games key, a line's count of games rather than a log of one.
 
 .. versionadded:: 6.0.0
-   ``router._HOW_MANY`` until Phase 3, step 2 (the router keeps its own for the span's context).
+   ``router._HOW_MANY`` until Phase 3, step 2 (the router kept its own for the span's context; the span's context reads this one since the router went, Phase 3, step 4).
 """
 
 LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
 """A game log asked for by name ("luka ft log" routed to a season average once).
 
 .. versionadded:: 6.0.0
-   ``router._LOG_WORDS`` until Phase 3, step 2 (the router reads it for the intent too).
+   ``router._LOG_WORDS`` until Phase 3, step 2 (the router read it for the intent too; the grammar's rules read it for what the words ask since Phase 3, step 4).
 """
 
 WORD = re.compile(r"[a-z]+")
@@ -2809,7 +2812,7 @@ or the number of a line the lines tagger read stated with a plus, or with
    ``subject._N_PLUS`` until Phase 3, step 2.
 """
 
-# The child intents the question's own words assign, gated on the subject's
+# The child shapes the question's own words assign, gated on the subject's
 # kind (``subject._CHILD_GRAMMARS`` holds the table: which kinds and which
 # parents each applies under, in precedence order). The words only, here.
 #
@@ -3092,8 +3095,9 @@ SUBJECT_OF_HAVE = ask(r"\b(?:does|did|has|have)\s+(?:([A-Za-z][A-Za-z.'\-]*)\s+)
    ``router._SUBJECT_OF_HAVE`` until Phase 3, step 2.
 """
 
-# A router ``player`` that is no name at all: what the model files as the
-# player once nothing in its prompt shows a count or a ranking with none ("most
+# A name the model hands back that is no name at all: what it files among the
+# names once nothing in its prompt shows a count or a ranking with none (the
+# 5.0.0 prompt shrink; the router's ``player`` before it) ("most
 # 30+ point games", "most", "Most Player in 15th Season Played"). No player's
 # name holds a digit, a plus sign, a rank word or the word "player"; anchored
 # to the START for the rank words, since a real name can end in one ("Travis

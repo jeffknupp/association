@@ -1,9 +1,9 @@
 """Runs one question at a time against a shared Agent.
 
 The serialization is not caution, it is a measurement. ollama keeps a single KV
-cache slot per model: three consecutive router calls run 11.6s / 1.3s / 1.7s,
-but slipping one call with a different system prompt in between puts the next
-back to 11.2s. Two browser tabs asking questions at the same time would do
+cache slot per model: measured on the router's model (the normalizer's since
+5.0.0), three consecutive calls ran 11.6s / 1.3s / 1.7s, but slipping one call
+with a different system prompt in between put the next back to 11.2s. Two browser tabs asking questions at the same time would do
 exactly that to each other, and the second question would pay for the first.
 So the server answers one at a time and tells a waiting request it is waiting,
 rather than letting them interleave and both come back slow.

@@ -4,7 +4,8 @@ answer a shape the words ask for has (every key the grammar names;
 step 4), and the last step
 before a refusal naming why.
 
-The pipeline is parser -> template or compiler -> refusal. :func:`answer`
+The pipeline is parser -> planner -> a reader and the sayer, or the
+compiler's own sentence -> refusal. :func:`answer`
 is handed the point the parser read from the question's words
 (:attr:`Reading.point <association.query.reading.Reading.point>`), plans it
 (:mod:`~association.query.compose.plan`) and answers it one of three ways,
@@ -84,7 +85,7 @@ def _point_data(query: Query, out: dict[str, Any], headline: str) -> dict[str, A
     checks an answer against without re-parsing the sentence.
 
     ``headline`` is the sentence's own first line (the page's headline, when
-    a template does not carry one of its own - ``renderAnswer`` in
+    a reader does not carry one of its own - ``renderAnswer`` in
     ``web/static/index.html``). ``total`` is the whole count behind a
     by-player count a window cut short (:func:`~association.query.compose.core._grouped_total`,
     e.g. "thunder all-time triple doubles": ten rows shown, ``total`` the
@@ -134,7 +135,7 @@ def answer(
     declined_by: Callable[[Cause], None] | None = None,
 ) -> Answer | None:
     """The point the parser read for a question (:attr:`Reading.point`,
-    :func:`~association.query.parse.reading_from_route`), answered - run,
+    in the parser's last step, ``parse._reading``), answered - run,
     never read from the question again. ``planned`` is the point planned
     onto its relation (:func:`~association.query.compose.plan.plan_point`):
     the PLAN stage's verdict, made once by whoever calls - the answering
@@ -163,7 +164,7 @@ def answer(
     compiler's own sentence, with the box-score caveats
     :func:`~association.query.compose.core.run` reads appended (#197); the
     answering loop appends :func:`~association.query.coverage.coverage_caveat`
-    as it does to a template's answer. ``trace`` is handed the point before
+    as it does to a reader's answer. ``trace`` is handed the point before
     it is planned - the answering loop logs it as the decision record.
 
     This function is the whole surface ``agent.py`` calls; nothing else in
@@ -425,7 +426,7 @@ def _answer_point(
     # or grouped read prints before its table, or a scalar's one line whole.
     headline = answer_text.split("\n")[0].rstrip(":")
     # No coverage caveat here: the one caller (agent._try_compose) appends
-    # coverage_caveat to a composed answer exactly as it does to a template's,
+    # coverage_caveat to a composed answer exactly as it does to a reader's,
     # and this appending it too printed the same note twice, in the sentence
     # and in data["notes"] - measured on "allen iverson usage game log vs
     # milwaukee 2001 playoffs".

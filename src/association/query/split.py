@@ -122,7 +122,8 @@ def _split_side(split: str, question: str) -> tuple[str, re.Match[str] | None]:
 def _as_split(split: str | None) -> Split | None:
     """A split read off the words as the filters' own literal - the reader
     writes one of the set, and one that wrote anything else is a bug said
-    out loud, as the slot door says it for a slot dict."""
+    out loud, as the tests' slot door said it for a slot dict until Phase 4,
+    step 0."""
     if split is None:
         return None
     if split not in get_args(Split):

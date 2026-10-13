@@ -1,6 +1,6 @@
 """One compiler over the player-games relation: a :class:`Query` names a point
 (skeleton, measures, aggregate, group, window) and the relation supplies the
-subject, the span and every scoping slot exactly as it does for the
+subject, the span and every scoping cell exactly as it did for the retired
 template bodies on the relation - through :func:`~association.query.player_relation.scoped_player` /
 :func:`~association.query.player_relation.scoped_games` for a named player,
 :func:`~association.query.player_relation.league_games` for the league-wide
@@ -23,7 +23,7 @@ The compiler never narrows the relation by hand - every clause on
 ``pgl.opponent_team_id``, ``pgl.starter``, ``g.home_team_id`` or ``g.date``
 lives in :func:`~association.query.player_relation.scoped_games` or
 :func:`~association.query.player_relation.league_games`, so a narrowing that
-reaches a template reaches this compiler too, without being taught to it
+reaches the relation reaches this compiler too, without being taught to it
 separately - see ``test_templates_on_the_relation_do_not_narrow_it_themselves``
 in ``tests/query/test_templates.py``, which walks this module's source for
 exactly those tokens.
@@ -356,9 +356,9 @@ class Query(Filtered):
     offset: int = 0
     #: The minimum games a group needs to be kept, for a ranking.
     minimum_games: int | None = None
-    #: Binding parity with the template being mirrored: which availability
-    #: narrows an ambiguous name (game logs vs box scores) - the templates
-    #: computed it before :func:`~association.query.player_relation.scoped_player`.
+    #: Binding parity with the retired template a reader mirrors: which
+    #: availability narrows an ambiguous name (game logs vs box scores) - the
+    #: templates computed it before :func:`~association.query.player_relation.scoped_player`.
     available: Any = None
     #: The span the subject is settled in and his games read over, where
     #: the point reader settles it apart from the scope's own
@@ -400,8 +400,9 @@ class Compiled:
     rebuilt: bool
     measures: list[str]
     #: A run's games in date order - the rows the window was read over,
-    #: with their own names bound in ``params`` - for a presenter's totals
-    #: and unseen-games count (:func:`_compile_run`); ``None`` otherwise.
+    #: with their own names bound in ``params`` - for the run reader's totals
+    #: and unseen-games count (:func:`_compile_run`,
+    #: :func:`~association.query.compose.runs.read_streak`); ``None`` otherwise.
     run_rows: str | None = None
     run_params: dict[str, Any] | None = None
     #: The second player of a ``pair`` read (:func:`_compile_pair`), whose
@@ -429,8 +430,8 @@ def measure_names(measures: Sequence[Measure]) -> list[str]:
 
 def measure_sql(name: str, *, rebuilt: bool = False) -> str:
     """A measure as SQL. Under the widened (rebuilt) played guard, a column a
-    rebuild does not fill is blanked on rebuilt rows - the templates' own
-    ``REPLACE`` rule (see :func:`association.query.player_games.column`) - so
+    rebuild does not fill is blanked on rebuilt rows - the retired templates'
+    own ``REPLACE`` rule (see :func:`association.query.player_games.column`) - so
     an average is over the games that carry the figure.
 
     .. versionadded:: 4.4.0
@@ -477,14 +478,15 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
     """The retired scope check's rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
     ``rate`` ...) is refused, never dropped - answering "on Tuesdays" for
-    every day is the silent widening the templates exist to stop.
+    every day is the silent widening the readers refuse rather than make.
 
     ``season_type_unstated`` (a question that asked for both season types,
     "including the playoffs") is honored for a named player: ``scoped_player``
     settles his span over both (``player_relation.player_relation_season_type``),
     the reading ``game_log``, ``player_stat`` and ``threshold_count`` all
     declare, and for a team's log, which reads both types and merges them by
-    date (``templates.games._team_mixed_games``). The league-wide read
+    date (``compose.logs._team_mixed_rows``; ``templates.games._team_mixed_games``
+    until Phase 2). The league-wide read
     settles one type (:func:`_resolve_everyone`) and still refuses it rather
     than answer the regular season alone.
 
@@ -542,8 +544,8 @@ def _check_period_measures(q: Query) -> None:
     plus-minus and the advanced columns are blank. A read measuring one of
     those under a period would print the game's figure under the quarter's
     heading - so it is refused, and the default line (which carries minutes)
-    with it: the period templates say a period, and this compiler's sentence
-    has not been measured saying one. A read grouped by ``period`` sees
+    with it: the period's readers say a period (:mod:`association.query.compose.periods`),
+    and this compiler's own sentence has not been measured saying one. A read grouped by ``period`` sees
     each quarter's line the same way, and is held to the same columns."""
     if period_narrowing(q) is None and q.group != "period":
         return
@@ -556,7 +558,7 @@ def _check_period_measures(q: Query) -> None:
 def _check_split_category(q: Query) -> None:
     """``split`` names a HALF (starter/bench) for a row filter; the category
     ``starter_bench`` is a table of both halves, which only a grouped read by
-    starter answers - the templates' ``_SPLIT_SIDE_ONLY`` rule. Anything else
+    starter answers - the retired templates' ``_SPLIT_SIDE_ONLY`` rule. Anything else
     would list every game under a heading that promised the split."""
     if q.split == "starter_bench" and not (q.skeleton == "grouped" and q.group == "starter"):
         raise Unsupported("a starter/bench split is a table of both halves, not a filter - a grouped read answers it")
@@ -587,7 +589,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
         span = span_of(replace(scope.span, season=season, career=season is None), "player_game_log")
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
-    # The shared steps read the slot dict until they take the typed filters.
+    # The shared steps take the typed filters: the query itself.
     narrowed = league_games(con, span, scope, position=q.position)
     if isinstance(narrowed, Unanswered):
         raise Refused(narrowed)
@@ -596,14 +598,15 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
 
 def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, ResolvedSpan, Narrowed]:
     """The named-player subject, settled and narrowed exactly as the six
-    relation templates settle and narrow their own - through
+    relation templates settled and narrowed their own - through
     :func:`~association.query.player_relation.scoped_player` and
     :func:`~association.query.player_relation.scoped_games`."""
     scope = q
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it - the rule game_log and player_stat both
     # state: the name is settled over his career and the date is the scope.
-    # The adapters set the point's span and season the same way, but a
+    # The adapters set the point's span and season the same way until Phase 2
+    # deleted them, but a
     # ``None`` season read here could not mean "unset" - the slot's own
     # season came back and "Bam adebeyo jan 19" declined as "a career span
     # and the 2026 season at once" (#230).
@@ -677,10 +680,10 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     resolves to is refused); on the condition skeletons (a count, a record, a
     grouped split - :func:`~association.query.player_relation.condition_player`'s
     own shape) it narrows to his games for that team. A per-game average
-    (``player_stat``'s shape) reads no ``team`` slot at all - the real
-    template ignores it outright, since :func:`~association.query.player_relation.scoped_games`
+    (``player_stat``'s shape) reads no ``team`` slot at all - the retired
+    template ignored it outright, since :func:`~association.query.player_relation.scoped_games`
     itself carries no such narrowing, and treating it as a filter there would
-    answer a narrower question than the template does."""
+    answer a narrower question than the template did."""
     scope = q
     team_text = scope.who.team
     if team_text is None or player is None:
@@ -725,9 +728,9 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
         # of groups (grouped_sql applies it after grouping); on a split by
         # venue/starter or a record it can only mean a games window.
         if q.aggregate != Aggregate.COUNT and q.group not in ("season", "month", "season_type", "opponent", "player") and limit is not None and limit > 1:
-            # The templates' rule (player_splits, record_when): a real limit
-            # with no order is "his last N games" - a window they refuse
-            # rather than answer for the whole span.
+            # The retired templates' rule (player_splits, record_when): a real
+            # limit with no order is "his last N games" - a window they
+            # refused rather than answer for the whole span.
             raise Unsupported("a limited number of recent games is game_log's question")
         narrowed.window = None
 
@@ -757,7 +760,7 @@ def _blanks(q: Query, rebuilt: bool) -> bool:
 
 
 def _rebuilt_for(box: BoxSource, q: Query) -> bool:
-    """The rebuilt-line rule, as the templates apply it. A grouped read and a
+    """The rebuilt-line rule, as the retired templates applied it. A grouped read and a
     record widen the guard to rebuilt lines and blank the columns a rebuild
     does not fill; a scalar over measures or a count widens only when every
     column read (measures AND predicate columns) is one a rebuild gets right."""
@@ -887,7 +890,7 @@ def _compile_scalar(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity 
 
 
 def _by_period_totals(q: Query, rebuilt: bool) -> list[str]:
-    """Beside each quarter's per-game figures, the sums a presenter says
+    """Beside each quarter's per-game figures, the sums the sayer says
     them from: a column's total (``"<m>_total"``), a rate's makes and
     attempts (``"<m>_made"``, ``"<m>_attempted"``)."""
     extra: list[str] = []
@@ -910,7 +913,7 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     played and did nothing in is a zero over a game he played, and a game the
     shot table does not cover is no game in any quarter. Regulation only
     (:data:`~association.query.player_games.REGULATION_QUARTERS`): overtime
-    is no quarter, and the presenter says so.
+    is no quarter, and the sayer says so (the ``overtime_excluded`` note).
 
     .. versionadded:: 5.0.0
     """
@@ -992,13 +995,14 @@ def _ranked_games(q: Query, rebuilt: bool) -> str:
 
 
 def run_scope(scope: Filtered, *, named: bool) -> Any:
-    """The games a run is read over, as the streak template's own
+    """The games a run is read over, as the retired streak template's own
     :class:`~association.query.conditions._Scope`: a named player's honors
     ``since`` and reads an ordinal season over a career-shaped outer scope
     (``season_n``, the way ``scoped_player`` settles one); the league-wide
     read (``named=False``) takes the season or the career alone, as its
-    retired branch did. Shared with the presenter, which names the span and
-    counts the unseen games off the same scope.
+    retired branch did. Shared with the run reader
+    (:func:`~association.query.compose.runs.read_streak`), which names the
+    span and counts the unseen games off the same scope.
 
     .. versionadded:: 5.0.0
     """
@@ -1168,7 +1172,7 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
     rebuilt from play-by-play rather than fetched, and a career predating
     box scores entirely
     (:func:`~association.query.player_relation.box_score_notes_read`, the
-    templates' own notes, threaded through here for the first time: #197,
+    retired templates' own notes, threaded through here for the first time: #197,
     ISSUES.md). Only for a named player - the league-wide subject has no
     ONE player's career to check a floor against, which is what
     ``box_score_notes_read`` assumes.

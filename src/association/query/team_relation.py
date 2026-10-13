@@ -27,8 +27,9 @@ from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate_sql, game_list_gaps_sql, season_game_counts_sql
 
 # What the team-games relation narrows by, declared ONCE - the team
-# counterpart of RELATION_SCOPING. Every template that settles its team and
-# span through `scoped_team` and its games through `team_games` honors these:
+# counterpart of RELATION_SCOPING. Every reader (and the team compiler) that
+# settles its team and span through `scoped_team` and its games through
+# `team_games` honors these:
 # an opponent, a venue, one Eastern date, a career that starts partway through
 # (`since`), one game of each playoff series (`game_n`), and a window of the
 # newest or oldest N of the narrowed games (the typed `reading.Window`'s
@@ -43,9 +44,10 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate
 # (starter/bench) and `below`/`above` (a line on a box-score column) have no
 # shared team-scale reading yet (ISSUES.md, "record_when's team branch and
 # streak's team/league branches still refuse ..."), so none of the three is a
-# cell the relation itself carries. A template that wants one leans on
-# `TeamNarrowed.narrow` directly, the way `_record_when_team_base` already
-# joins `team_box_stats` for its own stat threshold.
+# cell the relation itself carries. A read that wants one leans on
+# `TeamNarrowed.narrow` directly, the way the team's record over its own line
+# (`compose.team.compile_team_line`; `_record_when_team_base` when this was
+# written) joins `team_box_stats` for its own stat threshold.
 #
 # `situation` and `until` are step 3, K1's two additions, bringing the team
 # relation to parity with the player one's own RELATION_SCOPING:
@@ -58,7 +60,7 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate
 # helper both relations' shared steps call; `until` is the
 # inclusive LAST season of a `since`-bounded range (a decade, "2019-20 to
 # 2023-24"), read the same way `since` already is (`span_of`/`scoped_team`) -
-# never alone (`validated_until`), so a template honors it only by also
+# never alone (`validated_until`), so a reader honors it only by also
 # honoring `since`.
 #
 # `period` is the period relation's team half (ROADMAP plan item 4; the
@@ -507,12 +509,16 @@ def team_where_in(span: ResolvedSpan) -> str:
 
 
 def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, narrowed: TeamNarrowed) -> Refusal:
-    """Nothing to report for a team's own games under a condition template
-    (:func:`_player_splits_team`, :func:`_record_when_team_answer`,
-    :func:`_streak_team`) - which fact is missing, the team's games in this
+    """Nothing to report for a team's own games under a condition read
+    (:func:`~association.query.compose.splits.read_team_splits`,
+    :func:`~association.query.compose.records.read_team_record_when`,
+    :func:`~association.query.compose.runs.read_team_streak`; the retired
+    templates' ``_player_splits_team``, ``_record_when_team_answer`` and
+    ``_streak_team``) - which fact is missing, the team's games in this
     span at all or the match to an opponent/venue narrowing, the same
-    discipline :func:`~association.query.templates.games._team_game_log_none`
-    and :func:`common._no_games` already apply. Before ``opponent``/``venue``
+    discipline the team's log applies (``compose.logs._team_log_none``; the
+    retired ``templates.games._team_game_log_none`` and ``common._no_games``
+    before it). Before ``opponent``/``venue``
     reached these three branches (step 3, C4) there was only one tier to get
     wrong; now a team with real games in a span but none against a named
     opponent gets that sentence instead of the misleading "no games in this

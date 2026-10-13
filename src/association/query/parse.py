@@ -197,7 +197,7 @@ and the values the taggers typed where they stand
 opponent with its versus word, a companion's phrase, a line - asked by
 value, never by a character written into the question. The children
 (:data:`~association.query.subject.KIND_ASSIGNED_ASKS`) are assigned under
-it by the subject reading, as they are on the router's parent today.
+it by the subject reading, as they were on the router's parent until 5.0.0.
 
 .. versionadded:: 5.0.0
 
@@ -486,7 +486,7 @@ def _read_route_beside(subject: Subject, question: str) -> bool:
 
 # The apostrophe a phone keyboard types (U+2019, and U+2018, its opening
 # twin) is a straight one to every reader after the parser's door: the
-# router's patterns ("2010's" is a decade, "n't" a denial, a possessive
+# lexicon's patterns ("2010's" is a decade, "n't" a denial, a possessive
 # "'s"), the name tokens, and the warehouse's own names - 32 players carry a
 # straight apostrophe and none a typographic one. Typed with U+2019, "most
 # points in the 2010's" answered the 2010 season alone, and "D'Angelo
@@ -540,8 +540,10 @@ _READ_ROUTE_APOSTROPHES = str.maketrans({"\u2019": "'", "\u2018": "'"})
 
 def _read_route_folded(text: str) -> str:
     """``text`` with each typographic apostrophe (U+2019, U+2018) read as a
-    straight one - the fold at the parser's door, for :func:`read_route`
-    and :func:`reading_from_route` alike."""
+    straight one - the fold at the parser's door, for :func:`read_route`,
+    over the question and the names the model copied out of it
+    (``reading_from_route``, folded into :func:`read_route` in Phase 3,
+    step 4, slice (b), read through it too)."""
     return text.translate(_READ_ROUTE_APOSTROPHES)
 
 
@@ -1022,9 +1024,9 @@ def with_point(question: str, reading: Reading) -> Reading:
     PLANNED after the parser, once, by the answering loop
     (:func:`~association.query.compose.plan.plan_point`), which is where a
     narrowing the relation cannot honor is refused.
-    :func:`reading_from_route`'s last step; public for a caller that builds
+    The parser's last step's (``_reading``); public for a caller that builds
     a Reading by hand (a test handing the compiler a subject of its own)
-    rather than from a route.
+    rather than from the question's words.
 
     .. versionadded:: 5.0.0
 
@@ -1068,7 +1070,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       champion is derivable (the winner of a postseason's last game) and
       nothing derives it yet. "Title odds" is ``team_outlook``'s projection
       and is left alone. Was ``refusals.by_question``.
-    - a player named on a question whose intent has no reading for one
+    - a player named on a question whose shape has no reading for one
       (``no_player_reading``, :data:`~association.query.reading.TEAM_ONLY_ASKS`):
       "alperen şengün alltime record" read as ``team_leaderboard`` and
       answered the league standings, Sengun never read (yardstick-v2 F111) -

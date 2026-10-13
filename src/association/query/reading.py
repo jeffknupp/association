@@ -74,7 +74,8 @@ season (``team_seasons``: its line and its place in the standings), ESPN's
 power index for it (``team_snapshots``), NetPoints and the located shots.
 Named by the point reader (:attr:`Reading.on`). Beside it :data:`Relation`
 still says which compiler plans the point and whether its subject is
-everyone, which Phase 3's step 2 retypes with the subject.
+everyone - the second said again by the typed subject's kind
+(:class:`Subject`, since Phase 3, step 2), which did not retire it.
 
 .. versionadded:: 6.0.0
 """
@@ -166,7 +167,7 @@ SeasonType = Literal[2, 3]
 
 Split = Literal["home_away", "starter_bench", "wins_losses", "month", "starter", "bench"]
 """A split the question asks for: the two-sided category, or the one side
-("starter", "bench") a filtering template honors.
+("starter", "bench") a filtering reader honors.
 
 .. versionadded:: 5.0.0
 """
@@ -188,7 +189,7 @@ class ScopeError(ValueError):
     (:meth:`Subject.from_slots`, :meth:`Measure.from_slots`; the tests' slot
     door, ``tests/slots.py``, until Phase 4, step 0, and
     ``Scope.from_slots`` until Phase 3, step 4), so
-    the question is refused the way a template's refusal is rather than
+    the question is refused the way a reader's refusal is rather than
     an answer quietly leaving the narrowing out.
 
     .. versionadded:: 5.0.0
@@ -536,8 +537,8 @@ class Cuts:
 def situation_of(text: str) -> Situation:
     """The :class:`Situation` ``text`` names: its words, and the calendar
     narrowing or - read only where there is none, as the relations read it
-    - the alignment they parse to. One reader for the tagger and the slot
-    door alike.
+    - the alignment they parse to. The cuts tagger's one reader of it (and
+    the tests' slot door's, until Phase 4, step 0).
 
     .. versionadded:: 6.0.0
     """
@@ -971,7 +972,7 @@ class Subject:
     value in place of the four slots that carried the names (``player``,
     ``players``, ``team``, ``teams``) and the point's ``position``. Written
     by the subject reading alone (:func:`~association.query.subject.apply_subject`,
-    over what the stages settled from it), and read by the point reader and
+    over what the grammar's rules settled from it), and read by the point reader and
     the relations' readers - who the read narrows to; resolving a name
     against the warehouse stays where each is read.
 
@@ -1121,7 +1122,8 @@ class Claim:
     what: str
 
 
-#: The typed filters' field names, in the order the Scope held them - the
+#: The typed filters' field names, in the order the ``Scope`` held them until
+#: Phase 3, step 4, slice (b) - the
 #: order :meth:`Filtered.filters` hands them in and a record holds them.
 _FILTER_FIELDS: tuple[str, ...] = ("who", "cuts", "companions", "lines", "measure", "span", "split", "period", "window", "minimum")
 
@@ -1337,7 +1339,7 @@ def _line_facts(line: Line) -> dict[str, Any]:
 def cell_set(scope: Filtered, cell: str) -> bool:
     """Whether ``scope`` sets ``cell`` (:meth:`Filtered.cells`) - a cut by its
     cell name (:attr:`Cuts.CELLS`: ``tenure``, not ``own_team``), every other
-    cell by its name: the one reading of a cell name against a Scope, for a
+    cell by its name: the one reading of a cell name against the filters, for a
     reader that lists the relation's cells it reads apart (the shot
     readers' narrowing check) and the planner's one check
     (:func:`~association.query.compose.plan.cells_unhonored`).
@@ -1804,7 +1806,7 @@ class Reading(Filtered):
     limit: int | None = None
     #: The minimum games a group needs to be kept, for a ranking.
     minimum_games: int | None = None
-    #: Binding parity with the template being mirrored (see
+    #: Binding parity with the retired template a reader mirrors (see
     #: :class:`~association.query.compose.core.Query`).
     available: Availability | None = None
     #: The span the subject is settled in and his games read over, where
@@ -1820,7 +1822,7 @@ class Reading(Filtered):
     relation: Relation = "player"
     #: What the question's words ask for (:class:`PointShape`, one of the
     #: grammar's keys - :data:`PLAYER_LOG`, :data:`PLAYER_LINE`, ...), named
-    #: by the parent grammar, the child grammars or the stages, and read by
+    #: by the parent grammar, the child grammars or the grammar's rules, and read by
     #: the point reader, the subject reading's sets and the answering loop;
     #: ``None`` where the words name no shape. Since Phase 3, step 4 - an
     #: intent string until then.
@@ -1833,18 +1835,19 @@ class Reading(Filtered):
     evidence: tuple[str, ...] = ()
     #: What the parser decided on the way, as values - who the question is
     #: about, and each name, role, tenure or position group it wrote into
-    #: the scope (:func:`~association.query.parse.reading_from_route`) - kept
+    #: the scope (in the parser's last step, ``parse._reading``;
+    #: ``parse.reading_from_route`` until Phase 3, step 4, slice (b)) - kept
     #: on the answer beside the trace line each one prints.
     decisions: tuple[Decision, ...] = ()
     #: The model's names the question never held that nothing in it could
-    #: replace ("Jusuf Nurkic" on "compare sga and embiid"): the agent
-    #: refuses by name rather than answer about somebody the question never
-    #: mentioned (AGENTS.md: "when it cannot be repaired, say so").
+    #: replace ("Jusuf Nurkic" on "compare sga and embiid"): the answering
+    #: loop refuses by name rather than answer about somebody the question
+    #: never mentioned (AGENTS.md: "When it cannot be repaired, say so by name").
     misread: tuple[str, ...] = ()
     #: The characters of the question each reader rule read
     #: (:class:`Claim`), in the question's order: each tagger's since Phase
     #: 3, step 2, cut to what its reading depends on and joined by the
-    #: grammars', the stages' and the point reader's since step 3. What they
+    #: grammars', the grammar's rules' and the point reader's since step 3. What they
     #: leave unclaimed is :attr:`unread`.
     #:
     #: .. versionadded:: 6.0.0
@@ -1856,8 +1859,7 @@ class Reading(Filtered):
     #: (:func:`~association.query.lexicon.content_words` - a function word
     #: is no content word, nor a word the model's reply accounts for: a word
     #: of a name it copied or the reading settled on, a word of the stat it
-    #: picked), by the parser's last step
-    #: (:func:`~association.query.parse.reading_from_route`), so
+    #: picked), by the parser's last step (``parse._reading``), so
     #: ``scripts/claims_ledger.py`` - which deletes each content word in
     #: turn and asks whether the reading moved - checks it from outside. An
     #: unread word is recorded, never a refusal: the roadmap measures them
@@ -1869,7 +1871,7 @@ class Reading(Filtered):
     #: on the relation it names (:func:`~association.query.point.read_point`),
     #: read once, by the parser, so the compiler only plans and runs it
     #: (:func:`~association.query.compose.answer`). A Reading of its
-    #: own, since it reads words the templates never see: its scope may carry
+    #: own, since it reads words the retired templates never saw: its scope may carry
     #: a career the question's "ever" or "how many times" implies. ``None``
     #: where the compiler has no reading of the point - ``point_declined``
     #: says why - or a refusal of its own to give (``point_refusal``: its
@@ -1929,10 +1931,10 @@ class Reading(Filtered):
 
 PLAYER_REQUIRED_ASKS: frozenset[PointShape] = frozenset({LINE_RECORD, PERIOD_LOG, SHOT_DISTANCE, SEASON_HISTORY})
 """What the words ask that no reader answers at all without a player
-(``record_when``, ``period_split``, ``shot_distance``, ``player_history``)).filters(),
-so a player the router left out is worth restoring from the question.
+(``record_when``, ``period_split``, ``shot_distance``, ``player_history``),
+so a player the model left out is worth restoring from the question.
 
-Deliberately not every intent that reads one: where the player is optional -
+Deliberately not every shape that reads one: where the player is optional -
 ``threshold_count``, ``single_game_high`` - an empty slot means "the league", and
 filling it would turn a league question into a question about somebody the
 question may only appear to name ("best" is Travis Best).
@@ -1962,36 +1964,37 @@ SUBJECT_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({GAME_HIGHS, GAMES_CO
 an empty slot means "the league" (or, for ``player_splits``, the team's own
 splits: "show me Embiid's splits against boston" arrived as the 76ers and
 the Celtics meeting with Embiid dropped, once the intent left the router's
-prompt in 5.0.0) - so a name is restored only where the
+prompt in 5.0.0, and a model's names may still drop him) - so a name is restored only where the
 question's own words name exactly one player and that naming survives
 :func:`~association.query.subject._named_only_by_a_team_word` and
 :func:`~association.query.subject._named_only_by_a_common_word`.
 
-Separate from :data:`PLAYER_REQUIRED_ASKS` on purpose: those templates
-cannot answer at all without a player, while these two have a real,
+Separate from :data:`PLAYER_REQUIRED_ASKS` on purpose: those shapes'
+readers cannot answer at all without a player, while these two have a real,
 different answer with none (the league's leaders) - "kawhi most threes in a
 game" (yardstick-v2 F093) used to answer that league ranking, Kawhi Leonard's
 own 7 never mentioned, because ``single_game_high`` was never taught to read
 a subject named with no scoring verb and no possessive
-(``router._SUBJECT_OF_HIGH`` needs one of those; "NAME most/highest STAT"
-has neither).
+(``router._SUBJECT_OF_HIGH`` needed one of those, as
+:data:`~association.query.lexicon.SUBJECT_OF_HIGH` does; "NAME most/highest
+STAT" has neither).
 
 Measured before shipping, per AGENTS.md's own discipline for this exact
 trap ("best" is Travis Best): both ``scripts/check_routing.py``'s cases and
 ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`` (380
 questions together) were run through the restoring grammar
 (the subject reading) with the two intents here as
-the only ones it can touch. 5 false-positive candidates turned up in the
+the only ones it could touch. 5 false-positive candidates turned up in the
 WHOLE corpus - "Best true shooting percentage last season?" (Travis Best),
 "Best record from 2010-11 to 2018-19 nba" and "Best NBA record since
 January 31st 201" (both Travis Best again), "Celtics vs Bulls head to head
 record" (Luther Head), and "Aaron gordan vs 76ers log" (a typo landing on
-Gordan Giricek instead of Aaron Gordon) - and NONE of the five route to
+Gordan Giricek instead of Aaron Gordon) - and NONE of the five routed to
 ``single_game_high`` or ``threshold_count``, so restricting to this pair
-alone already clears the measured corpus with zero false positives. The
+alone cleared the measured corpus with zero false positives. The
 ``best``/``head`` pair is still excluded by
 :func:`~association.query.subject._named_only_by_a_common_word` as a
-forward-looking gate, since a future question in either intent could still
+forward-looking gate, since a future question asking either could still
 collide with one of them; the typo case is not addressed here (a wrong
 candidate, not an ungrounded one - the entity index's near-spelling pass is
 the tool for that: :func:`~association.query.entities.read_near_spelling`
@@ -2006,11 +2009,11 @@ or more).
 
 OWN_TEAM_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({PLAYER_LINE})
 """What the words ask where a player's OWN team, named beside him and left
-out by the router, is worth restoring (``player_stat``) - narrower than :data:`PLAYER_ASKS` on
-purpose, since honoring the restored ``own_team`` slot needs the relation to
-narrow by it (``player_relation._narrow_player_games``'s ``team`` param,
-threaded through ``scoped_games`` only where a caller passes it), which only
-``player_stat`` does.
+out by the model, is worth restoring (``player_stat``) - narrower than :data:`PLAYER_ASKS` on
+purpose, since honoring the restored tenure (``Cuts.tenure``, the
+``own_team`` slot until Phase 3, step 2) needs the relation to narrow by it
+(``player_relation._narrow_player_games``), which only ``player_stat``'s
+readers do.
 
 "lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
 current (Lakers) season, "Miami" never read at all - not even as noise, since
@@ -2018,18 +2021,18 @@ nothing on the relation could have narrowed to it either way.
 the subject reading reads "for <team>"/"with the <team>" beside an
 already-known player (``subject._apply_own_team``) and, with no season also
 named, defaults ``span`` to "career" too - a historical team names a
-tenure, not "now". Written to ``own_team``, never the router's own ``team``
-slot - see that function's docstring for the recorded case
-(``player_stat``'s golden snapshot) where a router-supplied ``team`` sitting
-beside a correct ``opponent`` is noise, not a second fact to narrow by, the
-same shape ``games._team_slot_for_player`` already treats it as for
-``game_log``.
+tenure, not "now". Written to the tenure, never the model's team - see
+that function's docstring for the recorded case (``player_stat``'s golden
+snapshot) where a router-supplied ``team`` sitting beside a correct
+``opponent`` was noise, not a second fact to narrow by, the same shape
+:func:`~association.query.player_relation.team_slot_for_player` treats it
+as for ``game_log``.
 
 Deliberately not ``game_log``: its own ``team``/``opponent`` dance
-(``games._team_slot_for_player``) already reads a ``team`` slot beside a
-player, and drops it outright when he actually played for that team ("his
-own team narrows nothing") - correct only because no tenure narrowing
-existed there. Reusing this flag for ``game_log`` without first reconciling
+(:func:`~association.query.player_relation.team_slot_for_player`) already
+reads a team beside a player, and drops it outright when he actually played
+for that team ("his own team narrows nothing") - correct only because no
+tenure narrowing existed there. Reusing this flag for ``game_log`` without first reconciling
 the two readings would leave one of them silently wrong; filed in
 ``ISSUES.md`` rather than done here.
 
@@ -2045,18 +2048,18 @@ TEAM_ONLY_ASKS: frozenset[PointShape] = frozenset({TEAM_RECORD, TEAM_RANKING, TE
 :data:`PLAYER_ASKS`, and so never checked by
 ``subject.apply_subject`` or the answering loop against a stray player name.
 
-A question naming exactly one real player and no team, routed to one of
+A question naming exactly one real player and no team, read as one of
 these, is answering a different subject than the one named -
 yardstick-v2 F111, "alperen şengün alltime record" routed to
 ``team_leaderboard`` with no player and no team slot at all, and answered
 the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
-where the intent cannot be about the subject" is exactly this shape;
+where the shape cannot be about the subject" is exactly this shape;
 ``subject.player_named_on_a_team_only_question`` is the check, read by the
 parser into the Reading's ``no_player_reading`` refusal
 (:attr:`Reading.refused`), which the planner says before any reader runs -
 naming the player it read rather than answering the wrong one.
 
-Deliberately not every team-shaped intent: ``head_to_head`` is only ever
+Deliberately not every team-shaped key: ``head_to_head`` is only ever
 two teams meeting - the parser reads a player's record against a team as
 his own games (``player_splits``, #163) from the subject's kind - and
 ``coach`` reads no point (a cause, ``no_coach_table``) and already refuses on its own terms -
@@ -2162,8 +2165,9 @@ def ordinal_word(n: int) -> str:
 
 
 def _career_scope(scope: Filtered) -> Filtered:
-    """The point reader's rule (``route()``'s own, before it) for a count by a player (``_HOW_MANY_OR_OFTEN``, step 2
-    B5): with no season named, "how many ... has he" is his career."""
+    """The point reader's rule (the router's ``route()``'s own, before it) for a count by a player
+    (:data:`~association.query.lexicon.HOW_MANY_OR_OFTEN`, step 2 B5): with no season named, "how many ...
+    has he" is his career."""
     return scope if scope.span.named else replace(scope, span=scope.span.as_career())
 
 
@@ -2342,7 +2346,7 @@ def scope_reads_box_scores(scope: Filtered, measures: list[Any]) -> bool:
 # games, "Knicks home record" with their overall record, "career points
 # leaders" with this season's, and "Podziemski game log without curry" with
 # his whole log. Each was fast, fluent and about something else. The split
-# and a range of seasons are read for every intent for the same reason: a
+# and a range of seasons are read for every shape for the same reason: a
 # reader that is not about splits or ranges answered them with one season.
 # A line kept under or over a number ("under 14 FTA", "with 25 minutes") is
 # read onto the relation by `measure_filters`; a unit asked of a measure
@@ -2371,12 +2375,13 @@ def unhonored_cells(scope: Filtered, honored: frozenset[str]) -> list[str]:
     return [cell for cell in CELL_ORDER if cell in held]
 
 
-# Templates that read a player name at all - resolving it, filtering on it, or
-# refusing because of it. A name the question does not support is only worth
-# refusing over where the answer would actually be about that player; for
-# `team_record` and `head_to_head` the slot is not read, so a stray one changes
-# nothing. Guarded by test_no_template_outside_player_intents_reads_a_player,
-# which reads the source rather than trusting this list.
+# What the words ask whose reader reads a player name at all - resolving it,
+# filtering on it, or refusing because of it. A name the question does not
+# support is only worth refusing over where the answer would actually be about
+# that player; for `team_record` and `head_to_head` the name is not read, so a
+# stray one changes nothing. Checked against the retired templates' own source
+# while they existed (test_no_template_outside_player_intents_reads_a_player,
+# gone with them); no test reads the readers' source for it.
 PLAYER_ASKS: frozenset[PointShape] = frozenset(
     {
         NETPOINTS_FINGERPRINT,

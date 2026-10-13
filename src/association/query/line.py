@@ -2,15 +2,16 @@
 the subject's games past (:class:`~association.query.reading.Line`) - "30+
 points", "20+ point 5+ assist games", "scores 30", "fouled out", "under 14
 fta", "with 25 minutes", "after making one three in the first quarter" -
-from the lexicon's words (:mod:`association.query.lexicon`) and the one fact
-of the question settled before it: the intent the stages settled. It claims
-the characters it read (:class:`~association.query.reading.Claim`), each
+from the lexicon's words (:mod:`association.query.lexicon`) alone: which of
+the lines it reads are the subject's under the key the words ask is the
+point reader's (:func:`~association.query.point.lines_under`, since Phase 3,
+step 4, slice (b)). It claims the characters it read (:class:`~association.query.reading.Claim`), each
 once. A line inside a companion's phrase ("sixers record when maxey scores
-20+ points") is read here as the subject's too, as the stages read it -
+20+ points") is read here as the subject's too, as the router's stages read it -
 measured, leaving it to the companion moved one recorded reading ("In his
 18th season, how many games with 40+ points did Lebron James have?": "with
 40+ points did Lebron James have" reads as a companion phrase, the subject
-is LeBron himself, restored after the stages, and the count with no line
+is LeBron himself, restored by the grammar's rules, and the count with no line
 turned into a ranking) - and the two claims fold into one (the companion's
 holds the line's); where the companion is a real one, the subject's own
 line reads the same number (ISSUES.md, "A companion's line is read as the
@@ -296,7 +297,7 @@ def read_period_line(question: str) -> tuple[Line, Claim] | None:
     uses none, or words one whose stat the period's line does not rebuild
     (:data:`~association.query.measures.PERIOD_COLUMNS`; the reading names
     that by its ``period_as_condition`` cause). Read by the parser before
-    the stages, which blanks its words so the period is not read as the
+    the grammar and the taggers, which blanks its words so the period is not read as the
     one measured. "At least N", "N+", "N or more" and "a"/"an" are at-least
     lines; a bare number ("one three", "10 points") is exactly that many -
     the reading yardstick-v2 F062's key takes (31 games with exactly one

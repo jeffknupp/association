@@ -26,7 +26,7 @@ run), and for a test of a date that has not come yet.
 
 # The latest season the warehouse being read holds played games for, where a
 # reader has said so (:func:`season_on_record`); None means nobody has, and
-# the calendar's season stands (the fetch path, a template called directly).
+# the calendar's season stands (the fetch path, a reader called directly).
 _ON_RECORD: ContextVar[int | None] = ContextVar("association_season_on_record", default=None)
 
 

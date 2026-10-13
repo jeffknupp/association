@@ -3,9 +3,11 @@ which end (:class:`~association.query.reading.Window`) - "last 10 games",
 "his first game", "top 5", a history's "past 5 years" as its count of
 seasons, which end of a team ranking, the measure a ranking of games over a
 yes/no stat is ordered by - from the lexicon's words
-(:mod:`association.query.lexicon`) and the two facts of the question the
-stages settled before it: the intent, and whether the stat read is a yes/no
-one. It claims the characters it read
+(:mod:`association.query.lexicon`) and the one fact of the question read
+before it: whether the stat read is a yes/no one (:class:`WindowContext`);
+what the words ask is the key's reading
+(:func:`~association.query.point.window_under`, since Phase 3, step 4, slice
+(b)). It claims the characters it read
 (:class:`~association.query.reading.Claim`), each once.
 
 Phase 3, step 2's second slice: until it, the parser read the window's
@@ -146,7 +148,7 @@ def read_window(question: str, context: WindowContext) -> WindowCandidates:
 def window_end(order: str | None) -> Literal["recent", "first"] | None:
     """A grammar row's end as the Window's own literal - the rows write one
     of the two, and a row that wrote anything else is a bug said out loud,
-    as the slot door says it for a slot dict.
+    as the tests' slot door said it for a slot dict until Phase 4, step 0.
 
     .. versionadded:: 6.0.0
     """

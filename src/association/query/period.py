@@ -20,8 +20,8 @@ is written ONLY under the three period intents - six readings name a
 quarter and carry none, their subject unread and the point reader
 declining them for it ("a quarter or half is the period relation's
 question"). The tagger keeps that: it reads which period the words name
-wherever they name one (:func:`which_period`, which the intent stage and
-the line slice's condition reader call too, so no second copy of "first |
+wherever they name one (:func:`which_period`, which the grammar's rules
+(``grammar._period``) and the line slice's condition reader call too, so no second copy of "first |
 second | 1st | 2nd" is written), and keeps the value under a reader that
 takes one (:data:`~association.query.point.PERIOD_ASKS`, the key's reading,
 :func:`~association.query.point.period_under`).
