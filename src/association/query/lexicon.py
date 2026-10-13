@@ -3968,6 +3968,20 @@ LEAGUE_TEAMS_RANKED_ROW = row(
 
 .. versionadded:: 6.0.0
 """
+TEAM_WORD_ROW = row(r"\b(team|teams|franchise|franchises)\b")
+"""A word that names teams as what is ranked - which a count of N-point
+games with no subject needs before it is the teams' ranking (ISSUES.md
+#394: "most 40 point games in nba history" is the players' count).
+
+.. versionadded:: 6.0.0
+"""
+LINE_OF_GAMES_ROW = AllOf((Stands(LINE_NUMBERS), row(r"\bgames?\b")))
+"""Games kept by a line the lines tagger read - the count's words, which no
+ranking of teams holds (ISSUES.md #394). Not a line's number alone: "nba
+most 4 point plays" names no games, and reads no line a count keeps.
+
+.. versionadded:: 6.0.0
+"""
 # A record with no player in it is a team's: "worst record 2025-26" read
 # as the league's scorers, the everyone row below.
 LEAGUE_RECORD_ROW = row(r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)")

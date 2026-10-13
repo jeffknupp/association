@@ -176,7 +176,11 @@ _CHILD_GRAMMARS: tuple[tuple[PointShape, lexicon.Ask, frozenset[str], frozenset[
         frozenset({"player"}),
         frozenset({TEAM_RECORD, TEAM_LINE, TEAM_OUTLOOK, PRESENCE_SPLIT, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS,
     ),
-    (GAMES_COUNTED, lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    # Under the with/without split too: "how many 30 point games did maxey
+    # have without embiid" is his count over the games Embiid missed, which
+    # the count honors (the companion cell), not his line with and without
+    # him (ISSUES.md #394).
+    (GAMES_COUNTED, lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS | {PRESENCE_SPLIT}),
     (SEASON_HISTORY, lexicon.CHILD_PLAYER_HISTORY, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS),
     (
         PLAYER_SPLITS,

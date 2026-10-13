@@ -93932,5 +93932,1070 @@
    "point_declined": null,
    "point_refusal": null
   }
+ },
+ {
+  "name": "issue_394_a_count_of_line_games_is_the_players",
+  "why": "ISSUES.md #394: \"most N point games\" with no team word is the players' count of N-point games; \"nba\" beside \"most\" read the teams' ranking, refused for the span.",
+  "question": "most 40 point games in nba history",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "scalar",
+    "by": "count"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 40,
+     "period": null,
+     "as_typed": "40 point",
+     "keyed": true,
+     "narrows": false
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "most"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "asked_reason": "the words '40 point games' name player_games/scalar/count",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": "the words '40 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/ranking/player",
+     "after": "player_games/scalar/count",
+     "reason": "the words '40 point games' name player_games/scalar/count"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "relation": "everyone",
+    "on": "player_games",
+    "shape": "ranking",
+    "by": "count",
+    "measures": [],
+    "aggregate": "count",
+    "group": "player",
+    "predicates": [
+     [
+      "points",
+      ">=",
+      40
+     ]
+    ],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 5,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 40,
+      "period": null,
+      "as_typed": "40 point",
+      "keyed": true,
+      "narrows": false
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_394_games_with_a_line_are_the_players",
+  "why": "ISSUES.md #394: \"games with 2+ blocks\" is a count of the players' games over a line, not the teams' ranking.",
+  "question": "nba most playoff games with 2+ block and 2+ steals",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "scalar",
+    "by": "count"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "blocks",
+     "op": ">=",
+     "value": 2,
+     "period": null,
+     "as_typed": "2+ block",
+     "keyed": true,
+     "narrows": true
+    },
+    {
+     "measure": "steals",
+     "op": ">=",
+     "value": 2,
+     "period": null,
+     "as_typed": "2+ steals",
+     "keyed": false,
+     "narrows": true
+    }
+   ],
+   "measure": {
+    "key": "steals",
+    "as_typed": "steals",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 3,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "asked_reason": "the words 'most playoff games with 2+ block and 2+' name player_games/scalar/count",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": "the words 'most playoff games with 2+ block and 2+' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/ranking/player",
+     "after": "player_games/scalar/count",
+     "reason": "the words 'most playoff games with 2+ block and 2+' name player_games/scalar/count"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "relation": "everyone",
+    "on": "player_games",
+    "shape": "ranking",
+    "by": "count",
+    "measures": [],
+    "aggregate": "count",
+    "group": "player",
+    "predicates": [
+     [
+      "blocks",
+      ">=",
+      2
+     ]
+    ],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 5,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "blocks",
+      "op": ">=",
+      "value": 2,
+      "period": null,
+      "as_typed": "2+ block",
+      "keyed": true,
+      "narrows": true
+     },
+     {
+      "measure": "steals",
+      "op": ">=",
+      "value": 2,
+      "period": null,
+      "as_typed": "2+ steals",
+      "keyed": false,
+      "narrows": true
+     }
+    ],
+    "measure": {
+     "key": "steals",
+     "as_typed": "steals",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_394_a_number_with_no_games_stays",
+  "why": "ISSUES.md #394: the team row steps aside for games kept by a line, not for a line's number alone (\"4 point plays\" names no games; what it does name is #389's, a fact nothing reads).",
+  "question": "nba most 4 point plays",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "ranking",
+    "by": "team"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "point",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": "most",
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "4",
+    "plays"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "ranking",
+     "by": "team"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "ranking",
+     "by": "team"
+    },
+    "relation": "team_seasons",
+    "on": "team_seasons",
+    "shape": "ranking",
+    "by": "team",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "point",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": "most",
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_394_a_count_beside_an_absence",
+  "why": "ISSUES.md #394: a count of 30-point games beside a teammate's absence is his count over the games the teammate missed (the count honors the companion), not his line with and without him.",
+  "question": "how many 30 point games did maxey have without embiid",
+  "names": [
+   "maxey",
+   "embiid"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "scalar",
+    "by": "count"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Joel Embiid",
+     "side": "own",
+     "predicate": "absent",
+     "line": null
+    }
+   ],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 30,
+     "period": null,
+     "as_typed": "30 point",
+     "keyed": true,
+     "narrows": false
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "asked_reason": "the words '30 point games' name player_games/scalar/count",
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'; the words '30 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "maxey"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_games/split/presence",
+     "after": "player_games/scalar/count",
+     "reason": "the words '30 point games' name player_games/scalar/count"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "count",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "count",
+    "group": "none",
+    "predicates": [
+     [
+      "points",
+      ">=",
+      30
+     ]
+    ],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "maxey"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 30,
+      "period": null,
+      "as_typed": "30 point",
+      "keyed": true,
+      "narrows": false
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_394_with_and_without_stays_the_split",
+  "why": "ISSUES.md #394: a line with and without a teammate, with no count, stays the with/without split.",
+  "question": "maxey points with and without embiid",
+  "names": [
+   "maxey",
+   "embiid"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "split",
+    "by": "presence"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Joel Embiid",
+     "side": "own",
+     "predicate": "absent",
+     "line": null
+    }
+   ],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "asked_reason": null,
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "maxey"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "split",
+    "by": "presence",
+    "measures": [
+     {
+      "key": "record",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "presence",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "maxey"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
  }
 ]
