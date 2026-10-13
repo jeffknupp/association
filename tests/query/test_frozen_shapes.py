@@ -70,6 +70,10 @@ FROZEN = frozenset(
         ("team_seasons", "scalar", "line"),
         ("player_games", "scalar", "count"),
         ("team_games", "split", "presence"),
+        # How many players a season line holds ("how many players averaged
+        # 30 ppg in 2026", ISSUES.md #390): the 26th, D4 lifted for it by Jeff
+        # on 2026-10-13 - the season ranking kept past the line, counted.
+        ("player_seasons", "scalar", "count"),
     }
 )
 

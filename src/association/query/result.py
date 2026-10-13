@@ -315,7 +315,9 @@ class Scalar:
     ratings per 100 possessions (``"per_100"``) or one game's own
     (``"total"``), ESPN's projection of a team's season
     (``"projection"``), a team's record ranked among the league's
-    (``"ranked"``).
+    (``"ranked"``), how many players a season line holds (``"players"``:
+    ``values`` holds ``players``, the count, and the players themselves are
+    the next part, the season ranking kept past the line - ISSUES.md #390).
 
     .. versionadded:: 5.0.0
     """
@@ -323,7 +325,7 @@ class Scalar:
     games: int
     values: Mapping[str, Any] = field(default_factory=dict)
     sums: Mapping[str, Any] = field(default_factory=dict)
-    how: Literal["per_game", "count", "record", "season", "per_shot", "per_100", "total", "projection", "ranked"] = "per_game"
+    how: Literal["per_game", "count", "record", "season", "per_shot", "per_100", "total", "projection", "ranked", "players"] = "per_game"
 
 
 @dataclass(frozen=True, kw_only=True)

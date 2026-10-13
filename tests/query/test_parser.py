@@ -33,6 +33,7 @@ from association.query.reading import (
     PLAYER_MEETINGS,
     PLAYER_RANKING,
     PLAYER_SPLITS,
+    PLAYERS_COUNTED,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
     SHOT_CHART,
@@ -978,7 +979,10 @@ def test_a_line_on_a_season_is_read_by_the_season_ranking(con: duckdb.DuckDBPyCo
     points averaged); the season ranking keeps its players past the season
     lines, a line naming no stat on the ranking's own measure."""
     reading = _read(con, question)
-    assert reading.point is not None and (reading.point.on, reading.point.shape, reading.point.by) == ("player_seasons", "ranking", "player")
+    # "How many players ..." is the ranking counted (PLAYERS_COUNTED, the next key).
+    counted = question.casefold().startswith("how many")
+    assert reading.point is not None and (reading.point.on, reading.point.shape, reading.point.by) == (("player_seasons", "scalar", "count") if counted else ("player_seasons", "ranking", "player"))
+    assert reading.asked == (PLAYERS_COUNTED if counted else PLAYER_RANKING)
     assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
 
 
@@ -1006,3 +1010,15 @@ def test_an_average_with_no_line_is_not_refused_as_a_season_line(con: duckdb.Duc
     """The words of a season's line need a number beside the average."""
     reading = _read(con, question)
     assert reading.point_refusal is None or reading.point_refusal.kind not in ("season_line_unread", "seasons_counted")
+
+
+def test_how_many_players_a_season_line_holds_is_the_ranking_counted(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #390: "how many players averaged 30 ppg" names the 26th key
+    (``PLAYERS_COUNTED``, D4 lifted for it by Jeff on 2026-10-13) - "how
+    many" before players, beside a season line as the lines tagger typed it;
+    "how many" with no season line, or a season line with no "how many", is
+    the ranking."""
+    for question in ("How many players averaged 30 ppg in 2026", "how many nba players average 25 points per game"):
+        assert _read(con, question).asked == PLAYERS_COUNTED, question
+    for question in ("who averaged 30 ppg in 2026", "how many players have averaged the most points"):
+        assert _read(con, question).asked == PLAYER_RANKING, question

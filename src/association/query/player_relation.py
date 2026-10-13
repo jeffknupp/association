@@ -306,6 +306,17 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         # ISSUES.md #390), which the ranking keeps its players past.
         taken=Measure.CELLS | ReadLine.SEASON_CELLS,
     ),
+    # How many players a season line holds is that ranking counted (ISSUES.md
+    # #390): the same cells, said the same way.
+    PointShape("player_seasons", "scalar", "count"): ShapeCells(
+        unstated={
+            "range": "a count of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
+            "both": "a season line is one season type's row; a count over both at once would count two rows per player",
+            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
+        },
+        taken=Measure.CELLS | ReadLine.SEASON_CELLS,
+    ),
     PointShape("player_seasons", "split", "season"): ShapeCells(
         unstated={
             "range": "a history is every season or the last N of them, newest first; a range bounded by years is not how its rows are chosen",

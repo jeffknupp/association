@@ -1690,6 +1690,14 @@ games where the line does not read it.
 
 .. versionadded:: 6.0.0
 """
+PLAYERS_COUNTED = PointShape("player_seasons", "scalar", "count")
+"""How many players a season line holds ("how many players averaged 30 ppg
+in 2026", ISSUES.md #390): the season ranking kept past the line, counted
+- the 26th key the words can ask, D4 lifted for it by Jeff on 2026-10-13.
+Read as the ranking is (``point``'s keyed readings), said as a count.
+
+.. versionadded:: 6.0.0
+"""
 PLAYER_COMPARISON = PointShape("player_seasons", "comparison", "subject")
 """Two or more players' lines side by side (``player_compare``).
 

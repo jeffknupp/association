@@ -72,6 +72,7 @@ from association.query.reading import (
     PLAYER_MEETINGS,
     PLAYER_RANKING,
     PLAYER_SPLITS,
+    PLAYERS_COUNTED,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
     SHOT_CHART,
@@ -1519,7 +1520,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
     scope = _season_lines_refused(reading.asked, question, scope)
     try:
-        point = _read_point(reading.asked, scope, question, subject)
+        point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _read_point(reading.asked, scope, question, subject)
     except Unsupported:
         if reading.asked not in TEAM_SEASON_POINTS:
             raise
@@ -1567,6 +1568,18 @@ def _team_line_measure(scope: Filtered) -> Measure:
     reads the line itself from the scope)."""
     measure = scope.measure
     return Measure(key=measure.key, whose=measure.whose) if measure is not None and measure.key is not None else measured("points")
+
+
+def _players_counted(scope: Filtered, question: str, subject: Subject) -> Reading:
+    """How many players a season line holds (ISSUES.md #390): the ranking's
+    point, counted - a scalar ``by="count"`` on the season line - where the
+    ranking is the season line's and a season line stands; the ranking's
+    own point otherwise (no line to count past, or a ranking the game
+    level reads, which declines the line by name)."""
+    point = _read_point(PLAYER_RANKING, scope, question, subject)
+    if point.on == "player_seasons" and point.shape == "ranking" and any(line.per != "game" for line in scope.lines):
+        return replace(point, shape="scalar", by="count")
+    return point
 
 
 def _read_point(asked: PointShape | None, scope: Filtered, question: str, subject: Subject) -> Reading:
@@ -1751,12 +1764,21 @@ _MEASURE_TWO_POINT_PCT: frozenset[PointShape] = frozenset({SEASON_HISTORY, PLAYE
 _MEASURE_SHOT_VALUE: frozenset[PointShape] = frozenset({SHOT_DISTANCE, SHOT_CHART})
 
 
+def _ranked_as(asked: PointShape | None) -> PointShape | None:
+    """The key the words' families are read under: a count of the players a
+    season line holds (:data:`~association.query.reading.PLAYERS_COUNTED`)
+    reads every family as the ranking it counts does - its measure, its
+    window, its span, its lines (ISSUES.md #390)."""
+    return PLAYER_RANKING if asked == PLAYERS_COUNTED else asked
+
+
 def period_under(asked: PointShape | None, read: PeriodRead) -> PeriodRead:
     """The period the words name, kept under a key that takes one
     (:data:`PERIOD_ASKS`); the whole game and no claim otherwise.
 
     .. versionadded:: 6.0.0
     """
+    asked = _ranked_as(asked)
     return read if asked in PERIOD_ASKS else PeriodRead(None, ())
 
 
@@ -1767,6 +1789,7 @@ def cuts_under(asked: PointShape | None, read: CutsRead, *, split: str | None) -
 
     .. versionadded:: 6.0.0
     """
+    asked = _ranked_as(asked)
     venue_split = asked == PLAYER_SPLITS and split == "home_away"
     cuts = replace(read.cuts, venue=None) if venue_split else read.cuts
     kept = () if venue_split or read.venue_claim is None else (read.venue_claim,)
@@ -1787,6 +1810,7 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
     .. versionadded:: 6.0.0
        ``line.read_lines``' choice until Phase 3, step 4, slice (b).
     """
+    asked = _ranked_as(asked)
     found: list[tuple[int, Line, Claim]] = []
     if asked == PLAYER_RANKING:
         read, found = _lines_season(read)
@@ -1907,6 +1931,7 @@ def minimum_under(asked: PointShape | None, read: MinimumRead) -> MinimumRead:
 
     .. versionadded:: 6.0.0
     """
+    asked = _ranked_as(asked)
     return read if asked == PLAYER_RANKING else MinimumRead(None)
 
 
@@ -1922,7 +1947,7 @@ def _season_lines_refused(asked: PointShape | None, question: str, scope: Readin
     count of a player's seasons over one ("most seasons averaging 30 ppg":
     ``seasons_counted``, ISSUES.md #391). Each answered the unfiltered
     ranking until 2026-10-13."""
-    if asked != PLAYER_RANKING:
+    if _ranked_as(asked) != PLAYER_RANKING:
         return scope
     counted = lexicon.SEASONS_COUNTED.search(question)
     if counted is not None:
@@ -1982,7 +2007,8 @@ def _minimum_honored(scope: Filtered, point: Reading) -> None:
     cause naming the floor asked, never answering past it. A ranking of
     players applies it, or refused it already (:func:`_everyone_ranking`)."""
     minimum = scope.minimum
-    if minimum is None or (point.shape == "ranking" and point.by == "player" and (point.on == "player_seasons" or point.minimum_games == minimum.count)):
+    ranked = (point.shape, point.by) == ("ranking", "player") or (point.on, point.shape, point.by) == ("player_seasons", "scalar", "count")
+    if minimum is None or (ranked and (point.on == "player_seasons" or point.minimum_games == minimum.count)):
         return
     raise PointRefused(Cause(kind="minimum_unranked", facts={"unit": minimum.word, "count": minimum.count}))
 
@@ -1998,6 +2024,7 @@ def window_under(asked: PointShape | None, read: WindowCandidates) -> WindowRead
        ``window.read_window``'s reading of its intent until Phase 3, step 4,
        slice (b).
     """
+    asked = _ranked_as(asked)
     order, count, grammar_claim = read.grammar
     claims: list[Claim] = [grammar_claim] if grammar_claim is not None else []
     of: Literal["games", "seasons"] = "games"
@@ -2080,6 +2107,7 @@ def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
        ``span.read_span``'s reading of its intent until Phase 3, step 4,
        slice (b).
     """
+    asked = _ranked_as(asked)
     since = read.since if read.relative is None or asked in LIMIT_COUNTS_SEASONS else read.relative
     season, career = read.season, read.career
     implied = _SPAN_IMPLIED.get(asked) if asked is not None else None
@@ -2104,6 +2132,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
        ``measure.read_measure``'s reading of its intent until Phase 3, step
        4, slice (b).
     """
+    asked = _ranked_as(asked)
     claims: list[Claim] = []
     key = context.key
     if words.worded is not None:

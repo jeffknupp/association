@@ -176,7 +176,7 @@ class LinesNamed:
 
 #: What each way of stating a line's number, and the words that lead a line
 #: under a number, is typed as in the grammar's text.
-_LINE_KINDS: dict[str, lexicon.TypedKind] = {"plus": "line_plus", "at_least": "line_at_least", "lead": "line_lead"}
+_LINE_KINDS: dict[str, lexicon.TypedKind] = {"plus": "line_plus", "at_least": "line_at_least", "lead": "line_lead", "season": "line_season"}
 
 
 def lines_named(question: str) -> LinesNamed:
@@ -190,7 +190,13 @@ def lines_named(question: str) -> LinesNamed:
     .. versionadded:: 6.0.0
     """
     found = read_lines(question).found
-    marks = (*(candidate.number for candidate in found if candidate.number is not None), *((*candidate.lead, "lead") for candidate in found if candidate.lead is not None))
+    marks = (
+        *(candidate.number for candidate in found if candidate.number is not None),
+        *((*candidate.lead, "lead") for candidate in found if candidate.lead is not None),
+        # A season line whole ("averaged 30 ppg"), typed so a row reads it as
+        # the tagger's and never by its words (ISSUES.md #390).
+        *((candidate.claim.start, candidate.claim.end, "season") for candidate in found if candidate.how == "season"),
+    )
     stats = tuple(candidate.stat for candidate in found if candidate.stat is not None)
     return LinesNamed(threshold_named(question), lexicon.BELOW.search(question) is not None, marks, stats)
 
