@@ -4693,6 +4693,9 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
     "fact_not_read": _say_fact_not_read,
+    "opponent_not_read": lambda facts: (
+        f"'{facts['words']}' after the versus word names no team or player on record, so the games against it cannot be picked out - spell the team or the player as the warehouse has them."
+    ),
     "denied_role": lambda facts: (
         f"'{facts['words']}' asks for the games {facts['player']} did not "
         f"{'start' if facts['role'] == 'start' else 'come off the bench'}, which nothing here narrows by - "

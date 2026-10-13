@@ -94,6 +94,7 @@ from association.query.subject import (
     settle_subject,
     subject_claims,
     team_named_in,
+    versus_word_unread,
 )
 from association.query.window import MinimumRead, WindowContext, contradicting_ends, own_seasons_window, per_season_window, read_minimum, read_window
 
@@ -1218,6 +1219,9 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     denied = _reading_from_route_denied(question, reading)
     if denied is not None:
         return denied
+    unread_versus = versus_word_unread(players, teams, question, reading)
+    if unread_versus is not None:
+        return Cause(kind="opponent_not_read", facts={"words": unread_versus, "shape": reading.asked})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)

@@ -106,15 +106,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #372
 
-### A position group beside a named player is read and dropped: "centers vs gobert gamelog with 34 minutes 2024" answers Gobert's own log
-- **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the subject family (`~/association-research/stages/subject_family.py`).
-- **Evidence:** 51 of the 2,710 readings carry a position group; 50 are `position` subjects and every league-wide point honors the group. One is a `player` subject carrying the group C ("centers vs gobert gamelog with 34 minutes 2024", the feed): the point reader honors a position on the league's own moves alone (`point._everyone_point`), so the point is Rudy Gobert's game log with 34+ minutes, and the answer lists his games. The question is the centers' games against Gobert.
-- **User sees:** one player's log where a position group's games against him were asked.
-- **Next step:** read a position group with a player after "vs" as the group's games with the player an opponent-side companion (`Companion(side="opponent")`, which the league's read honors); failing that, the planner refusing a position on a point that takes none (a decline-to-Cause commit, `ROADMAP-TYPES.md` "Still open" 14).
-- **Source:** ours.
-- **Priority:** P1 - a different question answered (1 feed question).
-- **GitHub:** #365
-
 
 ### A team's "allowed" figure is read as its own where a longer alias stands: "which team allowed the most points per game" ranks the teams' own scoring
 - **Found:** 2026-10-10, Phase 3 step 2's measure slice, writing the tagger's cases
@@ -292,11 +283,11 @@ those were found.
 - **Priority:** P3 - a refusal.
 - **GitHub:** #167
 
-### A misspelled team the index cannot read alone is still dropped: "kmart vs houson", "steph curry vs phnx" answer without the opponent
-- **Found:** 2026-09-27, plan item 6 step (d) part 3 (#131, "gui last 5 games vs sours"); rewritten 2026-10-13 by the P1 sweep's lane N, which read a near spelling of exactly one team after a versus word (`subject._read_opponent_near`, `entities.near_team`, said by `entities.resolved_team`): "gui last 5 games vs sours", "jalen brunson points vs the celtcs", "lakers record vs the nuggest" and 8 feed questions read their opponent now.
-- **Evidence:** what is left, on the 2,082 feed questions (no model names) at the fix's commit: a word after "vs" near a team AND a player is read as neither - "Kmart vs houson" (Allan Houston), "austin reaves 2nd half game log vs clevland" (Antonius Cleveland), "Bobby Portis vs magics Gamelog" (Magic Johnson); a word near nothing is still unread with no refusal - "steph curry vs phnx", "og annuby vs philidalephis stats", "Vucevic vs magocs", "suns v kingsrecord last 20 games"; a nickname split in two, "lebron record vs t wolves". Each answers the subject's line or log over every opponent. A typo'd TEAM subject ("nuggers record") is not read either: only the word a versus word leads is tried.
+### A word after a versus word near both a team and a player is read as neither: "Kmart vs houson" answers without the opponent
+- **Found:** 2026-09-27, plan item 6 step (d) part 3 (#131, "gui last 5 games vs sours"); rewritten 2026-10-13 twice by the P1 sweep's lane N, which read a near spelling of exactly one team after a versus word (`subject._read_opponent_near`, `entities.near_team`: "gui last 5 games vs sours" and 11 more) and refused a word after a versus word that names nothing on record (`subject.versus_word_unread`, the `opponent_not_read` cause: "steph curry vs phnx", "og annuby vs philidalephis stats", "Vucevic vs magocs", "suns v kingsrecord last 20 games" and 4 more, `CHANGES.md`).
+- **Evidence:** what is left, on the 2,082 feed questions (no model names): a word after "vs" near a team AND a player is read as neither and refused by nothing - "Kmart vs houson" (Houston, Allan Houston), "austin reaves 2nd half game log vs clevland" (the Cavaliers, Antonius Cleveland), "Bobby Portis vs magics Gamelog" (the Magic, Magic Johnson); a nickname split in two, "lebron record vs t wolves"; a typo'd TEAM subject ("nuggers record"), since only the word a versus word leads is tried. Each answers the subject's line or log over every opponent.
 - **User sees:** a fluent answer to the un-narrowed question, the opponent named nowhere in it.
-- **Next step:** a word after a versus word that is near nothing on record and is no ordinary word refuses by name (a reading cause naming the word) rather than vanishing; a word near a team and a player asks which. A test per wording.
+- **Next step:** a word near a team and a player asks which (a `Clarify` naming both); "t wolves" joins the nicknames; a typo'd team subject read through `near_team` where no other subject stands. A test per wording.
 - **Source:** ours.
 - **GitHub:** #247
 
