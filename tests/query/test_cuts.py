@@ -247,6 +247,12 @@ def test_a_month_word_with_no_year_right_after_it_is_no_month(question: str) -> 
     assert read_cuts(question, CutsContext()).cuts.situation is None
 
 
+@pytest.mark.parametrize("question", ["luka dončić average after a playoff loss 2024playoff", "celtics record coming off a win"])
+def test_games_after_a_result_are_a_situation_refused_by_value(question: str) -> None:
+    situation = read_cuts(question, CutsContext()).cuts.situation
+    assert situation is not None and situation.calendar is None and situation.alignment is None
+
+
 def test_a_dated_range_hands_its_year_to_the_span_and_a_worded_one_without_a_year_hands_none() -> None:
     read = cuts_under(PLAYER_LINE, read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
     assert isinstance(read, CutsRead) and read.dated_since == 2020 and read.cuts.situation is not None and read.cuts.situation.calendar is not None

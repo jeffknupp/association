@@ -80,6 +80,23 @@ def test_a_year_after_october_november_or_december_is_the_season_that_starts_in_
     assert season_from_text(question) == expected
 
 
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # ISSUES.md #393: two digits beside a season-type word, and a year
+        # glued to one, are the season ending in it - never a count.
+        ("Gilbert arenas 06 playoffs numbers", 2006),
+        ("shaq in the '01 postseason", 2001),
+        ("luka average 2024playoff", 2024),
+        ("Embiid's ppg for last 10 seasons", None),
+        ("jabari smith jr last 15 regular season games against knicks", None),
+        ("jokic vs ad last 20 season games", None),
+    ],
+)
+def test_a_short_or_glued_year_beside_a_season_type_is_that_season(question: str, expected: int | None) -> None:
+    assert season_from_text(question) == expected
+
+
 def test_the_same_year_twice_is_still_that_year() -> None:
     assert season_from_text("in 2024, who led 2024 in scoring?") == 2024
 

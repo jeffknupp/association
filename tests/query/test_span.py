@@ -40,7 +40,7 @@ from association.query.reading import (
     unhonored_cells,
 )
 from association.query.reading import Subject as Who
-from association.query.span import SpanContext, career_named, claimed, read_span
+from association.query.span import SpanContext, career_named, claimed, range_named, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import scoped_team, team_games
 
@@ -145,6 +145,24 @@ def test_a_franchises_history_is_a_career(question: str) -> None:
 @pytest.mark.parametrize("question", ["knicks franchise player stats", "history of the lakers vs celtics rivalry games last season"])
 def test_franchise_or_history_alone_is_no_career(question: str) -> None:
     assert not career_named(question)[0]
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # ISSUES.md #393: two two-digit seasons after "between"/"from", and a
+        # decade written short after "the", are ranges of seasons.
+        ("who averaged the most points per game in the nba between 03 to 25", (2003, 2025)),
+        ("most pts in the 80s", (1980, 1989)),
+        ("How many players averaged 30 ppg in the '90s", (1990, 1999)),
+        # Never a line or a percentage.
+        ("players scoring between 20 to 30 points", None),
+        ("who shot in the 90s from the line", None),
+        ("players shooting in the 40s", None),
+    ],
+)
+def test_short_years_and_a_short_decade_are_ranges(question: str, expected: tuple[int, int] | None) -> None:
+    assert range_named(question) == expected
 
 
 def test_a_count_a_pair_and_a_log_imply_a_career_without_a_career_word() -> None:

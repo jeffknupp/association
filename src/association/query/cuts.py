@@ -351,8 +351,7 @@ def _dated_since(year: str | None) -> int | None:
     way strptime's %y reads them: 69-99 are the 1900s."""
     if not year:
         return None
-    stated = int(year)
-    return stated if stated > 99 else (1900 + stated if stated >= 69 else 2000 + stated)
+    return int(year) if len(year) > 2 else lexicon.short_year(year)
 
 
 def _round(question: str) -> tuple[str | None, Claim | None]:
