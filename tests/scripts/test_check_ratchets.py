@@ -63,7 +63,7 @@ def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
     )
     assert ratchets.sql_outside_the_relations(modules) == {"point": 1, "compose.present": 1}
     assert ratchets.question_outside_the_reader(modules) == {"compose.present:say"}
-    assert ratchets.regex_outside_the_reader(modules) == {"compose.present", "compose.present:_TEAM_NOT_SUBJECT"}
+    assert ratchets.regex_outside_the_lexicon(modules) == {"compose.present", "compose.present:_TEAM_NOT_SUBJECT"}
     assert ratchets.con_in_the_reader(modules) == {"point:read"}
 
 
@@ -149,27 +149,32 @@ def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
     assert ratchets.shrink(listed, grown)["sql_outside_the_relations"] == {"leaderboard": 2}
 
 
-def test_a_regex_outside_the_reader_is_found() -> None:
-    modules = _modules(grammar="import re", refusals="import re", entities="from re import compile", metrics="import json")
-    assert ratchets.regex_outside_the_reader(modules) == {"refusals", "entities"}
+def test_a_regex_outside_the_lexicon_is_found() -> None:
+    """Every module but the lexicon: one outside the reader that imports
+    ``re`` by any route, and - since Phase 4, step 6, when
+    ``regex_in_the_reader`` was folded in - a reader module too."""
+    modules = _modules(grammar="import re", refusals="import re", entities="from re import compile", metrics="import json", lexicon="import re\nWORD = re.compile(r'\\w+')")
+    assert ratchets.regex_outside_the_lexicon(modules) == {"grammar", "refusals", "entities"}
 
 
-def test_a_regex_inside_the_reader_is_counted_per_module_and_the_lexicon_is_not() -> None:
+def test_a_regex_inside_the_reader_is_found_and_an_annotation_is_not() -> None:
     """The Phase 3 review (2026-10-11): the step 4 exit "the reader's regexes
-    outside the lexicon are gone" was measured by ``regex_outside_the_reader``,
-    which counts modules OUTSIDE the reader and read 0 over 18 ``re`` calls
-    in ``point``, ``parse`` and ``line``. Every call of ``re`` in a reader
-    module but the lexicon counts; a flag or a type does not; a module
-    outside the reader is the other ratchet's."""
+    outside the lexicon are gone" was measured by a ratchet that counted
+    modules OUTSIDE the reader and read 0 over 18 ``re`` calls in
+    ``point``, ``parse`` and ``line``. A reader module but the lexicon that
+    calls ``re`` or imports it at run time is found; one that imports it
+    under ``TYPE_CHECKING`` for an annotation is not, and neither is the
+    lexicon."""
     modules = _modules(
         point="import re\n_VS = re.compile(r'vs', re.I)\n_LOG = re.compile('log')\ndef read(words: re.Pattern): ...",
         line="import re\ndef words(stat):\n    return re.sub(r'\\s+', ' ', stat)",
         lexicon="import re\nWORD = re.compile(r'\\w+')\nMARK = re.escape('x')",
         measure="import re\ndef kind(p: re.Pattern) -> bool:\n    return p.flags & re.I != 0",
+        window="from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import re\ndef end(m: re.Match) -> str: ...",
+        split="import typing\nif typing.TYPE_CHECKING:\n    import re\nelse:\n    import json",
         entities="import re\nX = re.compile('x')",
     )
-    assert ratchets.regex_in_the_reader(modules) == {"point": 2, "line": 1}
-    assert ratchets.regex_outside_the_reader(modules) == {"entities"}
+    assert ratchets.regex_outside_the_lexicon(modules) == {"point", "line", "measure", "entities"}
 
 
 def test_a_new_violation_and_a_listed_one_that_is_gone_both_fail() -> None:

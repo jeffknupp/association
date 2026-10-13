@@ -18,7 +18,6 @@
   "team_relation": 5,
   "team_seasons": 7
  },
- "regex_outside_the_reader": [],
- "regex_in_the_reader": {},
+ "regex_outside_the_lexicon": [],
  "con_in_the_reader": []
 }

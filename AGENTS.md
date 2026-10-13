@@ -135,28 +135,31 @@ this tree:
   function that only hands its parameter to one, such as
   `season_line._values` - Phase 2 moved 35 hand-written statements behind
   that door, where the count read 38 and the sites were 105 still; the
-  argument's tracing is `_origin`'s docstring), a module outside the
-  reader that imports `re` by any route or takes a reader's private
-  pattern (6, then 4 since `refusals.py` went, 3 since `calendar.py`'s
-  patterns moved to the lexicon with the games' cuts, 0 since Phase 3,
-  step 4, slice (b): `entities`' last pattern is `lexicon.word_start`, and
-  its LIKE reading needs none), how many `re` calls each reader module
-  outside the lexicon makes, by module (`regex_in_the_reader`, since
-  2026-10-11: `point` 12 compiled patterns, `parse` 5 - one compiling the
-  parent grammar's 23 rows kept there - `line` 1; the Phase 3 review found
-  the step 4 exit "the reader's regexes outside the lexicon are gone"
-  measured by the ratchet before it, which counts modules OUTSIDE the
-  reader and so read 0 over these 18; 2 since Phase 4, step 6's first
-  slice, which moved the point reader's and the refusals' patterns to the
-  lexicon, and 0 since its second, where the parent grammar's rows became
-  predicates over typed values with their words in the lexicon), and a
-  reader function that
+  argument's tracing is `_origin`'s docstring), a module but the lexicon
+  that calls `re` or imports it at run time, or a module outside the
+  reader that takes a reader's private pattern (`regex_outside_the_lexicon`
+  since Phase 4, step 6; `regex_outside_the_reader` until then, which saw
+  modules OUTSIDE the reader only: 6, then 4 since `refusals.py` went, 3
+  since `calendar.py`'s patterns moved to the lexicon with the games'
+  cuts, 0 since Phase 3, step 4, slice (b), where `entities`' last pattern
+  became `lexicon.word_start` - and `regex_in_the_reader` beside it, the
+  `re` calls each reader module but the lexicon made, by module, since
+  2026-10-11: `point` 12, `parse` 5 with the parent grammar's 23 rows,
+  `line` 1, the 18 the Phase 3 review found the step 4 exit "the reader's
+  regexes outside the lexicon are gone" blind to; 2 after step 6's first
+  slice moved the point reader's and the refusals' patterns to the
+  lexicon, 0 after its second made the grammar's rows predicates over
+  typed values with their words in the lexicon, and folded in then - an
+  import under `TYPE_CHECKING`, for an annotation, is none), and a reader
+  function that
   takes a DuckDB connection, by its name or its annotation (23, 0 since
   slice (b): the reader takes the names' in-memory index,
   `names.NameIndex`, which the answering loop reads before the parser
   runs, `entities.names_of`). The two at zero are held as empty lists, so
-  a new one fails. A sixth ratchet, a private name `compose/` took from
-  `templates/`, reached 0 and was deleted with `templates/` (step 6). It fails
+  a new one fails. Two more are gone: a private name `compose/` took from
+  `templates/`, which reached 0 and was deleted with `templates/` (step 6),
+  and `regex_in_the_reader`, folded into `regex_outside_the_lexicon` at 0
+  (Phase 4, step 6). It fails
   on a NEW one or a count that grew, and on a listed one that is GONE or a
   count that fell, so the lists only shrink. A NEW failure is fixed in the
   code - pass the Reading, not the question; narrow through the relation's
@@ -1126,12 +1129,12 @@ a shape:
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader - held inside the reader by the `regex_in_the_reader`
-  ratchet since 2026-10-11, at the counts the Phase 3 review found:
-  `point.py` 12 compiled patterns, `parse.py` 5 `re` calls with the parent
-  grammar's 23 rows, `line.py` one - 0 since Phase 4, step 6;
-  `regex_outside_the_reader` counts modules OUTSIDE the reader and read 0
-  over them). **A tagger reads the words alone, never the key
+  layer of the reader - held by the `regex_outside_the_lexicon` ratchet,
+  empty: no module but the lexicon calls `re` or imports it at run time,
+  since Phase 4, step 6 moved the point reader's 11 patterns, the
+  refusals' 3, `line.py`'s one and the parent grammar's rows here; the
+  `regex_in_the_reader` count it took in stood at the 18 the Phase 3
+  review found inside the reader until then). **A tagger reads the words alone, never the key
   the words ask** (Phase 3, step 4, slice (b)): each family is read twice
   over in `parse._tagged` - the tagger reads every candidate the words
   hold (`line.LineCandidates`, `window.WindowCandidates`,

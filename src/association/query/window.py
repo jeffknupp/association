@@ -32,9 +32,8 @@ gone rather than ported.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from association.query import lexicon
 from association.query.reading import (
@@ -44,6 +43,9 @@ from association.query.reading import (
     Window,
 )
 from association.query.span import range_named, relative_seasons
+
+if TYPE_CHECKING:
+    import re
 
 
 @dataclass(frozen=True, kw_only=True)
