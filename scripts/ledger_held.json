@@ -142,7 +142,6 @@
    "active players under 25 years old with spg+bpg gte 2 and fg% > 50 and average 3pm > 1 in the playoffs with gp > 20",
    "anthony davis 2020 playoff first 3 rounds",
    "anthony davis vs orlando last 5 match",
-   "best free throw percentage in a game with 13+ free throw attempts by the 76ers",
    "best nba players 27 years old number 5",
    "best nba shooting percentages from farther than 30 feet",
    "best shooting percentage from beyond 30 feet in the last 5 years",
@@ -156,8 +155,6 @@
    "curry playoff stats from may 10th 2019 to april 30th 2023 including record and ts% and efg% and turnover percentage",
    "curry playoff stats from may 10th 2019 to may 13th 2023 including record and ts% and efg% and turnover percentage",
    "curry stats from january 31st 2022 to november 6th 2023 in the reg season including record and ts% and efg% and turnover percentage",
-   "fewest field goal misses + opp fga minus opp fgm in a game by knicks; 1988-89; at least 92 fgm + opp fgm",
-   "games with 13+ free throw attempts by the 76ers",
    "harden 61 points",
    "hield ast 5 games",
    "highest 3pt% with over 3 3pa per 36",
@@ -174,8 +171,6 @@
    "ja morant last 10 first quarters against nets",
    "jalen brunson lasst 5 games",
    "jalen brunson stats last 5 away",
-   "jalen suggs game log 15+ fga",
-   "jalen suggs points+rebounds game log 15+ fga",
    "jamal crawford lou williams career per36",
    "jamal crawford lou williams per 36",
    "james harden ts playoffs from january 1 2015 to june 2 2021",
@@ -246,6 +241,6 @@
    "which player averaged the most ppg in the playoffs from may 10th 2019 to april 30th 2023 including record and ts% and efg% and turnover percentage with atleast 20 games played",
    "who averaged the most points per game in the nba between 03 to 25"
   ],
-  "unread_words": 3472
+  "unread_words": 3461
  }
 }

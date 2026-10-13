@@ -141,6 +141,14 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
         ("longest streak of games with more than 30 points for luka", LINE_RUNS, [("points", ">=", 31, "more than 30 points", True, False)], None),
         # ... a percentage is read as the line it is, with no column (refused by name, below).
         ("kobe bryant career games with more than 40 field goal percentage", PLAYER_LOG, [(None, ">", 40, "more than 40 field goal percentage", False, True)], None),
+        # A line at or over a number stated outright on a stat the threshold spellings do not hold (ISSUES.md #357);
+        # a threshold spelling's pair stays the pair's, and words naming no stat ("30+ feet") are no line.
+        ("jalen suggs game log 15+ fga", PLAYER_LOG, [("fieldGoalsAttempted", ">=", 15, "15+ fga", False, True)], None),
+        ("lebron game log with 15 or more field goal attempts", PLAYER_LOG, [("fieldGoalsAttempted", ">=", 15, "15 or more field goal attempts", False, True)], None),
+        ("games with 13+ free throw attempts by the 76ers", PLAYER_LOG, [("freeThrowsAttempted", ">=", 13, "13+ free throw attempts", False, True)], None),
+        ("lebron game log with 20+ points this season", PLAYER_LOG, [("points", ">=", 20, "20+ points", False, True)], None),
+        ("tyrese haliburton shot chart from 30+ feet", PLAYER_LOG, [], None),
+        ("Most 10+ regular season games", PLAYER_LOG, [], None),
         # ... and not on a ranking of players' seasons, where it is a season's line; nor an average, a count of games or
         # a lead glued to its number.
         ("players who made exactly 129 three pointers in the NBA in 2025-26", PLAYER_RANKING, [], None),

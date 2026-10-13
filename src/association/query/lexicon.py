@@ -1982,6 +1982,21 @@ LINE_OVER_OR_AT = re.compile(
 
 .. versionadded:: 6.0.0
 """
+# A line at or over a number stated outright on any box-score stat - "15+
+# fga", "13+ free throw attempts", "at least 15 fga", "15 or more field
+# goal attempts" (ISSUES.md #357) - where THRESHOLD_PAIR and AT_LEAST_PAIR
+# read only the threshold spellings: a stated line, read as LINE_OVER_OR_AT's
+# are. A threshold spelling inside one stays the pair's (``line.read_lines``).
+LINE_AT_LEAST = re.compile(
+    r"\b(?:at\s+least\s+\d{1,3}|\d{1,3}\s*(?:\+|\s+plus\b|\s+or\s+more\b))"
+    r"(?!\s*(?:minutes|mins?|games?|seasons?|years?|times|days|ppg|rpg|apg|spg|bpg|mpg|a\s+game|per\s+game)\b)"
+    r"(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more|per|a|this|last|since)\b)[a-z][a-z%-]*){1,3}",
+    re.IGNORECASE,
+)
+"""A line a game is kept at or over, stated outright on any stat, as worded.
+
+.. versionadded:: 6.0.0
+"""
 # "games with FGA = 25": a stat set equal to a number, its words before it.
 EQUALS_LINE = re.compile(r"\b([a-z][a-z%-]*(?:\s+[a-z][a-z%-]*){0,2})\s*=\s*(\d{1,3})\b", re.IGNORECASE)
 """A line a game is kept at, stated as "stat = N".
@@ -2039,7 +2054,7 @@ SEASONS_COUNTED = re.compile(
 # words ("under", "at most", "with") say which way the line faces, and an
 # "or more" between the number and its words ("20 or more minutes") is the
 # number's, as a plus is.
-MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?:or\s+more\s+)?(?P<words>.*)$")
+MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?:or\s+more\s+|plus\s+)?(?P<words>.*)$")
 """A below/above phrase split into its lead, its number and its stat words.
 
 .. versionadded:: 6.0.0
