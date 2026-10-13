@@ -164,17 +164,18 @@ def test_an_end_the_grammar_missed_is_read_on_a_reader_that_honors_one() -> None
     assert _read("fingerprint for curry's first game of 2026", NETPOINTS_FINGERPRINT) == Window(order="first", count=1)
 
 
-def test_an_end_on_a_reader_with_no_window_of_its_own_stands_where_games_are_said() -> None:
-    """An end said with "games" stands on a reader that refuses one, for the
-    planner to refuse by name (ISSUES.md #352: "Warriors vs Mavs record last
-    ten games" tallied this season's three meetings once its end went); an
-    end said with no "games" beside a larger count goes, the count standing;
-    beside a count of one both stand."""
+def test_an_end_on_a_reader_with_no_window_of_its_own_stands() -> None:
+    """An end stands on a reader that refuses one, whatever word follows the
+    count, for the planner to refuse by name (ISSUES.md #352: "Warriors vs
+    Mavs record last ten games" tallied this season's three meetings once
+    its end went)."""
     assert _read("lakers vs mavs record last 10 home games played", TEAM_MEETINGS) == Window(order="recent", count=10)
     assert _read("Warriors vs Mavs record last ten games", TEAM_MEETINGS) == Window(order="recent", count=10)
     assert _read("lamelo ball last 7 home games vs suggs", PLAYER_MEETINGS) == Window(order="recent", count=7)
     assert _read("Warriors vs Mavs record last 10 games", TEAM_MEETINGS) == Window(order="recent", count=10)
-    assert _read("damian lillard stats vs magic last 10", PLAYER_LINE) == Window(count=10)
+    assert _read("damian lillard stats vs magic last 10", PLAYER_LINE) == Window(order="recent", count=10)
+    assert _read("Warriors vs Mavs record last 10", TEAM_MEETINGS) == Window(order="recent", count=10)
+    assert _read("suns vs jazz last 10 matches", TEAM_MEETINGS) == Window(order="recent", count=10)
     assert _read("Divencezo season opener stats career", PLAYER_LINE) == Window(order="first", count=1)
 
 

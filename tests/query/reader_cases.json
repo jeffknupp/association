@@ -7898,7 +7898,9 @@
     "by": null
    },
    "minimum": null,
-   "unread": [],
+   "unread": [
+    "games"
+   ],
    "subject": {
     "kind": "everyone",
     "players": [],
@@ -89475,7 +89477,8 @@
    },
    "minimum": null,
    "unread": [
-    "record"
+    "record",
+    "games"
    ],
    "subject": {
     "kind": "team",
@@ -97658,7 +97661,9 @@
     "by": null
    },
    "minimum": null,
-   "unread": [],
+   "unread": [
+    "games"
+   ],
    "subject": {
     "kind": "teams",
     "players": [],
