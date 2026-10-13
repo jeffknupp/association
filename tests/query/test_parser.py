@@ -1039,3 +1039,21 @@ def test_how_many_players_a_season_line_holds_is_the_ranking_counted(con: duckdb
         assert _read(con, question).asked == PLAYERS_COUNTED, question
     for question in ("who averaged 30 ppg in 2026", "how many players have averaged the most points"):
         assert _read(con, question).asked == PLAYER_RANKING, question
+
+
+@pytest.mark.parametrize(
+    ("question", "predicates"),
+    [
+        ("most games with 20 pts, 10 reb, 5 ast last season", [("points", ">=", 20), ("rebounds", ">=", 10), ("assists", ">=", 5)]),
+        ("most games with 20 pt,s 10 reb, 5 ast", [("points", ">=", 20), ("rebounds", ">=", 10), ("assists", ">=", 5)]),
+        ("most playoff games with 46 points 6 assists 6 rebounds", [("points", ">=", 46), ("assists", ">=", 6), ("rebounds", ">=", 6)]),
+    ],
+)
+def test_a_league_count_counts_the_games_past_every_bare_line(con: duckdb.DuckDBPyConnection, question: str, predicates: list[tuple[str, str, int]]) -> None:
+    """ISSUES.md #358: "most games with 20 pts, 10 reb, 5 ast" answered the
+    most 20+ point games, the second and third lines read and dropped; the
+    league's count takes every bare line as a predicate, counting its first
+    line's stat."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.predicates == predicates
+    assert reading.measure is not None and reading.measure.key == "points"

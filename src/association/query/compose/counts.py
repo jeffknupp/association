@@ -34,7 +34,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.query.entities import Entity
-from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
+from association.query.lines import MeasureFilter, measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS
@@ -54,11 +54,20 @@ def _threshold_count_is_own_point(q: Query, column: str) -> bool:
     words added."""
     threshold = threshold_of(q)
     counted = [(column, ">=", threshold)] if threshold is not None else []
-    if q.predicates not in (counted, []) or q.position:
+    # The league's count of games clearing its second and later bare lines
+    # too (ISSUES.md #358): each one of the question's own lines.
+    extra = q.predicates[len(counted) :] if q.subject == "everyone" and q.predicates[: len(counted)] == counted else []
+    if q.predicates[: len(q.predicates) - len(extra)] not in (counted, []) or not all(_bare_line_of(q, predicate) for predicate in extra) or q.position:
         return False
     if q.subject == "player":
         return q.skeleton == "scalar" and q.aggregate == Aggregate.COUNT
     return q.skeleton == "grouped" and q.aggregate == Aggregate.COUNT and q.group == "player"
+
+
+def _bare_line_of(q: Query, predicate: tuple[str, str, Any]) -> bool:
+    """Whether ``predicate`` is one of ``q``'s own bare lines - a whole-game
+    line at or over a number, neither keyed nor narrowing (ISSUES.md #358)."""
+    return any(not line.keyed and not line.narrows and line.per == "game" and line.period is None and line.as_predicate() == predicate for line in q.lines if line.measure is not None)
 
 
 def box_score_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, player: Entity | None) -> tuple[Span, list[Note]]:
@@ -132,16 +141,7 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Result | U
     label = STAT_LABELS.get(stat or "", stat or "")
     notes += _threshold_count_notes(con, (season, season_type), player, rows, column, label, empty)
     facts = CountFacts(stat=stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0])
-    # A phrase on the count's own number and stat, or holding its words, IS
-    # the count, misread: the phrase wins, since it holds the direction and
-    # the column the model lost; any other phrase is a second line beside it
-    # - a floor of 30 minutes beside 30 points is said beside them
-    # (point._default_threshold_count's rule). The count's own line has no
-    # label: the sayer says it from the stat.
-    keyed = threshold_line(scope)
-    is_the_count = any(line.value == threshold and (line.measure == column or (keyed is not None and keyed.as_typed in line.as_typed)) for line in relation_lines(scope))
-    counted = () if not threshold or is_the_count else (Line(column=column, value=threshold),)
-    cells = (*counted, *(Line(column=line.column, op=line.op, value=line.value, label=line.label) for line in lines))
+    cells = _threshold_count_cells(q, column, threshold, lines, league=player is None)
     span = replace(span, ordinal=compiled.span.ordinal if season is not None else None)
     if player is not None:
         body: Scalar | Grouped = Scalar(games=rows[0][1] if rows else 0, sums={"rebuilt": rows[0][2] if rows else 0}, how="count")
@@ -156,6 +156,25 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Result | U
         notes=tuple(notes),
         facts=facts,
     )
+
+
+def _threshold_count_cells(q: Query, column: str, threshold: int | None, lines: list[MeasureFilter], *, league: bool) -> tuple[Line, ...]:
+    """The lines the count is said over: its own (unless a phrase on its
+    own number and stat is the count, misread), the league's second and
+    later bare lines (ISSUES.md #358), and the relation's narrowing lines."""
+    # A phrase on the count's own number and stat, or holding its words, IS
+    # the count, misread: the phrase wins, since it holds the direction and
+    # the column the model lost; any other phrase is a second line beside it
+    # - a floor of 30 minutes beside 30 points is said beside them
+    # (point._default_threshold_count's rule). The count's own line has no
+    # label: the sayer says it from the stat.
+    keyed = threshold_line(q)
+    is_the_count = any(line.value == threshold and (line.measure == column or (keyed is not None and keyed.as_typed in line.as_typed)) for line in relation_lines(q))
+    counted = () if not threshold or is_the_count else (Line(column=column, value=threshold),)
+    # The second and later bare lines the league's count also cleared
+    # (ISSUES.md #358), said beside its own: "10+ rebounds and 5+ assists".
+    extra = tuple(Line(column=name, op=op, value=value, label=f"{value}+ {STAT_LABELS.get(name, name)}s") for name, op, value in q.predicates[1:]) if league else ()
+    return (*counted, *extra, *(Line(column=line.column, op=line.op, value=line.value, label=line.label) for line in lines))
 
 
 def _threshold_count_notes(

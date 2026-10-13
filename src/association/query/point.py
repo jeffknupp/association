@@ -387,6 +387,24 @@ def _everyone_threshold_count_line(scope: Filtered) -> list[tuple[str, str, Any]
     return [(column, ">=", threshold)]
 
 
+def _everyone_count_bare_lines(scope: Filtered, predicates: list[tuple[str, str, Any]]) -> list[tuple[str, str, Any]]:
+    """The second and later bare lines of a league count ("most games with
+    20 pts, 10 reb, 5 ast": the 10 rebounds and the 5 assists, which the
+    tagger reads as lines neither keyed nor narrowing), as predicates beside
+    the count's own - the games clearing every one are counted (ISSUES.md
+    #358). They were read by nothing, and the count answered the first line
+    alone; a line the relation narrows by already is no predicate here."""
+    counted = {name for name, _, _ in predicates}
+    extra: list[tuple[str, str, Any]] = []
+    for line in scope.lines:
+        if line.keyed or line.narrows or line.per != "game" or line.period is not None or line.op != ">=" or line.measure is None or int(line.value) < 1:
+            continue
+        if line.measure not in counted:
+            counted.add(line.measure)
+            extra.append(line.as_predicate())
+    return extra
+
+
 def _everyone_threshold_count(asked: PointShape | None, scope: Filtered, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """A league-wide count: who had games clearing the line(s). Without a
     line to count there is nothing to rank - refused, never turned into a
@@ -404,6 +422,8 @@ def _everyone_threshold_count(asked: PointShape | None, scope: Filtered, predica
             # since 2020" arrived as threshold 0 and would count every game.
             raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"shape": GAMES_COUNTED, "threshold": threshold}))
         predicates = _everyone_threshold_count_line(scope)
+    if asked == GAMES_COUNTED and predicates:
+        predicates = [*predicates, *_everyone_count_bare_lines(scope, predicates)]
     if not predicates:
         raise PointRefused(Cause(kind="needs_line"))
     if scope.cuts.season_n:
@@ -1909,7 +1929,10 @@ def _lines_stat(asked: PointShape | None, pairs: list[LineCandidate], *, has_phr
     plus = [candidate for candidate in pairs if candidate.how == "plus"]
     if len(plus) == 1:
         return plus[0].line.measure
-    if stat is None and pairs and has_phrase:
+    if stat is None and pairs and (has_phrase or (asked == GAMES_COUNTED and len(pairs) > 1 and not plus)):
+        # A count over several bare lines counts its first line's stat ("most
+        # games with 20 pt,s 10 reb, 5 ast" is points, where the longest
+        # box-score word read "reb"; ISSUES.md #358).
         return pairs[0].line.measure
     return stat
 
