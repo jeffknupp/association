@@ -1546,6 +1546,40 @@ agents' reports named here are in `~/association-research/stages/`.
     recommends the P1 list under the standing proof rules, with the
     aggregate's derivation and the worded declines folded in.
 
+42. **The P1 sweep (2026-10-13): four lanes along the files' seams.**
+    Jeff's call after the close: a small swarm on the 45 open P1s, one
+    Opus agent per seam (spans/windows/cuts, lines/measures/count grammar,
+    subject/names/companions, the team relation and compiler), each in its
+    own worktree from pushed master, the phase's proof rules standing, the
+    lead merging every push on the merged tree and re-proving it on fresh
+    runs of the four populations (32 merge runs, `master-sweep1..32`).
+    Jeff stopped and restarted all four once (fresh agents on the same
+    worktrees, a state check first) and cut lane L after its last batch.
+    What landed on master `c93fffa`: 77 fix commits; of the lanes' 46
+    entries 30 closed, 12 narrowed to a named remainder, 4 untouched; 25
+    new entries filed on the way, 13 of them P1, most on the team seam
+    after lane T finished; open P1s 45 -> 22; 514 of the 2,082 feed
+    answers and 99 of the 628 moved against Phase 4's close, each named
+    in its commit, the direction checked at every merge (a fluent wrong
+    answer to a refusal allowed, never the reverse - the "nba" fix was
+    gated on a measure read from the words for that reason). D4 lifted
+    twice by Jeff for shapes the measurements asked for (the 26th and
+    27th keys), with "what a new shape brings" recorded as the rule.
+    What it cost: nine agent runs over about nine hours, and the lead's
+    32 verifications. What it taught: a lane's held-ledger and
+    reader-cases files cannot be merged by taking a side (a lane's entry
+    survives nowhere else; a case recorded without another lane's field
+    fails on the merged tree) - regenerate both on the merged tree and
+    union the held lists at the measured counts; keep-both ISSUES merges
+    resurrect deleted entries, so the resolver is three-way and the close
+    cross-checks every listed entry against its GitHub state (nine found
+    and removed); the closed cause tables (`reading.CAUSES`, the sayer's
+    phrases, the test's examples) conflict whenever two lanes add a
+    cause, and the resolution is both sides minus what master deleted;
+    and new P1s appear as fast as old ones close because each fix stops
+    at the next seam (a reader fix exposes a relation gap), which is
+    Phase 5's step 6 to count rather than a sign the sweep went backward.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
