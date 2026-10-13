@@ -4075,17 +4075,32 @@ PRESENCE_ROW = row(r"\b(with|without|when|while)\b")
 .. versionadded:: 6.0.0
 """
 TEAM_LOG_ROW = row(
-    r"\b(game ?log|(last|past|previous|most recent) " + COUNT + r"\b|first \d+ games|each game|game by game|differential"
+    r"\b(game ?log|(last|past|previous|most recent) " + COUNT + r"\b(?!\s+(seasons?|years?|yrs?)\b)|first \d+ games|each game|game by game|differential"
     r"|(first|opening|last|latest|most recent|final) game|(season )?opener)"
 )
 """A team's log word, or the window words a team's log row read before
-the window tagger typed them, for a form the tagger does not type ("last
-5 season": ISSUES.md #372).
+the window tagger typed them, for a form the tagger does not type - never
+a count of seasons ("raptors record last 10 season" is the team's record
+over its last ten seasons, not a log of ten games: ISSUES.md #372).
 
 .. versionadded:: 6.0.0
 """
 STREAK_ROW = row(r"\bstreak")
 """A run of games asked for.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_GAMES_OVER_SEASONS_ROW = AllOf(
+    (
+        row(r"\b(last|past|previous|most recent) " + COUNT + r"\s+(seasons?|years?|yrs?)\b"),
+        stands("opponent_against", "opponent_versus", "opponent"),
+        NoneOf((row(r"\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec|percentage|pct)\b|%"),)),
+    )
+)
+"""A team's games against an opponent over its last N seasons, with no
+record word: "hornets on the road vs magic last 2 seasons" is a log of those
+meetings, where "raptors record last 10 season" is the record over the
+seasons (ISSUES.md #372).
 
 .. versionadded:: 6.0.0
 """
