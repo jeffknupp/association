@@ -20,7 +20,7 @@ from association.query.answer import AnswerContext
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
-from association.query.cuts import CutsContext, CutsRead, read_cuts
+from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import cuts_under
 from association.query.reading import (
@@ -38,6 +38,7 @@ from association.query.reading import (
     SEASON_HISTORY,
     SHOT_DISTANCE,
     TEAM_LINE,
+    TEAM_RANKING,
     TEAM_RECORD,
     Aggregate,
     Claim,
@@ -429,3 +430,36 @@ def test_a_situation_nothing_reads_is_refused_by_value_with_its_words(pg_ctx: An
 def test_read_cuts_returns_the_cuts_and_its_claims() -> None:
     read = cuts_under(PLAYER_LOG, read_cuts("curry home games vs the lakers", CutsContext(opponent="Los Angeles Lakers")), split=None)
     assert isinstance(read, CutsRead) and read.cuts == Cuts(opponent="Los Angeles Lakers", venue="home") and read.claims == (Claim(6, 10, "venue"),) and read.dated_since is None
+
+
+@pytest.mark.parametrize(
+    ("question", "shape", "words"),
+    [
+        # ISSUES.md #339: a conference a ranking's subject belongs to.
+        ("who leads the east in scoring", PLAYER_RANKING, "the east"),
+        ("top scorers in the western conference this season", PLAYER_RANKING, "in the western conference"),
+        ("best record in the east", TEAM_RANKING, "in the east"),
+        # The opponent's, and off a ranking, keep their reading.
+        ("top scorers vs the west", PLAYER_RANKING, None),
+        ("lebron points in the west", PLAYER_LINE, None),
+    ],
+)
+def test_a_rankings_own_conference_is_read_apart_from_the_opponents(question: str, shape: PointShape, words: str | None) -> None:
+    assert own_alignment(shape, read_cuts(question, CutsContext()).cuts) == words
+
+
+@pytest.mark.parametrize(
+    ("question", "text"),
+    [
+        # ISSUES.md #400: the opponents by their standing are a situation read whole.
+        ("luka stats vs top 3 teams this season", "vs top 3 teams"),
+        ("luka stats against top 5 defenses", "against top 5 defenses"),
+        ("who scores the most vs the best defenses", "vs the best defenses"),
+        ("luka stats vs the top 4 seeds", "vs the top 4 seeds"),
+    ],
+)
+def test_the_opponents_by_their_standing_are_a_situation_nothing_reads(question: str, text: str) -> None:
+    read = read_cuts(question, CutsContext())
+    situation = read.cuts.situation
+    assert situation is not None and situation.text == text and not situation.read
+    assert [question[c.start : c.end] for c in read.unread_situation()] == [text]

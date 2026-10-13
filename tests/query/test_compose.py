@@ -2469,6 +2469,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "cannot_honor": {"shape": PRESENCE_SPLIT, "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "why": "it would answer for a different span than was asked"},
     "no_reading_of_point": {"shape": TEAM_RECORD, "planned": TEAM_RECORD},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
+    "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
 }
 
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence

@@ -39,7 +39,7 @@ from typing import Literal
 from association.nba.season import current_season
 from association.query import lexicon
 from association.query.calendar import date_range, month_opened, season_of_day
-from association.query.reading import Claim, Cuts, situation_of
+from association.query.reading import Claim, Cuts, PointShape, situation_of
 from association.query.span import career_named
 
 
@@ -85,6 +85,21 @@ class CutsRead:
     #: The venue's characters, apart from :attr:`claims` until the key's
     #: reading keeps the venue or drops it (:func:`~association.query.point.cuts_under`).
     venue_claim: Claim | None = None
+
+    def unread_situation(self) -> tuple[Claim, ...]:
+        """Where a situation nothing reads was read from ("vs top 3 teams",
+        "after a playoff loss": no calendar narrowing and no alignment), which
+        the relation refuses by value - and which no other family reads a
+        value of: the window tagger reads the question with these words
+        blanked, so "vs top 3 teams" is no window of his last 3 games
+        (ISSUES.md #400).
+
+        .. versionadded:: 6.0.0
+        """
+        situation = self.cuts.situation
+        if situation is None or situation.read:
+            return ()
+        return tuple(c for c in self.claims if c.what == "situation")
 
     def dated(self, question: str) -> tuple[Claim, ...]:
         """Where a day written in numbers was read from - a range opened on
@@ -164,6 +179,28 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
         season_n=season_n,
     )
     return CutsRead(cuts, tuple(claims), dated_since, dated_until=dated_until, dated_both=dated_both, venue_claim=venue_claim)
+
+
+def own_alignment(asked: PointShape | None, cuts: Cuts) -> str | None:
+    """The words of a conference or division a RANKING's subject belongs to
+    - "top scorers in the western conference", "who leads the east",
+    "eastern conference players points leaders" (ISSUES.md #339) - or None.
+    The alignment reader reads every conference or division as the
+    opponent's, which a ranking with no opponent word is not: "top scorers
+    in the western conference" ranked every player's games against the
+    West. Nothing ranks a conference's own players or teams yet, so the
+    parser refuses it by a cause naming the words (``own_alignment``); one
+    led by "vs", "versus" or "against" stays the opponent's, and off a
+    ranking the words keep their reading.
+
+    .. versionadded:: 6.0.0
+    """
+    situation = cuts.situation
+    if asked is None or asked.shape != "ranking" or situation is None or situation.alignment is None:
+        return None
+    if lexicon.ALIGNMENT_AS_OPPONENT.match(situation.text):
+        return None
+    return situation.text
 
 
 def _venue(question: str) -> tuple[Literal["home", "away"] | None, Claim | None]:

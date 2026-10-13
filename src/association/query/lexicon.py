@@ -1476,6 +1476,13 @@ _ALIGNMENT_WORD = "|".join(sorted(ALIGNMENT_NAMES, key=len, reverse=True))
 # "the", and an optional trailing "conference"/"division"/"team(s)" - never a
 # name pulled from free text, since a conference or division is a closed set
 # of eleven words and nothing here guesses at a twelfth.
+ALIGNMENT_AS_OPPONENT = re.compile(r"(?:vs\.?|versus|against)\b", re.IGNORECASE)
+"""The words that make a conference or division the OPPONENT's ("vs the
+west", "against eastern conference teams"), where "in the west" or a bare
+"eastern conference" on a ranking is the subject's own (ISSUES.md #339).
+
+.. versionadded:: 6.0.0
+"""
 ALIGNMENT = re.compile(rf"^(?:(?:vs\.?|against|in)\s+)?(?:the\s+)?(?P<name>{_ALIGNMENT_WORD})(?:\s+(?:conference|division))?(?:\s+teams?)?$", re.IGNORECASE)
 """A whole situation value naming the opponent's conference or division.
 
@@ -1517,6 +1524,16 @@ SITUATION = re.compile(
     # whole so it is refused by name rather than its "top 3" read as a
     # window of games (ISSUES.md #396: his last 3 games answered).
     r"\b(?:vs\.?|versus|against)\s+(?:the\s+)?(?:top[\s-]+(?:\d+[\s-]+)?)?seed(?:s|ed)?(?:\s+teams?)?\b|"
+    # The opponents by their standing or their unit's rank ("vs top 3
+    # teams", "against top 5 defenses", "vs the worst 10 offenses"): an
+    # alignment no table orders the games by, kept whole and refused by
+    # name, never its "top 3" a window of games (ISSUES.md #400).
+    rf"\b(?:vs\.?|versus|against)\s+(?:the\s+)?(?:top|best|bottom|worst)[\s-]+(?:{COUNT}[\s-]+)?(?:(?:ranked|rated)\s+)?(?:(?:nba|east(?:ern)?|west(?:ern)?)\s+)?"
+    r"(?:teams?|defen[cs]es?|offen[cs]es?|defensive\s+teams?|offensive\s+teams?|opponents?|squads?)\b|"  # codespell:ignore offen - a regex stem of "offense(s)"
+    # The conference a ranking leads: "who leads the east in scoring"
+    # (ISSUES.md #339) - the subject's own, which the parser refuses by name
+    # on a ranking (`cuts.own_alignment`).
+    r"(?:(?<=\blead )|(?<=\bleads )|(?<=\bled ))the\s+(?:east|west)\b|"
     r"\b(?:atlantic|central|southeast|northwest|southwest|pacific|midwest)\s+division\b|"
     r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bdivision\b|\ball[- ]star\s+break\b|"
     # A day of the week: 8 of the 14, and the most common shape in the feed.

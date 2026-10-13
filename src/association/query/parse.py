@@ -29,7 +29,7 @@ from dataclasses import replace
 from typing import Any
 
 from association.query import lexicon, names
-from association.query.cuts import CutsContext, CutsRead, read_cuts
+from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
 from association.query.grammar import Asked, absent, settle
@@ -855,7 +855,8 @@ def _tagged(
     cuts_context = CutsContext(opponent=settled.opponent, without=absent(companions))
     cuts = cuts_under(asked, read_cuts(question, cuts_context), split=split.split)
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
-    window = window_under(asked, read_window(question, window_context))
+
+    window = window_under(asked, read_window(_tagged_window_words(question, asked, cuts_context, split.split), window_context))
     span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts)))
     scope = Reading(
         who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span, minimum=kept.minimum
@@ -871,7 +872,7 @@ def _tagged(
         *needed(question, split.claims, lambda q: read_split(q, companions).split, outside="split", gives_up=True),
         *needed(question, period.claims, lambda q: period_under(asked, read_period(q)).period, outside="period", gives_up=True),
         *needed(question, cuts.claims, lambda q: _tagged_cuts(cuts_under(asked, read_cuts(q, cuts_context), split=split.split)), outside="cuts", gives_up=True),
-        *needed(question, window.claims, lambda q: window_under(asked, read_window(q, window_context)).window, outside="window", gives_up=True),
+        *needed(question, window.claims, lambda q: window_under(asked, read_window(_tagged_window_words(q, asked, cuts_context, split.split), window_context)).window, outside="window", gives_up=True),
         # The qualifier's over the question as typed, its words blanked in the rest.
         *needed(typed, kept.claims, lambda q: minimum_under(asked, read_minimum(q)).minimum, outside="minimum", gives_up=True),
         *needed(question, read.claims, lambda q: _tagged_lines(lines_under(asked, read_lines(q), beside_line=beside_line)), outside="line", gives_up=True),
@@ -889,6 +890,13 @@ def _tagged(
         *needed(question, span.claims, lambda q: span_under(asked, read_span(q, _tagged_span_context(settled, q, window=window.window, cuts=cuts))).span, outside="span", gives_up=True),
     )
     return scope, claims
+
+
+def _tagged_window_words(question: str, asked: PointShape | None, context: CutsContext, split: str | None) -> str:
+    """``question`` as the window tagger reads it: a situation nothing reads
+    is no other family's value, so its words are blanked ("vs top 3 teams"
+    is no window of the last 3 games, ISSUES.md #400)."""
+    return _blanked(question, cuts_under(asked, read_cuts(question, context), split=split).unread_situation())
 
 
 def _tagged_worded_key(question: str, model_key: Any) -> Any:
@@ -1143,9 +1151,17 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       his first nine is a fact of his career the reader does not hold
       (:func:`~association.query.window.own_seasons_window`).
 
+    - a conference or division a ranking's subject belongs to
+      (``own_alignment``): "top scorers in the western conference this
+      season" ranked every player's games against the West (ISSUES.md #339)
+      - nothing ranks a conference's own yet
+      (:func:`~association.query.cuts.own_alignment`); said only where the
+      words name nothing else that nothing reads (bench points), whose
+      cause is said where the answer side declines, as before.
+
     The championship first, as the answering loop asked them, then a fact
     nothing reads, then the window's ends, then a window per season, then a
-    career's own seasons."""
+    career's own seasons, then a ranking's own conference."""
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
     fact = _refused_fact_not_read(question)
@@ -1162,6 +1178,11 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     own = own_seasons_window(question)
     if own:
         return Cause(kind="own_seasons_window", facts={"seasons": [question[claim.start : claim.end] for claim in own]})
+    aligned = own_alignment(reading.asked, reading.cuts)
+    if aligned is not None and not _reading_from_route_unsupported(question, reading):
+        # Where the words name something else nothing reads ("bench points
+        # allowed in the west"), that cause is said, as it was.
+        return Cause(kind="own_alignment", facts={"shape": reading.asked, "alignment": aligned})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)
