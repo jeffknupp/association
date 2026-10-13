@@ -1377,6 +1377,7 @@ CAUSES: frozenset[str] = frozenset(
         "team_game_high",
         "no_player_reading",
         "denied_role",
+        "opponent_not_read",
         "playoff_round",
         "non_calendar_situation",
         "period_stat",
@@ -1432,7 +1433,9 @@ missing thing, never only the slot"):
   game, which nothing ranks yet (``team_game_high``: ``team``, ``shape``;
   ISSUES.md #364), a teammate's start or bench role the words deny ("when
   embiid doesn't start"), which nothing narrows by (``denied_role``:
-  ``player``, ``words``, ``role``, ``shape``; ISSUES.md #248), or a player named on a question whose
+  ``player``, ``words``, ``role``, ``shape``; ISSUES.md #248), the word a
+  versus word leads that names no team or player on record
+  (``opponent_not_read``: ``words``, ``shape``; ISSUES.md #247), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
   ``shape``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,

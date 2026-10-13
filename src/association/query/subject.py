@@ -78,6 +78,7 @@ from association.query.reading import (
     GAMES_COUNTED,
     LINE_RECORD,
     LINE_RUNS,
+    NETPOINTS_FINGERPRINT,
     OWN_TEAM_RESTORABLE_ASKS,
     PLAYER_COMPARISON,
     PLAYER_LINE,
@@ -874,6 +875,47 @@ def _asks_for_games(question: str) -> bool:
     low, or any child grammar's shape (a count, a streak, a history, splits,
     a record over a line) - rather than the pair's matchup summary."""
     return lexicon.GAMES_NOT_SUMMARY.search(question) is not None or any(words.search(question) for _, words, _, _ in _CHILD_GRAMMARS)
+
+
+def versus_word_unread(players: names.PlayerIndex, teams: names.TeamIndex, question: str, reading: reading.Reading) -> str | None:
+    """The word a versus word leads that names nothing - no team and no
+    player on record, exactly or by a near spelling, and no ordinary word -
+    where the reading read no opponent at all, or None: "steph curry vs
+    phnx", "og annuby vs philidalephis stats" answered his games against
+    everybody, the word read by nothing (ISSUES.md #247). The parser refuses
+    by it (``opponent_not_read``) rather than answer the un-narrowed
+    question.
+
+    .. versionadded:: 6.0.0
+    """
+    if reading.cuts.opponent is not None or any(c.side == "opponent" for c in reading.companions):
+        return None
+    if reading.asked == NETPOINTS_FINGERPRINT:
+        # A fingerprint draws the side it holds and says the other is
+        # missing (compared_but_unmatched, the name_left_out decision).
+        return None
+    for match in lexicon.AGAINST_PHRASE.finditer(question):
+        run = lexicon.LETTER_RUN.search(match.group(1))
+        if run is None or run.start() != 0:
+            continue
+        if _versus_word_names_something(players, teams, run.group(0).casefold(), reading):
+            continue
+        return run.group(0)
+    return None
+
+
+def _versus_word_names_something(players: names.PlayerIndex, teams: names.TeamIndex, word: str, reading: reading.Reading) -> bool:
+    """Whether ``word`` after a versus word is something a reader reads: an
+    ordinary or a short word, a nickname or a team's word, a word of a name
+    the reading holds ("jokic vs wemby": the pair), a team or a player on
+    record, exactly or by a near spelling (:func:`versus_word_unread`)."""
+    if len(word) < 4 or word in _dictionary() or word in lexicon.NOT_A_SUBJECT or word in PLAYER_NICKNAMES or is_team_name(word):
+        return True
+    if any(question_supports(name, word) for name in (*reading.who.players, *(c.player for c in reading.companions))):
+        return True
+    if _team_named(teams, word, None) is not None or near_team(teams, word) is not None or teams_named_by_word(teams, word):
+        return True
+    return bool(_exact_name_span(players, [word]) or _fuzzy_name_span(players, [word], limit=1))
 
 
 def _versus_companions_led_by_a_group(question: str, at: int) -> bool:

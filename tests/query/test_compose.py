@@ -2448,6 +2448,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "too_short": {"asked": "Tatum rec"},
     "championship": {"shape": TEAM_RANKING},
     "no_player_reading": {"player": "Alperen Sengun", "shape": TEAM_RANKING},
+    "opponent_not_read": {"words": "phnx", "shape": PLAYER_LINE},
     "denied_role": {"player": "Joel Embiid", "words": "when embiid doesn't start", "role": "start", "shape": PLAYER_LOG},
     "team_game_high": {"team": "Philadelphia 76ers", "shape": TEAM_LINE},
     "playoff_round": {"shape": PLAYER_LOG, "round": "finals"},
