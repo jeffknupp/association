@@ -1547,6 +1547,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     # last step wrote them there (subject.apply_subject), and a Reading
     # built by hand with a subject of its own gets the same here.
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
+    _player_rating_refused(reading.asked, question)
     scope = _season_lines_refused(reading.asked, question, scope)
     try:
         point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _seasons_counted(_read_point(reading.asked, scope, question, subject), reading.asked, question)
@@ -1597,6 +1598,19 @@ def _team_line_measure(scope: Filtered) -> Measure:
     reads the line itself from the scope)."""
     measure = scope.measure
     return Measure(key=measure.key, whose=measure.whose) if measure is not None and measure.key is not None else measured("points")
+
+
+def _player_rating_refused(asked: PointShape | None, question: str) -> None:
+    """Refuse a player's offensive, defensive or net rating by name - "anthony
+    edwards defensive rating 2025" answered his points line (28 of the 2,082
+    feed questions, found fixing ISSUES.md #351): the ratings are kept for
+    teams alone (``team_metrics``), and a player's NetPoints is the figure
+    here that rates his defense. Not where the words name a team."""
+    if asked is None or not asked.relation.startswith("player_"):
+        return
+    rating = lexicon.PLAYER_RATING.search(question)
+    if rating is not None and lexicon.TEAM_WORD_HERE.search(question) is None:
+        raise PointRefused(Cause(kind="fact_not_read", facts={"fact": "player rating", "words": rating.group(0)}), f"{rating.group(0)!r} is a team's figure")
 
 
 def _seasons_counted(point: Reading, asked: PointShape | None, question: str) -> Reading:

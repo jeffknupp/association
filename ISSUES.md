@@ -402,14 +402,6 @@ those were found.
 - **Priority:** P1 - a different stat answered.
 - **GitHub:** #348
 
-### "defensive field goal percentage" is answered as the team's own field-goal percentage: "Pelicans players defensive field goal percentage 2025-26"
-- **Found:** 2026-10-09, the lead, the same reading.
-- **Evidence:** the feed answer is "Zion Williamson led the New Orleans Pelicans in field-goal percentage in the 2026 regular season (minimum 400 field-goal attempts), at 60.0% ..." - the Pelicans' own shooting, where the field-goal percentage they allow (a defender's "DFG%", a tracking stat the warehouse does not hold) was asked; "defensive" is unread, the ledger's class again. Probed with no model at f77c30b.
-- **User sees:** a fluent ranking of a different stat, with nothing saying the word was dropped.
-- **Next step:** "defensive field goal percentage"/"dfg%"/"opponent field goal percentage" read as what the words name that nothing reads (`Reading.unsupported`, step 0's family, beside "ats" - #118), said where the answer side would otherwise rank the player's own; count the feed's wordings first.
-- **Source:** ours (the stat is not in the warehouse; a refusal is the honest answer).
-- **Priority:** P1 - a different stat answered.
-- **GitHub:** #351
 ### A window on a reader that refuses one is dropped before the planner can refuse it: "Warriors vs Mavs record last ten games" answers this season's series
 - **Found:** 2026-10-09, Phase 3, step 2's window slice (`~/association-research/stages/window_family.py`, the four window slots on all 2,710 readings)
 - **Evidence:** on a shape outside `window.ORDER_ASKS` (and not `player_stat`'s single game) the end a question names beside a count of two or more is dropped and the count kept - `_route_side_and_order`'s rule since the router, ported as-is by the tagger (`window._order_elsewhere`) because the proof holds the four populations identical. The relation then reads the bare count as the newest N (`relation_window`), inside the default season. Measured on the 2,710 readings: 13 carry an end the grammar read that the route no longer holds - `head_to_head` 3 ("Warriors vs Mavs record last ten games", "Oh Washington last ten games vs jazz", "lakers vs mavs record last 10 home games played"), `player_matchup` 1 ("lamelo ball last 7 home games vs suggs"), `leaderboard` 9 (every one an unrecognized name, refused for other reasons). The three head-to-head answers tally this season's 3, 2 and 2 meetings ("met 3 times in the 2026 regular season; the Warriors won the series 2-1") and the matchup "1 meeting, 2026 regular season": fewer than the ten or seven asked for, nothing saying the window was not applied, and no decision recorded. `TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"]["window"]` says "picking the last N of them is not built", and the span tagger's "last N vs an opponent is every meeting" rule (`span._implied_career`) applies to `game_log` alone.

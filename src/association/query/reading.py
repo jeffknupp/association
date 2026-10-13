@@ -1474,7 +1474,8 @@ missing thing, never only the slot"):
   (``window_per_season``: ``window``, ``per``), a fact about a player or a
   game no table holds or nothing reads - a draft position, an award, a birth date, a
   height, a jersey number, a lead, a four-point play, a role, an
-  opponent's wins, the last minutes of a game (``fact_not_read``: ``fact``, ``words``, ISSUES.md
+  opponent's wins, the last minutes of a game, a defender's field-goal
+  percentage (``fact_not_read``: ``fact``, ``words``, ISSUES.md
   #389), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
   ``shape``);
