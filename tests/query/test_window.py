@@ -106,6 +106,30 @@ def test_the_words_read_as_one_window(question: str, shape: PointShape | None, e
     assert _read(question, shape) == expected
 
 
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # ISSUES.md #369: a misspelled "games" after "last N" - one edit from
+        # "game(s)" - and "match(es)" or "match ups" are the window's games.
+        ("Lamelo ball stats last 5 gMes", Window(order="recent", count=5)),
+        ("Draymond green vs mavs last 6 gamew", Window(order="recent", count=6)),
+        ("gary trent jr. vs orlando magic last nine gane", Window(order="recent", count=9)),
+        ("Giannas last 10 gamess", Window(order="recent", count=10)),
+        ("christain braun last 10 gamea vs toronto", Window(order="recent", count=10)),
+        ("Luka doncic last 5 away hames", Window(order="recent", count=5)),
+        ("anthony davis vs orlando last 5 match", Window(order="recent", count=5)),
+        ("last 5 matchs shai gilgeous alexander", Window(order="recent", count=5)),  # codespell:ignore matchs - the feed's question as typed
+        ("suns vs jazz last 10 match ups", Window(order="recent", count=10)),
+        ("tatum first 3 gmaes of the season", Window(order="first", count=3)),
+        # A word of its own one edit from "games" is not one: a name stands there.
+        ("lebron last 10 james harden games", Window()),
+        ("his last 5 names", Window()),
+    ],
+)
+def test_a_misspelled_games_after_a_count_is_the_windows_games(question: str, expected: Window) -> None:
+    assert _read(question, PLAYER_LOG) == expected
+
+
 def test_one_game_of_a_players_line_is_the_end_and_a_count_of_one() -> None:
     """ "his last game" on player_stat is one game at one end of the span,
     which the line answers by handing the question to the log - and the

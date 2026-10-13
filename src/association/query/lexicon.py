@@ -803,6 +803,71 @@ def count_of(word: str) -> int:
     return int(word) if word.isdigit() else COUNT_NUMBERS[" ".join(word.lower().replace("-", " ").split())]
 
 
+def _games_one_edit(word: str) -> list[str]:
+    """Every spelling one edit from ``word`` - a letter dropped, doubled in,
+    swapped with the next or written as another - as regex alternatives,
+    the edit budget the entity index reads a name's typo by (rapidfuzz's
+    Damerau-Levenshtein, :mod:`association.query.names`)."""
+    edits = {word}
+    for i in range(len(word) + 1):
+        edits.add(word[:i] + "[a-z]" + word[i:])
+        if i < len(word):
+            edits.add(word[:i] + word[i + 1 :])
+            edits.add(word[:i] + "[a-z]" + word[i + 1 :])
+        if i < len(word) - 1:
+            edits.add(word[:i] + word[i + 1] + word[i] + word[i + 2 :])
+    return sorted(edits, key=len, reverse=True)
+
+
+# A window's "games" as a question types it (ISSUES.md #369): "games" or
+# "game", or one edit from either - "gMes", "gamew", "gane", "gamess",
+# "gamea", "hames" - and "match(es)" or "match ups" beside them, a synonym.
+# Until it, a misspelling after "last 5" stopped the window grammar, the
+# parent grammar's log row and the span's both-types rule alike, where a
+# bare "last 5" read the window: "Lamelo ball stats last 5 gMes" answered
+# his season average, "Draymond green vs mavs last 6 gamew" his 3 games
+# this season. The words one edit away that are words of their own
+# ("james", "names", "same", "gate") are not games: "last 10 james harden
+# games" holds a name there. Measured over the 2,999 distinct questions of
+# the recorded corpora and the StatMuse feed: every word after "last N"
+# that is one edit from "games" is a misspelling of it (gmes, gamew, gane,
+# gamess, gamea, hames), and "match", "match ups" and the feed's plural of
+# "match" missing its "e" name games.
+_NOT_GAMES = (
+    "james",
+    "names",
+    "gates",
+    "gamer",
+    "gamers",
+    "gamed",
+    "gamey",
+    "came",
+    "dame",
+    "fame",
+    "gale",
+    "gape",
+    "gate",
+    "gave",
+    "gaze",
+    "lame",
+    "name",
+    "same",
+    "tame",
+    "gamy",
+    "gams",
+    "ages",
+    "gems",
+)
+WINDOW_GAMES = r"(?:(?!(?:" + "|".join(_NOT_GAMES) + r")\b)(?:" + "|".join(dict.fromkeys(_games_one_edit("games") + _games_one_edit("game"))) + r")|match(?:e?s)?|match[\s-]?ups?)"
+"""The fragment a window's "games" is written as: "game(s)", one edit
+from it, or "match(es)"/"match ups" - never a word of its own one edit
+away. Shared by the window grammar's rows and :data:`ORDER_WORDS`, so the
+grammar, the window and the span read a misspelling alike.
+
+.. versionadded:: 6.0.0
+"""
+
+
 # The window grammar: the count and the end of the rows a question asks for,
 # read from its own words ("last 10 games", "top 5", "his last game") where
 # the router's model used to fill them in. Rows are tried in order and the
@@ -815,14 +880,15 @@ def count_of(word: str) -> int:
 WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
     (
         re.compile(
-            rf"\b(last|past|previous|most recent|latest|final)\s+{COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}(games?|outings?|contests?|starts?)\b", re.IGNORECASE
+            rf"\b(last|past|previous|most recent|latest|final)\s+{COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}({WINDOW_GAMES}|outings?|contests?|starts?)\b",
+            re.IGNORECASE,
         ),
         "recent",
         0,
     ),
     # A bare count closing the question is games: "magic vs nets last 10".
     (re.compile(rf"\b(last|past|previous)\s+{COUNT}\s*[?.!]*\s*\Z", re.IGNORECASE), "recent", 0),
-    (re.compile(rf"\bfirst\s+{COUNT}\s+games?\b", re.IGNORECASE), "first", 0),
+    (re.compile(rf"\bfirst\s+{COUNT}\s+{WINDOW_GAMES}\b", re.IGNORECASE), "first", 0),
     (re.compile(r"\b(last|most recent|latest|final)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", re.IGNORECASE), "recent", 1),
     (re.compile(r"\b(first|opening)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b|\b(season\s+)?opener\b", re.IGNORECASE), "first", 1),
     # "top 5" / "bottom 5" name a count and no end of the span: which end a
@@ -847,8 +913,8 @@ winning; a ``limit`` of 0 is the count the words hold.
 # grammar read none - uses them, and the words that keep a question off a
 # split ("over the last 7 games" is a log, not a with/without) read them too.
 ORDER_WORDS: dict[str, re.Pattern[str]] = {
-    "recent": re.compile(r"\b(?:last|latest|previous|most\s+recent)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
-    "first": re.compile(r"\b(?:first|opening|earliest)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
+    "recent": re.compile(rf"\b(?:last|latest|previous|most\s+recent)\s+(?:\d+\s+)?{WINDOW_GAMES}\b", re.IGNORECASE),
+    "first": re.compile(rf"\b(?:first|opening|earliest)\s+(?:\d+\s+)?{WINDOW_GAMES}\b", re.IGNORECASE),
 }
 """Which end of the span a window of games reads from, by name.
 
@@ -3876,7 +3942,7 @@ TEAM_LOG_ROW = row(
 )
 """A team's log word, or the window words a team's log row read before
 the window tagger typed them, for a form the tagger does not type ("last
-10 match ups").
+5 season": ISSUES.md #372).
 
 .. versionadded:: 6.0.0
 """
