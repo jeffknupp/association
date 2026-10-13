@@ -242,13 +242,12 @@ source_modules = [
 ]
 forbidden_modules = ["fastapi", "uvicorn", "pydantic"]
 
-# The three contracts below hold the query package to the stages ROADMAP.md
-# is rebuilding it into (READ -> PLAN -> RUN -> SAY), while the packages
-# those stages will live in do not exist yet. Each lists today's violations
-# under ignore_imports, by name: a new one fails, and so does a listed one
-# that is gone (import-linter reports an ignore that matches nothing), so
-# the list only shrinks. scripts/check_ratchets.py holds the directions an
-# import cannot express.
+# The three contracts below hold the query package to its four stages
+# (READ -> PLAN -> RUN -> SAY), which live in modules of query/ rather than
+# packages of their own. Each listed its violations under ignore_imports, by
+# name, so the list could only shrink; none ignores an import any more, so a
+# new one fails, and an ignore is not the way past it. scripts/check_ratchets.py
+# holds the directions an import cannot express.
 
 [[tool.importlinter.contracts]]
 name = "The reader does not import the answer side"

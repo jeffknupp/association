@@ -213,7 +213,7 @@ not yet typed, and guessing at "Tatum rec" answered something else.
    ``window_under``, ``span_under``): a bare "30 points" is a count's own
    line, and nothing on a log. Every pattern a family is read by is a named
    constant in :mod:`association.query.lexicon`, with its reason beside it;
-   no other module in the package calls ``re``.
+   no other module of the query package calls ``re``.
 5. **The point reader** (:func:`association.query.point.read_point`) reads
    the point the answer is computed from: the key's default point, moved by
    what the words say (a measure, a skeleton, an aggregate), declaring the
