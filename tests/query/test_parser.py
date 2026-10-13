@@ -1009,20 +1009,37 @@ def test_a_line_on_a_season_is_read_by_the_season_ranking(con: duckdb.DuckDBPyCo
 
 
 @pytest.mark.parametrize(
+    ("question", "lines"),
+    [
+        ("most seasons averaging 30 ppg", [("points", ">=", 30, "season")]),
+        ("most seasons averaging 10 rebounds per game", [("rebounds", ">=", 10, "season")]),
+        ("Players with most 25 point season", [("points", ">=", 25, "season")]),
+        ("nba players with the most seasons with 2000 points", [("points", ">=", 2000, "total")]),
+    ],
+)
+def test_a_count_of_seasons_over_a_season_line_ranks_the_players_by_it(con: duckdb.DuckDBPyConnection, question: str, lines: list[tuple[str, str, float, str]]) -> None:
+    """ISSUES.md #391: "most seasons averaging 30 ppg" answered the 2026
+    points ranking; the ranking's point is ordered by the count of seasons
+    (``by="seasons"``, D4 lifted for the season ranking's shapes by Jeff on
+    2026-10-13) - asked as the ranking, as a count of games over a line
+    ranks by ``games``."""
+    reading = _read(con, question)
+    assert reading.asked == PLAYER_RANKING and reading.point is not None and (reading.point.on, reading.point.shape, reading.point.by) == ("player_seasons", "ranking", "seasons")
+    assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
+
+
+@pytest.mark.parametrize(
     ("question", "kind", "words"),
     [
-        ("most seasons averaging 30 ppg", "seasons_counted", "most seasons averaging 30 ppg"),
-        ("Players with most 25 point season", "seasons_counted", "most 25 point season"),
-        ("nba players with the most seasons with 2000 points", "seasons_counted", "most seasons with 2000 points"),
-        ("most seasons averaging 10 rebounds per game", "seasons_counted", "most seasons averaging 10 rebounds per game"),
         ("most 60 win seasons nba players", "seasons_counted", "most 60 win seasons"),
+        ("nba player with most seasons with a per of 30 or more while playing at least 60 games a season", "seasons_counted", "most seasons with a per of 30"),
         ("nba players who average 18 ppg 3.5 assists and shot 54% or better 2026 season", "season_line_unread", "shot 54% or better"),
     ],
 )
 def test_a_count_of_seasons_or_a_season_line_the_ranking_cannot_hold_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, kind: str, words: str) -> None:
-    """ISSUES.md #390, #391: a count of a player's seasons over a line, and a
-    percentage beside a season line, answered the unfiltered ranking; each
-    is refused by a cause naming the words."""
+    """ISSUES.md #390, #391: a count of a player's seasons over a figure no
+    season line holds, and a percentage beside a season line, answered the
+    unfiltered ranking; each is refused by a cause naming the words."""
     reading = _read(con, question)
     assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts == {"words": words}
 

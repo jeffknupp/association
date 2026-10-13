@@ -1264,7 +1264,12 @@ a shape:
   "> 5 apg", "10000 points": `Line.per`, `season` or `total`, the
   `season_line` cell, kept by `season_line.ranking_statement` on the
   season's deduped box row and by `career_ranking_statement` over a
-  career's rows; the game lines read inside one set aside, ISSUES.md #390),
+  career's rows; the game lines read inside one set aside, ISSUES.md #390;
+  "how many players ..." counts them, `reading.PLAYERS_COUNTED`, and "most
+  seasons averaging 30 ppg" orders the ranking by how many of a player's
+  seasons hold the line, the planned key `player_seasons/ranking/seasons`
+  - no asked key of its own, as the games count is planned
+  `player_games/ranking/count`, ISSUES.md #391),
   two or more "N+ stat"
   pairs - as the router's stages read them
   until 5.0.0 (a single

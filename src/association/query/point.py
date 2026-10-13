@@ -1520,7 +1520,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
     scope = _season_lines_refused(reading.asked, question, scope)
     try:
-        point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _read_point(reading.asked, scope, question, subject)
+        point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _seasons_counted(_read_point(reading.asked, scope, question, subject), reading.asked, question)
     except Unsupported:
         if reading.asked not in TEAM_SEASON_POINTS:
             raise
@@ -1568,6 +1568,21 @@ def _team_line_measure(scope: Filtered) -> Measure:
     reads the line itself from the scope)."""
     measure = scope.measure
     return Measure(key=measure.key, whose=measure.whose) if measure is not None and measure.key is not None else measured("points")
+
+
+def _seasons_counted(point: Reading, asked: PointShape | None, question: str) -> Reading:
+    """A ranking of players by how many of their seasons a season line holds
+    - "most seasons averaging 30 ppg", "most 25 point seasons", "most
+    seasons with 2000 points" (ISSUES.md #391) - the ranking's point ordered
+    by the count of seasons (``by="seasons"``), as a count of games over a
+    line ranks by ``games``: what one row is stays a player, the words ask a
+    ranking, and only what it is ordered by moves. The ranking's point
+    otherwise."""
+    if asked != PLAYER_RANKING or point.on != "player_seasons" or point.shape != "ranking" or lexicon.SEASONS_COUNTED.search(question) is None:
+        return point
+    if not any(line.per != "game" for line in point.lines):
+        return point
+    return replace(point, by="seasons")
 
 
 def _players_counted(scope: Filtered, question: str, subject: Subject) -> Reading:
@@ -1949,10 +1964,13 @@ def _season_lines_refused(asked: PointShape | None, question: str, scope: Readin
     ranking until 2026-10-13."""
     if _ranked_as(asked) != PLAYER_RANKING:
         return scope
-    counted = lexicon.SEASONS_COUNTED.search(question)
-    if counted is not None:
-        raise PointRefused(Cause(kind="seasons_counted", facts={"words": counted.group(0)}), f"{counted.group(0)!r} counts seasons over a line")
     season = [line for line in scope.lines if line.per != "game"]
+    counted = lexicon.SEASONS_COUNTED.search(question)
+    if counted is not None and not season:
+        # A count of seasons over a line no season line was read from ("most
+        # 60 win seasons", "most seasons with a per of 30"): nothing here
+        # holds the figure, said by name (ISSUES.md #391).
+        raise PointRefused(Cause(kind="seasons_counted", facts={"words": counted.group(0)}), f"{counted.group(0)!r} counts seasons over a line")
     if not season:
         return scope
     scope = _season_lines_measured(scope, season)

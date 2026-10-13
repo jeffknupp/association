@@ -701,8 +701,8 @@ def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
             "a ranking orders every qualified player. Ask for the leaders by that stat, and read down to the line."
         ),
         "seasons_counted": lambda: (
-            f"{facts['words']!r} counts a player's seasons over a line, and nothing here counts seasons yet - a count reads games. "
-            "Ask for the games over a line, or the leaders by that stat in one season."
+            f"{facts['words']!r} counts a player's seasons over a line, and no season line here holds that figure - seasons are counted over a player's "
+            "points, rebounds, assists, steals or blocks. Ask for the most seasons averaging a number of those instead."
         ),
         "line_on_a_percentage": lambda: (
             f"{facts['phrase']!r} keeps games {facts['side']} a percentage, and the box scores hold each game's makes and attempts but no percentage to keep them by. "
@@ -1236,6 +1236,8 @@ def _say_ranking(result: Result) -> Answer:
     assert body is not None
     if body.ranked_by == "games":
         return say_threshold_count(result)
+    if body.ranked_by == "seasons":
+        return say_seasons_counted(result)
     if result.narrowing.period is not None or body.ranked_by == "quarters":
         return say_period_leaderboard(result)
     return say_leaderboard(result)
@@ -2466,6 +2468,46 @@ def _say_season_lines_ranking(rows: list[dict[str, Any]], facts: RankingFacts, l
     if pool > len(rows):
         return f"{count}; the {len(rows)} with the highest {label}: {named}."
     return f"{count}, by {label}: {named}."
+
+
+def say_seasons_counted(result: Result) -> Answer:
+    """The players with the most seasons a season line holds (ISSUES.md
+    #391), said as a career ranking is - whose careers, every time - with
+    each player's count and the span of those seasons: "Among players active
+    in 1993-94 or later, Allen Iverson had the most seasons averaging 30+
+    points per game in the regular season (minimum 20 games): 4 (2001-2008).
+    Next: ...".
+
+    .. versionadded:: 6.0.0
+    """
+    body = result.grouped
+    assert body is not None
+    facts = _facts(result, RankingFacts)
+    kind = SEASON_TYPE_NAMES.get(result.span.season_type or 2, "regular season")
+    pool = result.span.first
+    assert pool is not None
+    since = season_label(pool)
+    minimum = next((each for each in result.decisions if each.kind == "minimum"), None)
+    qualifier = decision_phrase(minimum) if minimum is not None and minimum.chose else ""
+    what = season_lines_phrase(facts.lines).replace("averaged ", "averaging ", 1).replace("had ", "with ", 1)
+    rows = [{"display_name": row["key"], **row["values"]} for row in body.rows]
+    span = lambda row: season_label(row["first_season"]) if row["first_season"] == row["last_season"] else f"{season_label(row['first_season'])} through {season_label(row['last_season'])}"  # noqa: E731
+    if not rows:
+        answer = f"Among players active in {since} or later, no player had a season {what} in the {kind}{qualifier}."
+    else:
+        top = rows[0]
+        count = lambda row: f"{row['seasons']} season{'s' if row['seasons'] != 1 else ''}"  # noqa: E731
+        sentence = f"Among players active in {since} or later, {top['display_name']} had the most seasons {what} in the {kind}{qualifier}: {count(top)} ({span(top)})."
+        rest = [f"{row['display_name']} ({row['seasons']})" for row in rows[1:]]
+        answer = " ".join([sentence, *([f"Next: {', '.join(rest)}."] if rest else []), f"{facts.pool:,} players had at least one."])
+    data = {
+        "question_shape": f"most seasons {what}, {kind}, players active since {since}",
+        "leaders": rows,
+        "pool": facts.pool,
+        "lines": [list(line) for line in facts.lines],
+        "headline": answer.split(" Next: ")[0],
+    }
+    return Answer(data=data, text=answer)
 
 
 def say_players_counted(result: Result) -> Answer:
