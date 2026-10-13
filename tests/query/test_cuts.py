@@ -210,6 +210,43 @@ def test_a_since_written_as_an_iso_date_is_every_game_from_it() -> None:
     assert situation is not None and situation.calendar == CalendarNarrowing("since_date", "2026-01-02", "since January 2, 2026") and read.dated_since == 2026
 
 
+@pytest.mark.parametrize(
+    ("question", "text", "month"),
+    [
+        # A season's month written right before its year, with no "in", is
+        # the month cut; the year is the span's.
+        ("Luka doncic march 2026", "march", 3),
+        ("steph stats may 2021", "may", 5),
+        ("jokic stats oct 2024", "oct", 10),
+    ],
+)
+def test_a_month_right_before_its_year_is_the_month(question: str, text: str, month: int) -> None:
+    read = read_cuts(question, CutsContext())
+    situation = read.cuts.situation
+    assert situation is not None and situation.text == text and situation.calendar is not None
+    assert (situation.calendar.kind, situation.calendar.value) == ("month", month)
+
+
+@pytest.mark.parametrize(
+    ("question", "text", "since", "first"),
+    [
+        ("nikola jokić stats since january 2021", "since january 2021", 2021, "2021-01-01"),
+        ("lebron after december 2020", "after december 2020", 2021, "2021-01-01"),
+        ("celtics record from oct 2019", "from oct 2019", 2020, "2019-10-01"),
+    ],
+)
+def test_a_range_opened_on_a_month_with_its_year_is_its_first_day_on(question: str, text: str, since: int, first: str) -> None:
+    read = read_cuts(question, CutsContext())
+    situation = read.cuts.situation
+    assert situation is not None and situation.text == text and situation.calendar is not None and situation.calendar.kind == "since_date"
+    assert situation.calendar.value == first and read.dated_since == since
+
+
+@pytest.mark.parametrize("question", ["who may 2 win", "march madness 2024 upsets", "lebron stats in 2021"])
+def test_a_month_word_with_no_year_right_after_it_is_no_month(question: str) -> None:
+    assert read_cuts(question, CutsContext()).cuts.situation is None
+
+
 def test_a_dated_range_hands_its_year_to_the_span_and_a_worded_one_without_a_year_hands_none() -> None:
     read = cuts_under(PLAYER_LINE, read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
     assert isinstance(read, CutsRead) and read.dated_since == 2020 and read.cuts.situation is not None and read.cuts.situation.calendar is not None

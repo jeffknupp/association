@@ -38,7 +38,7 @@ from typing import Literal
 
 from association.nba.season import current_season
 from association.query import lexicon
-from association.query.calendar import date_range, season_of_day
+from association.query.calendar import date_range, month_opened, season_of_day
 from association.query.reading import Claim, Cuts, situation_of
 from association.query.span import career_named
 
@@ -126,12 +126,13 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
     else:
         situation, situation_claim = _situation(question)
         day, day_claim = _day(question)
-        dated = _dated_day(question, situation_claim)
+        dated = _dated_day(question, situation_claim) or _dated_month(question, situation_claim)
         if dated is not None:
             # A range opened on a worded day with its year is that day on,
-            # across seasons, as the numeric form is (ISSUES.md #353): the
-            # situation is its words whole, and the season the day falls in
-            # opens the span.
+            # across seasons, as the numeric form is (ISSUES.md #353), and
+            # one opened on a month with its year the month's first day on:
+            # the situation is its words whole, and the season the day falls
+            # in opens the span.
             situation, dated_since, situation_claim = dated
     if ranged is None and day_claim is None and situation is None:
         # A date that named itself but could not be pinned to one day - a
@@ -281,6 +282,22 @@ def _dated_day(question: str, situation: Claim | None) -> tuple[str, int, Claim]
     except ValueError:
         return None  # "february 31 2020", refused by value as before
     return match.group(0).casefold(), season_of_day(day), Claim(match.start(), match.end(), "situation")
+
+
+def _dated_month(question: str, situation: Claim | None) -> tuple[str, int, Claim] | None:
+    """A range opened on a month with its year ("since january 2021", "from
+    oct 2019": :data:`~association.query.lexicon.SINCE_MONTH_YEAR`) as the
+    situation it is, with the season its first day falls in and the
+    characters read - where the circumstance the words otherwise name is
+    that month's own word (a weekday elsewhere stays the situation). None
+    where the words name no such range."""
+    match = lexicon.SINCE_MONTH_YEAR.search(question)
+    if match is None:
+        return None
+    if situation is not None and not (match.start() <= situation.start and situation.end <= match.end()):
+        return None
+    first = month_opened(int(match.group("year")), lexicon.month_number(match.group("month")), after=match.group("lead").casefold() == "after")
+    return match.group(0).casefold(), season_of_day(first), Claim(match.start(), match.end(), "situation")
 
 
 def _date_range(question: str) -> tuple[str, int, int, bool, Claim] | None:

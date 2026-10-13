@@ -1170,6 +1170,9 @@ _MONTH_WORD = r"(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|j
 _MONTH_NAME = r"(?P<month>january|february|march|april|may|june|july|august|september|october|november|december)"
 #: The season's months, in full: the ones "in <month>" is read for.
 _SEASON_MONTHS = r"october|november|december|january|february|march|april|may|june"
+#: The season's months written out or short, as a month before a year is
+#: read ("march 2026", "oct 2024").
+_SEASON_MONTH_WORDS = r"october|oct|november|nov|december|dec|january|jan|february|feb|march|mar|april|apr|may|june|jun"
 
 
 def month_number(word: str) -> int:
@@ -1444,6 +1447,11 @@ SITUATION = re.compile(
     # calendar date's (CALENDAR_DATE), and the month in it no cut of its own
     # (ISSUES.md #354: the answer named the month beside the day).
     rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b(?!\s+\d{{1,2}}\b)|"
+    # A season's month written right before its year, with no "in": "Luka
+    # doncic march 2026", "steph stats may 2021" (the year is the span's,
+    # ISSUES.md #267's season rule). Until it the month was read by nothing
+    # and the whole season answered.
+    rf"\b(?:{_SEASON_MONTH_WORDS})\.?(?=,?\s+(?:19|20)\d\d\b)|"
     # A conference or division, kept WITH its name and its "vs"/"against"/"in"
     # so `calendar.parse_alignment` reads it whole: "vs southeast division"
     # used to be captured as the word "division" alone (#213), and the
@@ -1500,8 +1508,9 @@ SITUATION_WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thu
 .. versionadded:: 6.0.0
    ``calendar._WEEKDAY`` until Phase 3, step 2.
 """
-SITUATION_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH_NAME}$", re.IGNORECASE)
-"""A situation value that is a month.
+SITUATION_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH_WORD}\.?$", re.IGNORECASE)
+"""A situation value that is a month, written out or short ("oct" before
+its year).
 
 .. versionadded:: 6.0.0
    ``calendar._IN_MONTH`` until Phase 3, step 2.
@@ -1519,6 +1528,24 @@ written out or short ("after dec 11", ISSUES.md #353).
 # read twice - the year as THE season, the day as a "since <day>" inside it
 # - and "lebron ppg since january 31st 2020" answered the 2019-20 season's
 # last weeks.
+# A range opened on a month with its year: "since january 2021", "from
+# oct 2019" - every game from the month's first day on, across seasons;
+# "after" a month is from the next month's first day. Until it the year was
+# read as THE season and the words "since january" by nothing, and
+# "nikola jokić stats since january 2021" answered the 2021 season's games.
+SINCE_MONTH_YEAR = re.compile(
+    rf"\b(?P<lead>since|from|after)\s+(?:the\s+)?(?:(?:start|beginning)\s+of\s+)?{_MONTH_WORD}\.?,?\s+(?P<year>(?:19|20)\d\d)\b",
+    re.IGNORECASE,
+)
+"""A range opened on a month with its year.
+
+.. versionadded:: 6.0.0
+"""
+SITUATION_SINCE_MONTH = re.compile(r"^" + SINCE_MONTH_YEAR.pattern.removeprefix(r"\b").removesuffix(r"\b") + r"$", re.IGNORECASE)
+"""A situation value opening a range on a month with its year (:data:`SINCE_MONTH_YEAR`, whole).
+
+.. versionadded:: 6.0.0
+"""
 SITUATION_SINCE_DATED = re.compile(
     rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_WORD}\.?\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?,?\s+(?P<year>(?:19|20)\d\d)$",  # codespell:ignore nd - an ordinal suffix
     re.IGNORECASE,

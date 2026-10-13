@@ -172,7 +172,9 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     .. versionchanged:: 6.0.0
        Reads a "since" worded with its year ("since january 31st 2020", a
        ``since_date``) and a month written short ("after dec 11"), ISSUES.md #353;
-       and a "since" written as an ISO date ("since 2020-01-26"), ISSUES.md #323.
+       and a "since" written as an ISO date ("since 2020-01-26"), ISSUES.md #323;
+       and a "since" a month with its year ("since january 2021", the
+       month's first day on), and a month written short ("oct").
     """
     if not isinstance(text, str) or not text.strip():
         return None
@@ -185,6 +187,10 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     if m:
         month = lexicon.month_number(m.group("month"))
         return CalendarNarrowing("month", month, f"in {_MONTH_NAMES[month - 1]}")
+    m = lexicon.SITUATION_SINCE_MONTH.fullmatch(words)
+    if m:
+        first = month_opened(int(m.group("year")), lexicon.month_number(m.group("month")), after=m.group("lead") == "after")
+        return CalendarNarrowing("since_date", first.isoformat(), f"since {_day_label(first)}")
     m = lexicon.SITUATION_SINCE_DATED.fullmatch(words)
     if m:
         try:
@@ -211,6 +217,19 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
         return CalendarNarrowing("date_range", (first.isoformat(), last.isoformat()), f"from {_day_label(first)} to {_day_label(last)}")
     # A holiday, with or without "on" before it.
     return HOLIDAYS.get(words.removeprefix("on ") if words.startswith("on ") else words)
+
+
+def month_opened(year: int, month: int, *, after: bool) -> date:
+    """The first day a range opened on a month with its year reaches back
+    to: the month's first day ("since january 2021"), or the next month's
+    where the range opens AFTER it ("after december 2020" is January 1,
+    2021).
+
+    .. versionadded:: 6.0.0
+    """
+    if not after:
+        return date(year, month, 1)
+    return date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
 
 
 def date_range(groups: Mapping[str, str | None]) -> tuple[date, date] | None:
