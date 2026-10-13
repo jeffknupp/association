@@ -141,12 +141,36 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - a different question answered (3 feed wordings).
 - **GitHub:** #325
 
+### "knicks vs celtics total points" answers the season series record, not the points
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** the answer is "met 4 times ... won the series 3-1". Before Phase 2 the reading held a team `total` of points that the template ignored; since `4db543a` the reading itself is a `record`. Same answer on both trees, names `["knicks","celtics"]`, stat `points`.
+- **User sees:** a different question answered fluently.
+- **Next step:** a `head_to_head` with a box-score stat is the meetings' totals (the team compiler's rows read sums them), or a refusal naming the stat.
+- **GitHub:** #326
+
+### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
+- **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);
+  re-verified offline the same day at `011091f`.
+- **Evidence:** "jokic assists per game after a big first quarter"
+  (normalizer reply `jokic` / `assists`) reads `period_split` with
+  `period: 1` and answers "Nikola Jokic had 240 assists in the 1st quarter
+  over 65 games of the 2026 regular season, averaging 3.7." The question
+  asks for his whole-game assists in games whose first quarter was "big".
+  `parse.read_period_condition` reads a condition only where a number
+  names the line ("after making one three in the first quarter"), and
+  `refusals._period_as_condition` did not fire: "big" names no line.
+- **User sees:** a fluent answer to a different question.
+- **Next step:** "after|following|when ... <quarter>" with no line is a
+  condition nothing can hold: refuse it naming the missing number, rather
+  than read the quarter as the period. A reader fix; goes with the read
+  stage's work (`ROADMAP.md`, Phase 1) unless it shows up in the wild
+  first.
+- **GitHub:** #291
 ### "opp" before a stat is not read as the opponent's figure: "mavs opp fg percentage last 3 games" shows the Mavericks' own FG%
 - **Found:** 2026-10-13, the P1 sweep's lane T, enumerating #403's moves (the team log's box-score join).
 - **Evidence:** "mavs opp fg percentage last 3 games" reads `measure` `fieldGoalPct` with `whose` `own` and "opp" in `Reading.unread`; since the team log shows the figure asked (#403) the feed answer lists the Mavericks' OWN field-goal percentage game by game ("FG% 52.0% (52-100) ... Field-goal percentage: 46.7% (134-287).") where it listed the scores alone. "opp" is read by nothing in 9 of the 2,710 readings (`opp fgm`, `opp pts`, `opp fga`; and "opponent", "opponents'" twice), each unread. The relation reads the opponent's row where the measure says so (`Measure.whose == "opponent"`: "Total opponents' rebounds", tested), so the reading is all that is missing.
 - **User sees:** the team's own figure, labeled "FG%", where the opponent's was asked - visible only to a reader who notices "opp" in the question.
 - **Next step:** (the measure tagger's, lane L) "opp"/"opponent"/"opponents'" before a stat as `whose="opponent"`, as "allowed" after a team metric reads; a case per wording, the 2,710 readings and the feed enumerated.
-- **Source:** ours.
 - **Priority:** P1 - a different figure answered, one feed question (and the class beside it).
 - **GitHub:** #409
 
@@ -300,11 +324,11 @@ those were found.
 - **Priority:** P3 - a refusal.
 - **GitHub:** #339
 
-### A team's record when a companion reaches a line the stages cannot read is answered as the with/without split
-- **Found:** 2026-10-09, Phase 3 step 0, while measuring whether `refusals._team_where_a_player_belongs` was reachable (it was not, and this is why)
-- **Evidence:** feed answers on `4b9c254`: "knicks record in playoff games when mitchell robinson has 4 fta" and "... has 6 fta" answer "New York Knicks with and without Mitchell Robinson, 2026 postseason"; probed with names: "sixers record when maxey has 20+" (stat points) and "celtics record when tatum has 30" answer the with/without split too. `subject._CHILD_GRAMMARS` names `record_when` for each (`\brecord\b.*\b(when|with)\b.*\b(scored|scores|had|has)\b.*\d+`), the stages decline it when they read no line (no stat word after the number, or an abbreviation such as "fta"), and the parent the reading falls back to for a team with a companion is `with_without`. The deleted check refused exactly this shape ("A record split by 'X' needs a line ...") but sat after the compiler, which the with/without split satisfies first.
+### A team's record when a companion "has N" with no stat word is answered as the with/without split
+- **Found:** 2026-10-09, Phase 3 step 0, while measuring whether `refusals._team_where_a_player_belongs` was reachable (it was not, and this is why). Rewritten 2026-10-13 (lane N of the P1 sweep), which read a companion's line after "has N" on any box-score word (`lexicon.CONDITION_HAS_LINE`: "when mitchell robinson has 4 fta" is the Knicks' record in his 4+ FTA games, `CHANGES.md`).
+- **Evidence:** probed with names, "sixers record when maxey has 20+" (stat points) and "celtics record when tatum has 30" answer the with/without split: no stat word follows the number, so no line is read, the grammar's rules decline `record_when`, and the parent for a team with a companion is the with/without split. 0 of the 628 and of the 2,082 hold this wording.
 - **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
-- **Next step:** read the companion's line from "has N" with the normalizer's stat and from box-score abbreviations ("fta", "3pm") in the condition reader (`subject._condition_role`, `_CONDITION_THRESHOLD`); where a number is named and no line can be read, refuse naming the missing stat rather than fall back to the parent.
+- **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
 - **GitHub:** #340
 
 ### A team total asked as "how many ... did they make" is answered per game: "how many 3 pointers did the sixers make in the 2001 playoffs" answers 3.8 per game; "... have the magic made" answers the total

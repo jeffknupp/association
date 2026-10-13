@@ -1036,6 +1036,11 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
     scored = lexicon.scored_threshold(text)
     if scored is not None:
         return "reached", Line(measure="points", value=int(scored.group(1)), as_typed=scored.group(0).casefold()), scored.end()
+    has = lexicon.CONDITION_HAS_LINE.search(text)
+    if has is not None and int(has.group(1)) >= 1:
+        # "has 4 fta": a box-score word the threshold spellings do not hold
+        # (ISSUES.md #340), the column MEASURE_WORDS names it by.
+        return "reached", Line(measure=lexicon.MEASURE_WORDS[has.group(2).lower()], value=int(has.group(1)), as_typed=has.group(0).casefold()), has.end()
     started = lexicon.CONDITION_STARTED.search(text)
     if started is not None:
         return "started", None, started.end()
