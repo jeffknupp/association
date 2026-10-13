@@ -50,7 +50,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from association.query import lexicon
-from association.query.lines import phrase_line
+from association.query.lines import measure_column, phrase_line
 from association.query.period import which_period
 from association.query.reading import Claim, Line, LineOp
 
@@ -64,7 +64,9 @@ class LineCandidate:
     six), ``plus`` ("N+ stat", "N plus stat", "N or more stat"), ``at_least``
     ("at least N stat"), ``bare`` ("N stat"), ``scored`` ("scores N", a
     line on points), ``phrase`` (a floor of minutes or a line under a
-    number, :func:`~association.query.lines.phrase_line`).
+    number, :func:`~association.query.lines.phrase_line`), ``stated`` (a
+    line over or at a number on a stat, stated by its lead: "more than 40
+    points", "exactly 25 fga", "fga = 25").
 
     .. versionadded:: 6.0.0
     """
@@ -72,7 +74,7 @@ class LineCandidate:
     line: Line
     start: int
     claim: Claim
-    how: Literal["fouled", "plus", "at_least", "bare", "scored", "phrase"]
+    how: Literal["fouled", "plus", "at_least", "bare", "scored", "phrase", "stated"]
     #: Where the line's number stands, with its plus where the words state
     #: one ("20+", "20 or more"), and how the number is stated (``plus``,
     #: ``at_least`` or ``bare``) - what the choosers read in place of the
@@ -231,7 +233,10 @@ def read_lines(question: str) -> LineCandidates:
     fouled = lexicon.FOULED_OUT.search(question)
     if fouled is not None:
         found.append(LineCandidate(Line(measure="fouls", value=lexicon.FOUL_OUT_THRESHOLD, as_typed=fouled.group(0).casefold(), keyed=True), -1, Claim(fouled.start(), fouled.end(), "line"), "fouled"))
-    pairs = lexicon.threshold_pairs(question)
+    stated = _read_lines_stated(question)
+    # A pair inside a stated line ("40 points" of "more than 40 points") is
+    # that line's number and stat, not a line of its own at or over it.
+    pairs = [match for match in lexicon.threshold_pairs(question) if not any(candidate.claim.start <= match.start() and match.end() <= candidate.claim.end for candidate in stated)]
     at_least = [m.span(1) for m in lexicon.AT_LEAST_PAIR.finditer(question)]
     for match in pairs:
         how: Literal["plus", "at_least", "bare"] = (
@@ -256,7 +261,37 @@ def read_lines(question: str) -> LineCandidates:
             found.append(
                 LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase", phrase_number, _phrase_stat(question, phrase_number, m.end()), lead)
             )
+    found.extend(stated)
     return LineCandidates(tuple(found))
+
+
+def _read_lines_stated(question: str) -> list[LineCandidate]:
+    """The lines kept over or at a number on a stat, stated by their lead -
+    "more than 40 points", "above 9 rebounds", "exactly 25 field goal
+    attempts" (:data:`~association.query.lexicon.LINE_OVER_OR_AT`) - or as "fga
+    = 25" (:data:`~association.query.lexicon.EQUALS_LINE`, the longest run
+    of words before the sign that names a stat), read on every key a line
+    under a number is but a ranking of players' seasons (ISSUES.md #371,
+    :func:`~association.query.point.lines_under`)."""
+    found: list[LineCandidate] = []
+    for m in lexicon.LINE_OVER_OR_AT.finditer(question):
+        phrase_number = _phrase_number(question, m.start(), m.end())
+        if phrase_number is not None and not m.group(0).casefold().startswith(lexicon.EXACT_LEADS):
+            # "more than 30" states a line over a number as "30+" does: typed as one.
+            phrase_number = (phrase_number[0], phrase_number[1], "plus")
+        # The lead ("more than", "exactly") is the tagger's, typed as a line under a number's lead is.
+        lead = (m.start(), m.start() + len(question[m.start() : phrase_number[0]].rstrip())) if phrase_number is not None else None
+        found.append(LineCandidate(phrase_line(m.group(0), below=False), m.start(), Claim(m.start(), m.end(), "line"), "stated", phrase_number, _phrase_stat(question, phrase_number, m.end()), lead))
+    for m in lexicon.EQUALS_LINE.finditer(question):
+        words = m.group(1).split()
+        for width in range(len(words), 0, -1):
+            measure = measure_column(" ".join(words[-width:]))
+            if measure is not None:
+                start = m.start(1) + m.group(1).rindex(" ".join(words[-width:]))
+                line = Line(measure=measure, op="=", value=int(m.group(2)), as_typed=question[start : m.end()].casefold(), narrows=True)
+                found.append(LineCandidate(line, start, Claim(start, m.end(), "line"), "stated", (m.start(2), m.end(2), "bare"), (start, start + len(" ".join(words[-width:])))))
+                break
+    return found
 
 
 def _phrase_stat(question: str, number: tuple[int, int, Literal["plus", "at_least", "bare"]] | None, end: int) -> tuple[int, int] | None:

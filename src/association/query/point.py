@@ -42,6 +42,7 @@ from association.query.measures import (
     STAT_LINE,
     TEAM_GAME_MEASURES,
     TEAM_SEASON_MEASURES,
+    THRESHOLD_STAT_NAMES,
     log_extras,
     period_split_measure,
     resolve_metric,
@@ -1798,7 +1799,7 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
         found.append((scored[0].start, scored[0].line, scored[0].claim))
         stat = "points"
     found.extend((candidate.start, candidate.line, candidate.claim) for candidate in _lines_phrases(asked, read, has_pair=bool(pairs or scored)))
-    stat = _lines_stat(asked, pairs, has_phrase=bool(read.of("phrase")), stat=stat)
+    stat = _lines_stat(asked, pairs, has_phrase=bool(read.of("phrase", "stated")), stat=stat)
     found.sort(key=lambda each: each[0])
     return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
 
@@ -1810,9 +1811,31 @@ def _lines_phrases(asked: PointShape | None, read: LineCandidates, *, has_pair: 
     minutes" splits his games at 30), keyed and narrowing nothing, which a
     narrowing would empty of the games under it: it was refused "none was
     read" until 2026-10-11."""
-    phrases = read.of("phrase")
+    # A line stated over or at a number ("more than 40 points", "exactly 129
+    # three pointers") on a ranking of players' seasons is a season's line,
+    # not a game's (ISSUES.md, "A season average stated as a line on the
+    # league"): read by nothing there, as it was.
+    phrases = read.of("phrase") if asked == PLAYER_RANKING else read.of("phrase", "stated")
+    if asked in THRESHOLD_ASKS and not has_pair:
+        phrases = _lines_phrases_over_keyed(phrases)
     if asked == LINE_RECORD and not has_pair and len(phrases) == 1 and not phrases[0].line.below and phrases[0].line.measure is not None:
         return [replace(phrases[0], line=replace(phrases[0].line, keyed=True, narrows=False))]
+    return phrases
+
+
+def _lines_phrases_over_keyed(phrases: list[LineCandidate]) -> list[LineCandidate]:
+    """Under a shape that is a line with no "N stat" pair, the first line
+    stated over a number on a stat the shape keys on - "more than 40
+    points", "above 10 assists" (ISSUES.md #371) - is the shape's own, at
+    or over the next whole number: a count, a record, a run and a high
+    each read their line at or over its number, and a stat is a count, so
+    "more than 40" is "41+" and the answer says so. A floor of minutes
+    stays the relation's, as it was."""
+    for at, candidate in enumerate(phrases):
+        line = candidate.line
+        if line.op == ">" and line.measure in THRESHOLD_STAT_NAMES and line.measure != "minutes" and not isinstance(line.value, bool):
+            keyed = replace(line, op=">=", value=int(line.value) + 1, keyed=True, narrows=False)
+            return [*phrases[:at], replace(candidate, line=keyed), *phrases[at + 1 :]]
     return phrases
 
 

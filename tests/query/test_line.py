@@ -40,14 +40,17 @@ from association.query.reading import (
     LINE_RUNS,
     PLAYER_LINE,
     PLAYER_LOG,
+    PLAYER_RANKING,
     PLAYER_SPLITS,
     PRESENCE_SPLIT,
     TEAM_RANKING,
     Aggregate,
+    Cause,
     Claim,
     Companion,
     Filtered,
     Line,
+    LineOp,
     Measure,
     Period,
     PointRefused,
@@ -120,6 +123,30 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
             [("points", ">=", 46, "46 points", True, False), ("assists", ">=", 6, "6 assists", False, False), ("rebounds", ">=", 6, "6 rebounds", False, False)],
             None,
         ),
+        # A line stated over or at a number by its lead, on any box-score stat (ISSUES.md #371): read where a line under
+        # a number is, the pair inside it ("40 points" of "more than 40 points") no line of its own.
+        ("kobe bryant career games with more than 40 points", PLAYER_LOG, [("points", ">", 40, "more than 40 points", False, True)], None),
+        (
+            "lebron game log with over 30 points and no more than 5 turnovers",
+            PLAYER_LOG,
+            [("points", ">", 30, "over 30 points", False, True), ("turnovers", "<=", 5, "no more than 5 turnovers", False, True)],
+            None,
+        ),
+        ("towns games with above 9 rebounds", PLAYER_LOG, [("rebounds", ">", 9, "above 9 rebounds", False, True)], None),
+        ("LeBron James PPG in games with exactly 25 field goal attempts", PLAYER_LINE, [("fieldGoalsAttempted", "=", 25, "exactly 25 field goal attempts", False, True)], None),
+        ("LeBron James stats in games with FGA = 25", PLAYER_LOG, [("fieldGoalsAttempted", "=", 25, "fga = 25", False, True)], None),
+        ("how many games did lebron have exactly 30 points", GAMES_COUNTED, [("points", "=", 30, "exactly 30 points", False, True)], None),
+        # ... under a shape that is a line, the line stated over a number is the shape's own, at or over the next number.
+        ("how many games has lebron scored more than 40 points", GAMES_COUNTED, [("points", ">=", 41, "more than 40 points", True, False)], None),
+        ("longest streak of games with more than 30 points for luka", LINE_RUNS, [("points", ">=", 31, "more than 30 points", True, False)], None),
+        # ... a percentage is read as the line it is, with no column (refused by name, below).
+        ("kobe bryant career games with more than 40 field goal percentage", PLAYER_LOG, [(None, ">", 40, "more than 40 field goal percentage", False, True)], None),
+        # ... and not on a ranking of players' seasons, where it is a season's line; nor an average, a count of games or
+        # a lead glued to its number.
+        ("players who made exactly 129 three pointers in the NBA in 2025-26", PLAYER_RANKING, [], None),
+        ("who averaged over 25 points in 2024", PLAYER_LOG, [], None),
+        ("lebron stats over 10 games", PLAYER_LOG, [], None),
+        ("kobe stats over1346 games", PLAYER_LOG, [], None),
         ("jokic stats", PLAYER_LINE, [], None),
     ],
 )
@@ -240,6 +267,12 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
     assert [line.as_typed for line in relation_lines(Reading(lines=pairs.lines))] == ["20+ point", "5+ assist"] and threshold_of(Reading(lines=pairs.lines)) == 20
     with pytest.raises(PointRefused, match="names no box-score stat"):
         measure_filters(Reading(lines=(Line(measure=None, op="<", value=25, as_typed="under 25 years old", narrows=True),)))
+    # A line on a percentage is refused by what it names (ISSUES.md #371): no game's box score holds one.
+    percentages: tuple[tuple[str, LineOp, str], ...] = (("more than 40 field goal percentage", ">", "over"), ("under 40 fg%", "<", "under"), ("exactly 50 fg%", "=", "at"))
+    for typed, op, side in percentages:
+        with pytest.raises(PointRefused) as refused:
+            measure_filters(Reading(lines=(Line(measure=None, op=op, value=40, as_typed=typed, narrows=True),)))
+        assert refused.value.cause == Cause(kind="line_on_a_percentage", facts={"phrase": typed, "side": side})
 
 
 # ---------------- the companions: one reader, with its claims ----------------

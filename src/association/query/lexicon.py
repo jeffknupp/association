@@ -2161,6 +2161,46 @@ ABOVE = re.compile(
    more minutes", ISSUES.md #374) and a line kept over the number ("over
    26 minutes", "more than 26 minutes").
 """
+# A line kept OVER a number, or AT it, on any box-score stat, stated by its
+# lead (ISSUES.md #371): "more than 40 points", "above 9 rebounds", "over 25
+# field goal attempts", "exactly 25 field goal attempts" - the mirror of
+# BELOW, whose words after the number are kept the same way (a stat
+# ``lines.measure_column`` reads, or a percentage the relation refuses by
+# name). Minutes are ABOVE's ("over 26 minutes"). Not a count of games,
+# seasons or years ("over 10 games"), not an average ("over 25 ppg",
+# "averaged over 25 points" - a season's line, not a game's), and not a
+# number glued to its lead ("over1346").
+LINE_OVER_OR_AT = re.compile(
+    r"(?<!averaged\s)(?<!average\s)(?<!averages\s)(?<!averaging\s)"
+    r"\b(?:(?<!no\s)more\s+than|over|above|greater\s+than|exactly)\s+\d+%?"
+    r"(?!\s*(?:minutes|mins?|games?|seasons?|years?|times|days|ppg|rpg|apg|spg|bpg|mpg|a\s+game|per\s+game)\b)"
+    r"(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more|per|a|this|last|since)\b)[a-z][a-z%-]*){1,3}",
+    re.IGNORECASE,
+)
+"""A line a game is kept over or at, on a stat, as worded.
+
+.. versionadded:: 6.0.0
+"""
+# "games with FGA = 25": a stat set equal to a number, its words before it.
+EQUALS_LINE = re.compile(r"\b([a-z][a-z%-]*(?:\s+[a-z][a-z%-]*){0,2})\s*=\s*(\d{1,3})\b", re.IGNORECASE)
+"""A line a game is kept at, stated as "stat = N".
+
+.. versionadded:: 6.0.0
+"""
+EXACT_LEADS: tuple[str, ...] = ("exactly",)
+"""The leads of a stated line that keep a game AT its number ("exactly 25
+field goal attempts"); :data:`OVER_LEADS` keep it over.
+
+.. versionadded:: 6.0.0
+"""
+# A line's words that name a percentage ("40 field goal percentage", "fg%
+# under 40"): no game's box score holds one, so the relation refuses it by
+# name rather than reading "field goal" as the makes.
+PERCENTAGE_WORDS = re.compile(r"%|\bper\s*cent|\bpct\b|\bpercentage\b", re.IGNORECASE)
+"""The words of a line that name a percentage.
+
+.. versionadded:: 6.0.0
+"""
 # The number and the words after it in a below/above phrase; the leading
 # words ("under", "at most", "with") say which way the line faces, and an
 # "or more" between the number and its words ("20 or more minutes") is the
@@ -2171,12 +2211,16 @@ MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?:or\s+more\s+)
 .. versionadded:: 6.0.0
    ``lines._MEASURE_PHRASE`` until Phase 3, step 2.
 """
-OVER_LEADS: tuple[str, ...] = ("over", "more than")
+OVER_LEADS: tuple[str, ...] = ("over", "more than", "above", "greater than")
 """The leads of an above phrase that read as over, not at or over ("when
-playing over 26 minutes"); every other phrase of :data:`ABOVE` ("with 25
-minutes", "at least 25 minutes", "20 or more minutes") reads as at or over.
+playing over 26 minutes", "more than 40 points", "above 9 rebounds"); every
+other phrase of :data:`ABOVE` ("with 25 minutes", "at least 25 minutes",
+"20 or more minutes") reads as at or over.
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 6.0.0
+   "above" and "greater than", the leads :data:`LINE_OVER_OR_AT` reads.
 """
 AT_MOST_LEADS: tuple[str, ...] = ("at most", "no more than")
 """The leads of a below phrase that read as "at or under" ("at most 5

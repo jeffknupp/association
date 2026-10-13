@@ -677,6 +677,10 @@ def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
         "threshold_needs_stat": lambda: f"{reaching.format(facts['threshold'])} needs the stat they reach it in, and none was read.",
         "threshold_counts_every_game": lambda: f"A threshold of {facts['threshold']} counts every game - there is no line there to keep games past.",
         "line_names_no_stat": lambda: f"{facts['phrase']!r} names no box-score stat a game can be kept {facts['side']}.",
+        "line_on_a_percentage": lambda: (
+            f"{facts['phrase']!r} keeps games {facts['side']} a percentage, and the box scores hold each game's makes and attempts but no percentage to keep them by. "
+            "Ask for the games over or under a number of makes or attempts instead, or for the percentage itself over a span."
+        ),
         "needs_line": lambda: "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question.",
         "career_place_needs_player": lambda: f"The {ordinal_word(facts['season_n'])} season is a place in one player's career, and no player was named.",
         "needs_subject": lambda: f"{shape.capitalize()} needs a player or a team to read it for, and neither was named.",
