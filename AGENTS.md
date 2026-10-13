@@ -2722,6 +2722,16 @@ The habits that caught real bugs here, in rough order of how often they paid:
   failed write looks like a diff or a crash unrelated to the change. Compress
   or hash large outputs, delete them once compared, and check `df -h /tmp`
   before a large run.
+- **Never gate rebased commits with `git rebase --exec` running the suite
+  or the hooks.** The rebase exports `GIT_DIR` to the command, and the tests
+  that build a scratch repository (`git init`, `git config`, `git commit`
+  in a `tmp_path`) and the scripts they call inherited it: on 2026-10-12 they
+  wrote into the real shared repository - `core.bare=true` and
+  `user.name=Test` in its config, test commits on a worktree's HEAD, its
+  index clobbered. `tests/conftest.py` removes every `GIT_*` variable before
+  a test runs now (`without_git_variables`), but a hook is not a test: squash
+  or reorder with no `--exec`, then run the gate chain once on the tip, as a
+  plain command.
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.
