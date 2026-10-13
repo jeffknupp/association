@@ -1088,7 +1088,9 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       active" and "6 ft 6 inches nba players" each answered the 2026 points
       leaders, and "NBA players born on August 1" was refused as a game on
       August 1 (ISSUES.md #389) - the words fell to the parent grammar's
-      default reading, the fact unread.
+      default reading, the fact unread; and an award or an All-Star
+      selection ("nba mvps in 2010's", "1999 sixth man of the year",
+      ISSUES.md #146), answered as a points ranking.
     - a window of games taken in each season (``window_per_season``):
       "warriors first 10 game record every season" answered the first 10
       games of 2026, "every season" unread (ISSUES.md #379) - nothing reads

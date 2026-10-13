@@ -3820,12 +3820,26 @@ championship.
 # height ("6'10"), "how tall" or "height"; "4 ft" alone is a shot's
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
-ABSENT_FACTS: tuple[tuple[Literal["draft", "birth", "height", "jersey", "lead", "four-point play", "role", "wins"], re.Pattern[str]], ...] = (
+ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey", "lead", "four-point play", "role", "wins"], re.Pattern[str]], ...] = (
     (
         "draft",
         re.compile(
             r"\bdraft(?:ed|s)?\b|\b(?:what|which)\s+pick\b|\boverall\s+picks?\b|\blottery\s+picks?\b"
             r"|\b(?:\d+(?:st|nd|rd|th)|first|second|third)\s+(?:nba\s+)?overall(?:\s+(?:draft\s+)?picks?)?\b",  # codespell:ignore nd - an ordinal suffix
+            re.IGNORECASE,
+        ),
+    ),
+    # An honor (ISSUES.md #146): "all star" before "break" is the calendar's
+    # (a situation) and before "game" or "weekend" the game itself, and "all
+    # nba" or "all defensive" only before "team" or "selection" - "all nba
+    # players" is every player; "most improved" only before "player" - "most
+    # improved scorer" asks a stat across seasons.
+    (
+        "award",
+        re.compile(
+            r"\ball[- ]?stars?\b(?!\s+(?:break|games?|weekend))|\ball-(?:nba|defensive)\b|\ball\s+(?:nba|defensive)\s+(?:(?:1st|2nd|3rd|first|second|third)\s+)?(?:teams?|selections?)\b"
+            r"|\bmvps?\b|\bdpoy\b|\broty\b|\brookie\s+of\s+the\s+year\b|\b(?:sixth|6th)\s+man\b"  # codespell:ignore nd - an ordinal suffix
+            r"|\bdefensive\s+player\s+of\s+the\s+year\b|\bmost\s+improved\s+player\b|\bawards?\b",
             re.IGNORECASE,
         ),
     ),
@@ -3843,7 +3857,7 @@ ABSENT_FACTS: tuple[tuple[Literal["draft", "birth", "height", "jersey", "lead", 
     ("wins", re.compile(r"\b\d+[- ]?wins?\s+teams?\b", re.IGNORECASE)),
 )
 """The facts a question can name that no table here holds (a draft
-position, a birth date, a height), holds only as a dateless snapshot (a
+position, an award or an All-Star selection, a birth date, a height), holds only as a dateless snapshot (a
 jersey number) or that nothing here reads from what it holds (a lead within
 a game, a four-point play, a player's role on his team, an opponent's win
 total) - each with the words that name it, in the order tried. The parser
