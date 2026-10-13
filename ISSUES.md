@@ -327,14 +327,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #268
 
-### A team named for a player's tenure beside an opponent is dropped: "d'angelo russell vs pistons as a laker" answers his 2026 games as a Maverick
-- **Found:** 2026-09-28, fixing #259 (the question carries a typographic apostrophe; its straight twin reads the same).
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["d'angelo russell", "pistons", "laker"]`): routes `{'player': "D'Angelo Russell", 'opponent': 'Detroit Pistons'}` with no team, and answers "D'Angelo Russell averaged 17.5 points ... in 2 games vs the Detroit Pistons in the 2026 regular season" - his 2026 season is Dallas's (`player_season_stats_deduped`: 26 games for the Mavericks); his Lakers years are 2016-2017 and 2023-2025. The model's "laker" is dropped by `parse._read_route_names` once the reading placed an opponent, and `subject._apply_own_team` writes no `own_team` where an opponent is set (`subject.py:1091`), so "as a laker" narrows nothing.
-- **User sees:** a wrong answer - another team's games, where a tenure was asked.
-- **Next step:** read "as a <team>" beside an opponent as `own_team` (the tenure) rather than dropping it; a case in `tests/query/test_one_writer.py`.
-- **Source:** ours.
-- **GitHub:** #269
-
 ### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
 - **Found:** 2026-09-28, fixing #259.
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Gabe Vincent", "laker"]`, stat `threePointFieldGoalsMade`): routes `player_stat` with no stat and answers "Gabe Vincent averaged 4.4 points, 1 rebounds and 1.4 assists per game in 53 games in the 2026 regular season". `parse.MEASURE_GRAMMAR` reads "3s", "threes" and "3 pointers", and "3's" is none of them; the model's key is not kept for a line the words do not name. "Jarred 3’s as a laker" is the corpus's other one. Both also carry "as a laker", which the answer does not honor (Vincent's 2026 line is not a Laker's).

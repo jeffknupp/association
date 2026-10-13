@@ -3136,8 +3136,11 @@ AGAINST_PHRASE = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)"
 # the clippers" mean different things, but a bare "with" also introduces a
 # teammate ("stats with steph curry on the floor"), so only "with the" - which
 # a teammate's name never takes - is read as this shape.
-FOR_TEAM_PHRASE = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)", re.IGNORECASE)
-"""A "for"/"with the" and everything after it, a player's own team is read from.
+FOR_TEAM_PHRASE = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)|\bas\s+an?\s+(?=(.+))", re.IGNORECASE)
+"""A "for"/"with the"/"as a" and everything after it, a player's own team is
+read from. "as a laker", "as a spur" name his tenure by the team's singular
+(ISSUES.md #269); the words after "as a" are read without being consumed,
+so "as a starter for kings" still reads "for kings".
 
 .. versionadded:: 6.0.0
    ``subject._FOR_TEAM`` until Phase 3, step 2.
