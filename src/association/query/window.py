@@ -88,6 +88,10 @@ class WindowCandidates:
     order_words: tuple[tuple[str, Claim], ...]
     rank: tuple[Literal["most", "fewest", "best", "worst"], Claim] | None
     ranked_by: tuple[str, tuple[Claim, ...]] | None
+    #: Whether the grammar's window words say "games" ("last ten games",
+    #: "last 10 home games"): such an end is the question's own, kept on
+    #: every key (ISSUES.md #352).
+    games_said: bool = False
 
     def of_games(self) -> tuple[Claim, ...]:
         """Where a window of GAMES is read from - the grammar's end and count,
@@ -135,13 +139,16 @@ def read_window(question: str, context: WindowContext) -> WindowCandidates:
     seasons = _seasons_counted(question)
     single = lexicon.SINGLE_GAME.search(question)
     order_words = tuple((name, Claim(match.start(), match.end(), "window")) for name, pattern in lexicon.ORDER_WORDS.items() if (match := pattern.search(question)) is not None)
+    grammar = _grammar(question)
+    claim = grammar[2]
     return WindowCandidates(
-        grammar=_grammar(question),
+        grammar=grammar,
         seasons=seasons,
         single=(_single_game_end(single), Claim(single.start(), single.end(), "window")) if single is not None else None,
         order_words=order_words,
         rank=_rank(question),
         ranked_by=_ranked_by(question, context),
+        games_said=claim is not None and lexicon.WINDOW_GAMES_WORD.search(question, claim.start, claim.end) is not None,
     )
 
 

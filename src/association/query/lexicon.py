@@ -966,6 +966,15 @@ winning; a ``limit`` of 0 is the count the words hold.
    In the lexicon, compiled (``parse.WINDOW_GRAMMAR`` until Phase 3, step 2).
 """
 
+WINDOW_GAMES_WORD = re.compile(rf"\b{WINDOW_GAMES}\b", re.IGNORECASE)
+"""A window's "games" (:data:`WINDOW_GAMES`) as a word: whether the window
+grammar's words said the window was of games ("last ten games", "last 10
+home games"), which keeps its end on a reader that honors none, for the
+planner to refuse by name (ISSUES.md #352).
+
+.. versionadded:: 6.0.0
+"""
+
 # Which end of the span a window reads from, said with "games": the two
 # forms the router's model emitted (``recent``, ``first``). Tighter than the
 # grammar's rows (no venue or season type between the count and "games": "his
