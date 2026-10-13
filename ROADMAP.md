@@ -6,7 +6,7 @@ closed 2026-10-01, Phase 1 closed 2026-10-03, Phase 2 closed 2026-10-05**
 families 156/166, every answer identical to the run before - and an Opus
 review of the phase whose findings are fixed or filed; `ROADMAP-HISTORY.md`,
 the working log, entries 12 and 20-21; Phase 2's cleanup landed
-2026-10-06). Phase 3 opened 2026-10-09 and closed 2026-10-11 (`live_parser29`, an Opus review and its cleanup landed 2026-10-12; "Phase 3, reviewed"). Phase 4 opened 2026-10-12 and its steps 0-6 closed the same day in three parallel lanes, each merge re-proved by the lead; step 7's documents and live run landed 2026-10-13 (`live_parser30`: 167/175, 156/166, parser29's score) and its review closed the phase the same day ("Phase 4, reviewed"). **Phase 4 closed 2026-10-13.** What comes next is Jeff's call: the reviewer recommends the P1 list under the standing proof. The reviews corrected the
+2026-10-06). Phase 3 opened 2026-10-09 and closed 2026-10-11 (`live_parser29`, an Opus review and its cleanup landed 2026-10-12; "Phase 3, reviewed"). Phase 4 opened 2026-10-12 and its steps 0-6 closed the same day in three parallel lanes, each merge re-proved by the lead; step 7's documents and live run landed 2026-10-13 (`live_parser30`: 167/175, 156/166, parser29's score) and its review closed the phase the same day ("Phase 4, reviewed"). **Phase 4 closed 2026-10-13.** Next, Jeff's call the same day: the P1 sweep, four agents along the files' seams ("After Phase 4: the P1 sweep"), the reviewer's positions on the open calls assumed held and not decided. The reviews corrected the
 measurements below and changed the phases. Jeff's decisions are recorded
 under "Decisions"; one is still open (the season type a question that names
 none reads) and does not block Phase 1.
@@ -705,7 +705,7 @@ READ "runs no statement" against 4 statements on 2 questions - fixed with
 the review's transcription); AGENTS.md accurate at 2,923 lines; the
 reader's `re` count before step 6 given three ways (18 at Phase 3's
 close, 17 at Phase 4's open, 15 the first slice moved - the history entry
-now says which). The reviewer's positions on the five open calls: derive
+now says which). The reviewer's positions on the five open calls - **each assumed held and NOT decided (Jeff, 2026-10-13): the code stands as the lanes left it, the positions are the working assumption, and any of them may be reversed** - : derive
 the aggregate (with one yes/no-stat fact on the catalog it is a function
 of the shape for all but 1 of the 27 readings, a refused question about a
 Danish football club); keep the door rule (a hand statement routed through
@@ -717,7 +717,10 @@ statements are the companion reads); keep the `PointShape` derived. On the
 rules: the proof rules should become standing rules rather than lapse with
 the phase, and the new-shape freeze (D4) should be retired for a statement
 of what a new shape must bring, since many of the 44 open P1s are a
-missing shape or row - Jeff's call. Findings, transcribed with the
+missing shape or row - assumed held and not decided either (Jeff,
+2026-10-13): the proof rules apply to the P1 sweep below as they applied
+to the phase, and D4 stands until a sweep fix needs a shape, which is
+then the decision's occasion. Findings, transcribed with the
 review's evidence: one P1 (#396's class beyond the seeding words), one P2
 (a team's stat under a companion's line answers the record), one P3
 ("without free throws" read as a teammate), four P4s (a plural, a trace
@@ -737,6 +740,44 @@ reviewer's recommendation: work the P1 list with the proof kept, the
 feed's 177 questions with an unread number as the queue, folding in the
 aggregate's derivation and the worded declines as causes, and compacting
 AGENTS.md on the way.
+
+**After Phase 4: the P1 sweep (Jeff, 2026-10-13: "a small swarm of
+agents working on those P1s along natural seams").** The 45 open P1s
+grouped by the files a fix touches, four lanes, one Opus agent each in
+its own worktree from pushed master, the rules of the phase standing
+(every fix proved on the four populations against a fresh before-tree
+run with every moved reading and answer enumerated in its commit and
+`CHANGES.md`; the ledger not grown but by a fix that reads a word, named;
+the ratchets only shrinking; one commit per fix; a test per wording,
+watched to fail; what cannot be fixed in the lane's files filed, never
+discarded) and the lead re-proving every merge on the merged tree. Three
+of the four lanes sit on the reader, where the rule has been one agent at
+a time: each owns its tagger modules and its families' rows in the
+lexicon, and the merge order is the lead's, the later lane re-proved on
+the earlier's tip as Phase 4's lanes were. **Lane S, the spans, windows,
+dates and cuts** (`span.py`, `window.py`, `cuts.py`, `calendar.py`, the
+span/window/cuts families in `lexicon.py`, `point.window_under`,
+`span_under`, `cuts_under`): #400, #372, #352, #369, #267, #323, #345,
+#393, #392, #339, #291, #167's span half. **Lane L, the lines, the
+measures and the count's grammar** (`line.py`, `measure.py`, `period.py`,
+the line/measure families in `lexicon.py`, `point.lines_under`,
+`measure_under`, `compose/counts.py`, `compose/rankings.py`): #388, #361,
+#357, #371, #358, #348, #350, #351, #370, #390, #391, #114, #270, #347,
+#389. **Lane N, the subject reading, the names and the companions**
+(`subject.py`, `entities.py`, `names.py`, `parse.py`'s subject and child
+steps, the subject's words in `lexicon.py`, `grammar.py`): #373, #364,
+#365, #231, #246, #247, #248, #266, #268, #269, #340, #346, #394, #265,
+#359. **Lane T, the team relation and compiler** (`team_games.py`,
+`team_relation.py`, `compose/team.py`, `compose/team_stats.py`,
+`compose/team_records.py`, `compose/meetings.py`, `compose/presence.py`,
+`compose/logs.py`'s team half, `conditions.py`): #326, #325, #167's
+sentence half, #364's reader half, and the two P2s of 2026-10-13 that
+share the team-games relation's missing box-score join (#403, #404).
+Each lane measures first - every entry's wording probed on both
+populations and the feed searched for its class, the lane's own order by
+reach - fixes what it can one entry at a time, closes each entry's
+GitHub issue naming the commit, and reports every fix and every move.
+A shape a fix needs is D4's occasion, reported to the lead and not taken.
 
 Three rules hold throughout, Phase 3's: a decline or a refusal reworded
 is ONE enumerated commit; a boundary that moves is recorded in
