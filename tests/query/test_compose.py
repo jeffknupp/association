@@ -786,7 +786,7 @@ _TS = current_season()
 
 
 @pytest.fixture
-def team_cx_ctx(tmp_path: Path) -> AnswerContext:
+def team_cx_ctx(tmp_path: Path) -> Iterator[AnswerContext]:
     """The Magic (season total, plus a finished postseason for the addendum)
     and the Raptors (five regular-season games, for a narrowed
     total/differential window). ``players`` is empty but present, since
@@ -827,7 +827,8 @@ def team_cx_ctx(tmp_path: Path) -> AnswerContext:
             (_TS, 3, "1", 7, 780, 78),  # Orlando's finished playoff run
         ],
     )
-    return AnswerContext(con=c, out_dir=tmp_path)
+    yield AnswerContext(con=c, out_dir=tmp_path)
+    c.close()
 
 
 def test_team_move_point_reads_an_unnarrowed_season_total(team_cx_ctx: AnswerContext) -> None:
