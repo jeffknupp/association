@@ -155,6 +155,9 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
         ("who averaged over 25 points in 2024", PLAYER_LOG, [], None),
         ("lebron stats over 10 games", PLAYER_LOG, [], None),
         ("kobe stats over1346 games", PLAYER_LOG, [], None),
+        # A rate per N minutes, and the last minutes of a game, are no floor of minutes (ISSUES.md #388).
+        ("jayson tatum per 36 minutes stats", PLAYER_LINE, [], None),
+        ("field goal percentage last 5 minutes of a nba game", PLAYER_LOG, [], None),
         ("jokic stats", PLAYER_LINE, [], None),
     ],
 )

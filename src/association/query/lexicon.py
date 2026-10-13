@@ -1950,9 +1950,11 @@ BELOW = re.compile(
 # "Victor wembanyama stats when playing 20 or more minutes" answered every
 # game he played. "over N minutes" and "more than N minutes" are a line kept
 # OVER the number (:data:`OVER_LEADS`), where the bare number they lead was
-# read as a floor at it and the lead word unread.
+# read as a floor at it and the lead word unread. Not a number after "per"
+# (a rate, PER_MINUTES) or "last"/"final" ("the last 5 minutes of a game"),
+# which were read as floors until ISSUES.md #388.
 ABOVE = re.compile(
-    r"\b(?:(?:with|playing)\s+)?(?:(?:at\s+least|over|(?<!no\s)more\s+than)\s+|(?<!than\s)(?<!under\s)(?<!below\s))"
+    r"\b(?:(?:with|playing)\s+)?(?:(?:at\s+least|over|(?<!no\s)more\s+than)\s+|(?<!than\s)(?<!under\s)(?<!below\s)(?<!per\s)(?<!last\s)(?<!final\s))"
     r"\d+(?:\+|\s+or\s+more)?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?",
     re.IGNORECASE,
 )
@@ -2661,6 +2663,15 @@ RATE_WORDS = re.compile(r"\badjusted\b|\bper\s+(?:100\s+)?poss?ess?ions?\b|\bper
    ``router._RATE_WORDS`` until Phase 3, step 2.
 """
 
+# A rate per N minutes (ISSUES.md #388): "per 36 minutes", "per 36",
+# "per36" - a unit the measure reads (the ``rate`` cell), never a floor of
+# minutes (ABOVE reads no number after "per"); not per 90 (PER_90's) nor
+# per 100 (RATE_WORDS').
+PER_MINUTES = re.compile(r"\bper[\s-]*(?!90\b)\d{2}\b(?:\s*(?:minutes|mins?)\b)?", re.IGNORECASE)
+"""A rate per a number of minutes named.
+
+.. versionadded:: 6.0.0
+"""
 PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
 """A per-90 rate named - a football unit, held in nothing here.
 
@@ -3986,7 +3997,7 @@ championship.
 # height ("6'10"), "how tall" or "height"; "4 ft" alone is a shot's
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
-ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey", "lead", "four-point play", "role", "wins"], re.Pattern[str]], ...] = (
+ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch"], re.Pattern[str]], ...] = (
     (
         "draft",
         re.compile(
@@ -4021,12 +4032,17 @@ ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey",
     ("four-point play", re.compile(r"\b(?:4|four)[- ]?(?:point|pt)\s+plays?\b|\band[- ]ones?\b", re.IGNORECASE)),
     ("role", re.compile(r"\b(?:1st|2nd|3rd|first|second|third)\s+options?\b", re.IGNORECASE)),
     ("wins", re.compile(r"\b\d+[- ]?wins?\s+teams?\b", re.IGNORECASE)),
+    # The last minutes of a game (ISSUES.md #388): the plays are on file and
+    # nothing narrows a game to its final minutes - read as a floor of
+    # minutes played until then.
+    ("clutch", re.compile(r"\b(?:last|final)\s+(?:\d{1,2}|one|two|three|four|five)\s+(?:minutes?|mins?)\b|\bclutch\b", re.IGNORECASE)),
 )
 """The facts a question can name that no table here holds (a draft
 position, an award or an All-Star selection, a birth date, a height), holds only as a dateless snapshot (a
 jersey number) or that nothing here reads from what it holds (a lead within
 a game, a four-point play, a player's role on his team, an opponent's win
-total) - each with the words that name it, in the order tried. The parser
+total, the last minutes of a game) - each with the words that name it, in
+the order tried. The parser
 reads the first into the ``fact_not_read`` cause before any point
 (:attr:`~association.query.reading.Reading.refused`).
 

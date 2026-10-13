@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any, get_args
 
+import duckdb
 import pytest
 from routed import staged as settle
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
@@ -371,3 +372,17 @@ def test_the_planner_declines_the_rate_cell_where_no_reader_states_it(con: Any) 
     reading = route
     assert reading.point_refusal is not None and reading.point_refusal.kind == "ranking_unit" and reading.point_refusal.facts == {"metric": "netpoints_defense", "rate": "/ 90"}
     assert reading.span == Span(season_type=2) or reading.span.season_type == 2
+
+
+@pytest.mark.parametrize(
+    ("question", "unit"),
+    [("jayson tatum per 36 minutes stats", "per 36 minutes"), ("jamal crawford lou williams career per36", "per36"), ("most free throw attempts per 36 minutes", "per 36 minutes")],
+)
+def test_a_rate_per_n_minutes_is_a_unit_on_every_key(con: duckdb.DuckDBPyConnection, question: str, unit: str) -> None:  # noqa: F811 - the fixture
+    """ISSUES.md #388: "per 36 minutes" was read as a floor of 36 minutes a
+    game ("jayson tatum per 36 minutes stats" answered his 4 games of 36+
+    minutes); it is the measure's unit, the ``rate`` cell every reader but
+    the season ranking declines and the ranking refuses by name."""
+    reading = read_route(names_of(con), question, [], "")
+    assert reading.measure is not None and reading.measure.unit == unit and reading.measure.how is None
+    assert not [line for line in reading.lines if line.measure == "minutes"]

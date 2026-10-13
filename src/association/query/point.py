@@ -2260,6 +2260,12 @@ def _measure_rate(asked: PointShape | None, words: MeasureWords, key: str | None
     adjusted form it has), a per-90 or a per-100 rate of anything else kept
     as the cell the ranking refuses by name, a team's season total."""
     unit: str | None = None
+    if words.per_minutes is not None:
+        # A rate per N minutes, on every key (ISSUES.md #388): the ``rate``
+        # cell, which the season ranking refuses by name and every other
+        # reader declines - never a floor of N minutes a game.
+        claims.append(Claim(words.per_minutes.start(), words.per_minutes.end(), "measure"))
+        return key, words.per_minutes.group(0).casefold()
     if asked == PLAYER_RANKING:
         if key in ("netpoints", "netpoints_per_100", "netpoints_total") and len(words.sides) == 1:
             # "who are the top 10 in adjusted offensive netpoints" arrived as
