@@ -1543,6 +1543,9 @@ def test_a_teams_log_asked_for_a_figure_no_game_carries_is_refused_by_name(gl_co
     )
     usage = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="usage_pct", as_typed="usage rate")))
     assert usage.text == "A team's games carry no usage rate game by game - only the score, the result and the box score (rebounds, assists, shooting, turnovers)."
+    # A team whose name is no plural takes "'s": "the Orlando Magic's pace", never "Magic'".
+    magic = refusal_phrase("team_figure_unread", {"team": "Orlando Magic", "stat": "pace", "what": "log"})
+    assert (magic or "").endswith("ask for the Orlando Magic's pace over a season."), magic
 
 
 def test_a_teams_last_n_games_all_one_type_reads_exactly_as_before(gl_con: AnswerContext) -> None:

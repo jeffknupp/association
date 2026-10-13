@@ -4270,7 +4270,7 @@ def _say_team_figure_unread(facts: Mapping[str, Any]) -> str:
     question that reaches it."""
     key = facts["stat"]
     label = CATALOG[key].label if key in CATALOG else str(key)
-    season = f" Its season's {label} is on record - ask for the {facts['team']}' {label} over a season." if key in CATALOG and CATALOG[key].team is not None else ""
+    season = f" Its season's {label} is on record - ask for the {possessive(facts['team'])} {label} over a season." if key in CATALOG and CATALOG[key].team is not None else ""
     return f"A team's games carry no {label} game by game - only the score, the result and the box score (rebounds, assists, shooting, turnovers).{season}"
 
 
