@@ -1343,9 +1343,13 @@ a shape:
   closed enum (`reading.Aggregate`, Phase 4, step 3: `NONE`, `PER_GAME`,
   `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`), on the point,
   the `Query` and the `TeamQuery` alike, and a record writes a member as its
-  value (`stages.plain`); its `measures` are still the compiler's names,
-  derived from the `Measure` through the catalog (`stat_measure`): retyping
-  them is the `Query`'s, the RUN stage's input. `query/window.py` is the window's tagger:
+  value (`stages.plain`); its `measures` are typed too
+  (`tuple[Measure, ...]`, each the catalog's key, stated through
+  `measure.measured` from the names the point reader reads a measure by),
+  and the compilers' names are built once, where the planner hands the
+  point over (`compose.core.measure_names`, `compose.team.team_metric`).
+  The `Query`'s `measures` are still those names: retyping them is the
+  answer side's, whose readers test and replace them by name. `query/window.py` is the window's tagger:
   `read_window(question, WindowContext)` reads, and `point.window_under`
   keeps under the key, which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his
@@ -1662,7 +1666,13 @@ a shape:
   game relation's "no games" sentence call; `seasons_on_record`;
   `seasons_played`); `compose.core.values_of` (or `rows_of`, for a
   ranking's rows by name) executes every one through the compiler's one
-  `execute`, and nothing else runs a season-line statement. The line is a `Scalar` and
+  `execute`, and nothing else runs a season-line statement. The module
+  RUNS them too: since Phase 4, step 5 a reader in `compose/seasons.py`
+  names the read it takes (`season_line.season_row`, `career_row`,
+  `advanced_row`, `history_rows`, `history_total`, `netpoints_row` - the
+  statement run and its row or rows handed back) and executes nothing
+  itself, so the SQL ratchet counts those statements on `season_line`,
+  the relation that owns the table. The line is a `Scalar` and
   the history a `Grouped` by `season` with a career's `summary` part, the
   comparison a `Grouped` by `subject`, each on a `Span` whose `source` is
   `"seasons"`; the line's `Scalar.how` is `"season"`, which is how `say()`
@@ -1736,7 +1746,15 @@ a shape:
     of their own (`query/standings.py`, the team-season relation's reads
     of ESPN's `standings` and the season totals they are checked against:
     `season_row`, `career_rows`, `first_season`, `season_games`), which
-    `compose/standings.py` reads.
+    `compose/standings.py` reads. The season line's (`season_line.season_row`
+    and the five beside it; `compose/seasons.py` executes nothing), the
+    team seasons' (`team_seasons`' `read_team_lines`, `read_team_records`
+    and the five beside them, the team compiler's season total among
+    them; `compose/team_stats.py` executes nothing), and the team-games
+    relation's shared steps hold the three a team reader ran over the
+    games (`team_relation.team_season_game_counts`, `team_game_list_gaps`,
+    `team_games_total`; `compose/team_records.py` and `compose/team.py`
+    execute nothing).
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body

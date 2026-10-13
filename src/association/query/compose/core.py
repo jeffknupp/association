@@ -34,7 +34,7 @@ exactly those tokens.
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +45,7 @@ from association.nba.season import current_season, eastern_date_sql
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
 from association.query.entities import BOX_SCORES, GAME_LOGS, Entity, resolved_player, resolved_team
 from association.query.lines import measure_filters
+from association.query.measure import measure_name
 from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
 from association.query.measures import GAME_COLUMNS, LABEL_MEASURES
 from association.query.measures import LINE as LINE
@@ -406,6 +407,24 @@ class Compiled:
     #: The second player of a ``pair`` read (:func:`_compile_pair`), whose
     #: line the statement reads beside ``player``'s; ``None`` otherwise.
     other: Entity | None = None
+
+
+def measure_names(measures: Sequence[Measure]) -> list[str]:
+    """The compiler's names for a point's typed measures over the
+    player-games relation - each one's catalog name
+    (:func:`~association.query.measure.measure_name`: ``fieldGoalPct`` is
+    ``fg_pct``, ``wins`` is ``won``) - built here, once, as the planner
+    hands the compiler its point (``compose.plan``): the point reader states
+    what it measures typed (``Reading.measures``) and no site of it spells a
+    column. A measure the relation has no name for is refused.
+
+    .. versionadded:: 6.0.0
+    """
+    names = [measure_name(m) for m in measures]
+    missing = [m for m, name in zip(measures, names, strict=True) if name is None]
+    if missing:
+        raise Unsupported(f"no measure on the player-games relation for {', '.join(str(m.key) for m in missing)}")
+    return [name for name in names if name is not None]
 
 
 def measure_sql(name: str, *, rebuilt: bool = False) -> str:

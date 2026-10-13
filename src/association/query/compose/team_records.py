@@ -48,13 +48,12 @@ from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
 from association.query.reading import PointShape, Situation, Unsupported
 from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, TeamRecordFacts, Unanswered
-from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
-from association.query.team_games import TeamNarrowed, game_list_gaps_sql, season_game_counts_sql
+from association.query.team_games import TeamNarrowed
 from association.query.team_metrics import FIRST_FULL_REGULAR_SEASON, games_scope
-from association.query.team_relation import team_span_clause
+from association.query.team_relation import team_game_list_gaps, team_season_game_counts, team_span_clause
 
-from .core import rows_of, values_of
+from .core import rows_of
 from .standings import read_standings_career, read_standings_season
 from .team import TeamQuery, compile_team_over
 
@@ -272,8 +271,7 @@ def _no_games_cause(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Enti
     if season is None:
         return None
     scope, params = games_scope(season_type, season)
-    counts = values_of(con, Statement(*season_game_counts_sql(scope, params, team.id)))
-    league, own = counts[0] if counts else (0, 0)
+    league, own = team_season_game_counts(con, scope, params, team.id)
     if not league:
         return "season"
     return "not_met" if opponent is not None and own else "none_played"
@@ -288,7 +286,7 @@ def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: i
     outside it (ISSUES.md #298)."""
     narrowed, _span = _record_narrowed(team, season, season_type, since=since, until=until)
     floor = max(FIRST_FULL_REGULAR_SEASON, since) if since is not None else FIRST_FULL_REGULAR_SEASON
-    rows = values_of(con, Statement(*game_list_gaps_sql(narrowed, team.id, season_type, season=season, since=since, until=until, floor=floor)))
+    rows = team_game_list_gaps(con, narrowed, team.id, season_type, season=season, since=since, until=until, floor=floor)
     if not rows:
         return []
     kind = "postseason" if season_type == 3 else "regular-season"

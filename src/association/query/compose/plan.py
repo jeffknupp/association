@@ -24,13 +24,13 @@ from association.query.reading import CELL_ORDER, Cause, Filtered, Measure, Poin
 from association.query.result import Refusal
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
-from .core import Query, Refused, Unsupported, _check_relation_scoping
+from .core import Query, Refused, Unsupported, _check_relation_scoping, measure_names
 from .netpoints import NetPointsQuery
 from .rankings import leaderboard_reads
 from .say import decline_body, say, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
-from .team import TeamQuery
+from .team import TeamQuery, team_metric
 from .team_stats import TeamSeasonQuery
 
 
@@ -329,7 +329,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         # Every team shape, the sums included, against the TEAM relation's
         # own cells and what this shape takes beside them.
         _check_relation_scoping(reading, "team", _cells_taken(key, team=True))
-        return TeamQuery(**reading.filters(), metric=reading.measures[0], aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
+        return TeamQuery(**reading.filters(), metric=team_metric(reading.measures[0]), aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
     subject = "everyone" if reading.relation == "everyone" else "player"
     # The season line's ranking (leaderboard's retired reader) takes `rate`
     # - a season total, or a unit refused by name - which no game-level read
@@ -338,7 +338,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     planned = Query(
         **reading.filters(),
         skeleton=skeleton_of(reading),
-        measures=list(reading.measures),
+        measures=measure_names(reading.measures),
         aggregate=reading.aggregate,
         group=reading.group,
         predicates=list(reading.predicates),

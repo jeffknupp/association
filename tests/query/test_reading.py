@@ -9,11 +9,11 @@ from dataclasses import fields, replace
 import pytest
 from routed import planned_query
 
-from association.query.compose.core import Query
+from association.query.compose.core import Query, measure_names
 from association.query.compose.plan import plan
-from association.query.compose.team import TeamQuery
+from association.query.compose.team import TeamQuery, team_metric
 from association.query.point import default_point
-from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, Line, Measure, Period, Reading, Span, Window
+from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, Line, Measure, Period, Reading, Span, Unsupported, Window
 from association.query.reading import Subject as Who
 
 
@@ -45,7 +45,7 @@ def test_the_planner_copies_and_never_decides() -> None:
         **(Reading(who=Who(kind="player", players=("X",)), span=Span(season=2025))).filters(),
         shape="ranking",
         by="player",
-        measures=["points"],
+        measures=(Measure(key="points"),),
         aggregate=Aggregate.PER_GAME,
         group="player",
         predicates=[("won", "=", True)],
@@ -80,11 +80,41 @@ def test_the_planner_copies_and_never_decides() -> None:
 
 def test_a_team_reading_plans_to_the_team_relation() -> None:
     reading = Reading(
-        **(Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026))).filters(), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate=Aggregate.TOTAL, relation="team"
+        **(Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026))).filters(),
+        shape="scalar",
+        measures=(Measure(key="threePointFieldGoalsMade"),),
+        aggregate=Aggregate.TOTAL,
+        relation="team",
     )
     q = plan(reading)
     assert isinstance(q, TeamQuery)
     assert (q.filters(), q.metric, q.aggregate) == (Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026)).filters(), "threePointFieldGoalsMade", "total")
+
+
+def test_the_planner_names_the_points_typed_measures_once() -> None:
+    """The point states its measures typed (Phase 4, step 3) and the
+    compilers' names are built where the planner hands it over, once:
+    a rate by its derived name, a game won as the flag the player compiler
+    reads, and the team compiler's own names for what a team gave up and its
+    margin; a measure the player-games relation has no name for is refused,
+    never dropped."""
+    player = Reading(who=Who(kind="player", players=("X",)), span=Span(season=2025)).filters()
+    reading = Reading(**player, shape="scalar", by="line", measures=(Measure(key="fieldGoalPct"), Measure(key="points"), Measure(key="wins")), aggregate=Aggregate.PER_GAME)
+    q = plan(reading)
+    assert isinstance(q, Query) and q.measures == ["fg_pct", "points", "won"]
+    assert measure_names(()) == []
+    with pytest.raises(Unsupported):
+        measure_names((Measure(key="netpoints"),))
+    team = Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026)).filters()
+    for measure, metric in (
+        (Measure(key="points", whose="opponent"), "points_allowed"),
+        (Measure(key="point_differential"), "differential"),
+        (Measure(key="wins"), "won"),
+        (Measure(key="record"), "record"),
+    ):
+        assert team_metric(measure) == metric
+        q_team = plan(Reading(**team, shape="scalar", measures=(measure,), aggregate=Aggregate.TOTAL, relation="team"))
+        assert isinstance(q_team, TeamQuery) and q_team.metric == metric
 
 
 def test_the_compilers_points_are_keyword_only() -> None:
@@ -104,7 +134,7 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
     reading = Reading(
         **(Reading(who=Who(kind="player", players=("Joel Embiid",)), span=Span(season=2026))).filters(),
         shape="scalar",
-        measures=[],
+        measures=(),
         aggregate=Aggregate.COUNT,
         group="none",
         predicates=[("points", ">=", 30)],

@@ -6,9 +6,12 @@ more players' lines side by side - read from the season-line relation
 (``ROADMAP.md``): the retired templates' reads
 (``templates.players._player_stat_season_line``, ``_player_history_read``,
 ``_player_compare_lines``, called by three presenters) are gone, and their
-statements are the relation's, built there and executed through the
-compiler's one door (:func:`~association.query.compose.core.values_of`).
-The sayer (:mod:`association.query.compose.say`) words each.
+statements are the relation's, built AND run there, through the
+compiler's one door (:func:`~association.query.compose.core.values_of`):
+a reader here names the read it takes (``season_line.season_row``,
+``career_row``, ``advanced_row``, ``history_rows``, ``history_total``,
+``netpoints_row``) and executes nothing itself (Phase 4, step 5). The sayer
+(:mod:`association.query.compose.say`) words each.
 
 Each answer is two or more statements (a line and the season redirect, a
 history and its career total, one line and one NetPoints row per player),
@@ -42,31 +45,25 @@ from association.query.season_line import (
     NETPOINTS_COMPARE_ROWS,
     PLAYER_STAT_COLUMNS,
     SHOOTING_STATS,
+    advanced_row,
     advanced_span,
-    advanced_statement,
-    career_statement,
+    career_row,
     compared_player,
+    history_rows,
     history_seasons,
-    history_statement,
     history_subject,
     history_through,
-    history_total_statement,
+    history_total,
     line_columns,
     line_subject,
-    netpoints_statement,
+    netpoints_row,
     season_redirect,
-    season_statement,
+    season_row,
     wanted_stats,
 )
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 
-from .core import Query, values_of
-
-
-def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
-    """A statement's first row, as ``fetchone`` gave the retired reads."""
-    return rows[0] if rows else None
-
+from .core import Query, measure_names
 
 # --- a player's line -----------------------------------------------------------
 
@@ -98,7 +95,7 @@ def player_line_reads(q: Query) -> bool:
     except Unsupported:
         return False
     named = stat_measure(q.measure)
-    return own.on == "player_seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
+    return own.on == "player_seasons" and (q.measures == measure_names(own.measures) or (named is not None and q.measures == [named]))
 
 
 def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
@@ -158,7 +155,7 @@ def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
     decision where the season was defaulted rather than named."""
     season = span.season or current_season()
     columns, attempted_col = line_columns(wanted, shooting)
-    row = _first(values_of(con, season_statement(player.id, columns, season, season_type)))
+    row = season_row(con, player.id, columns, season, season_type)
     line_span = Span(season=season, season_type=season_type, phrase=span.during(), source="seasons")
     facts = replace(facts, season_n=span.ordinal)
     if row is None:
@@ -201,13 +198,12 @@ def _player_line_redirect(con: duckdb.DuckDBPyConnection, player: Entity, span: 
 
 def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, wanted: list[str], shooting: Any, facts: LineFacts) -> Result:
     """A career line summed from the season table
-    (:func:`~association.query.season_line.career_statement`): the games,
+    (:func:`~association.query.season_line.career_row`): the games,
     each wanted stat's career per-game figure (``values``) and its total
     where there is one, a made count's attempts, a percentage's makes and
     attempts (``sums``), as summed - the sayer rounds them as the retired
     template did. No season on record is an empty scalar."""
-    statement, attempted_col = career_statement(player.id, span.season_type, wanted, shooting)
-    row = _first(values_of(con, statement))
+    row, attempted_col = career_row(con, player.id, span.season_type, wanted, shooting)
     if row is None or not row[0]:
         return Result(subject=player.name, relation="player", span=Span(season_type=span.season_type, career=True, source="seasons"), parts=(Part(body=Scalar(games=0, how="season")),), facts=facts)
     games, first, last, seasons = row[:4]
@@ -232,7 +228,7 @@ def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
 def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, stat: str) -> Result:
     """One player's computed advanced stat, for a season or a career,
     weighted by its own volume over a career
-    (:func:`~association.query.season_line.advanced_statement`): the figure
+    (:func:`~association.query.season_line.advanced_row`): the figure
     (``values``), its volume and how many seasons it could not see
     (``sums``), the games, and a note where seasons are missing. A usage
     rate or a game score has no volume to weight a career by, so it is
@@ -243,7 +239,7 @@ def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
     if span.career and spec.weight is None:
         raise Unsupported(f"{spec.label} has no career figure - it has no volume column to weight the seasons by, so a career would be a mean of means")
     span = advanced_span(span)
-    row = _first(values_of(con, advanced_statement(player.id, span, spec)))
+    row = advanced_row(con, player.id, span, spec)
     facts = LineFacts(stat=stat)
     if row is None or row[0] is None:
         empty = Span(season=span.season, season_type=span.season_type, career=span.career, phrase=span.during(), source="seasons")
@@ -340,7 +336,7 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
     season_type = scope.span.season_type or 2
     columns = HISTORY_COLUMNS[stat][1]
     keys = ["key", "games"] + [k for _, _, k in columns]
-    rows = tuple(dict(zip(keys, r, strict=True)) for r in values_of(con, history_statement(player.id, stat, season_type, latest, history_seasons(scope))))
+    rows = tuple(dict(zip(keys, r, strict=True)) for r in history_rows(con, player.id, stat, season_type, latest, history_seasons(scope)))
     parts = [Part(body=Grouped(by="season", rows=rows))]
     # Only for a career: the default four seasons is already a window a
     # reader chose, and a combined figure over a window nobody asked to see
@@ -358,7 +354,7 @@ def _player_history_career(con: duckdb.DuckDBPyConnection, player: Entity, stat:
     (a percentage, its makes and its attempts), the makes and attempts
     summed across every season shown, games-weighted by construction; for a
     counting column, the career total
-    (:func:`~association.query.season_line.history_total_statement`).
+    (:func:`~association.query.season_line.history_total`).
     ``None`` with no attempts, or no total."""
     columns = HISTORY_COLUMNS[stat][1]
     games = sum(row["games"] or 0 for row in rows)
@@ -367,7 +363,7 @@ def _player_history_career(con: duckdb.DuckDBPyConnection, player: Entity, stat:
         made = sum(row.get(made_key) or 0 for row in rows)
         attempted = sum(row.get(attempted_key) or 0 for row in rows)
         return Scalar(games=games, sums={"made": made, "attempted": attempted}) if attempted else None
-    total = _first(values_of(con, history_total_statement(player.id, stat, season_type, latest)))
+    total = history_total(con, player.id, stat, season_type, latest)
     if total is None or total[0] is None:
         return None
     return Scalar(games=games, sums={"total": total[0]})
@@ -448,7 +444,7 @@ def _player_compare_lines(con: duckdb.DuckDBPyConnection, players: list[Entity],
     columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
     lines: dict[str, dict[str, Any]] = {}
     for player in players:
-        row = _first(values_of(con, season_statement(player.id, columns, season, season_type)))
+        row = season_row(con, player.id, columns, season, season_type)
         lines[player.name] = {"key": player.name, **({"games": row[0], **dict(zip(wanted, row[1:], strict=True))} if row else {})}
     return lines
 
@@ -466,7 +462,7 @@ def _player_compare_netpoints(con: duckdb.DuckDBPyConnection, players: list[Enti
     found: dict[str, dict[str, Any]] = {}
     for player in players:
         try:
-            row = _first(values_of(con, netpoints_statement(player.id, season, season_type)))
+            row = netpoints_row(con, player.id, season, season_type)
         except duckdb.Error:
             # The table only exists if the NetPoints fetch was run. A
             # comparison is complete without it - so this drops the section

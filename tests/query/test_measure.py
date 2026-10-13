@@ -33,14 +33,16 @@ from association.query.measure import (
     MeasureContext,
     MeasureKey,
     key_of,
+    measure_name,
     measure_of,
+    measured,
     named,
     named_by_a_team_metric,
     names_a_stat,
     read_measure,
     team_metric_named,
 )
-from association.query.measures import DERIVED_MEASURES, GAME_COLUMNS, log_extras, resolve_metric, stat_column, stat_measure
+from association.query.measures import DERIVED_MEASURES, GAME_COLUMNS, LINE, PERIOD_COLUMNS, SPLIT_LINE, STAT_LINE, log_extras, resolve_metric, stat_column, stat_measure
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import read_route
@@ -236,6 +238,26 @@ def test_the_catalog_is_one_closed_set_of_keys_the_six_vocabularies_resolve_into
         assert spec.team_opponent is None or spec.team_opponent in TEAM_METRICS
 
 
+def test_every_compiler_name_reads_back_to_one_catalog_measure() -> None:
+    """The point states what it measures typed (``Reading.measures``,
+    Phase 4, step 3): each name its words and lines read a measure by is
+    the catalog's Measure (``measure.measured``), which the compiler names
+    back once (``measure_name``) - so the names are distinct across keys,
+    every name the point reader reads by has a key, and a game's label
+    ("margin") is no measure a point reads."""
+    names = [spec.measure for spec in CATALOG.values() if spec.measure is not None]
+    assert len(names) == len(set(names))
+    for key, spec in CATALOG.items():
+        if spec.measure is not None:
+            assert measured(spec.measure) == Measure(key=key)
+            assert measure_name(measured(spec.measure)) == spec.measure
+    read_by = {*LINE, *SPLIT_LINE, *STAT_LINE, *PERIOD_COLUMNS, *(name for _, name in lexicon.WORD_MEASURES), *(name for _, name in lexicon.BOOLEAN_RANK_WORDS)}
+    assert all(measured(name).key in CATALOG for name in read_by)
+    assert (measured("fg_pct"), measured("won"), measured("three_pct")) == (Measure(key="fieldGoalPct"), Measure(key="wins"), Measure(key="threePointFieldGoalPct"))
+    with pytest.raises(KeyError):
+        measured("margin")
+
+
 #: A metric or a derived measure named outright, and the grammar's two
 #: spellings for keys the model spells otherwise: each reads as its key,
 #: where the slot-era tables gave it facets of its own. No reader reached
@@ -323,8 +345,8 @@ def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None
         )
         is None
     )
-    assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("fieldGoalsMade")), "how many did the magic have") == "fieldGoalsMade"
-    assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("points_allowed")), "magic total this season") == "points_allowed"
+    assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("fieldGoalsMade")), "how many did the magic have") == Measure(key="fieldGoalsMade")
+    assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("points_allowed")), "magic total this season") == Measure(key="points", whose="opponent")
 
 
 # ---------------- contract 4: the cell changes what a relation reads, and the planner declines it elsewhere ----------------

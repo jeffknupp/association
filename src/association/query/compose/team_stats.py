@@ -44,20 +44,18 @@ from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, Team
 from association.query.team_seasons import (
     BPI_CHANCES,
     BPI_SNAPSHOT_NAMES,
+    read_team_lines,
+    read_team_outlook_rows,
+    read_team_outlook_snapshots,
+    read_team_records,
+    read_team_since_records,
+    read_team_venue_rows,
     snapshot_facts,
-    team_lines,
-    team_lines_statement,
     team_outlook_chosen,
-    team_outlook_row_statement,
-    team_outlook_snapshots_statement,
-    team_records,
-    team_records_statement,
-    team_since_records_statement,
-    team_venue_records_statement,
     venue_records,
 )
 
-from .core import Refused, values_of
+from .core import Refused
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -130,7 +128,8 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Res
     relation's refusal (a conference named as a team, an ambiguous team).
 
     ``templates.teams.team_outlook`` was this, with its words; its two
-    statements are the relation's (:mod:`association.query.team_seasons`).
+    statements are the relation's, built and run there
+    (:mod:`association.query.team_seasons`).
 
     .. versionadded:: 5.0.0
 
@@ -144,7 +143,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Res
         return team
     season = q.span.season or current_season()
     postseason = (q.span.season_type or 2) == 3
-    snapshots = values_of(con, team_outlook_snapshots_statement(team.id, season))
+    snapshots = read_team_outlook_snapshots(con, team.id, season)
     chosen = team_outlook_chosen(snapshots, postseason)
     span = Span(season=season, season_type=3 if postseason else 2, source="team_snapshots")
     facts = OutlookFacts(postseason=postseason, snapshots=tuple(snapshot_facts(snapshots)))
@@ -154,7 +153,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Res
         empty = (Part(body=Scalar(games=0, how="projection")),)
         return Result(subject=team.name, relation="team", span=span, parts=empty, notes=_team_outlook_missing_notes(team, season, snapshots), facts=facts)
     kind = chosen[0]
-    rows = values_of(con, team_outlook_row_statement(season, kind, team.id))
+    rows = read_team_outlook_rows(con, season, kind, team.id)
     # The snapshot was chosen because it holds this team.
     assert rows
     return _team_outlook_result(team, season, postseason, chosen, rows[0], snapshots, span, facts)
@@ -273,12 +272,12 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result
         return _team_stat_record(con, team, key, span)
     if key is not None and season < TEAM_METRICS[key].first_season:
         return Refusal(kind="metric_before_first_season", facts={"metric": key, "season": season}, shown={"season": season})
-    lines = team_lines(values_of(con, team_lines_statement(season, season_type)), season)
+    lines = read_team_lines(con, season, season_type)
     mine = next((line for line in lines if line.team == team.name), None)
     if mine is None:
         # Which fact is missing decides the sentence: a team that did not
         # reach the postseason is not a team the warehouse lacks numbers for.
-        played = season_type == 3 and any(line.team == team.name for line in team_lines(values_of(con, team_lines_statement(season, 2)), season))
+        played = season_type == 3 and any(line.team == team.name for line in read_team_lines(con, season, 2))
         facts = {"team": team.name, "season": season, "season_type": season_type}
         return Refusal(kind="missed_postseason" if played else "no_team_line", facts=facts, shown={"team": team.name, "season": season, "stats": {}}, under=("headline",))
     return _team_stat_line(team, key, span, lines, mine)
@@ -288,7 +287,7 @@ def _team_stat_record(con: duckdb.DuckDBPyConnection, team: Entity, key: str, sp
     """A record metric: the team's record and where it ranks among the
     league's, from the standings (a tally of the games for a postseason)."""
     assert span.season is not None and span.season_type is not None
-    records = team_records(values_of(con, team_records_statement(span.season, span.season_type)))
+    records = read_team_records(con, span.season, span.season_type)
     mine = next((r for r in records if r.team == team.name), None)
     if mine is None:
         facts = {"team": team.name, "season": span.season, "season_type": span.season_type}
@@ -435,14 +434,14 @@ def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Spa
     if span.first:
         if venue is not None:
             raise Unsupported("a since-bounded record has no home/road split yet")
-        records = team_records(values_of(con, team_since_records_statement(span.season_type, span.first, span.last)))
+        records = read_team_since_records(con, span.season_type, span.first, span.last)
     elif venue:
-        rows = values_of(con, team_venue_records_statement(span.season, span.season_type, venue))
+        rows = read_team_venue_rows(con, span.season, span.season_type, venue)
         records = venue_records(rows, span.season_type)
         if rows and not records:
             return Refusal(kind="no_venue_split", facts={"season": span.season}, shown={"season": span.season})
     else:
-        records = team_records(values_of(con, team_records_statement(span.season, span.season_type)))
+        records = read_team_records(con, span.season, span.season_type)
     values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
     return values, {r.team: {"wins": r.wins, "losses": r.losses} for r in records}
 
@@ -460,7 +459,7 @@ def _team_leaderboard_metric(con: duckdb.DuckDBPyConnection, key: str, span: Spa
     assert span.season is not None and span.season_type is not None
     if span.season < metric.first_season:
         return Refusal(kind="metric_before_first_season", facts={"metric": key, "season": span.season}, shown={"season": span.season})
-    lines = team_lines(values_of(con, team_lines_statement(span.season, span.season_type)), span.season)
+    lines = read_team_lines(con, span.season, span.season_type)
     if lines and any(line.values.get(key) is None for line in lines):
         facts = {"metric": key, "season": span.season, "season_type": span.season_type, "short": short_of_games(key, lines)}
         return Refusal(kind="short_of_games", facts=facts, shown={"season": span.season})

@@ -4,10 +4,6 @@
  ],
  "sql_outside_the_relations": {
   "compose.core": 1,
-  "compose.seasons": 7,
-  "compose.team": 2,
-  "compose.team_records": 2,
-  "compose.team_stats": 9,
   "conditions": 7,
   "connection": 1,
   "entities": 3,
@@ -15,11 +11,12 @@
   "netpoints": 6,
   "player_games": 4,
   "player_relation": 18,
-  "season_line": 7,
+  "season_line": 13,
   "shots": 3,
   "standings": 4,
   "team_games": 2,
-  "team_relation": 2
+  "team_relation": 5,
+  "team_seasons": 7
  },
  "regex_outside_the_reader": [],
  "regex_in_the_reader": {

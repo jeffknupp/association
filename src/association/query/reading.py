@@ -1785,8 +1785,15 @@ class Reading(Filtered):
     shape: Shape = "rows"
     by: str = ""
     on: PointRelation = "player_games"
-    #: The measures the answer reads (box-score columns or derived measures).
-    measures: list[str] = field(default_factory=list)
+    #: What the point measures, typed (:class:`Measure`, by the catalog's
+    #: key): the box-score columns or derived measures a read reports,
+    #: which the compiler names once, as the planner hands it the point
+    #: (``compose.core.measure_names``). The compiler's names until Phase
+    #: 4, step 3, built at each of the point reader's sites.
+    #:
+    #: .. versionchanged:: 6.0.0
+    #:    A tuple of :class:`Measure` where it was a list of the compiler's names.
+    measures: tuple[Measure, ...] = ()
     aggregate: Aggregate = Aggregate.NONE
     group: Group = "none"
     #: Row predicates: ``(measure, op, value)``.
@@ -1908,7 +1915,7 @@ class Reading(Filtered):
         window = f"{self.order}/{self.direction}" + (f"/{self.limit}" if self.limit is not None else "")
         who = self.subject.kind if self.subject is not None else "?"
         return (
-            f"relation={self.relation} subject={who} shape={self.shape} by={self.by} on={self.on} measures={self.measures} aggregate={self.aggregate} "
+            f"relation={self.relation} subject={who} shape={self.shape} by={self.by} on={self.on} measures={[m.key for m in self.measures]} aggregate={self.aggregate} "
             f"group={self.group} predicates={self.predicates} window={window} filters={self.stated()}"
         )
 
