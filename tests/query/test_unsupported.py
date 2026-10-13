@@ -24,7 +24,7 @@ from association.query.calendar import parse_alignment, parse_situation
 from association.query.compose.plan import refusal_result
 from association.query.entities import names_of, players_of, teams_of
 from association.query.measure import measure_of
-from association.query.parse import _reading_from_route_refused, _reading_from_route_unsupported
+from association.query.parse import _reading_from_route_refused, _reading_from_route_unsupported, read_route
 from association.query.reading import (
     PERIOD_LOG,
     PERIOD_RANKING,
@@ -355,6 +355,8 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
         ("luka doncic stats against 50 win teams in the 2026 season", "wins", "50 win teams"),
         ("field goal percentage last 5 minutes of a nba game", "clutch", "last 5 minutes"),
         ("lebron clutch stats", "clutch", "clutch"),
+        ("Pelicans players defensive field goal percentage 2025-26", "defended shots", "defensive field goal percentage"),
+        ("best dfg% in the league", "defended shots", "dfg%"),
     ],
 )
 def test_a_fact_no_table_holds_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, fact: str, words: str) -> None:
@@ -365,6 +367,26 @@ def test_a_fact_no_table_holds_is_refused_by_name(con: duckdb.DuckDBPyConnection
     refusal = by_question(question, PLAYER_RANKING, con)
     assert refusal is not None and refusal.data == {"fact": fact, "words": words, "message": refusal.text}, refusal
     assert repr(words) in refusal.text
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("anthony edwards defensive rating 2025", "defensive rating"),
+        ("defense rating lebron james", "defense rating"),
+        ("shooting guards with best defensive rating in 2024", "defensive rating"),
+        ("top 5 defensive rating in nba in 2026", "defensive rating"),
+    ],
+)
+def test_a_players_rating_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
+    """Found fixing ISSUES.md #351: a player's defensive rating answered his
+    points line (28 of the 2,082 feed questions); the ratings are kept for
+    teams alone, so the point reader refuses it by name - and a team's
+    rating is read as it was."""
+    reading = read_route(names_of(con), question, [], "")
+    assert reading.point_refusal is not None and reading.point_refusal.facts == {"fact": "player rating", "words": words}
+    team = read_route(names_of(con), "Lowest defensive rating by a team this season", [], "")
+    assert team.point_refusal is None
 
 
 @pytest.mark.parametrize(

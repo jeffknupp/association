@@ -4629,6 +4629,14 @@ _FACT_NOT_READ: dict[str, str] = {
         "No figure over the last minutes of a game is read here - the plays are on file, but nothing narrows a game to its final minutes - "
         "so {words!r} cannot be read. Ask for a player's or the league's fourth quarter instead."
     ),
+    "defended shots": (
+        "No defensive field-goal percentage is on file here - the tracking that credits a defender with the shots he contested is not fetched - "
+        "so {words!r} cannot be read. Ask for a team's field-goal percentage allowed, or a player's own shooting, instead."
+    ),
+    "player rating": (
+        "No player's {words} is on file here - the ratings are kept for teams (points per 100 possessions) - so it cannot be read for a player. "
+        "Ask for a team's {words}, or the player's NetPoints (its defense side rates his defense), instead."
+    ),
     "birth": "No birth date is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by season, team or position instead.",
     "height": "No height is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by position instead (centers, forwards or guards).",
     "jersey": (

@@ -4316,6 +4316,19 @@ WON_WORDS = re.compile(r"\b(won|wins|win)\b", re.IGNORECASE)
 # which it did before this existed (measured against the real warehouse:
 # "highest 3-point percentage ... with at least 40 games" answered
 # lowest-first).
+# A player's offensive, defensive or net rating (ISSUES.md #351's
+# neighbor): the ratings are kept for teams alone, and a player's question
+# naming one answered his points line. Not where the words name a team.
+PLAYER_RATING = re.compile(r"\b(?:defensive|defense|offensive|offense|net)\s+(?:rating|rtg)\b|\b[don]rtg\b", re.IGNORECASE)
+"""A rating named, read as a player's where the question asks of players.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_WORD_HERE = re.compile(r"\bteams?\b", re.IGNORECASE)
+"""The word "team" itself, which makes a rating the team's.
+
+.. versionadded:: 6.0.0
+"""
 FEWEST_WORDS = re.compile(r"\b(fewest|lowest)\b|(?<!at )\bleast\b", re.IGNORECASE)
 """A ranking from the bottom: "fewest", "lowest", "least" - never "at least".
 
@@ -4409,7 +4422,7 @@ championship.
 # height ("6'10"), "how tall" or "height"; "4 ft" alone is a shot's
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
-ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch"], re.Pattern[str]], ...] = (
+ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots"], re.Pattern[str]], ...] = (
     (
         "draft",
         re.compile(
@@ -4448,13 +4461,17 @@ ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey",
     # nothing narrows a game to its final minutes - read as a floor of
     # minutes played until then.
     ("clutch", re.compile(r"\b(?:last|final)\s+(?:\d{1,2}|one|two|three|four|five)\s+(?:minutes?|mins?)\b|\bclutch\b", re.IGNORECASE)),
+    # A defender's field-goal percentage - the shots he contested, a tracking
+    # figure nothing fetches (ISSUES.md #351): read as the player's own
+    # shooting until then.
+    ("defended shots", re.compile(r"\bdefensive\s+(?:field[\s-]+goal|fg)\s*(?:%|percent(?:age)?|pct)|\bd[\s-]?fg\s*(?:%|pct)|\bdfg\b", re.IGNORECASE)),
 )
 """The facts a question can name that no table here holds (a draft
 position, an award or an All-Star selection, a birth date, a height), holds only as a dateless snapshot (a
 jersey number) or that nothing here reads from what it holds (a lead within
 a game, a four-point play, a player's role on his team, an opponent's win
-total, the last minutes of a game) - each with the words that name it, in
-the order tried. The parser
+total, the last minutes of a game, a defender's field-goal percentage) -
+each with the words that name it, in the order tried. The parser
 reads the first into the ``fact_not_read`` cause before any point
 (:attr:`~association.query.reading.Reading.refused`).
 
