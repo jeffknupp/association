@@ -2137,6 +2137,15 @@ COMPANION = re.compile(
 .. versionadded:: 6.0.0
    ``subject._COMPANION`` until Phase 3, step 2.
 """
+COMPANION_CLAUSE_BREAK = re.compile(r"\b(?:when|while|and)\s+$", re.IGNORECASE)
+"""A clause break right before a companion's name inside his phrase - the
+words before it are another clause, whose line is not his: "when they
+score 120 points when embiid starts", "when they score 120 and tatum
+plays" (ISSUES.md #246); "when 30 points from embiid" has none, and the
+line is his.
+
+.. versionadded:: 6.0.0
+"""
 COMPARED_WITH = re.compile(r"\b(?:compare|compared|comparing|contrast|contrasted|contrasting)\b[^,;?]{0,40}?\bwith\b", re.IGNORECASE)
 """A "with" that follows a compare verb closely ("compare luka with sga")
 joins the two subjects; it is not a companion phrase (ISSUES.md #233).
