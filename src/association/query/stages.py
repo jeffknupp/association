@@ -89,7 +89,8 @@ says so by listing ``notes`` here.
 _SUBJECT_LEFT_OUT = frozenset({"evidence", "claims", "companion_phrases"})
 
 # The point's own fields - the algebra as the reader read it - in the order
-# the trace prints them, after the key the words asked and its label; the
+# the trace prints them, after the key the words asked (and its label until
+# Phase 4, step 2 deleted ``Reading.intent``); the
 # point's typed filters follow them (``_filters_record``), since the point
 # reader may move one (a team read as the opponent, a position group the
 # move does not honor).
@@ -98,7 +99,7 @@ _SUBJECT_LEFT_OUT = frozenset({"evidence", "claims", "companion_phrases"})
 # line's flag until then - both derived by the planner now, and on the
 # query record still). ``subject_span`` is the one typed override of the
 # span the subject is settled in.
-_POINT_FIELDS = ("asked", "intent", "relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
+_POINT_FIELDS = ("asked", "relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
 
 
 def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
@@ -183,9 +184,9 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         point = {name: plain(getattr(reading.point, name), mask=mask) for name in _POINT_FIELDS}
         point.update(_filters_record(reading.point, mask))
     return {
-        # The key the words asked (``Reading.asked``, Phase 3, step 4) and
-        # its label, the page's (``Reading.intent``).
-        "intent": reading.intent,
+        # The key the words asked (``Reading.asked``, Phase 3, step 4); its
+        # label, the page's (``Reading.intent``), beside it until Phase 4,
+        # step 2.
         "asked": plain(reading.asked, mask=mask),
         # Who the read is about, the games' cuts, the companions, the lines,
         # the measure, the span, the split, the period and the window as the

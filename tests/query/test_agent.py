@@ -31,6 +31,7 @@ from association.query.reading import (
     Reading,
     Span,
     Window,
+    key_path,
 )
 from association.query.reading import Subject as Who
 
@@ -247,7 +248,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
 
     def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
         del ran  # the agent's own callback, not this test's record of the paths taken
-        paths.append(f"compose {reading.intent}")
+        paths.append(f"compose {key_path(reading.asked)}")
         return Reply(data={}, answer="composed")
 
     import duckdb
@@ -267,7 +268,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
         "sixers record when maxey scored 20+ points",
         Routed(TEAM_RECORD, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2))),
     )
-    assert paths == ["compose record_when"]
+    assert paths == ["compose player_games/split/line"]
     assert agent.reading is not None and agent.reading.asked == LINE_RECORD and "composed" in (answer.text or "")
 
 
@@ -761,10 +762,10 @@ def test_the_intent_the_parsers_words_assign_reaches_the_answers_decisions(monke
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
     answer = agent.ask("how far away does embiid shoot from?")
     assert answer.text == "templated" and agent.reading is not None and agent.reading.asked == SHOT_DISTANCE
-    moved = [d for d in answer.decisions if (d.stage, d.field) == ("parser", "intent")]
-    assert [(d.before, d.after, d.reason) for d in moved] == [("player_stat", "shot_distance", "the words 'how far' name shot_distance")]
+    moved = [d for d in answer.decisions if (d.stage, d.field) == ("parser", "asked")]
+    assert [(d.before, d.after, d.reason) for d in moved] == [("player_seasons/scalar/line", "shots/scalar/distance", "the words 'how far' name shots/scalar/distance")]
     record = next(iter((tmp_path / ".history").glob("*.log"))).read_text()
-    assert "  -> (decision) parser intent: 'player_stat' -> 'shot_distance' (the words 'how far' name shot_distance)" in record
+    assert "  -> (decision) parser asked: 'player_seasons/scalar/line' -> 'shots/scalar/distance' (the words 'how far' name shots/scalar/distance)" in record
 
 
 def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Path) -> None:

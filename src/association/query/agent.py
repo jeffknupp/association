@@ -34,7 +34,7 @@ import duckdb
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
-from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined
+from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined, key_path
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose.plan import Planned, plan_point, refusal_result
@@ -65,14 +65,6 @@ def _note(result: Reply, note: str) -> None:
     notes = result.data.setdefault("notes", [])
     if isinstance(notes, list):
         notes.append(note)
-
-
-def _shape_named(shape: PointShape | None) -> str | None:
-    """A shape as the trace names it - ``relation/shape/by``, None for
-    none: the key the words asked on the ``(parser)`` line and the planned
-    one on the ``(compose)`` line, where the label, the retired intent's
-    name, stood until Phase 4, step 2."""
-    return None if shape is None else f"{shape.relation}/{shape.shape}/{shape.by}"
 
 
 def refusal_text(why: str, asked: PointShape | None = None) -> str:
@@ -327,7 +319,7 @@ class Agent:
         # intent stood: the key the words ask is the Reading's own.
         path = "the compiler" if reading.asked is not None else "no reader: refused unless a named refusal has its cause"
         kind = reading.subject.kind if reading.subject is not None else None
-        history.log(f"  -> (parser) asked={_shape_named(reading.asked)} kind={kind!r} filters={reading.stated()} - {path}")
+        history.log(f"  -> (parser) asked={key_path(reading.asked)} kind={kind!r} filters={reading.stated()} - {path}")
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
         # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
@@ -436,7 +428,7 @@ class Agent:
         causes: list[Cause] = []
         composed = self._try_compose(reading, history, declined=declined.append, declined_by=causes.append)
         if composed is not None:
-            history.record_tool_call(f"compose {_shape_named(reading.asked)}", time.monotonic() - t0)
+            history.record_tool_call(f"compose {key_path(reading.asked)}", time.monotonic() - t0)
             return composed
         why = declined[0] if declined else "the compiler has no reading of this point"
         # The floor of the point the words named (Planned.shape, declared on
@@ -501,7 +493,7 @@ class Agent:
             _note(composed, note)
         self._unmatched_fingerprint(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
-        history.log(f"  -> (compose) asked={_shape_named(reading.asked)} shape={_shape_named(self.planned.shape)} point={point}")
+        history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(self.planned.shape)} point={point}")
         return composed
 
     def _unmatched_fingerprint(self, reading: Reading, composed: Reply) -> None:

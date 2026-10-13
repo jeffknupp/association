@@ -31,6 +31,8 @@ from association.query.reading import (
     PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_RANKING,
+    PLAYER_SPLITS,
+    TEAM_MEETINGS,
     TEAM_RANKING,
     TEAM_RECORD,
     Cuts,
@@ -1044,7 +1046,7 @@ def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.Duck
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
     for question, names in (("Embiid career record vs boston", ["embiid", "boston"]), ("Show Embiid's career record against Boston", ["Embiid", "Boston"])):
         reading = _parsed(scope_con, question, names)
-        assert reading.intent == "player_splits" and reading.who.player == "Joel Embiid" and reading.cuts.opponent == "Boston Celtics", question
+        assert reading.asked == PLAYER_SPLITS and reading.who.player == "Joel Embiid" and reading.cuts.opponent == "Boston Celtics", question
         assert reading.span.career and not any(c.absent for c in reading.companions) and not reading.who.team, question
 
 
@@ -1054,13 +1056,13 @@ def test_a_real_head_to_head_and_a_players_games_against_a_team_stay_what_they_a
     last 5 games" answered with a won-lost split would be a different
     question, fluently."""
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
-    for question, names, intent in (
-        ("Lakers vs Celtics record this season", ["Lakers", "Celtics"], "head_to_head"),
-        ("Lakers vs Celtics this season", ["Lakers", "Celtics"], "head_to_head"),
-        ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], "game_log"),
-        ("Embiid vs boston last 5 games", ["Embiid", "boston"], "game_log"),
+    for question, names, asked in (
+        ("Lakers vs Celtics record this season", ["Lakers", "Celtics"], TEAM_MEETINGS),
+        ("Lakers vs Celtics this season", ["Lakers", "Celtics"], TEAM_MEETINGS),
+        ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], PLAYER_LOG),
+        ("Embiid vs boston last 5 games", ["Embiid", "boston"], PLAYER_LOG),
     ):
-        assert _parsed(scope_con, question, names).intent == intent, question
+        assert _parsed(scope_con, question, names).asked == asked, question
 
 
 def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duckdb.DuckDBPyConnection) -> None:

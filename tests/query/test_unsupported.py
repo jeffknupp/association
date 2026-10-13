@@ -30,6 +30,7 @@ from association.query.reading import (
     PERIOD_RANKING,
     PLAYER_LINE,
     PLAYER_LOG,
+    PLAYER_MEETINGS,
     PLAYER_RANKING,
     PLAYER_SPLITS,
     TEAM_OUTLOOK,
@@ -244,9 +245,9 @@ def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.D
 
     for question in ("lebron vs kawhi head to head", "lebron vs kawhi record"):
         reading = parsed(question, ["lebron", "kawhi"])
-        assert reading.intent == "player_matchup" and reading.who.players == ("LeBron James", "Kawhi Leonard") and not reading.cuts.opponent, question
+        assert reading.asked == PLAYER_MEETINGS and reading.who.players == ("LeBron James", "Kawhi Leonard") and not reading.cuts.opponent, question
     team = parsed("lebron vs the hawks", ["lebron", "hawks"])
-    assert team.intent != "player_matchup" and team.who.player == "LeBron James" and team.cuts.opponent == "Atlanta Hawks"
+    assert team.asked != PLAYER_MEETINGS and team.who.player == "LeBron James" and team.cuts.opponent == "Atlanta Hawks"
 
 
 def test_a_teams_stat_no_period_splits_is_refused_and_a_rebuilt_one_is_not(con: duckdb.DuckDBPyConnection) -> None:

@@ -52,7 +52,7 @@ from association.query.line import lines_named
 from association.query.names import NameIndex
 from association.query.normalizer import Normalized
 from association.query.point import default_point
-from association.query.reading import Claim, Companion, Line, PointShape, Reading, Subject, asked_label
+from association.query.reading import Claim, Companion, Line, PointShape, Reading, Subject
 from association.query.span import claimed
 from association.query.subject import Subject as ReadSubject
 from association.query.subject import child_named, read_subject, settle_subject
@@ -83,11 +83,6 @@ class Routed:
         if name.startswith("__") or name == "scope":
             raise AttributeError(name)
         return getattr(self.scope, name)
-
-    @property
-    def intent(self) -> str:
-        """The key's label, as the trace prints it."""
-        return asked_label(self.asked)
 
 
 def with_subject(con: duckdb.DuckDBPyConnection | NameIndex, question: str, route: Routed) -> Routed:
@@ -152,11 +147,6 @@ class Staged:
         if name.startswith("__") or name == "scope":
             raise AttributeError(name)
         return getattr(self.scope, name)
-
-    @property
-    def intent(self) -> str:
-        """The key's label, as the trace prints it."""
-        return asked_label(self.asked)
 
 
 def staged(

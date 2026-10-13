@@ -240,12 +240,13 @@ def test_the_coach_refusal_names_the_source_rather_than_blaming_it() -> None:
 
 def test_the_kind_assigned_intents_all_have_readers() -> None:
     """A child the reading assigns is a shape a reader takes - a key of the
-    one label table, which every reader's shape is
-    (``reading.SHAPE_NAMES``) - and the stages assign none of them."""
-    from association.query.reading import SHAPE_NAMES
+    answer side's routes (``compose._ROUTES``; of the page's label table,
+    ``reading.SHAPE_NAMES``, until Phase 4, step 2) - and the stages assign
+    none of them."""
+    from association.query import compose
     from association.query.subject import KIND_ASSIGNED_ASKS
 
-    assert set(SHAPE_NAMES) >= KIND_ASSIGNED_ASKS
+    assert set(compose._ROUTES) >= KIND_ASSIGNED_ASKS
     assert KIND_ASSIGNED_ASKS.isdisjoint(CODE_ASSIGNED_ASKS)
 
 

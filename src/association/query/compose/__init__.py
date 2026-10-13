@@ -1,7 +1,7 @@
 """One compiler over the player-games and team-games relations: the only
-answer a shape the words ask for has (every key the grammar names,
-:data:`~association.query.reading.SHAPE_NAMES`; ``compose.COMPILED_INTENTS``
-listed the 25 intents' names until Phase 3, step 4), and the last step
+answer a shape the words ask for has (every key the grammar names;
+``compose.COMPILED_INTENTS`` listed the 25 intents' names until Phase 3,
+step 4), and the last step
 before a refusal naming why.
 
 The pipeline is parser -> template or compiler -> refusal. :func:`answer`

@@ -99,8 +99,7 @@ from association.query.reading import (
     Predicate,
     SubjectKind,
     Window,
-    asked_label,
-    labeled,
+    key_path,
 )
 from association.query.span import needed
 
@@ -219,8 +218,8 @@ class Subject(reading.Subject):
     players, the teams, the position group) and what only the parser's
     settling needs beside it - the opponent and the player's own team the
     cuts tagger takes, the companions, the evidence, the names the model
-    invented or filed as filler, the season named, the intent and why, the
-    characters each finding was read from.
+    invented or filed as filler, the season named, what the words ask and
+    why, the characters each finding was read from.
 
     ``kind`` is one of :data:`SUBJECT_KINDS`. ``players`` and ``teams`` are
     the names as the question or the router gave them - resolution to an
@@ -242,7 +241,9 @@ class Subject(reading.Subject):
        spelling of each router name, resolved from the span the router's
        name anchors rather than from a whole-word match - which read "kareem
        stats vs bob lanier" as Kareem Rush. ``invented``,
-       ``named_season``, ``intent`` and ``intent_reason`` added. ``opponent``
+       ``named_season``, ``intent`` and ``intent_reason`` added (``intent``
+       gone and ``intent_reason`` named ``asked_reason`` since 6.0.0, the
+       Phase 4, step 2 that deleted the label). ``opponent``
        also reads the router's slot where the question supports it;
        ``own_team`` needs the player named before the "for <team>" phrase.
 
@@ -274,15 +275,19 @@ class Subject(reading.Subject):
     #:
     #: .. versionadded:: 6.0.0
     asked: PointShape | None = None
-    #: The page's label for :attr:`asked` (:func:`~association.query.reading.asked_label`),
-    #: filled from the key and held to it - the record's, never read to decide.
-    intent: str = ""
-    #: Why ``asked`` is not the route's, in a sentence - the words that name
-    #: a child ("the words 'in a single game' name single_game_high"), or a
-    #: team's record in the games a companion reached a line - and ``None``
-    #: where it is the route's own. What the parser's decision about the
-    #: intent says (:func:`~association.query.parse.read_route`).
-    intent_reason: str | None = None
+    #: Why ``asked`` is not the parent's, in a sentence - the words that
+    #: name a child ("the words 'in a single game' name
+    #: player_games/rows/measure", the key as
+    #: :func:`~association.query.reading.key_path` names it), or a team's
+    #: record in the games a companion reached a line - and ``None`` where
+    #: it is the parent's own. What the parser's decision about what the
+    #: words ask says (:func:`~association.query.parse.read_route`).
+    #:
+    #: .. versionchanged:: 6.0.0
+    #:    ``intent_reason`` until Phase 4, step 2, which named the key by
+    #:    the page's label (``single_game_high``), as the deleted ``intent``
+    #:    beside it held it.
+    asked_reason: str | None = None
     #: Every companion with the role the question states
     #: (:class:`~association.query.reading.Companion`); ``companions`` above
     #: is their names.
@@ -305,12 +310,6 @@ class Subject(reading.Subject):
     #:
     #: .. versionadded:: 6.0.0
     companion_phrases: tuple[tuple[int, int, str], ...] = ()
-
-    def __post_init__(self) -> None:
-        """The typed subject's checks, and :attr:`intent` held to the label
-        :attr:`asked` is named by (:func:`~association.query.reading.labeled`)."""
-        super().__post_init__()
-        object.__setattr__(self, "intent", labeled(self.asked, self.intent))
 
     #: The router's player names that are no name at all - a rank word or
     #: a phrase of the question ("most", "most 30+ point games";
@@ -1094,7 +1093,6 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
         invented=tuple(invented),
         named_season=season_from_text(question),
         asked=asked,
-        intent=asked_label(asked),
         filler=filler,
         claims=(*subject.claims, *_read_subject_season_claims(question)),
     )
@@ -1157,26 +1155,23 @@ def settle_subject(subject: Subject, asked: PointShape | None, *, parent: PointS
     if who.kind == "team" and who.teams and who.opponent and asked == TEAM_MEETINGS:
         who = replace(who, kind="teams", teams=(who.teams[0], who.opponent), opponent=None)
     evidence = tuple(line for line in who.evidence if not line.startswith("the words "))
-    label = asked_label(asked)
     moved = not isinstance(parent, _NoParent) and asked != parent
     return replace(
         who,
         asked=asked,
-        intent=label,
-        intent_reason=_intent_reason(asked_label(parent), label, words) if moved and not isinstance(parent, _NoParent) else None,
-        evidence=(*evidence, f"the words {words!r} name {label}") if words else evidence,
+        asked_reason=_asked_reason(asked, words) if moved else None,
+        evidence=(*evidence, f"the words {words!r} name {key_path(asked)}") if words else evidence,
     )
 
 
-def _intent_reason(intent: str, settled: str, words: str | None) -> str | None:
-    """Why ``settled`` (a label) is not the route's ``intent``
-    (:attr:`Subject.intent_reason`): the words that name a child, or -
-    the one other way :func:`child_named` moves it, and the only one that
-    names no words - a team's record in the games a companion reached a
-    line."""
-    if settled == intent:
-        return None
-    return f"the words {words!r} name {settled}" if words is not None else _TEAM_RECORD_WHEN
+def _asked_reason(asked: PointShape | None, words: str | None) -> str:
+    """Why the settled key is not the parent's (:attr:`Subject.asked_reason`):
+    the words that name a child, or - the one other way :func:`child_named`
+    moves it, and the only one that names no words - a team's record in the
+    games a companion reached a line. The key (``asked``) is named as
+    :func:`~association.query.reading.key_path` names it; by the page's
+    label until Phase 4, step 2."""
+    return f"the words {words!r} name {key_path(asked)}" if words is not None else _TEAM_RECORD_WHEN
 
 
 def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: tuple[Companion, ...], scope: Filtered) -> bool:
@@ -1404,7 +1399,7 @@ def _apply_team_record_when(subject: Subject, scope: Filtered, asked: PointShape
         window=Window(),
     )
     if asked != LINE_RECORD:
-        return rewritten, [Decision("subject", "intent", asked_label(asked), asked_label(LINE_RECORD), _TEAM_RECORD_WHEN)], LINE_RECORD
+        return rewritten, [Decision("subject", "asked", key_path(asked), key_path(LINE_RECORD), _TEAM_RECORD_WHEN)], LINE_RECORD
     # Already the team's record (the parser settles it, _decide_intent): a
     # decision only where the companion is not the player the route held -
     # the player read BEFORE the scope was rewritten, since after it is his

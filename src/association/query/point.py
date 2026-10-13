@@ -101,7 +101,7 @@ from association.query.reading import (
     Window,
     _career_scope,
     _clamp_limit,
-    asked_label,
+    key_path,
     on_a_declared_relation,
     period_narrowing,
     scope_reads_box_scores,
@@ -1215,7 +1215,7 @@ def default_point(asked: PointShape | None, scope: Filtered) -> Reading:
         # The sentence the adapters' table gave until it went, kept so no
         # reading's verdict moves with the file - the retired name, from
         # the one table.
-        raise Unsupported(f"no adapter for {asked_label(asked)}")
+        raise Unsupported(f"no adapter for {key_path(asked)}")
     return replace(reader(scope), asked=asked)
 
 
@@ -1516,7 +1516,7 @@ def read_point(reading: Reading, question: str) -> Reading:
         # that reader first, the team compiler's sum where it declines.
         key = reading.asked
         point = replace(point, on=key.relation, shape=key.shape, by=key.by)
-    return replace(point, asked=reading.asked, intent=reading.intent, subject=subject, evidence=(*point.evidence, *subject.evidence))
+    return replace(point, asked=reading.asked, subject=subject, evidence=(*point.evidence, *subject.evidence))
 
 
 def _leaderboard_declines(scope: Filtered, subject: Subject) -> None:

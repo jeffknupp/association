@@ -26,7 +26,7 @@ from association.query.entities import names_of
 from association.query.grammar import settle
 from association.query.parse import read_route
 from association.query.player_relation import POSITION_CODES
-from association.query.reading import GAME_HIGHS, PLAYER_LINE, Aggregate, Cuts, Filtered, Reading, ScopeError, Span
+from association.query.reading import GAME_HIGHS, PLAYER_LINE, TEAM_PERIOD_TOTAL, Aggregate, Cuts, Filtered, Reading, ScopeError, Span
 from association.query.reading import Subject as Who
 from association.query.subject import is_team_name, subject_claims, subject_named_in, team_named_in_text, team_words_in
 from association.query.team_relation import scoped_team
@@ -200,7 +200,7 @@ def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(l
     assert subject_named_in(question) is None
     route = read_route(names_of(league.con), question, ["Sixers"], "points")
     reading = route
-    assert reading.intent == "team_quarter_points" and reading.who.team == "Philadelphia 76ers" and reading.who.players == ()
+    assert reading.asked == TEAM_PERIOD_TOTAL and reading.who.team == "Philadelphia 76ers" and reading.who.players == ()
     assert (reading.window.order, reading.window.count, reading.window.rank) == ("recent", 10, None)
 
 

@@ -60,7 +60,7 @@ def test_a_name_the_reading_settled_on_counts_as_read() -> None:
     }
     # A teammate who played counts on the with/without split alone, and only with nobody absent - as the slot era carried him.
     assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Draymond Green", "Stephen Curry", "Boston Celtics"]
-    whole["reading"]["intent"] = "with_without"
+    whole["reading"]["asked"] = {"relation": "team_games", "shape": "split", "by": "presence"}
     assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Draymond Green", "Stephen Curry", "Boston Celtics"]
     whole["reading"]["companions"] = whole["reading"]["companions"][1:]
     assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Klay Thompson", "Stephen Curry", "Boston Celtics"]

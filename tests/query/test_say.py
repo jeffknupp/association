@@ -448,15 +448,17 @@ def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
 
     from association.query.coverage import SOURCES
     from association.query.player_relation import RELATION_SCOPING_EXCLUDED
-    from association.query.reading import SHAPE_NAMES, TEAM_COACH
+    from association.query.reading import TEAM_COACH
     from association.query.result import Scalar
     from association.query.team_relation import TEAM_RELATION_SCOPING_EXCLUDED
 
     compose = importlib.import_module("association.query.compose")
     sayer = importlib.import_module("association.query.compose.say")
-    # One key: the routes, the shapes' rows of the two cell tables, the label table (but the coach's, which
-    # names a shape no reader takes) and the floor's tables.
-    assert set(compose._ROUTES) == set(SHAPE_NAMES) - {TEAM_COACH} == set(RELATION_SCOPING_EXCLUDED) | set(TEAM_RELATION_SCOPING_EXCLUDED) == set(SOURCES)
+    # One key: the routes, the shapes' rows of the two cell tables and the floor's tables; and every
+    # key the words ask has a route but the coach's, which names a shape no reader takes (the label
+    # table, reading.SHAPE_NAMES, held the routes and the asked keys together until Phase 4, step 2).
+    assert set(compose._ROUTES) == set(RELATION_SCOPING_EXCLUDED) | set(TEAM_RELATION_SCOPING_EXCLUDED) == set(SOURCES)
+    assert set(sayer._ASKED_AS) - {TEAM_COACH} <= set(compose._ROUTES)
     assert set(sayer._SCALAR_SAYERS) == set(typing.get_args(typing.get_type_hints(Scalar)["how"]))
     for module in (compose, sayer):
         tree = ast.parse(Path(module.__file__ or "").read_text())
