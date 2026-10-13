@@ -3029,6 +3029,27 @@ OPPONENT_SPELLED = re.compile(r"\b(?:allowed|given\s+up|conceded|against|opp|opp
 
 .. versionadded:: 6.0.0
 """
+# A team's figure given up, asked by the verb (ISSUES.md #348, #361): "how
+# many points did the sixers allow", "which team gave up the most points",
+# "which team allowed the most points per game" - the opponent's figure,
+# wherever the verb stands (``point._measure_whose``, on a team's key).
+GIVEN_UP_VERB = re.compile(r"\b(?:allow(?:ed|s|ing)?|gave\s+up|give[sn]?\s+up|giving\s+up|conced(?:e|ed|es|ing))\b", re.IGNORECASE)
+"""A figure given up, named by the verb.
+
+.. versionadded:: 6.0.0
+"""
+GIVEN_UP_KEYS: frozenset[str] = frozenset({"points"})
+"""The figures a team's readers read given up (the opponents' points, a
+team metric): the verb makes these the opponent's. Another stat given up
+("how many assists do the mavericks give up") is left the team's own, as
+it was: the team's season reader answers the opponent's figure of any
+stat but points from the team's own row, as its season total (ISSUES.md,
+"A team's figure given up on a stat other than points is answered as its
+own total ..."), so reading it the opponent's would move one wrong answer
+to another.
+
+.. versionadded:: 6.0.0
+"""
 OPPONENT_SUM = re.compile(r"\+|\bminus\b|\band\s+(?:opp|opponents?'?|opponent's)\b", re.IGNORECASE)
 """Two figures added or set side by side, the opponent's among them.
 

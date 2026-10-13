@@ -652,6 +652,7 @@ class MeasureWords:
     per_90: re.Match[str] | None
     per_minutes: re.Match[str] | None
     opponent: re.Match[str] | None
+    given_up: re.Match[str] | None
     rate: re.Match[str] | None
     team_total: re.Match[str] | None
     per_game: bool
@@ -695,6 +696,7 @@ def read_measure(question: str) -> MeasureWords:
         per_90=lexicon.PER_90.search(question),
         per_minutes=lexicon.PER_MINUTES.search(question),
         opponent=None if lexicon.OPPONENT_SUM.search(question) else lexicon.OPPONENT_STAT.search(question),
+        given_up=lexicon.GIVEN_UP_VERB.search(question),
         rate=lexicon.RATE_WORDS.search(question),
         team_total=lexicon.TEAM_TOTAL.search(question),
         per_game=lexicon.PER_GAME_WORDS.search(question) is not None,

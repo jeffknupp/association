@@ -1319,7 +1319,9 @@ a shape:
   reader's own spelling; a 2-point percentage; a ranking by shot distance,
   the `shot_distance` sentinel; the attempts beside a make; the LONGEST
   team-metric alias the words hold, `team_metric_named`, "allowed" after it
-  making it the opponent's; a NetPoints rate folded into its key and any
+  making it the opponent's, as "opp" before a stat does and, on a team's
+  key, a verb giving points up wherever it stands ("how many points did
+  the sixers allow", `lexicon.GIVEN_UP_VERB`, `GIVEN_UP_KEYS`); a NetPoints rate folded into its key and any
   other unit kept as the `rate` cell; a team's total; the stat the lines
   tagger read beside a line; a run's result; a fingerprint's side; a chart's
   shots; the columns beside a ranking) - into `reading.Measure(key,

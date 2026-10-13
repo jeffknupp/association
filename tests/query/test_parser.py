@@ -1100,3 +1100,29 @@ def test_opp_before_a_stat_is_the_opponents_figure(con: duckdb.DuckDBPyConnectio
     where two figures are added or set side by side."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.whose == whose
+
+
+@pytest.mark.parametrize(
+    ("question", "whose"),
+    [
+        ("how many points did the sixers allow in the 2001 playoffs", "opponent"),
+        ("how many points did the sixers give up in the 2001 playoffs", "opponent"),
+        ("how many points did the celtics allow this season", "opponent"),
+        ("how many points did the celtics give up this season", "opponent"),
+        ("which team allowed the most points per game", "opponent"),
+        ("which team gave up the most points", "opponent"),
+        ("which team conceded the fewest points", "opponent"),
+        ("which team scored the most points per game", "own"),
+        # Another stat given up stays the team's own: its season reader has no opponent's figure but points.
+        ("how many assists on average do the mavericks give up", "own"),
+        # A player's points are never the opponent's by the verb.
+        ("how many points did embiid allow this season", "own"),
+    ],
+)
+def test_a_teams_points_given_up_by_the_verb_are_the_opponents(con: duckdb.DuckDBPyConnection, question: str, whose: str) -> None:
+    """ISSUES.md #348, #361: a team's points allowed asked with the verb
+    ("did the sixers allow", "which team gave up the most points") answered
+    its own scoring - and "which team allowed the most points per game" read
+    the longer alias "points per game" as the team's own."""
+    reading = _read(con, question)
+    assert reading.measure is not None and reading.measure.whose == whose
