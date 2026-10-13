@@ -92,6 +92,10 @@ def phrase_line(phrase: str, *, below: bool) -> Line:
     op: LineOp = ">" if not below and lead.endswith(lexicon.OVER_LEADS) else "=" if not below and lead.endswith(lexicon.EXACT_LEADS) else ">="
     if below:
         op = "<=" if lead.startswith(lexicon.AT_MOST_LEADS) or " or less" in words else "<"
+        or_fewer = lexicon.OR_FEWER.match(words)
+        if or_fewer is not None:
+            # "10 or fewer turnovers": at or under, the stat after the words (ISSUES.md #325).
+            op, words = "<=", words[or_fewer.end() :]
     return Line(measure=measure_column(words), op=op, value=int(match.group("n")), as_typed=text, narrows=True)
 
 

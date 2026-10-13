@@ -262,13 +262,7 @@ def read_lines(question: str) -> LineCandidates:
             # "scores 30+": the plus is the number's where the verb's line states one.
             number: tuple[int, int, Literal["plus", "at_least", "bare"]] = (scored.start(1), scored.end(), "plus") if scored.end() > scored.end(1) else (scored.start(1), scored.end(1), "bare")
             found.append(LineCandidate(line, scored.start(), Claim(scored.start(), scored.end(), "line"), "scored", number))
-    for pattern, below in ((lexicon.ABOVE, False), (lexicon.BELOW, True)):
-        for m in pattern.finditer(question):
-            phrase_number = _phrase_number(question, m.start(), m.end())
-            lead = (m.start(), m.start() + len(question[m.start() : phrase_number[0]].rstrip())) if below and phrase_number is not None and phrase_number[0] > m.start() else None
-            found.append(
-                LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase", phrase_number, _phrase_stat(question, phrase_number, m.end()), lead)
-            )
+    found.extend(_read_lines_phrases(question))
     found.extend(stated)
     found.extend(_read_season_lines(question))
     return LineCandidates(tuple(found))
@@ -287,6 +281,26 @@ _SEASON_LEAD_OPS: dict[str, LineOp] = {
     "fewer than": "<",
     "below": "<",
 }
+
+
+def _read_lines_phrases(question: str) -> list[LineCandidate]:
+    """The floors of minutes and the lines under a number the words state
+    (:data:`~association.query.lexicon.ABOVE`, :data:`~association.query.lexicon.BELOW`),
+    each with its number, its stat and the words that lead it - before the
+    number ("under 14 fta") or after it ("10 or fewer turnovers")."""
+    found: list[LineCandidate] = []
+    for pattern, below in ((lexicon.ABOVE, False), (lexicon.BELOW, True)):
+        for m in pattern.finditer(question):
+            phrase_number = _phrase_number(question, m.start(), m.end())
+            lead = (m.start(), m.start() + len(question[m.start() : phrase_number[0]].rstrip())) if below and phrase_number is not None and phrase_number[0] > m.start() else None
+            stat = _phrase_stat(question, phrase_number, m.end())
+            trailing = lexicon.OR_FEWER.match(question, phrase_number[1] + 1) if below and lead is None and phrase_number is not None else None
+            if trailing is not None:
+                # "10 or fewer": the words that keep it under stand after the
+                # number, and the stat after them (ISSUES.md #325).
+                lead, stat = (trailing.start(), trailing.end() - 1), (trailing.end(), m.end())
+            found.append(LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase", phrase_number, stat, lead))
+    return found
 
 
 def _read_season_lines(question: str) -> list[LineCandidate]:

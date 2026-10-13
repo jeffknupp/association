@@ -2242,7 +2242,10 @@ SCORED = re.compile(
 # is two lines, not one.
 BELOW = re.compile(
     r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
-    r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b",
+    r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b"
+    # "10 or fewer turnovers", "12 or less fga" (ISSUES.md #325): at or
+    # under the number, the stat after the words that say so.
+    r"|\b\d+\s+or\s+(?:fewer|less)\s+(?!(?:and|or|with|in|for|vs|against|on|at|games?|minutes|mins?)\b)[a-z][a-z-]*(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|games?)\b)[a-z][a-z-]*){0,2}",
     re.IGNORECASE,
 )
 """A line a game is kept under, as worded.
@@ -2457,6 +2460,12 @@ other phrase of :data:`ABOVE` ("with 25 minutes", "at least 25 minutes",
 
 .. versionchanged:: 6.0.0
    "above" and "greater than", the leads :data:`LINE_OVER_OR_AT` reads.
+"""
+OR_FEWER = re.compile(r"or\s+(?:fewer|less)\s+", re.IGNORECASE)
+"""The words after a line's number that keep it at or under the number
+("10 or fewer turnovers"; ISSUES.md #325).
+
+.. versionadded:: 6.0.0
 """
 AT_MOST_LEADS: tuple[str, ...] = ("at most", "no more than")
 """The leads of a below phrase that read as "at or under" ("at most 5
@@ -3355,7 +3364,11 @@ CHILD_STREAK = ask(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|wins|losse
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_RECORD_WHEN_LINE = ask(
-    rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*(?:\d|{LINE_NUMBER_NO_PLUS})|{N_PLUS}\s*\w*.*\brecord\b",
+    rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*(?:\d|{LINE_NUMBER_NO_PLUS})|{N_PLUS}\s*\w*.*\brecord\b"
+    # A record when a line under a number held ("when committing 10 or
+    # fewer turnovers", "with less than 12 turnovers": ISSUES.md #325), its
+    # lead as the lines tagger typed it.
+    rf"|\brecord\b.*\b(?:when|with)\b.*{typed('line_lead')}",
     re.IGNORECASE,
 )
 """A record over a line: "record when he scored 30+".
