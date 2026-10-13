@@ -63,7 +63,7 @@ def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
     )
     assert ratchets.sql_outside_the_relations(modules) == {"point": 1, "compose.present": 1}
     assert ratchets.question_outside_the_reader(modules) == {"compose.present:say"}
-    assert ratchets.regex_outside_the_reader(modules) == {"compose.present", "compose.present:_TEAM_NOT_SUBJECT"}
+    assert ratchets.regex_outside_the_lexicon(modules) == {"compose.present", "compose.present:_TEAM_NOT_SUBJECT"}
     assert ratchets.con_in_the_reader(modules) == {"point:read"}
 
 
@@ -83,6 +83,33 @@ def test_a_string_sql_helper_counts_its_callers_and_not_its_own_body() -> None:
         compose__charts="def run(con, statement):\n    return con.sql(statement)\ndef read(con):\n    return run(con, 'SELECT 1')",
     )
     assert ratchets.sql_outside_the_relations(modules) == {"entities": 3, "compose.charts": 1}
+
+
+def test_the_compilers_door_runs_its_parameters_attribute_and_counts_as_no_statement() -> None:
+    """``compose.core._executed(con, statement)`` runs ``statement.sql`` -
+    an ATTRIBUTE of its parameter - and every compiled and relation
+    statement goes through it; until lane C4's commit (2026-10-12,
+    ISSUES.md #397) only a bare parameter made a door, so the door read as
+    one statement of ``compose.core``'s. A helper of it that hands on its
+    own parameter is a door too, and its callers are counted; ``rows_of``
+    and ``values_of`` hand theirs on and stay counted by where their
+    statement comes from (a compiled one is none); a method running its own
+    attribute (``self.sql``) runs SQL it holds, and counts."""
+    modules = _modules(
+        compose__core=(
+            "def _executed(con, statement):\n    return con.execute(statement.sql, statement.params)\n"
+            "def rows_of(con, compiled):\n    return _executed(con, compiled).fetchall()\n"
+            "def values_of(con, statement):\n    return _executed(con, statement).fetchall()\n"
+            "def run(con, q):\n    return rows_of(con, compile_query(con, q))"
+        ),
+        compose__seasons=(
+            "def line(con):\n    return values_of(con, Statement('SELECT 1', [])), _executed(con, Statement('SELECT 2', []))\n"
+            "def _raw(con, statement):\n    return _executed(con, statement)\n"
+            "def other(con):\n    return _raw(con, Statement('SELECT 3', []))\n"
+            "class Cache:\n    def load(self):\n        return self.con.execute(self.sql)"
+        ),
+    )
+    assert ratchets.sql_outside_the_relations(modules) == {"compose.seasons": 4}
 
 
 def test_a_connection_under_another_name_is_a_connection_in_the_reader() -> None:
@@ -149,27 +176,32 @@ def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
     assert ratchets.shrink(listed, grown)["sql_outside_the_relations"] == {"leaderboard": 2}
 
 
-def test_a_regex_outside_the_reader_is_found() -> None:
-    modules = _modules(grammar="import re", refusals="import re", entities="from re import compile", metrics="import json")
-    assert ratchets.regex_outside_the_reader(modules) == {"refusals", "entities"}
+def test_a_regex_outside_the_lexicon_is_found() -> None:
+    """Every module but the lexicon: one outside the reader that imports
+    ``re`` by any route, and - since Phase 4, step 6, when
+    ``regex_in_the_reader`` was folded in - a reader module too."""
+    modules = _modules(grammar="import re", refusals="import re", entities="from re import compile", metrics="import json", lexicon="import re\nWORD = re.compile(r'\\w+')")
+    assert ratchets.regex_outside_the_lexicon(modules) == {"grammar", "refusals", "entities"}
 
 
-def test_a_regex_inside_the_reader_is_counted_per_module_and_the_lexicon_is_not() -> None:
+def test_a_regex_inside_the_reader_is_found_and_an_annotation_is_not() -> None:
     """The Phase 3 review (2026-10-11): the step 4 exit "the reader's regexes
-    outside the lexicon are gone" was measured by ``regex_outside_the_reader``,
-    which counts modules OUTSIDE the reader and read 0 over 18 ``re`` calls
-    in ``point``, ``parse`` and ``line``. Every call of ``re`` in a reader
-    module but the lexicon counts; a flag or a type does not; a module
-    outside the reader is the other ratchet's."""
+    outside the lexicon are gone" was measured by a ratchet that counted
+    modules OUTSIDE the reader and read 0 over 18 ``re`` calls in
+    ``point``, ``parse`` and ``line``. A reader module but the lexicon that
+    calls ``re`` or imports it at run time is found; one that imports it
+    under ``TYPE_CHECKING`` for an annotation is not, and neither is the
+    lexicon."""
     modules = _modules(
         point="import re\n_VS = re.compile(r'vs', re.I)\n_LOG = re.compile('log')\ndef read(words: re.Pattern): ...",
         line="import re\ndef words(stat):\n    return re.sub(r'\\s+', ' ', stat)",
         lexicon="import re\nWORD = re.compile(r'\\w+')\nMARK = re.escape('x')",
         measure="import re\ndef kind(p: re.Pattern) -> bool:\n    return p.flags & re.I != 0",
+        window="from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import re\ndef end(m: re.Match) -> str: ...",
+        split="import typing\nif typing.TYPE_CHECKING:\n    import re\nelse:\n    import json",
         entities="import re\nX = re.compile('x')",
     )
-    assert ratchets.regex_in_the_reader(modules) == {"point": 2, "line": 1}
-    assert ratchets.regex_outside_the_reader(modules) == {"entities"}
+    assert ratchets.regex_outside_the_lexicon(modules) == {"point", "line", "measure", "entities"}
 
 
 def test_a_new_violation_and_a_listed_one_that_is_gone_both_fail() -> None:

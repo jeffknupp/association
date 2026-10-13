@@ -25,7 +25,6 @@ a span that is no player's and no team's is dropped, never made a subject
 
 from __future__ import annotations
 
-import re
 from dataclasses import replace
 from typing import Any
 
@@ -34,7 +33,6 @@ from association.query.cuts import CutsContext, CutsRead, read_cuts
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
 from association.query.grammar import Asked, absent, settle
-from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
 from association.query.line import LinesNamed, LinesRead, lines_named, read_lines, read_period_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
@@ -98,84 +96,73 @@ from association.query.subject import (
 )
 from association.query.window import MinimumRead, WindowContext, contradicting_ends, per_season_window, read_minimum, read_window
 
-_PAIR_MEETING = (
-    r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
-    r"(?=.*(\b(head.to.head|matchup|when they play|meet|vs\.?|versus|against)\b|[\ue005\ue006]))"
-)
-"""A pair meeting - "vs", "against", a matchup - unless a compare verb owns the pair."""
-
-# Every count a question can spell is the lexicon's (`COUNT`), one table
-# every count pattern here is built from.
-_COUNT = COUNT
-
-
-_PLAYER_LOG = (
-    r"\b(game ?log|gamelog|logs?|last " + _COUNT + r" games|each game|game by game|box scores?|(?<!per )games? (with|where|in which|against|vs)"
-    r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
-    r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
-    # A player's games against a team: "games" with the opponent the
-    # subject reading read right after it (lexicon.mark_opponent), its
-    # versus word the opponent's.
-    r"|(?<!per )\bgames? \ue005"
-    # A window of games ("last 10 games", "his first game", "most recent 5
-    # games") and a range opened on a dated day ("since 1/26/20"), each as
-    # the window tagger and the cuts tagger typed it (lexicon.WINDOW_MARK,
-    # DATE_MARK): the row reads that one stands here, and its words are the
-    # taggers' to claim (slice (c)). The window words above stay for a form
-    # the tagger does not type ("final games"); a typed one is marked and
-    # the words cannot see it.
-    r"|\ue00a|\ue00b"
-)
-"""A player's games rather than his line: a log word, a window, one game, a date."""
-
 ANY = frozenset({"player", "pair", "team", "teams", "team_players", "position", "everyone", "player+companions", "team+companions"})
 """Every subject kind, for a grammar row that applies whatever the kind."""
 
-PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
-    # (kinds the row applies to, the words, the parent shape) - first match wins.
-    (ANY, r"\bfingerprint", NETPOINTS_FINGERPRINT),
-    # "plot" and the shots in either order: "threes by Plot Curry" is "plot curry's threes" reworded.
-    (ANY, r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\b(shots?|threes)\b.*\bplot\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot", SHOT_CHART),
-    (frozenset({"team", "teams"}), lexicon.PERIOD_INTENT_WORDS, TEAM_PERIOD_TOTAL),
-    (frozenset({"everyone"}), lexicon.PERIOD_INTENT_WORDS, PERIOD_RANKING),
-    (ANY, lexicon.PERIOD_INTENT_WORDS, PERIOD_LOG),
-    (ANY, r"\bcoach", TEAM_COACH),
-    (frozenset({"pair"}), _PAIR_MEETING, PLAYER_MEETINGS),
-    (frozenset({"pair"}), r".", PLAYER_COMPARISON),
-    (frozenset({"teams"}), r".", TEAM_MEETINGS),
-    (frozenset({"team_players"}), r".", PLAYER_RANKING),
-    (frozenset({"team"}), r"(?=.*\b(top \d+|scorers?|rebounders?|passers?|leaders?|players?)\b)(?=.*\b(top|most|best|leaders?)\b)", PLAYER_RANKING),
-    # A companion's phrase led by a presence word, as the subject reading
-    # typed it (lexicon.COMPANION_MARK_PRESENCE), or such a word anywhere else.
-    (frozenset({"team+companions"}), r"\b(with|without|when|while)\b|\ue008", PRESENCE_SPLIT),
-    # A log word, a window of games as the window tagger typed it
-    # (lexicon.WINDOW_MARK: "last 10 games", "the season opener"), or the
-    # window words the row read before the mark, for a form the tagger
-    # does not type ("last 10 match ups").
+_AGAINST = lexicon.stands("opponent_against", "opponent_versus")
+"""A team set against the subject, led by a versus word, as the subject
+reading typed it (the words "against boston" are its, not a row's)."""
+
+_PAIR_MEETING: lexicon.GrammarRow = lexicon.AllOf((lexicon.NoneOf((lexicon.COMPARE_VERB_ROW,)), lexicon.AnyOf((lexicon.MEETING_ROW, _AGAINST))))
+"""A pair meeting - "vs", "against", a matchup, or an opponent typed with
+a versus word - unless a compare verb owns the pair."""
+
+_PLAYER_LOG: lexicon.GrammarRow = lexicon.AnyOf(
     (
-        frozenset({"team"}),
-        r"\b(game ?log|(last|past|previous|most recent) " + _COUNT + r"\b|first \d+ games|each game|game by game|differential"
-        r"|(first|opening|last|latest|most recent|final) game|(season )?opener)|\ue00a",
-        PLAYER_LOG,
-    ),
-    (frozenset({"team"}), r"\bstreak", TEAM_RECORD),
-    (frozenset({"team"}), r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec)\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)", TEAM_RECORD),
-    (frozenset({"team"}), r"\b(outlook|projections?|projected|on pace|schedule|odds|chances|(vs\.?|versus|against|compared (to|with)) other)\b", TEAM_OUTLOOK),
+        lexicon.PLAYER_LOG_ROW,
+        # A player's games against a team: "games" with the opponent the
+        # subject reading typed right after it, its versus word the opponent's.
+        lexicon.StandsAfter(lexicon.GAMES_BEFORE_A_VALUE, frozenset({"opponent_against"})),
+        # A window of games ("last 10 games", "his first game", "most recent
+        # 5 games") and a range opened on a dated day ("since 1/26/20"), as
+        # the window tagger and the cuts tagger typed them: the row reads that
+        # one stands, and its words are the taggers' to claim (slice (c)).
+        lexicon.stands("window", "date"),
+    )
+)
+"""A player's games rather than his line: a log word, a window, one game, a date."""
+
+PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...] = (
+    # (kinds the row applies to, the row's predicate over the grammar's
+    # text, the parent shape) - first match wins.
+    (ANY, lexicon.FINGERPRINT_ROW, NETPOINTS_FINGERPRINT),
+    (ANY, lexicon.SHOT_CHART_ROW, SHOT_CHART),
+    (frozenset({"team", "teams"}), lexicon.PERIOD_ROW, TEAM_PERIOD_TOTAL),
+    (frozenset({"everyone"}), lexicon.PERIOD_ROW, PERIOD_RANKING),
+    (ANY, lexicon.PERIOD_ROW, PERIOD_LOG),
+    (ANY, lexicon.COACH_ROW, TEAM_COACH),
+    (frozenset({"pair"}), _PAIR_MEETING, PLAYER_MEETINGS),
+    (frozenset({"pair"}), lexicon.ANY_WORDS_ROW, PLAYER_COMPARISON),
+    (frozenset({"teams"}), lexicon.ANY_WORDS_ROW, TEAM_MEETINGS),
+    (frozenset({"team_players"}), lexicon.ANY_WORDS_ROW, PLAYER_RANKING),
+    (frozenset({"team"}), lexicon.TEAM_PLAYERS_RANKED_ROW, PLAYER_RANKING),
+    # A presence word, or a companion's phrase led by one as the subject
+    # reading typed it.
+    (frozenset({"team+companions"}), lexicon.AnyOf((lexicon.PRESENCE_ROW, lexicon.stands("companion_with"))), PRESENCE_SPLIT),
+    # A log word, or a window of games as the window tagger typed it ("last
+    # 10 games", "the season opener") - or the window words the row read
+    # before the window was typed, for a form the tagger does not type
+    # ("last 10 match ups").
+    (frozenset({"team"}), lexicon.AnyOf((lexicon.TEAM_LOG_ROW, lexicon.stands("window"))), PLAYER_LOG),
+    (frozenset({"team"}), lexicon.STREAK_ROW, TEAM_RECORD),
+    (frozenset({"team"}), lexicon.TEAM_RECORD_ROW, TEAM_RECORD),
+    (frozenset({"team"}), lexicon.TEAM_OUTLOOK_ROW, TEAM_OUTLOOK),
     # A team's triple-doubles are its PLAYERS' (a boolean player line), which
     # the players' ranking reads under the team - not a team box-score total.
-    (frozenset({"team"}), r"\b(triple|double)[ -]?doubles?\b", PLAYER_RANKING),
-    (frozenset({"team"}), r".", TEAM_LINE),
-    (frozenset({"player"}), r"\bnet ?po?i?nts?\b|\bnetpts\b", NETPOINTS_RATINGS),
+    (frozenset({"team"}), lexicon.TEAM_DOUBLES_ROW, PLAYER_RANKING),
+    (frozenset({"team"}), lexicon.ANY_WORDS_ROW, TEAM_LINE),
+    (frozenset({"player"}), lexicon.NETPOINTS_ROW, NETPOINTS_RATINGS),
     # A player's own record is the W-L of HIS games, which player_splits
     # answers (F088, "Embiid's record against Boston this year"; ISSUES.md
     # #231) - never the team's with/without split, which needs a companion.
-    # Not with a line in it: "Sga record 36 plus points" is record_when, a
-    # child player_stat's reading assigns. Before the log row, whose window
-    # and date words ("since 1/26/20", "last 10 games") narrow a record as
-    # much as a log - but not over a log word: a game log is its games.
+    # Not with a line stated with a plus in it, in words or as the lines
+    # tagger typed it: "Sga record 36 plus points" is record_when, a child
+    # player_stat's reading assigns. Before the log row, whose window and
+    # date words ("since 1/26/20", "last 10 games") narrow a record as much
+    # as a log - but not over a log word: a game log is its games.
     (
         frozenset({"player"}),
-        r"(?=.*\b(record|rec|w-?l|win.loss|splits?)\b)(?!.*(\b\d{1,3}[\s-]*(\+|plus\b|or more\b)|\ue000))(?!.*\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b)",
+        lexicon.AllOf((lexicon.RECORD_ROW, lexicon.NoneOf((lexicon.PLUS_LINE_WORDS_ROW, lexicon.stands("line_plus"))), lexicon.NoneOf((lexicon.LOG_ROW,)))),
         PLAYER_SPLITS,
     ),
     (frozenset({"player"}), _PLAYER_LOG, PLAYER_LOG),
@@ -183,27 +170,32 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
     # a team, where "maxey points vs boston without embiid" is his own games
     # narrowed (ROADMAP step 3: the absence a condition, on whichever side the
     # name resolves to), not a two-sided split.
-    (frozenset({"player+companions"}), r"(?=.*(\b(with|without|while|when)\b|\ue008))(?!.*(\b(?:vs\.?|versus|against)\b|[\ue005\ue006]))", PRESENCE_SPLIT),
-    (frozenset({"player"}), r".", PLAYER_LINE),
-    (frozenset({"position"}), r"\b(log|game ?log)\b", PLAYER_LOG),
-    (frozenset({"position"}), r".", PLAYER_RANKING),
     (
-        frozenset({"everyone"}),
-        r"(?=.*\b(team|teams|franchise|nba)\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)",
-        TEAM_RANKING,
+        frozenset({"player+companions"}),
+        lexicon.AllOf((lexicon.AnyOf((lexicon.PRESENCE_ROW, lexicon.stands("companion_with"))), lexicon.NoneOf((lexicon.VERSUS_WORD_ROW, _AGAINST)))),
+        PRESENCE_SPLIT,
     ),
+    (frozenset({"player"}), lexicon.ANY_WORDS_ROW, PLAYER_LINE),
+    (frozenset({"position"}), lexicon.POSITION_LOG_ROW, PLAYER_LOG),
+    (frozenset({"position"}), lexicon.ANY_WORDS_ROW, PLAYER_RANKING),
+    (frozenset({"everyone"}), lexicon.LEAGUE_TEAMS_RANKED_ROW, TEAM_RANKING),
     # A record with no player in it is a team's: "worst record 2025-26" read
     # as the league's scorers, the everyone row below.
-    (frozenset({"everyone"}), r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)", TEAM_RANKING),
-    (frozenset({"everyone"}), r"\bstreak", TEAM_RECORD),
-    # "game log", or a log after a window of games as the window tagger typed it ("last game log", lexicon.WINDOW_MARK).
-    (frozenset({"everyone"}), r"\b(finals|game ?log)\b|\ue00a log\b", PLAYER_LOG),
-    (frozenset({"everyone"}), r".", PLAYER_RANKING),
+    (frozenset({"everyone"}), lexicon.LEAGUE_RECORD_ROW, TEAM_RANKING),
+    (frozenset({"everyone"}), lexicon.STREAK_ROW, TEAM_RECORD),
+    # "game log", or a log after a window of games as the window tagger typed it ("last game log").
+    (frozenset({"everyone"}), lexicon.AnyOf((lexicon.LEAGUE_LOG_ROW, lexicon.StandsBefore(frozenset({"window"}), lexicon.LOG_AFTER_A_VALUE))), PLAYER_LOG),
+    (frozenset({"everyone"}), lexicon.ANY_WORDS_ROW, PLAYER_RANKING),
 )
 """The parent grammar: the first row whose kinds hold the subject's kind
-and whose words the question matches names the parent - what the words ask,
-as the point it means bare (:class:`~association.query.reading.PointShape`:
-its relation, shape and ``by``). The children
+and whose predicate holds over the grammar's text names the parent - what
+the words ask, as the point it means bare
+(:class:`~association.query.reading.PointShape`: its relation, shape and
+``by``). A row reads the words (the lexicon's, :data:`~association.query.lexicon.GrammarRow`)
+and the values the taggers typed where they stand
+(:class:`~association.query.lexicon.GrammarText`) - a window of games, an
+opponent with its versus word, a companion's phrase, a line - asked by
+value, never by a character written into the question. The children
 (:data:`~association.query.subject.KIND_ASSIGNED_ASKS`) are assigned under
 it by the subject reading, as they are on the router's parent today.
 
@@ -212,6 +204,11 @@ it by the subject reading, as they are on the router's parent today.
 .. versionchanged:: 6.0.0
    Each row names a :class:`~association.query.reading.PointShape` (the
    grammar's key), where it named an intent (Phase 3, step 4).
+
+.. versionchanged:: 6.0.0
+   Each row is a predicate over the grammar's text, where it was a regex
+   over the question with each typed value written into it as a mark
+   (Phase 4, step 6).
 """
 
 # The measure grammar - the stat a question names in its own words, read
@@ -220,15 +217,7 @@ it by the subject reading, as they are on the router's parent today.
 # 2; the grammar's rules take it as their context (grammar.settle).
 
 
-# A row written as lookaheads describes the whole question, so it is anchored
-# at its start: searched from every position, "(?!.*evaluate)" would simply
-# skip past the word it excludes.
-_PARENT_ROWS: tuple[tuple[frozenset[str], re.Pattern[str], PointShape], ...] = tuple(
-    (kinds, re.compile((r"\A" if pattern.startswith("(?") else "") + pattern, re.IGNORECASE | re.DOTALL), parent) for kinds, pattern, parent in PARENT_GRAMMAR
-)
-
-
-def parent_asked(question: str, kind: str, companions: bool = False) -> PointShape | None:
+def parent_asked(question: str | lexicon.GrammarText, kind: str, companions: bool = False) -> PointShape | None:
     """The parent :data:`PARENT_GRAMMAR` names for ``question`` read as a
     subject of ``kind`` - what the words ask, or ``None`` where no row names
     a shape (every kind's rows end in one that matches any words, so only a
@@ -242,9 +231,14 @@ def parent_asked(question: str, kind: str, companions: bool = False) -> PointSha
 
     .. versionadded:: 6.0.0
        ``parent_intent``, which returned an intent's name, until Phase 3, step 4.
+
+    .. versionchanged:: 6.0.0
+       Takes the grammar's text (:class:`~association.query.lexicon.GrammarText`)
+       as well as a plain question (Phase 4, step 6).
     """
-    for kinds, pattern, parent in _PARENT_ROWS:
-        if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and pattern.search(question):
+    text = lexicon.GrammarText.of(question)
+    for kinds, predicate, parent in PARENT_GRAMMAR:
+        if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and predicate.holds(text):
             return parent
     return None
 
@@ -404,15 +398,19 @@ def _model_reading(slots: dict[str, Any]) -> Reading:
     )
 
 
-def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subject:
+def _two_teams(subject: Subject, question: str | lexicon.GrammarText, slots: dict[str, Any]) -> Subject:
     """Two teams meeting (ISSUES.md #235): a team subject set against a
     second team, no player named, and a meeting word between them - the
-    ``teams`` kind the reading only gives under ``head_to_head`` today."""
+    ``teams`` kind the reading only gives under ``head_to_head`` today.
+    Read over the question's words, or over the grammar's text, where a
+    window of games and an opponent's versus word stand as the taggers
+    typed them."""
     if subject.kind != "team" or subject.players or not subject.teams:
         return subject
     other = subject.opponent or (slots.get("opponent") if isinstance(slots.get("opponent"), str) else None)
-    one_teams_games = lexicon.TWO_TEAMS_LOG_WORDS.search(question) or (LOG_OR_WINDOW_WORDS.search(question) and not lexicon.TWO_TEAMS_RECORD_WORDS.search(question))
-    if not other or other == subject.teams[0] or not lexicon.MEETING_WORDS.search(question) or one_teams_games:
+    text = lexicon.GrammarText.of(question)
+    one_teams_games = lexicon.TWO_TEAMS_LOG_WORDS.search(text.text) or (lexicon.LOG_OR_WINDOW_WORDS.holds(text) and not lexicon.TWO_TEAMS_RECORD_WORDS.search(text.text))
+    if not other or other == subject.teams[0] or not lexicon.MEETING_WORDS.holds(text) or one_teams_games:
         return subject
     return replace(subject, kind="teams", teams=(subject.teams[0], other), opponent=None)
 
@@ -574,16 +572,9 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
        then, and ``reading_from_route`` - folded in here - wrote the Reading
        from the Route.
     """
-    # The intake: every private-use character is read as a space, where it
-    # stands, before anything reads the words (ISSUES.md #383) - the
-    # grammars read the typed values as marks from that range
-    # (lexicon.mark_lines, mark_opponent, ...), and a mark typed by hand
-    # would be read as a value no tagger read. The one place it is done.
-    question = lexicon.unmarked(question)
-    names = [lexicon.unmarked(name) for name in names or ()]
     # The model's reply as given: the words it accounts for are no unread
     # words (Reading.unread, by the claims ledger's rule).
-    given = tuple(names)
+    given = tuple(names or ())
     asked = question
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]
@@ -619,28 +610,24 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # reading read, typed.
     who, opponent = _read_route_names(subject, slots)
     beside = _read_route_beside(subject, question)
-    # The choosers read the lines as the lines tagger types them, never by
-    # their words: each line's number and stat written over by its mark
-    # (lexicon.mark_lines), so a grammar's row reads "a line stands here"
-    # and claims only its own words around it - the line's are the lines
-    # tagger's (Phase 3, step 4, slice (b): until it the grammars read the
-    # numbers themselves, and each claim joined the line's).
+    # The choosers read the typed values the taggers read, never their
+    # words: the parent grammar reads the grammar's text - the question with
+    # each line's number, the opponent the subject reading read with its
+    # versus word, each companion's phrase, each window of games and each
+    # range opened on a dated day held apart from the words as the value
+    # typed there (lexicon.GrammarText) - so a row reads "a window of games
+    # stands here" by value and claims only its own words around it; the
+    # values' words are their readers' to claim (Phase 3, step 4, slices
+    # (b) and (c), as marks written into the question until Phase 4, step 6).
     named_lines = lines_named(question)
-    numbered = named_lines.numbered(question)
-    # The parent grammar reads the opponent as the subject reading typed
-    # it, the same way: "games against boston" is a player's games with a
-    # team set against him, and "against boston" the opponent's words.
-    opposed = lexicon.mark_opponent(numbered, tuple((c.start, c.end) for c in opponent_read(index.teams, question, opponent)))
-    # And the companions' phrases, the windows of games and the calendar
-    # days the subject reading, the window tagger and the cuts tagger read,
-    # the same way (slice (c)): a row reads "a companion stands here", "a
-    # window of games here", "a day here", and claims only its own words
-    # around them - the phrase's, the window's and the day's are their
-    # readers' to claim, so no claim is joined from two readings of one word.
-    companions_at = tuple((start, end) for start, end, _ in read.companion_phrases)
-    prepared = lexicon.mark_companions(opposed, companions_at)
-    prepared = lexicon.mark_spans(prepared, _window_spans(question), lexicon.WINDOW_MARK)
-    prepared = lexicon.mark_spans(prepared, _date_spans(question, opponent, read.conditions), lexicon.DATE_MARK)
+    prepared = grammar_text(
+        question,
+        lines=named_lines,
+        opponent_at=tuple((c.start, c.end) for c in opponent_read(index.teams, question, opponent)),
+        companions_at=tuple((start, end) for start, end, _ in read.companion_phrases),
+        opponent=opponent,
+        conditions=read.conditions,
+    )
     parent = parent_asked(prepared, subject.kind, beside)
     # What the grammar read: the words whose deletion names another parent
     # (span.read_by) - a row's own words ("fingerprint", "record"), a word
@@ -675,51 +662,37 @@ def _blanked(question: str, claims: tuple[Claim, ...]) -> str:
     return question
 
 
-def marked_for_grammar(question: str) -> str:
-    """``question`` as :func:`read_route` hands it to the parent grammar
-    (:func:`parent_asked`) where no name is read from it: each window of
-    games and each range opened on a dated day written over by its mark
-    (:func:`_window_spans`, :func:`_date_spans`). The opponent's and the
-    companions' marks need the subject reading, which only ``read_route``
-    runs; a test of the grammar's rows over words alone goes through here.
+def grammar_text(
+    question: str,
+    *,
+    lines: LinesNamed | None = None,
+    opponent_at: tuple[tuple[int, int], ...] = (),
+    companions_at: tuple[tuple[int, int], ...] = (),
+    opponent: str | None = None,
+    conditions: tuple[Companion, ...] = (),
+) -> lexicon.GrammarText:
+    """``question`` as the parent grammar reads it (:func:`parent_asked`):
+    each line's number the lines tagger read (``lines``,
+    :meth:`~association.query.line.LinesNamed.numbered`), the opponent with
+    its versus word (``opponent_at``, by the word that leads it), each
+    companion's phrase (``companions_at``, by whether a presence word is in
+    it; a line inside it stays the line), each window of games the window
+    tagger reads (:meth:`~association.query.window.WindowCandidates.of_games`)
+    and each range opened on a dated day the cuts tagger reads
+    (:meth:`~association.query.cuts.CutsRead.dated`) - each typed over the
+    one before it, a later one over an earlier. Called with the question
+    alone it types the windows and the days, which need no name: a test of
+    the grammar's rows over words alone goes through here.
 
     .. versionadded:: 6.0.0
+       ``marked_for_grammar``, which wrote each value into the question as
+       a mark, until Phase 4, step 6.
     """
-    prepared = lexicon.mark_spans(question, _window_spans(question), lexicon.WINDOW_MARK)
-    return lexicon.mark_spans(prepared, _date_spans(question, None, ()), lexicon.DATE_MARK)
-
-
-def _window_spans(question: str) -> tuple[tuple[int, int], ...]:
-    """Where the window tagger reads a window of GAMES from - the grammar's
-    end and count, and the looser end words
-    (:func:`~association.query.window.read_window`) - which the parent
-    grammar reads as :data:`~association.query.lexicon.WINDOW_MARK`. A
-    ranking's "top 5" names a count and no end, and is a word the ranking
-    rows read, so it stays words; so does a count of seasons, which a
-    history's child grammar reads; and so does one game named as the
-    subject's own ("his last game" - the grammar's "last game" inside it
-    is marked), whose stretch reaches over words other rows read ("barnes's
-    first quarter game": the period's)."""
-    found = read_window(question, WindowContext())
-    spans: list[tuple[int, int]] = []
-    order, _count, claim = found.grammar
-    if order is not None and claim is not None:
-        spans.append((claim.start, claim.end))
-    spans.extend((claim.start, claim.end) for _, claim in found.order_words)
-    return tuple(spans)
-
-
-_SLASHED_DAY = re.compile(r"\d+/\d+")
-
-
-def _date_spans(question: str, opponent: str | None, companions: tuple[Companion, ...]) -> tuple[tuple[int, int], ...]:
-    """Where the cuts tagger reads a range opened on a dated day from
-    ("since 1/26/20", a situation with the day in it) - which the parent
-    grammar reads as :data:`~association.query.lexicon.DATE_MARK`. A
-    calendar day, a month and a weekday stay words: the log row reads a
-    month's name and a slashed day itself, as it did."""
-    found = read_cuts(question, CutsContext(opponent=opponent, without=absent(companions)))
-    return tuple((c.start, c.end) for c in found.claims if c.what == "situation" and _SLASHED_DAY.search(question[c.start : c.end]) is not None)
+    text = lines.numbered(question) if lines is not None else lexicon.GrammarText.of(question)
+    text = text.typed_over(tuple((start, end, lexicon.opponent_kind(text.text[start:end])) for start, end in opponent_at))
+    text = text.typed_over(tuple((start, end, lexicon.companion_kind(text.text[start:end])) for start, end in companions_at), under=lexicon.LINE_KINDS)
+    text = text.typed_over(tuple((claim.start, claim.end, "window") for claim in read_window(question, WindowContext()).of_games()))
+    return text.typed_over(tuple((claim.start, claim.end, "date") for claim in read_cuts(question, CutsContext(opponent=opponent, without=absent(conditions))).dated(question)))
 
 
 def _read_route_staged(
@@ -751,9 +724,9 @@ def _read_route_staged(
     key moving off the parent, and why - :attr:`Reading.decisions
     <association.query.reading.Reading.decisions>`), the words that named
     the child, if one stands, and the words the child grammars read. The
-    child grammars read the question with each line the lines tagger reads
-    written over by its mark, the rules with each line's number marked and
-    the typed ``lines`` beside it (:class:`~association.query.line.LinesNamed`,
+    child grammars read the grammar's text with each line the lines tagger
+    reads typed whole, the rules with each line's number typed and the
+    typed ``lines`` beside it (:class:`~association.query.line.LinesNamed`,
     read here where none is handed); the words that named a child are the
     question's own, where they stand."""
     lines = lines if lines is not None else lines_named(question)
@@ -1082,14 +1055,6 @@ def with_point(question: str, reading: Reading) -> Reading:
 # carried on the Reading as reading.Cause values the planner says through the
 # one phrase table (compose.plan.refusal_result, say.refusal_phrase).
 
-_CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
-"""A championship or a title won: no table holds titles, and a team
-ranking would answer the question fluently and wrongly."""
-_TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
-""""Title odds": a regular-season projection ``team_outlook`` answers, not a
-championship."""
-_BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
-
 
 def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamIndex, question: str, reading: Reading) -> Cause | None:
     """The refusal the words come to that no point answers past, said
@@ -1123,7 +1088,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
 
     The championship first, as the answering loop asked them, then the
     window's ends, then a window per season."""
-    if _CHAMPIONSHIP.search(question) and not _TITLE_ODDS.search(question):
+    if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
     ends = contradicting_ends(question)
     if ends:
@@ -1250,7 +1215,7 @@ def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
     # beside the one word this reads (slice (c): it read "bench points" as
     # words, and the measure's "points" twice over).
     named = reading.measure is not None and reading.measure.key == "points" and any(c.what == "measure" for c in reading.claims)
-    return Cause(kind="bench_points", facts={"shape": reading.asked}) if named and _BENCH_WORD.search(question) else None
+    return Cause(kind="bench_points", facts={"shape": reading.asked}) if named and lexicon.BENCH_WORD.search(question) else None
 
 
 def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:

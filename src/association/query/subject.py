@@ -149,7 +149,7 @@ _PLAYER_RELATION_PARENTS: frozenset[PointShape | None] = frozenset({PLAYER_LOG, 
 #: precedence settles the two that overlap: "career most points in a game"
 #: is a single-game high before it is a count, and "how many 20+ point games
 #: ... in the past two seasons" a count before it is a history.
-_CHILD_GRAMMARS: tuple[tuple[PointShape, re.Pattern[str], frozenset[str], frozenset[PointShape | None]], ...] = (
+_CHILD_GRAMMARS: tuple[tuple[PointShape, lexicon.Ask, frozenset[str], frozenset[PointShape | None]], ...] = (
     # "per game" is an average, never one game; "single game" is one game
     # with an article or without (the lexicon's CHILD_SINGLE_GAME_HIGH).
     (GAME_HIGHS, lexicon.CHILD_SINGLE_GAME_HIGH, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
@@ -302,8 +302,8 @@ class Subject(reading.Subject):
     claims: tuple[Claim, ...] = ()
     #: Where each companion's phrase stands - the keyword to the last word
     #: the reading took (``(start, end)``) - with the role read from it:
-    #: what the parent grammar reads in place of the words
-    #: (``lexicon.mark_companions``) and the rules are handed as a reached
+    #: what the parent grammar reads in place of the words, typed
+    #: (``parse.grammar_text``), and the rules are handed as a reached
     #: line's "when" clause. Positions in the text, like :attr:`claims`,
     #: which the probe cuts to the words the reading needed; these are the
     #: phrases whole, before it.
@@ -1187,7 +1187,7 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
-def child_named(subject: Subject, parent: PointShape | None, question: str, *, original: str | None = None) -> tuple[PointShape, str | None] | None:
+def child_named(subject: Subject, parent: PointShape | None, question: str | lexicon.GrammarText, *, original: str | None = None) -> tuple[PointShape, str | None] | None:
     """The child of ``parent`` the subject's shape names, with the words
     that name it - or None where the parent stands. Decided from the
     grammar alone; the parser runs the stages ONCE under the child, and
@@ -1221,6 +1221,12 @@ def child_named(subject: Subject, parent: PointShape | None, question: str, *, o
        Takes and returns the grammar's keys (a
        :class:`~association.query.reading.PointShape`) where it took and
        returned intents.
+
+    .. versionchanged:: 6.0.0
+       Reads the grammar's text (:class:`~association.query.lexicon.GrammarText`)
+       as well as a plain question, each child's words an
+       :class:`~association.query.lexicon.Ask` that reads a typed line where
+       it stands (Phase 4, step 6).
     """
     if subject.kind in ("team", "team_players") and parent in _RECORD_WHEN_PARENTS and any(c.predicate == "reached" for c in subject.conditions):
         return LINE_RECORD, None
@@ -1229,7 +1235,10 @@ def child_named(subject: Subject, parent: PointShape | None, question: str, *, o
     for child, words, kinds, parents in _CHILD_GRAMMARS:
         match = words.search(question)
         if match is not None and parent in parents and subject.kind in kinds:
-            return child, (original if original is not None else question)[match.start() : match.end()]
+            # The words that named it, as the question holds them - or, with
+            # no question beside the grammar's text (a probe of it), the
+            # text as the ask read it, each value spelled by its kind.
+            return child, (original if original is not None else match.string)[match.start() : match.end()]
     return None
 
 
@@ -1690,7 +1699,7 @@ def team_named_in(teams: names.TeamIndex, question: str) -> str | None:
     return None
 
 
-def subject_named_in(question: str) -> str | None:
+def subject_named_in(question: str | lexicon.GrammarText) -> str | None:
     """The word (or two) a single-game-high or threshold-count question's
     grammar makes its subject, or None (:data:`~association.query.lexicon.SUBJECT_OF_HIGH`,
     ``SUBJECT_OF_COUNT``, ``SUBJECT_OF_HAVE``, tried in that order): a name
@@ -1711,6 +1720,10 @@ def subject_named_in(question: str) -> str | None:
     .. versionadded:: 6.0.0
        ``router._subject_named_in`` until Phase 3, step 2: the stages read a
        name from the words themselves.
+
+    .. versionchanged:: 6.0.0
+       Takes the grammar's text as well as a plain question (Phase 4, step
+       6): "had <N>" reads a line's number where the lines tagger typed one.
     """
     for match in lexicon.SUBJECT_OF_HIGH.finditer(question):
         lead, word = match.group(1), match.group(2)
@@ -2281,7 +2294,7 @@ def opponent_read(teams: names.TeamIndex, question: str, opponent: str | None) -
     from, with the versus word before it (``"opponent"`` claims, as
     :func:`subject_claims` makes them) - read before any season is settled,
     so a franchise's name is matched over every season. What the parent
-    grammar reads in place of the words (``lexicon.mark_opponent``).
+    grammar reads in place of the words, typed (``parse.grammar_text``).
 
     .. versionadded:: 6.0.0
     """

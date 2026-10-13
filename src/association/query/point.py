@@ -21,7 +21,6 @@ planner says. Nothing here plans, runs or words an answer.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
@@ -114,26 +113,6 @@ from association.query.window import MinimumRead, WindowCandidates, WindowRead, 
 if TYPE_CHECKING:
     from association.query.subject import Subject
 
-_TOP_IN_A_GAME = re.compile(r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b", re.I)
-# Not this relation's question: a team as the subject, an opponent's or
-# allowed figure, or a period. Refused, never answered with a ranking of
-# players - "least points by the Wizards in the first half" ranked players
-# by fewest points until this existed.
-_NOT_PLAYERS = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopponent'?s?\b|\bbench points\b|\bfranchise\b", re.I)
-# The period words are the lexicon's (PERIOD_GUARD) since Phase 3, step 2.
-_HOW_MANY_OR_OFTEN = re.compile(r"\bhow many\b|\bhow often\b|\bnumber of\b|\btimes\b", re.I)
-_WON = re.compile(r"\b(won|wins|win)\b", re.I)
-#: "least" on its own is ascending ("the least points"); "AT least" is the
-#: minimum-sample floor phrase (``reading.Minimum``, F056: "with at
-#: least 100 attempts") and names no direction at all - the negative
-#: lookbehind keeps that phrase from flipping a "highest ..." ranking to
-#: ascending, which it did before this existed (measured against the real
-#: warehouse: "highest 3-point percentage ... with at least 40 games"
-#: answered lowest-first).
-_FEWEST = re.compile(r"\b(fewest|lowest)\b|(?<!at )\bleast\b", re.I)
-_TOTAL = re.compile(r"\btotal\b", re.I)
-_VS = re.compile(r"\b(vs\.?|versus|against)\b", re.I)
-
 #: What one row of a ``rows`` point a shared move reads is said BY, under
 #: the words it was read under: a log's and a line's games by date
 #: (``compose.logs``, which the retired ``player_stat`` handed a single game
@@ -189,10 +168,6 @@ def _named_stat(scope: Filtered) -> str | None:
     return scope.measure.as_typed if scope.measure is not None else None
 
 
-_RANKING = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.I)
-_LOG = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.I)
-
-
 def _measure_and_predicates(words: list[str], fallback: str | None) -> tuple[str | None, list[tuple[str, str, Any]]]:
     """The measure a question ranks or lists by, and the boolean measures it
     names as conditions: "highest fg% in a triple-double game" measures
@@ -204,7 +179,7 @@ def _measure_and_predicates(words: list[str], fallback: str | None) -> tuple[str
 
 def _asc_or_desc(question: str) -> Literal["asc", "desc"]:
     """ "asc" for a "fewest"/"least"/"lowest" question, "desc" otherwise."""
-    return "asc" if _FEWEST.search(question) else "desc"
+    return "asc" if lexicon.FEWEST_WORDS.search(question) else "desc"
 
 
 def _everyone_guard(asked: PointShape | None, question: str, position: str | None, *, period_is_condition: bool = False) -> None:
@@ -218,7 +193,7 @@ def _everyone_guard(asked: PointShape | None, question: str, position: str | Non
         raise Unsupported("a quarter or half is the period relation's question")
     # "the top 50 ... with the team they play for" (F017) names no team's
     # question: the team is a column the ranking shows.
-    if _NOT_PLAYERS.search(lexicon.TEAM_FIELD_WORDS.sub(" ", question)) and not position:
+    if lexicon.NOT_THE_PLAYERS_QUESTION.search(lexicon.TEAM_FIELD_WORDS.sub(" ", question)) and not position:
         raise Unsupported("a team, an opponent's figure or a franchise is the team relation's question")
     if asked in TEAM_ONLY_ASKS:
         raise Unsupported("a team's own question is not the player relation's")
@@ -227,7 +202,7 @@ def _everyone_guard(asked: PointShape | None, question: str, position: str | Non
 def _everyone_opponent(scope: Filtered, question: str) -> Filtered:
     """A team beside no player, with "vs"/"against", is the opponent."""
     team = scope.who.team
-    if team is not None and not scope.cuts.opponent and _VS.search(question):
+    if team is not None and not scope.cuts.opponent and lexicon.VERSUS_OR_AGAINST_WORD.search(question):
         return replace(scope, cuts=replace(scope.cuts, opponent=team), who=replace(scope.who, teams=()))
     return scope
 
@@ -260,7 +235,7 @@ def _everyone_single_game(asked: PointShape | None, scope: Filtered, question: s
        AVERAGES (Luka Doncic, 33.5) where the question, and the template,
        name one game (Bam Adebayo's 83).
     """
-    if not ((_TOP_IN_A_GAME.search(question) or asked == GAME_HIGHS) and measure):
+    if not ((lexicon.TOP_IN_A_GAME.search(question) or asked == GAME_HIGHS) and measure):
         return None
     return Reading(
         **scope.filters(),
@@ -275,9 +250,6 @@ def _everyone_single_game(asked: PointShape | None, scope: Filtered, question: s
         limit=_clamp_limit(scope.window.count, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
     )
-
-
-_BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best)\b", re.I)
 
 
 def _boolean_game_measure(question: str) -> str:
@@ -313,7 +285,7 @@ def _everyone_boolean_game_ranking(asked: PointShape | None, question: str, scop
     # the question sizes them - "highest scoring", "biggest", or a stat word
     # of its own ("most rebounds in a double double"), or the parser's
     # `ranked_by`.
-    sized = _BOOLEAN_GAME_RANKING.search(question) or scope.window.by or any(pattern.search(question) for pattern, _ in lexicon.BOOLEAN_RANK_WORDS)
+    sized = lexicon.BOOLEAN_GAME_RANKING.search(question) or scope.window.by or any(pattern.search(question) for pattern, _ in lexicon.BOOLEAN_RANK_WORDS)
     if not sized:
         return None
     measure = _boolean_game_measure(question)
@@ -372,7 +344,7 @@ def _everyone_multi_line_games(asked: PointShape | None, scope: Filtered, questi
        heading naming no leader at all, where the template names Nikola
        Jokic's 20.
     """
-    if asked != GAMES_COUNTED or _RANKING.search(question):
+    if asked != GAMES_COUNTED or lexicon.RANKING_WORDS.search(question):
         return None
     text_lines = _numbered_lines(scope)
     lines = text_lines if len(text_lines) > len(predicates) else predicates
@@ -485,7 +457,7 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
        (:func:`~association.query.measures.stat_measure`) - and only the second is a refusal; the
        first keeps its default.
     """
-    if not (_RANKING.search(question) or asked in (PLAYER_RANKING, GAME_HIGHS)):
+    if not (lexicon.RANKING_WORDS.search(question) or asked in (PLAYER_RANKING, GAME_HIGHS)):
         return None
     seasons = _leaderboard_season_line(asked, scope, question, measure, predicates)
     if seasons is not None:
@@ -498,7 +470,7 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
             raise PointRefused(Cause(kind="shot_distance_ranking"))
         if stat is not None and stat.strip():
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
-    aggregate = Aggregate.TOTAL if _TOTAL.search(question) else Aggregate.PER_GAME
+    aggregate = Aggregate.TOTAL if lexicon.TOTAL_WORD.search(question) else Aggregate.PER_GAME
     minimum_games = PER_GAME_MIN_GAMES
     if scope.minimum is not None:
         if scope.minimum.unit != "games":
@@ -586,7 +558,7 @@ def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question
 
 def _everyone_position_log(asked: PointShape | None, scope: Filtered, question: str) -> Reading | None:
     """A log word with a position: rows, over that position group."""
-    if not (scope.who.position and _LOG.search(question)):
+    if not (scope.who.position and lexicon.LOG_OR_STATS_WORDS.search(question)):
         return None
     return Reading(
         **scope.filters(),
@@ -658,7 +630,7 @@ def _move_single_game(asked: PointShape | None, scope: Filtered, question: str, 
     if not measure or measure in BOOLEAN_MEASURES:
         return None
     against = any(c.side == "opponent" for c in scope.companions)
-    if not (_TOP_IN_A_GAME.search(question) or (against and _RANKING.search(question))):
+    if not (lexicon.TOP_IN_A_GAME.search(question) or (against and lexicon.RANKING_WORDS.search(question))):
         return None
     return Reading(
         **scope.filters(),
@@ -676,7 +648,7 @@ def _move_single_game(asked: PointShape | None, scope: Filtered, question: str, 
 
 def _move_how_many_won(scope: Filtered, question: str, measure: str | None, asked: PointShape | None, career: Filtered) -> Reading | None:
     """ "How many ... has he won" - a count with the ``won`` predicate."""
-    if not (_HOW_MANY_OR_OFTEN.search(question) and _WON.search(question) and (measure in (None, "won", "points") or asked in (LINE_RECORD, GAMES_COUNTED))):
+    if not (lexicon.HOW_MANY_OR_OFTEN.search(question) and lexicon.WON_WORDS.search(question) and (measure in (None, "won", "points") or asked in (LINE_RECORD, GAMES_COUNTED))):
         return None
     shape, by = _COUNT_SHAPES.get(asked, ("scalar", ""))
     return Reading(**career.filters(), shape=shape, by=by, measures=(), aggregate=Aggregate.COUNT, group="none", predicates=[("won", "=", True)])
@@ -691,7 +663,7 @@ def _move_boolean_count(question: str, measure: str | None, asked: PointShape | 
     per-game line, and a condition has no per-game line: its count is the
     only figure there is (``core._agg`` refuses the average).
     """
-    if not (measure in BOOLEAN_MEASURES and measure != "won" and (_HOW_MANY_OR_OFTEN.search(question) or asked in (GAMES_COUNTED, PLAYER_LINE, PLAYER_SPLITS, None))):
+    if not (measure in BOOLEAN_MEASURES and measure != "won" and (lexicon.HOW_MANY_OR_OFTEN.search(question) or asked in (GAMES_COUNTED, PLAYER_LINE, PLAYER_SPLITS, None))):
         return None
     if asked == GAMES_COUNTED and _move_boolean_count_is_line(measure, career):
         # "how many times has embiid fouled out?" arrived as fouls >= 6 - the
@@ -1295,12 +1267,6 @@ def _move_named(asked: PointShape | None, scope: Filtered, question: str) -> Rea
     return _move_default(asked, scope, measure)
 
 
-#: A question about players ON a team - a ranking, a log, or an explicit
-#: "who"/"which player" framing - is the league-wide read's question, never
-#: the team's own subject.
-_TEAM_NOT_SUBJECT = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplayer\b", re.I)
-
-
 def _team_measure(scope: Filtered, question: str) -> Measure | None:
     """The team measure a question names - the question's own word first
     (the same priority :func:`_measure_for_named` gives a player's), the
@@ -1410,7 +1376,7 @@ def team_read_point(scope: Filtered, question: str, subject: Subject) -> Reading
        for it, unlike a name with no match, which returns a clarification),
        so returning a team point here only delayed the same decline
        `_everyone_point`'s own
-       ``_NOT_PLAYERS`` guard already gives this exact question ("allowed" is
+       ``lexicon.NOT_THE_PLAYERS_QUESTION`` guard already gives this exact question ("allowed" is
        in it) - through a noisier path, for no different an outcome.
 
     .. versionchanged:: 5.0.0
@@ -1424,7 +1390,13 @@ def team_read_point(scope: Filtered, question: str, subject: Subject) -> Reading
        and never used).
     """
     scope = _read_as(scope, subject)
-    if _named_player_in(scope) or lexicon.PERIOD_GUARD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
+    if (
+        _named_player_in(scope)
+        or lexicon.PERIOD_GUARD.search(question)
+        or lexicon.RANKING_WORDS.search(question)
+        or lexicon.LOG_OR_STATS_WORDS.search(question)
+        or lexicon.PLAYERS_ON_A_TEAM.search(question)
+    ):
         return None
     if scope.who.kind == "team_players":
         # A team's players ("top scorers on the Lakers") are a ranking of

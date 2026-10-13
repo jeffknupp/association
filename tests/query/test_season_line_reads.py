@@ -13,13 +13,13 @@ import duckdb
 import pytest
 
 from association.query.player_relation import ResolvedSpan
-from association.query.season_line import ADVANCED_STATS, SHOOTING_STATS, advanced_row, career_row, history_rows, history_total, netpoints_row, season_row
+from association.query.season_line import ADVANCED_STATS, SHOOTING_STATS, advanced_row, career_row, history_rows, history_total, season_row
 
 
 @pytest.fixture
 def con() -> Iterator[duckdb.DuckDBPyConnection]:
     """One player's three regular seasons and one postseason on the season
-    line, two seasons of an advanced stat, and one NetPoints row."""
+    line and two seasons of an advanced stat."""
     con = duckdb.connect()
     con.execute(
         "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, avgPoints DOUBLE, points DOUBLE, "
@@ -34,10 +34,6 @@ def con() -> Iterator[duckdb.DuckDBPyConnection]:
     )
     con.execute("CREATE TABLE player_season_advanced_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, games_played INTEGER, ts_pct DOUBLE, true_shooting_attempts DOUBLE)")
     con.execute("INSERT INTO player_season_advanced_stats VALUES ('1', 2025, 2, 80, 0.60, 1000), ('1', 2026, 2, 10, 0.50, 200)")
-    con.execute(
-        "CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, overall_per_100_poss DOUBLE, offense_per_100_poss DOUBLE, defense_per_100_poss DOUBLE)"
-    )
-    con.execute("INSERT INTO net_points_player VALUES ('1', 2025, 'Regular Season', 3.5, 2.0, 1.5)")
     yield con
     con.close()
 
@@ -87,11 +83,3 @@ def test_history_rows_are_newest_first_and_cut_to_the_seasons_asked(con: duckdb.
 def test_a_history_total_is_the_career_total_through_the_last_season(con: duckdb.DuckDBPyConnection) -> None:
     assert history_total(con, "1", "points", 2, 2025) == (3400.0,)
     assert history_total(con, "1", "rebounds", 2, 2026) == (pytest.approx(5.0 * 70 + 6.0 * 80),)
-
-
-def test_a_netpoints_row_reads_the_tables_own_season_type_and_raises_without_the_table(con: duckdb.DuckDBPyConnection) -> None:
-    assert netpoints_row(con, "1", 2025, 2) == (3.5, 2.0, 1.5)
-    assert netpoints_row(con, "1", 2025, 3) is None
-    con.execute("DROP TABLE net_points_player")
-    with pytest.raises(duckdb.Error):
-        netpoints_row(con, "1", 2025, 2)

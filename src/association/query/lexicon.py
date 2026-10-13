@@ -59,6 +59,405 @@ def word_start(token: str) -> re.Pattern[str]:
     return re.compile(WORD_START + re.escape(token), re.IGNORECASE)
 
 
+# ---------------------------------------------------------------------------
+# The grammar's text (Phase 4, step 6): the question as the grammars and
+# the grammar's rules read it - its words, and where each tagger typed a
+# value, held apart from them. Until then the parser wrote each typed value
+# INTO the question as a run of private-use characters, one character per
+# family and form ("a line stated with a plus", "an opponent led by
+# against", "a window of games"), and the grammars' rows read those
+# characters as words; a question typed with one forged a value no tagger
+# read (ISSUES.md #383), so the parser's intake read every private-use
+# character as a space. Now the words carry no value: every character a
+# tagger typed is written as one character, :data:`TYPED`, the same for
+# every kind, so a pattern over the words sees that something stands there
+# (no word, no space) and never what - and what stands there is asked of
+# the typed value itself (:attr:`GrammarText.kinds`), by a row's predicate
+# (:class:`Stands`, :class:`StandsAfter`, :class:`StandsBefore`) or by an
+# ask over the words and the values together (:class:`Ask`).
+
+TYPED = "\ufffc"
+"""The character every character a tagger typed is written as in the
+grammar's words (:attr:`GrammarText.text`): U+FFFC, OBJECT REPLACEMENT
+CHARACTER - "an object stands here". No word, no space and no digit, so a
+pattern over the words reads it as it read the marks it replaces, and no
+pattern names it: what stands there is the typed value's.
+
+.. versionadded:: 6.0.0
+"""
+
+TypedKind = Literal[
+    "line_plus",
+    "line_at_least",
+    "line_number",
+    "line_lead",
+    "line_stat",
+    "opponent_against",
+    "opponent_versus",
+    "opponent",
+    "companion_with",
+    "companion",
+    "window",
+    "date",
+]
+"""What a tagger typed where it stands in the grammar's text: a line's
+number by how the words state it (``line_plus`` "20+", "20 or more";
+``line_at_least`` "at least 20"; ``line_number`` any other), the words
+before a line under a number (``line_lead``: "under", "fewer than") and a
+line's stat words (``line_stat``) - the lines tagger's
+(``line.LinesNamed``); the team set against the subject with its versus
+word, by that word (``opponent_against`` "against", "vs"; ``opponent_versus``
+"versus"; ``opponent`` any other) - the subject reading's; a companion's
+phrase, by whether it holds a presence word (``companion_with``: "with",
+"without", "when", "while"; ``companion`` otherwise) - the subject
+reading's; a window of games (``window``) - the window tagger's; and a range
+opened on a dated day (``date``) - the cuts tagger's.
+
+.. versionadded:: 6.0.0
+"""
+
+LINE_NUMBERS: frozenset[TypedKind] = frozenset({"line_plus", "line_at_least", "line_number"})
+"""A line's number, however it is stated.
+
+.. versionadded:: 6.0.0
+"""
+LINE_KINDS: frozenset[TypedKind] = LINE_NUMBERS | {"line_lead", "line_stat"}
+"""Every part of a line the lines tagger typed.
+
+.. versionadded:: 6.0.0
+"""
+# Typed over word by word, each space of the question left where it stands.
+_KEEPS_SPACES: frozenset[TypedKind] = frozenset({"line_lead", "line_stat"})
+
+
+@dataclass(frozen=True)
+class GrammarText:
+    """The question as a grammar reads it: :attr:`text`, its words with
+    each character a tagger typed written as :data:`TYPED`, every other
+    character where it stands (so a claim's offsets are the question's),
+    and :attr:`kinds`, what was typed at each character (``None`` for a
+    word's). Built from the question (:meth:`of`) and the taggers' typed
+    values (:meth:`typed_over`); probed one word at a time
+    (:meth:`without`, the claims ledger's probe over the values as well as
+    the words).
+
+    .. versionadded:: 6.0.0
+    """
+
+    text: str
+    kinds: tuple[TypedKind | None, ...]
+    #: The question's own characters, where :attr:`text` writes a typed one
+    #: as :data:`TYPED` - what a value is typed over reads (a line's stat
+    #: keeps the spaces between its words).
+    source: str
+
+    @classmethod
+    def of(cls, question: str | GrammarText) -> GrammarText:
+        """``question`` with nothing typed, or a grammar text as it is."""
+        if isinstance(question, GrammarText):
+            return question
+        return cls(question, (None,) * len(question), question)
+
+    def typed_over(self, stretches: tuple[tuple[int, int, TypedKind], ...], *, under: frozenset[TypedKind] = frozenset()) -> GrammarText:
+        """This text with each ``(start, end, kind)`` typed over, in order,
+        a later stretch over an earlier one: a line's stat words and the
+        words before a line under a number leave each space of the question
+        where it stands (a pattern reads the first word of "three pointers"
+        alone), and a character already typed as one of ``under`` keeps what
+        it holds (a line inside a companion's phrase stays the line)."""
+        text, kinds = list(self.text), list(self.kinds)
+        for start, end, kind in stretches:
+            for at in range(start, end):
+                if kind in _KEEPS_SPACES and self.source[at].isspace():
+                    text[at], kinds[at] = self.source[at], None
+                elif kinds[at] not in under:
+                    text[at], kinds[at] = TYPED, kind
+        return GrammarText("".join(text), tuple(kinds), self.source)
+
+    def kind_at(self, at: int) -> TypedKind | None:
+        """What was typed at character ``at``, or None (a word's, or past the end)."""
+        return self.kinds[at] if 0 <= at < len(self.kinds) else None
+
+    def holds(self, kinds: frozenset[TypedKind]) -> bool:
+        """Whether a value of one of ``kinds`` stands anywhere."""
+        return any(kind in kinds for kind in self.kinds)
+
+    def without(self, start: int, end: int) -> GrammarText:
+        """This text with the word at ``start``-``end`` deleted and the gap
+        closed, as :func:`without_word` closes it in a string - the probe a
+        rule asks itself whether it needed a word by, over the typed values
+        too: each keeps its place among the words left."""
+        kept = [*zip(self.text, self.kinds, self.source, strict=True)]
+        kept = [*kept[:start], (" ", None, " "), *kept[end:]]
+        closed: list[tuple[str, TypedKind | None, str]] = []
+        last = 0
+        joined = "".join(char for char, _, _ in kept)
+        for space in CONTENT_SPACES.finditer(joined):
+            closed.extend(kept[last : space.start()])
+            closed.append((" ", None, " "))
+            last = space.end()
+        closed.extend(kept[last:])
+        while closed and closed[0][0].isspace():
+            closed.pop(0)
+        while closed and closed[-1][0].isspace():
+            closed.pop()
+        return GrammarText("".join(char for char, _, _ in closed), tuple(kind for _, kind, _ in closed), "".join(char for _, _, char in closed))
+
+    @functools.cached_property
+    def spelled(self) -> str:
+        """The text with each typed character spelled by its kind
+        (:data:`_SPELLING`) - what an :class:`Ask` is matched against, built
+        here from the typed values and nowhere else; a character of that
+        alphabet in the question's own words is written as :data:`TYPED`,
+        so no question can spell a value by typing it."""
+        return "".join(_SPELLING[kind] if kind is not None else _UNSPELLED.get(char, char) for char, kind in zip(self.text, self.kinds, strict=True))
+
+
+def words_of(text: str | GrammarText) -> str:
+    """The words a pattern over the words reads: ``text`` itself, or a
+    grammar text's (:attr:`GrammarText.text`).
+
+    .. versionadded:: 6.0.0
+    """
+    return text.text if isinstance(text, GrammarText) else text
+
+
+# The alphabet an Ask spells each kind by, inside the match and nowhere else
+# (GrammarText.spelled): one private-use character per kind, so a pattern
+# reading "a line stated with a plus stands here" is one compiled regex,
+# exact in Python's own backtracking. No text the parser holds carries it.
+_SPELLING: dict[TypedKind, str] = {
+    "line_plus": "\ue100",
+    "line_at_least": "\ue101",
+    "line_number": "\ue102",
+    "line_lead": "\ue103",
+    "line_stat": "\ue104",
+    "opponent_against": "\ue105",
+    "opponent_versus": "\ue106",
+    "opponent": "\ue107",
+    "companion_with": "\ue108",
+    "companion": "\ue109",
+    "window": "\ue10a",
+    "date": "\ue10b",
+}
+_UNSPELLED: dict[str, str] = dict.fromkeys(_SPELLING.values(), TYPED)
+_UNSPELLED_TABLE: dict[int, str] = {ord(char): TYPED for char in _SPELLING.values()}
+
+
+def typed(*kinds: TypedKind) -> str:
+    """The regex fragment an :class:`Ask` reads one character of a value of
+    ``kinds`` by, where it stands among the words: ``typed("line_plus")``
+    followed by ``+`` is a line stated with a plus, the whole of its number.
+
+    .. versionadded:: 6.0.0
+    """
+    return "[" + "".join(_SPELLING[kind] for kind in kinds) + "]"
+
+
+@dataclass(frozen=True)
+class Ask:
+    """A pattern over the words and the typed values together, where a
+    value is read WHERE it stands among the words - "a line's number, then
+    its stat, then 'games'" - written with :func:`typed` for each value and
+    matched against the text spelled by kind (:attr:`GrammarText.spelled`).
+    A plain question (a string) holds no typed value, and an ask over it
+    reads its words alone.
+
+    .. versionadded:: 6.0.0
+    """
+
+    pattern: re.Pattern[str]
+
+    def search(self, text: str | GrammarText) -> re.Match[str] | None:
+        """The first match in ``text``, as :meth:`re.Pattern.search`."""
+        return self.pattern.search(_spelled(text))
+
+    def finditer(self, text: str | GrammarText) -> list[re.Match[str]]:
+        """Every match in ``text``, as :meth:`re.Pattern.finditer`."""
+        return list(self.pattern.finditer(_spelled(text)))
+
+
+def ask(source: str, flags: int = 0) -> Ask:
+    """An :class:`Ask` of ``source`` - a regex whose typed values are
+    :func:`typed` fragments - compiled with ``flags``.
+
+    .. versionadded:: 6.0.0
+    """
+    return Ask(re.compile(source, flags))
+
+
+def _spelled(text: str | GrammarText) -> str:
+    """``text`` spelled for an :class:`Ask`: a grammar text's own spelling,
+    or a plain question's words with no value in them."""
+    if isinstance(text, GrammarText):
+        return text.spelled
+    return text.translate(_UNSPELLED_TABLE)
+
+
+# The rows of the parent grammar are predicates over the grammar's text
+# (parse.PARENT_GRAMMAR): words a row reads anywhere, a value standing
+# anywhere, a value standing right after or right before the words that
+# lead it - and any, all or none of those.
+
+
+@dataclass(frozen=True)
+class Words:
+    """A row's words, read anywhere in the grammar's words.
+
+    .. versionadded:: 6.0.0
+    """
+
+    pattern: re.Pattern[str]
+
+    def holds(self, text: GrammarText) -> bool:
+        """Whether the words are there."""
+        return self.pattern.search(text.text) is not None
+
+
+@dataclass(frozen=True)
+class Stands:
+    """A value of one of ``kinds`` standing anywhere ("a window of games
+    is read here").
+
+    .. versionadded:: 6.0.0
+    """
+
+    kinds: frozenset[TypedKind]
+
+    def holds(self, text: GrammarText) -> bool:
+        """Whether one stands."""
+        return text.holds(self.kinds)
+
+
+@dataclass(frozen=True)
+class StandsAfter:
+    """A value of one of ``kinds`` standing right where ``words`` end
+    ("games" and then the opponent: "games against boston").
+
+    .. versionadded:: 6.0.0
+    """
+
+    words: re.Pattern[str]
+    kinds: frozenset[TypedKind]
+
+    def holds(self, text: GrammarText) -> bool:
+        """Whether some match of the words ends where such a value starts."""
+        at = 0
+        while (found := self.words.search(text.text, at)) is not None:
+            if text.kind_at(found.end()) in self.kinds:
+                return True
+            at = found.start() + 1
+        return False
+
+
+@dataclass(frozen=True)
+class StandsBefore:
+    """A value of one of ``kinds`` standing right before ``words`` (a
+    window of games and then "log": "last game log").
+
+    .. versionadded:: 6.0.0
+    """
+
+    kinds: frozenset[TypedKind]
+    words: re.Pattern[str]
+
+    def holds(self, text: GrammarText) -> bool:
+        """Whether the words follow a character of such a value."""
+        return any(kind in self.kinds and self.words.match(text.text, at + 1) is not None for at, kind in enumerate(text.kinds))
+
+
+@dataclass(frozen=True)
+class AnyOf:
+    """Any of a row's parts.
+
+    .. versionadded:: 6.0.0
+    """
+
+    parts: tuple[GrammarRow, ...]
+
+    def holds(self, text: GrammarText) -> bool:
+        """Whether one holds."""
+        return any(part.holds(text) for part in self.parts)
+
+
+@dataclass(frozen=True)
+class AllOf:
+    """Every one of a row's parts.
+
+    .. versionadded:: 6.0.0
+    """
+
+    parts: tuple[GrammarRow, ...]
+
+    def holds(self, text: GrammarText) -> bool:
+        """Whether every one holds."""
+        return all(part.holds(text) for part in self.parts)
+
+
+@dataclass(frozen=True)
+class NoneOf:
+    """None of a row's parts - the words or values that rule a row out.
+
+    .. versionadded:: 6.0.0
+    """
+
+    parts: tuple[GrammarRow, ...]
+
+    def holds(self, text: GrammarText) -> bool:
+        """Whether none holds."""
+        return not any(part.holds(text) for part in self.parts)
+
+
+GrammarRow = Words | Stands | StandsAfter | StandsBefore | AnyOf | AllOf | NoneOf
+"""A parent grammar row's predicate over the grammar's text.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def opponent_kind(words: str) -> TypedKind:
+    """What the subject reading typed where it read the opponent from
+    ``words`` (the versus word and the team): led by "against" or "vs",
+    by "versus", or by neither ("v warriors", a team named bare).
+
+    .. versionadded:: 6.0.0
+       ``mark_opponent``'s choice of mark until Phase 4, step 6.
+    """
+    led = words.casefold()
+    return "opponent_against" if led.startswith(("against", "vs")) else "opponent_versus" if led.startswith("versus") else "opponent"
+
+
+def companion_kind(words: str) -> TypedKind:
+    """What the subject reading typed where it read a companion's phrase
+    ``words``: one that holds a presence word (:data:`PRESENCE_WORDS`:
+    "with", "without", "when", "while"), which the with/without split's rows
+    read, or any other ("in games X missed", the words after a versus word).
+
+    .. versionadded:: 6.0.0
+       ``mark_companions``' choice of mark until Phase 4, step 6.
+    """
+    return "companion_with" if PRESENCE_WORDS.search(words) else "companion"
+
+
+def stands(*kinds: TypedKind) -> Stands:
+    """A value of one of ``kinds`` standing anywhere (:class:`Stands`).
+
+    .. versionadded:: 6.0.0
+    """
+    return Stands(frozenset(kinds))
+
+
+def row(source: str) -> Words:
+    """A row's words compiled as a parent row reads them - ignoring case,
+    ``.`` across lines, and anchored at the start where the row is written
+    as lookaheads over the whole question (searched from every position,
+    "(?!.*evaluate)" would simply skip past the word it excludes).
+
+    .. versionadded:: 6.0.0
+    """
+    return Words(re.compile((r"\A" if source.startswith("(?") else "") + source, re.IGNORECASE | re.DOTALL))
+
+
 MIN_SEASON = 1947
 """The earliest year read as a season: the league's first (1946-47).
 
@@ -647,8 +1046,10 @@ not a count was read beside it).
 .. versionadded:: 6.0.0
    ``span._LAST`` until the window's slice.
 """
-LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b|\ue00a", re.IGNORECASE)
-"""A log word or a window beside two teams: one team's games, not their meetings.
+LOG_OR_WINDOW_WORDS = AnyOf((Words(re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)), stands("window")))
+"""A log word or a window of games beside two teams - in words, or as the
+window tagger typed it where the parent grammar reads it: one team's
+games, not their meetings.
 
 .. versionadded:: 6.0.0
    ``parse._LOG_OR_WINDOW_WORDS`` until Phase 3, step 2.
@@ -894,13 +1295,21 @@ SITUATION = re.compile(
     r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
     # "in the month of march" as well as "in march" (F096) - the calendar
     # reader (SITUATION_MONTH) already takes both.
-    rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b|"
+    # Not a month with a day after it: "in march 24 2018" is one day, the
+    # calendar date's (CALENDAR_DATE), and the month in it no cut of its own
+    # (ISSUES.md #354: the answer named the month beside the day).
+    rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b(?!\s+\d{{1,2}}\b)|"
     # A conference or division, kept WITH its name and its "vs"/"against"/"in"
     # so `calendar.parse_alignment` reads it whole: "vs southeast division"
     # used to be captured as the word "division" alone (#213), and the
     # relation - which answers the phrase - refused the bare word. The bare
     # forms stay as the last resort, still refused honestly by name.
     r"\b(?:vs\.?|against|in)\s+(?:the\s+)?(?:east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|southwest|pacific|midwest)(?:\s+(?:conference|division))?(?:\s+teams?)?\b|"
+    # The opponents by their seeding ("vs top 3 seed teams", "against top
+    # seeds"): an alignment nothing reads - no table holds a seeding - kept
+    # whole so it is refused by name rather than its "top 3" read as a
+    # window of games (ISSUES.md #396: his last 3 games answered).
+    r"\b(?:vs\.?|versus|against)\s+(?:the\s+)?(?:top[\s-]+(?:\d+[\s-]+)?)?seed(?:s|ed)?(?:\s+teams?)?\b|"
     r"\b(?:atlantic|central|southeast|northwest|southwest|pacific|midwest)\s+division\b|"
     r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bdivision\b|\ball[- ]star\s+break\b|"
     # A day of the week: 8 of the 14, and the most common shape in the feed.
@@ -2377,67 +2786,24 @@ read (``player_relation.POSITION_CODES``, which a test holds to it).
 .. versionadded:: 6.0.0
 """
 
-PRIVATE_USE_FIRST = "\ue000"
-"""The first character of the range the grammars' marks are drawn from
-(Unicode's Private Use Area, U+E000-U+F8FF, which no text means anything
-by): every mark below (:data:`LINE_MARK_PLUS` ... :data:`DATE_MARK`) is in
-it, and the parser's first step reads every character of it as a space
-(:func:`unmarked`), so a mark typed into a question forges no typed value.
-
-.. versionadded:: 6.0.0
-"""
-PRIVATE_USE_LAST = "\uf8ff"
-"""The last character of that range.
-
-.. versionadded:: 6.0.0
-"""
-_UNMARKED = dict.fromkeys(range(ord(PRIVATE_USE_FIRST), ord(PRIVATE_USE_LAST) + 1), " ")
-
-
-def unmarked(text: str) -> str:
-    """``text`` with every character of the private-use range read as a
-    space, where it stands - every position kept, so each claim's offset
-    holds (ISSUES.md #383: "nikola jokic <WINDOW_MARK> stats this season"
-    was read as a window of games nobody named, and answered a 10-game
-    log). The parser's first step, :func:`~association.query.parse.read_route`.
-
-    .. versionadded:: 6.0.0
-    """
-    return text.translate(_UNMARKED)
-
-
-# A line at or above a number, however it is written: "30+", "36-plus",
-# "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield) -
-# a fragment the child grammars below are built from.
-LINE_MARK_PLUS = "\ue000"
-"""The character the choosers read the number of a line stated with a
-plus as ("20+", "20 or more" of "20 or more points"): written over each of
-its characters by :func:`mark_lines`, so the grammars read the number the
-lines tagger typed, where it stands, and never the number's words.
-
-.. versionadded:: 6.0.0
-"""
-LINE_MARK_AT_LEAST = "\ue002"
-"""The character the choosers read the number of a line stated "at least
-N stat" as.
-
-.. versionadded:: 6.0.0
-"""
-LINE_MARK = "\ue001"
-"""The character the choosers read any other line's number as ("30" of "30
-points", "scores 30", "under 14 fta", "with 25 minutes").
-
-.. versionadded:: 6.0.0
-"""
-MARKED_NUMBER = "[\ue001\ue002]+"
+# A line's number the lines tagger typed, however it is stated: one
+# character of it, for an ask.
+_ANY_LINE_NUMBER = typed("line_plus", "line_number", "line_at_least")
+LINE_NUMBER_NO_PLUS = rf"{typed('line_number', 'line_at_least')}+"
 """A fragment for a line's number the lines tagger read, stated with no
 plus - where a grammar's row reads a bare number (``\\d+``).
 
 .. versionadded:: 6.0.0
+   ``MARKED_NUMBER``, its marks, until Phase 4, step 6.
 """
-N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least (?:\d{1,3}|\ue002+)|\ue000+)"
+# A line at or above a number, however it is written: "30+", "36-plus",
+# "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield) -
+# a fragment the child grammars below are built from, written out or as the
+# lines tagger typed it.
+N_PLUS = rf"(?:\d{{1,3}}[\s-]*(?:\+|plus\b|or more\b)|\bat least (?:\d{{1,3}}|{typed('line_at_least')}+)|{typed('line_plus')}+)"
 """A line at or above a number, as a fragment with no groups - written out,
-or marked as one the lines tagger read (:data:`LINE_MARK_PLUS`).
+or the number of a line the lines tagger read stated with a plus, or with
+"at least" before it.
 
 .. versionadded:: 6.0.0
    ``subject._N_PLUS`` until Phase 3, step 2.
@@ -2452,26 +2818,27 @@ or marked as one the lines tagger read (:data:`LINE_MARK_PLUS`).
 # without: "this season's single game with the most assists" and "most 3
 # pointers made in single game 24-25" answered the season's leaders (ISSUES.md
 # #260) - "single games", a plural, is not one.
-CHILD_SINGLE_GAME_HIGH = re.compile(r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b", re.IGNORECASE)
+CHILD_SINGLE_GAME_HIGH = ask(r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b", re.IGNORECASE)
 """The words that name a single game's high.
 
 .. versionadded:: 6.0.0
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
-CHILD_SHOT_DISTANCE = re.compile(r"\bhow far\b|\bdistance\b", re.IGNORECASE)
+CHILD_SHOT_DISTANCE = ask(r"\bhow far\b|\bdistance\b", re.IGNORECASE)
 """The words that name a shot distance.
 
 .. versionadded:: 6.0.0
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
-CHILD_STREAK = re.compile(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|wins|losses)\b|\bin a row\b|\bconsecutive\b", re.IGNORECASE)
+CHILD_STREAK = ask(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|wins|losses)\b|\bin a row\b|\bconsecutive\b", re.IGNORECASE)
 """The words that name a run of games.
 
 .. versionadded:: 6.0.0
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
-CHILD_RECORD_WHEN_LINE = re.compile(
-    rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*(?:\d|{MARKED_NUMBER})|{N_PLUS}\s*\w*.*\brecord\b", re.IGNORECASE
+CHILD_RECORD_WHEN_LINE = ask(
+    rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*(?:\d|{LINE_NUMBER_NO_PLUS})|{N_PLUS}\s*\w*.*\brecord\b",
+    re.IGNORECASE,
 )
 """A record over a line: "record when he scored 30+".
 
@@ -2481,28 +2848,28 @@ CHILD_RECORD_WHEN_LINE = re.compile(
 # A player's games won or lost: his team's record in the games he played,
 # which is record_when's read with no threshold ("how many playoff games has
 # embiid won?").
-CHILD_RECORD_WHEN_GAMES_WON = re.compile(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b(?:won|lost|win|lose)\b", re.IGNORECASE)
+CHILD_RECORD_WHEN_GAMES_WON = ask(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b(?:won|lost|win|lose)\b", re.IGNORECASE)
 """A player's games won or lost, asked as a count.
 
 .. versionadded:: 6.0.0
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
-CHILD_THRESHOLD_COUNT = re.compile(
+CHILD_THRESHOLD_COUNT = ask(
     rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{N_PLUS}|\b(?:how many|most|fewest)\b.*{N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b"
-    rf"|\bgames? (?:with|where|in which)\b.*{MARKED_NUMBER}\s+(?:\w+|\ue003+)"
+    rf"|\bgames? (?:with|where|in which)\b.*{LINE_NUMBER_NO_PLUS}\s+(?:\w+|{typed('line_stat')}+)"
     # "40 point games", and the same with the season type or the venue
     # between the line and "games" ("how many 40 point playoff games does
     # kobe have", ISSUES.md #375: refused "no 2026 postseason numbers" as a
     # player's line over a defaulted season).
-    rf"|[\ue000-\ue002]+[\s-]*\ue003+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away)[\s-]+)?games?\b"
+    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away)[\s-]+)?games?\b"
     # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
     # 30+ point games", "how many games did he score 30 points or more in".
-    rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*{MARKED_NUMBER}\s+(?:\w+|\ue003+)\s+or more\b"
+    rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*{LINE_NUMBER_NO_PLUS}\s+(?:\w+|{typed('line_stat')}+)\s+or more\b"
     # "how many games have players recorded 33 points, 13 rebounds, 10
     # assists, 2 blocks, and 2 steals" (ISSUES.md #290): a count of games
     # over bare lines, as "players with 33 point and 13 rebound ... games" is
     # - until Phase 3, step 3 a rebounds ranking with the five numbers unread.
-    rf"|\bhow many\b.{{0,20}}\bgames?\b.*{MARKED_NUMBER}\s+\ue003+",
+    rf"|\bhow many\b.{{0,20}}\bgames?\b.*{LINE_NUMBER_NO_PLUS}\s+{typed('line_stat')}+",
     re.IGNORECASE,
 )
 """A count of games over a line.
@@ -2510,7 +2877,7 @@ CHILD_THRESHOLD_COUNT = re.compile(
 .. versionadded:: 6.0.0
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
-CHILD_PLAYER_HISTORY = re.compile(
+CHILD_PLAYER_HISTORY = ask(
     rf"\b(?:over|for|in|during) the (?:past|last) {N_SEASONS}\b|\b(?:last|past) {N_SEASONS}\b|\bby (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
     r"|\bseason[- ](?:by|over)[- ]season\b|\byear[- ](?:by|over)[- ]year\b|\bfrom (?:year|season) to (?:year|season)\b",
     re.IGNORECASE,
@@ -2520,7 +2887,7 @@ CHILD_PLAYER_HISTORY = re.compile(
 .. versionadded:: 6.0.0
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
-CHILD_PLAYER_SPLITS = re.compile(r"\bsplits?\b|\bby month\b|\bhome and away\b|\bhome/away\b|\bhome vs\.? away\b|\bmonthly\b", re.IGNORECASE)
+CHILD_PLAYER_SPLITS = ask(r"\bsplits?\b|\bby month\b|\bhome and away\b|\bhome/away\b|\bhome vs\.? away\b|\bmonthly\b", re.IGNORECASE)
 """A player's splits.
 
 .. versionadded:: 6.0.0
@@ -2672,9 +3039,9 @@ naming the wrong cause.
 # deliberately NOT in the alternation: the words there are all scoring verbs
 # and a possessive, where "had" is ordinary enough that it is only a subject
 # position when a threshold follows it, which is what the lookahead asserts.
-SUBJECT_OF_HIGH = re.compile(
+SUBJECT_OF_HIGH = ask(
     r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})"
-    r"(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out)|\s+ha[ds]\s+(?=[\d\ue000\ue001\ue002]))",
+    rf"(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out)|\s+ha[ds]\s+(?=\d|{_ANY_LINE_NUMBER}))",
     re.IGNORECASE,
 )
 """A name before a scoring verb, "fouled out" or "had <N>", or with a possessive.
@@ -2694,11 +3061,15 @@ SUBJECT_OF_HIGH = re.compile(
 # from SUBJECT_OF_HIGH: a shared pattern let a trailing possessive ("murray's
 # games of...") be swallowed whole into the captured word before the "games
 # of" alternative applied.
-SUBJECT_OF_COUNT = re.compile(
+SUBJECT_OF_COUNT = ask(
     r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:"
     r"games?\s+with\b"
     r"|games?\s+of\b"
-    r"|(?:(?:\d+\+?|[\ue000\ue001\ue002]+)\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?|[\ue000\ue001\ue002]+\s*[- ]?\s*\ue003+)\s+games?\b"
+    # The rules read it over their text, where a line's NUMBER stands typed
+    # and its stat stays words (line.LinesNamed.numbered): the stat is read
+    # here by its words. (Until Phase 4, step 6 a second alternative read a
+    # typed stat, which the rules' text never holds.)
+    rf"|(?:\d+\+?|{_ANY_LINE_NUMBER}+)\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?\s+games?\b"
     # "bam adebayo career games in the month of march" (yardstick-v2 F096):
     # the model dropped Bam, and none of the shapes above follows a name
     # with "career games".
@@ -2714,7 +3085,7 @@ SUBJECT_OF_COUNT = re.compile(
 # "how many 40+ point games does lebron james have": the subject sits between
 # an auxiliary and "have", nowhere near the count. The model dropped LeBron
 # from exactly this question (#148's shape, in a third grammar).
-SUBJECT_OF_HAVE = re.compile(r"\b(?:does|did|has|have)\s+(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:have|had|got|gotten|recorded|posted)\b", re.IGNORECASE)
+SUBJECT_OF_HAVE = ask(r"\b(?:does|did|has|have)\s+(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:have|had|got|gotten|recorded|posted)\b", re.IGNORECASE)
 """A name between an auxiliary and "have"/"had".
 
 .. versionadded:: 6.0.0
@@ -2961,9 +3332,11 @@ grown from what a corpus measurement finds rather than a general dictionary.
 # "played", "head to head", "beat". A window over two teams meeting is still
 # their meetings when a record is asked for ("lakers vs mavs record last 10
 # home games"); a log word never is.
-MEETING_WORDS = re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b|[\ue005\ue006]", re.IGNORECASE)
-"""A word that sets two teams meeting - or, in the words the parent grammar
-reads, an opponent led by one (:func:`mark_opponent`).
+MEETING_WORDS = AnyOf(
+    (Words(re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b", re.IGNORECASE)), stands("opponent_against", "opponent_versus"))
+)
+"""A word that sets two teams meeting - or, where the parent grammar reads
+it, an opponent the subject reading typed led by one.
 
 .. versionadded:: 6.0.0
    ``parse._MEETING`` until Phase 3, step 2.
@@ -3131,7 +3504,8 @@ def content_words(question: str, names: tuple[str, ...] | list[str], stat: str) 
 
 CONTENT_SPACES = re.compile(r"\s+")
 """A run of white space, closed to one space where a word was deleted
-(:func:`without_word`).
+(:func:`without_word`), and in a line's stat words before they are looked
+up (``line.read_period_line``, its own ``re.sub`` until Phase 4, step 6).
 
 .. versionadded:: 6.0.0
 """
@@ -3148,151 +3522,11 @@ def without_word(question: str, start: int, end: int) -> str:
     return CONTENT_SPACES.sub(" ", question[:start] + " " + question[end:]).strip()
 
 
-LINE_MARK_LEAD = "\ue004"
-"""The character the choosers read the words before a line under a number
-as ("under", "fewer than" of "fewer than 14 fta").
-
-.. versionadded:: 6.0.0
-"""
-LINE_MARK_STAT = "\ue003"
-"""The character the choosers read a line's stat words as.
-
-.. versionadded:: 6.0.0
-"""
-
-
-OPPONENT_MARK_AGAINST = "\ue005"
-"""The character the parent grammar reads a team set against the subject
-as, where "against" or "vs" leads it ("against boston", "vs. the bucks").
-
-.. versionadded:: 6.0.0
-"""
-OPPONENT_MARK_VERSUS = "\ue006"
-"""The character it reads an opponent led by "versus" as.
-
-.. versionadded:: 6.0.0
-"""
-OPPONENT_MARK = "\ue007"
-"""The character it reads any other opponent as ("v warriors", a team
-named with no versus word).
-
-.. versionadded:: 6.0.0
-"""
-
-
-COMPANION_MARK_PRESENCE = "\ue008"
-"""The character the grammars read a companion's phrase as where it holds a
-presence word (:data:`PRESENCE_WORDS`: "with", "without", "when", "while" -
-"when maxey scored", "with/without embiid"), the words the with/without
-split's rows read.
-
-.. versionadded:: 6.0.0
-"""
-COMPANION_MARK = "\ue009"
-"""The character they read any other companion's phrase as ("in games X
-missed", the words after a versus word).
-
-.. versionadded:: 6.0.0
-"""
-WINDOW_MARK = "\ue00a"
-"""The character the parent grammar reads a window of games as, where the
-window tagger reads one ("last 10 games", "his first game", "most recent 5
-games"): a log's words, read as the typed window.
-
-.. versionadded:: 6.0.0
-"""
-DATE_MARK = "\ue00b"
-"""The character it reads a calendar day or a dated range as, where the cuts
-tagger reads one ("on 1/26/20", "since 1/26/20"): a log's words too.
-
-.. versionadded:: 6.0.0
-"""
 PRESENCE_WORDS = re.compile(r"\b(with|without|when|while)\b", re.IGNORECASE)
 """The words the with/without split's grammar rows read a companion by.
 
 .. versionadded:: 6.0.0
 """
-
-
-def mark_spans(question: str, spans: tuple[tuple[int, int], ...], mark: str) -> str:
-    """``question`` with each of ``spans`` written over by ``mark``, one
-    character per character, so every other character keeps its place
-    (Phase 3, step 4, slice (c): the windows and the days the parent grammar
-    reads as the taggers typed them).
-
-    .. versionadded:: 6.0.0
-    """
-    chars = list(question)
-    for start, end in spans:
-        chars[start:end] = mark * (end - start)
-    return "".join(chars)
-
-
-def mark_companions(question: str, claims: tuple[tuple[int, int], ...]) -> str:
-    """``question`` with each companion's phrase - the stretch the subject
-    reading read him from, keyword and role included - written over by its
-    mark: :data:`COMPANION_MARK_PRESENCE` where the phrase holds a presence
-    word, :data:`COMPANION_MARK` otherwise. A grammar reads "a companion
-    stands here", the typed companion, and never his phrase's words, which
-    are the subject reading's to claim.
-
-    .. versionadded:: 6.0.0
-    """
-    chars = list(question)
-    for start, end in claims:
-        mark = COMPANION_MARK_PRESENCE if PRESENCE_WORDS.search(question[start:end]) else COMPANION_MARK
-        # A line inside the phrase ("when maxey scored 20+ points") keeps
-        # the lines tagger's mark: the rows read the typed line beside the
-        # typed companion.
-        chars[start:end] = [char if "\ue000" <= char <= "\ue004" else mark for char in question[start:end]]
-    return "".join(chars)
-
-
-def mark_opponent(question: str, claims: tuple[tuple[int, int], ...]) -> str:
-    """``question`` with each stretch the subject reading read the opponent
-    from - the versus word and the team - written over by its mark, by the
-    word that leads it (:data:`OPPONENT_MARK_AGAINST`,
-    :data:`OPPONENT_MARK_VERSUS`, :data:`OPPONENT_MARK`): the parent grammar
-    reads "a team is set against the subject here", the typed opponent, and
-    never the words, which are the subject reading's to claim.
-
-    .. versionadded:: 6.0.0
-    """
-    chars = list(question)
-    for start, end in claims:
-        led = question[start:end].casefold()
-        mark = OPPONENT_MARK_AGAINST if led.startswith(("against", "vs")) else OPPONENT_MARK_VERSUS if led.startswith("versus") else OPPONENT_MARK
-        chars[start:end] = mark * (end - start)
-    return "".join(chars)
-
-
-def mark_lines(question: str, marks: tuple[tuple[int, int, str], ...], stats: tuple[tuple[int, int], ...] = ()) -> str:
-    """``question`` with each line the lines tagger read written over by
-    its mark - ``(start, end, how)``, the line's number and stat, marked
-    :data:`LINE_MARK_PLUS` where it is stated with a plus,
-    :data:`LINE_MARK_AT_LEAST` with "at least" and :data:`LINE_MARK`
-    otherwise - every other character where it stands.
-    What the choosers read: a grammar reads the TYPED line where the tagger
-    read one, and the words around it, never the line's own words, which
-    are the lines tagger's to claim.
-
-    .. versionadded:: 6.0.0
-    """
-    chars = list(question)
-    # A line inside another (a bare "14 fta" inside "under 14 fta") is
-    # marked as the plainer one first and the stated one over it.
-    for start, end, how in sorted(marks, key=lambda mark: mark[2] != "bare"):
-        if how == "lead":
-            # The words before a line under a number, each word marked and
-            # the spaces between them left where they stand.
-            chars[start:end] = [char if char.isspace() else LINE_MARK_LEAD for char in question[start:end]]
-        else:
-            chars[start:end] = {"plus": LINE_MARK_PLUS, "at_least": LINE_MARK_AT_LEAST}.get(how, LINE_MARK) * (end - start)
-    for start, end in stats:
-        # Each stat word marked, the spaces between them left: a row that
-        # reads one word after a number ("\\d+\\s+\\w+") reads the first.
-        chars[start:end] = [char if char.isspace() else LINE_MARK_STAT for char in question[start:end]]
-    return "".join(chars)
 
 
 def unread_words(question: str, claimed: list[tuple[int, int]], names: tuple[str, ...] | list[str], stat: str) -> tuple[str, ...]:
@@ -3457,4 +3691,289 @@ split is read (:func:`~association.query.split.read_split`).
 
 .. versionadded:: 6.0.0
    ``parse._ROLE_TAIL`` until Phase 3, step 4.
+"""
+
+
+# ---------------------------------------------------------------------------
+# The point reader's words (Phase 4, step 6): the patterns ``point.py``
+# compiled for itself until then, moved here whole, each under the name of
+# what it reads - the point reader reads the words through the lexicon as
+# every tagger does.
+
+TOP_IN_A_GAME = re.compile(r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b", re.IGNORECASE)
+"""One game's top figure: "most points in a game", a "single-game" or a
+"career high" - a ranking of single games, never of season lines.
+
+.. versionadded:: 6.0.0
+   ``point._TOP_IN_A_GAME`` until Phase 4, step 6.
+"""
+# Not this relation's question: a team as the subject, an opponent's or
+# allowed figure, or a period. Refused, never answered with a ranking of
+# players - "least points by the Wizards in the first half" ranked players
+# by fewest points until this existed.
+NOT_THE_PLAYERS_QUESTION = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopponent'?s?\b|\bbench points\b|\bfranchise\b", re.IGNORECASE)
+"""A team as the subject, an opponent's or allowed figure, or the bench's:
+not a ranking of players' games.
+
+.. versionadded:: 6.0.0
+   ``point._NOT_PLAYERS`` until Phase 4, step 6.
+"""
+HOW_MANY_OR_OFTEN = re.compile(r"\bhow many\b|\bhow often\b|\bnumber of\b|\btimes\b", re.IGNORECASE)
+"""A count asked: "how many", "how often", "number of", "times".
+
+.. versionadded:: 6.0.0
+   ``point._HOW_MANY_OR_OFTEN`` until Phase 4, step 6.
+"""
+WON_WORDS = re.compile(r"\b(won|wins|win)\b", re.IGNORECASE)
+"""A game won, asked of a count: "how many games did he win".
+
+.. versionadded:: 6.0.0
+   ``point._WON`` until Phase 4, step 6.
+"""
+# "least" on its own is ascending ("the least points"); "AT least" is the
+# minimum-sample floor phrase (``reading.Minimum``, F056: "with at least
+# 100 attempts") and names no direction at all - the negative lookbehind
+# keeps that phrase from flipping a "highest ..." ranking to ascending,
+# which it did before this existed (measured against the real warehouse:
+# "highest 3-point percentage ... with at least 40 games" answered
+# lowest-first).
+FEWEST_WORDS = re.compile(r"\b(fewest|lowest)\b|(?<!at )\bleast\b", re.IGNORECASE)
+"""A ranking from the bottom: "fewest", "lowest", "least" - never "at least".
+
+.. versionadded:: 6.0.0
+   ``point._FEWEST`` until Phase 4, step 6.
+"""
+TOTAL_WORD = re.compile(r"\btotal\b", re.IGNORECASE)
+"""A total asked where a ranking would average: "total points".
+
+.. versionadded:: 6.0.0
+   ``point._TOTAL`` until Phase 4, step 6.
+"""
+VERSUS_OR_AGAINST_WORD = re.compile(r"\b(vs\.?|versus|against)\b", re.IGNORECASE)
+"""A versus word, whole - wherever it stands (:data:`VERSUS_OR_AGAINST`
+needs one before what follows it).
+
+.. versionadded:: 6.0.0
+   ``point._VS`` until Phase 4, step 6.
+"""
+RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.IGNORECASE)
+"""A ranking asked in words: "leaders", "most", "top", "fewest".
+
+.. versionadded:: 6.0.0
+   ``point._RANKING`` until Phase 4, step 6.
+"""
+LOG_OR_STATS_WORDS = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.IGNORECASE)
+"""A log asked, or the bare "stats" a position's log and a team's players
+are asked by.
+
+.. versionadded:: 6.0.0
+   ``point._LOG`` until Phase 4, step 6.
+"""
+BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best)\b", re.IGNORECASE)
+"""The words that size a ranking of yes/no games ("biggest triple-double"),
+which the games are then ordered by a measure for.
+
+.. versionadded:: 6.0.0
+   ``point._BOOLEAN_GAME_RANKING`` until Phase 4, step 6.
+"""
+# A question about players ON a team - a ranking, a log, or an explicit
+# "who"/"which player" framing - is the league-wide read's question, never
+# the team's own subject.
+PLAYERS_ON_A_TEAM = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplayer\b", re.IGNORECASE)
+""""who" or "which player": a team's players asked about, not the team.
+
+.. versionadded:: 6.0.0
+   ``point._TEAM_NOT_SUBJECT`` until Phase 4, step 6.
+"""
+
+
+# ---------------------------------------------------------------------------
+# The refusals the parser reads (Phase 4, step 6: ``parse.py``'s own
+# patterns until then).
+
+CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
+"""A championship or a title won: no table holds titles, and a team
+ranking would answer the question fluently and wrongly.
+
+.. versionadded:: 6.0.0
+   ``parse._CHAMPIONSHIP`` until Phase 4, step 6.
+"""
+TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
+""""Title odds": a regular-season projection ``team_outlook`` answers, not a
+championship.
+
+.. versionadded:: 6.0.0
+   ``parse._TITLE_ODDS`` until Phase 4, step 6.
+"""
+BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
+"""The word "bench", whole: "bench points" names a figure nothing reads.
+
+.. versionadded:: 6.0.0
+   ``parse._BENCH_WORD`` until Phase 4, step 6.
+"""
+
+
+# ---------------------------------------------------------------------------
+# The parent grammar's words (Phase 4, step 6: ``parse.PARENT_GRAMMAR``'s own
+# strings, compiled there until then). Each row of the grammar is a
+# predicate over the grammar's text (:data:`GrammarRow`) built from these
+# and from the typed values a row asks for where they stand; the table of
+# rows, which kinds each applies to and the shape it names, is the parser's.
+
+FINGERPRINT_ROW = row(r"\bfingerprint")
+"""A fingerprint asked for.
+
+.. versionadded:: 6.0.0
+"""
+# "plot" and the shots in either order: "threes by Plot Curry" is "plot curry's threes" reworded.
+SHOT_CHART_ROW = row(r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\b(shots?|threes)\b.*\bplot\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot")
+"""A shot chart asked for.
+
+.. versionadded:: 6.0.0
+"""
+PERIOD_ROW = row(PERIOD_INTENT_WORDS)
+"""A quarter or a half named (:data:`PERIOD_INTENT_WORDS`).
+
+.. versionadded:: 6.0.0
+"""
+COACH_ROW = row(r"\bcoach")
+"""A coach asked about.
+
+.. versionadded:: 6.0.0
+"""
+COMPARE_VERB_ROW = row(r"\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b")
+"""A compare verb, which owns a pair: two players compared, never their meetings.
+
+.. versionadded:: 6.0.0
+"""
+MEETING_ROW = row(r"\b(head.to.head|matchup|when they play|meet|vs\.?|versus|against)\b")
+"""A pair meeting in words - "vs", "against", a matchup.
+
+.. versionadded:: 6.0.0
+"""
+ANY_WORDS_ROW = row(r".")
+"""Any words at all: the last row of a kind, which names its default.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_PLAYERS_RANKED_ROW = row(r"(?=.*\b(top \d+|scorers?|rebounders?|passers?|leaders?|players?)\b)(?=.*\b(top|most|best|leaders?)\b)")
+"""A team's players ranked: "the knicks' top 5 scorers".
+
+.. versionadded:: 6.0.0
+"""
+PRESENCE_ROW = row(r"\b(with|without|when|while)\b")
+"""A presence word, which the with/without split's rows read.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_LOG_ROW = row(
+    r"\b(game ?log|(last|past|previous|most recent) " + COUNT + r"\b|first \d+ games|each game|game by game|differential"
+    r"|(first|opening|last|latest|most recent|final) game|(season )?opener)"
+)
+"""A team's log word, or the window words a team's log row read before
+the window tagger typed them, for a form the tagger does not type ("last
+10 match ups").
+
+.. versionadded:: 6.0.0
+"""
+STREAK_ROW = row(r"\bstreak")
+"""A run of games asked for.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_RECORD_ROW = row(r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec)\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)")
+"""A team's record, not a ranking of records.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_OUTLOOK_ROW = row(r"\b(outlook|projections?|projected|on pace|schedule|odds|chances|(vs\.?|versus|against|compared (to|with)) other)\b")
+"""A team's outlook: its projection, its odds, its place against the others.
+
+.. versionadded:: 6.0.0
+"""
+# A team's triple-doubles are its PLAYERS' (a boolean player line), which
+# the players' ranking reads under the team - not a team box-score total.
+TEAM_DOUBLES_ROW = row(r"\b(triple|double)[ -]?doubles?\b")
+"""A team's triple-doubles or double-doubles - its players'.
+
+.. versionadded:: 6.0.0
+"""
+NETPOINTS_ROW = row(r"\bnet ?po?i?nts?\b|\bnetpts\b")
+"""NetPoints asked for by name.
+
+.. versionadded:: 6.0.0
+"""
+RECORD_ROW = row(r"\b(record|rec|w-?l|win.loss|splits?)\b")
+"""A player's own record or splits.
+
+.. versionadded:: 6.0.0
+"""
+PLUS_LINE_WORDS_ROW = row(r"\b\d{1,3}[\s-]*(\+|plus\b|or more\b)")
+"""A line at or above a number in words the lines tagger did not type.
+
+.. versionadded:: 6.0.0
+"""
+LOG_ROW = row(r"\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b")
+"""A game log word: a log is its games, never a record.
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_LOG_ROW = row(
+    r"\b(game ?log|gamelog|logs?|last " + COUNT + r" games|each game|game by game|box scores?|(?<!per )games? (with|where|in which|against|vs)"
+    r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
+    r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
+)
+"""A player's games rather than his line in words: a log word, one game,
+a month, a date. The window words stay for a form the window tagger does
+not type ("final games"); a typed one stands as the typed value.
+
+.. versionadded:: 6.0.0
+"""
+GAMES_BEFORE_A_VALUE = re.compile(r"(?<!per )\bgames? ", re.IGNORECASE | re.DOTALL)
+""""games" with a value right after it - the opponent, in "games against
+boston": a player's games with a team set against him.
+
+.. versionadded:: 6.0.0
+"""
+VERSUS_WORD_ROW = row(r"\b(?:vs\.?|versus|against)\b")
+"""A versus word, which sets a player against a team rather than splitting
+his games by a companion.
+
+.. versionadded:: 6.0.0
+"""
+POSITION_LOG_ROW = row(r"\b(log|game ?log)\b")
+"""A log asked of a position.
+
+.. versionadded:: 6.0.0
+"""
+LEAGUE_TEAMS_RANKED_ROW = row(
+    r"(?=.*\b(team|teams|franchise|nba)\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)"
+)
+"""The league's teams ranked.
+
+.. versionadded:: 6.0.0
+"""
+# A record with no player in it is a team's: "worst record 2025-26" read
+# as the league's scorers, the everyone row below.
+LEAGUE_RECORD_ROW = row(r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)")
+"""A record with no player in it: the teams' standings.
+
+.. versionadded:: 6.0.0
+"""
+LEAGUE_LOG_ROW = row(r"\b(finals|game ?log)\b")
+"""The league's game log, or the Finals'.
+
+.. versionadded:: 6.0.0
+"""
+LOG_AFTER_A_VALUE = re.compile(r" log\b", re.IGNORECASE | re.DOTALL)
+""""log" right after a value - a window of games, in "last game log".
+
+.. versionadded:: 6.0.0
+"""
+SLASHED_DAY = re.compile(r"\d+/\d+")
+"""A day written with slashes ("1/26/20"): a range opened on one is a dated
+range, which the parent grammar asks for as the cuts tagger typed it.
+
+.. versionadded:: 6.0.0
+   ``parse._SLASHED_DAY`` until Phase 4, step 6.
 """

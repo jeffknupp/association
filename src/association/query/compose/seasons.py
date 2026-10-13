@@ -9,8 +9,10 @@ more players' lines side by side - read from the season-line relation
 statements are the relation's, built AND run there, through the
 compiler's one door (:func:`~association.query.compose.core.values_of`):
 a reader here names the read it takes (``season_line.season_row``,
-``career_row``, ``advanced_row``, ``history_rows``, ``history_total``,
-``netpoints_row``) and executes nothing itself (Phase 4, step 5). The sayer
+``career_row``, ``advanced_row``, ``history_rows``, ``history_total``),
+a comparison's NetPoints rows the NetPoints relation's
+(:func:`~association.query.netpoints.netpoints_row`), and executes nothing
+itself (Phase 4, step 5). The sayer
 (:mod:`association.query.compose.say`) words each.
 
 Each answer is two or more statements (a line and the season redirect, a
@@ -33,6 +35,7 @@ from association.nba.season import current_season
 from association.query.entities import Entity
 from association.query.measure import spelled
 from association.query.measures import stat_measure
+from association.query.netpoints import netpoints_row
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, empty_box_scores
 from association.query.reading import PLAYER_LINE, Unsupported
@@ -56,7 +59,6 @@ from association.query.season_line import (
     history_total,
     line_columns,
     line_subject,
-    netpoints_row,
     season_redirect,
     season_row,
     wanted_stats,

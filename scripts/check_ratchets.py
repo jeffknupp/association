@@ -30,7 +30,10 @@ target"):
     ``entities._read_table`` (since 2026-10-03) or any function that runs
     the SQL it is handed (found by its body since 2026-10-12, its own call
     of that SQL no longer counted beside its callers': the name index's two
-    loads read as three until then), and - since 2026-10-05,
+    loads read as three until then; the SQL an attribute of what it is
+    handed as well since lane C4's commit the same day, so the compiler's
+    one door, ``compose.core._executed``, running ``statement.sql``, is a
+    door and no statement of ``compose.core``'s), and - since 2026-10-05,
     when Phase 2's review found 35 hand-written statements moved whole
     behind the compiler's door, where the count was blind to them - each
     ``core.rows_of``/``core.values_of`` call whose statement is not one the
@@ -44,25 +47,27 @@ target"):
     listed, since 2026-10-02: a listed module could grow statements freely,
     and nothing said so. 80 statements in 20 modules at the redefinition
     (38 in 11 before it; the list was regenerated once, by hand, with
-    Jeff's say-so).
-``regex_outside_the_reader``
-    A module that imports ``re`` outside the reader. Contract 6: regexes
-    live in the lexicon. 6 when it was written; 0 since Phase 3, step 4,
-    slice (b) (2026-10-10: ``entities``' last pattern moved to the lexicon,
-    ``lexicon.word_start``, and its LIKE reading needs none), the list held
-    empty so a new one fails. Blind, by its definition, to a pattern INSIDE
-    the reader: the next ratchet counts those.
-``regex_in_the_reader``
-    How many ``re`` calls each reader module outside the lexicon makes, by
-    module (``re.compile``, ``re.sub``, ``re.escape``, ...). Contract 6
-    again, from the inside: the Phase 3 review (2026-10-11) found the step 4
-    exit "the reader's regexes outside the lexicon are gone" false - 18
-    calls in ``point`` (12), ``parse`` (5, one compiling the parent
-    grammar's 23 rows kept there) and ``line`` (1) - and measured by the
-    ratchet above, which cannot see them. Counted per module so a listed
-    module cannot grow patterns freely; a new grammar ROW does not raise it
-    (one call compiles them all), which Phase 4 closes by moving the rows
-    to the lexicon as predicates over typed values.
+    Jeff's say-so); 74 in 12 since Phase 4, step 5 (2026-10-12): the
+    relation modules, ``entities`` (the name index's two loads and the
+    resolver's elimination read) and ``connection`` (the warehouse's latest
+    season), and no module of ``compose/``.
+``regex_outside_the_lexicon``
+    A module of the query package other than the lexicon that calls the
+    ``re`` module or imports it at run time (an import under
+    ``TYPE_CHECKING``, for an annotation, is none), or a module outside the
+    reader that takes a private name (a compiled pattern, say) from a reader
+    module. Contract 6: regexes live in the lexicon. Held empty since Phase
+    4, step 6 (2026-10-12), when it took in ``regex_in_the_reader`` - how
+    many ``re`` calls each reader module outside the lexicon made, which the
+    Phase 3 review (2026-10-11) found at 18 (``point`` 12, ``parse`` 5 with
+    the parent grammar's rows, ``line`` 1) where this ratchet, then
+    ``regex_outside_the_reader`` and blind inside the reader by its
+    definition, read 0. That count reached 0 when the grammar's rows became
+    predicates over typed values with their words in the lexicon, and the
+    two are one rule now: no module but the lexicon builds or applies a
+    pattern of its own. ``regex_outside_the_reader`` was 6 when it was
+    written and 0 since Phase 3, step 4, slice (b) (2026-10-10:
+    ``entities``' last pattern moved to the lexicon, ``lexicon.word_start``).
 ``con_in_the_reader``
     A reader function that takes a DuckDB connection. Contract 3: names are
     recognized from an in-memory index, not by query. 23 when it was
@@ -291,30 +296,57 @@ def _door_sites(modules: dict[str, ast.Module]) -> dict[str, int]:
 
 
 def _string_sql_helpers(modules: dict[str, ast.Module]) -> set[str]:
-    """The functions that run a statement handed to them as a string: an
+    """The functions that run a statement handed to them: an
     ``.execute``-family call (:data:`_EXECUTORS`) whose SQL is one of the
-    function's own parameters - ``entities._read_table(con, sql)``. Each is
-    a door, as :func:`_door_sites`' are: its callers are counted, and its
-    own call of the parameter is not a second statement (until 2026-10-12
-    ``_read_table``'s body counted beside each of its two callers, so the
-    name index's two loads read as three). Found, not listed, so a new
-    helper's callers are counted without anyone adding it."""
+    function's own parameters - ``entities._read_table(con, sql)`` - or an
+    attribute of one - ``compose.core._executed(con, statement)``, which
+    runs ``statement.sql`` - or a call of such a helper handing it the
+    function's own parameter (``rows_of(con, compiled)`` handing
+    ``compiled`` to ``_executed``). Each is a door, as :func:`_door_sites`'
+    are: its callers are counted, and its own call of the parameter is not a
+    second statement (until 2026-10-12 ``_read_table``'s body counted beside
+    each of its two callers, so the name index's two loads read as three;
+    until lane C4's commit the same day ``_executed``, the compiler's one
+    door, read as one statement of ``compose.core``'s, ISSUES.md #397).
+    Found, not listed, so a new helper's callers are counted without anyone
+    adding it. Found until no new one turns up, so a helper's own wrapper is
+    one too - except through ``rows_of``/``values_of`` (:data:`_DOORS`),
+    whose callers :func:`_door_sites` counts by where the statement comes
+    from, since a statement the compiler built is not one."""
     found: set[str] = set()
-    for tree in modules.values():
-        for function, call in _calls_by_function(tree):
-            if function is not None and _runs_its_parameter(function, call):
-                found.add(function.name)
-    return found
+    while True:
+        passing = found - _DOORS
+        new = {function.name for tree in modules.values() for function, call in _calls_by_function(tree) if function is not None and _runs_its_parameter(function, call, passing)} - found
+        if not new:
+            return found
+        found |= new
 
 
 #: The connection's own methods that run a statement: the SQL is their first argument.
 _CONNECTION_METHODS = frozenset({"execute", "executemany", "sql", "query"})
 
 
-def _runs_its_parameter(function: Function, call: ast.Call) -> bool:
-    """Whether ``call`` is a connection method (``con.execute(sql)``) whose
-    SQL is one of ``function``'s own parameters."""
-    return isinstance(call.func, ast.Attribute) and call.func.attr in _CONNECTION_METHODS and bool(call.args) and isinstance(call.args[0], ast.Name) and call.args[0].id in _parameters(function)
+def _handed(function: Function, expr: ast.AST) -> bool:
+    """Whether ``expr`` is one of ``function``'s own parameters
+    (``sql``), or an attribute of one (``statement.sql``) - a statement the
+    function was handed. ``self`` and ``cls`` are no statement: a method
+    running its own attribute runs SQL it holds, not SQL it was handed."""
+    if isinstance(expr, ast.Attribute):
+        expr = expr.value
+    return isinstance(expr, ast.Name) and expr.id not in {"self", "cls"} and expr.id in _parameters(function)
+
+
+def _runs_its_parameter(function: Function, call: ast.Call, helpers: frozenset[str] | set[str] = frozenset()) -> bool:
+    """Whether ``call`` runs a statement ``function`` was handed
+    (:func:`_handed`): a connection method (``con.execute(sql)``,
+    ``con.execute(statement.sql, ...)``) whose SQL is it, or a call of one
+    of ``helpers`` handing it on after the connection
+    (``_executed(con, statement)``)."""
+    if not call.args:
+        return False
+    if isinstance(call.func, ast.Attribute) and call.func.attr in _CONNECTION_METHODS:
+        return _handed(function, call.args[0])
+    return _callee(call) in helpers and any(_handed(function, argument) for argument in call.args[1:])
 
 
 def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
@@ -326,11 +358,13 @@ def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
     hand-built statement run through the compiler's door
     (:func:`_door_sites`), counted in the module whose call hands it over."""
     helpers = _string_sql_helpers(modules)
-    executors = _EXECUTORS | helpers
+    # rows_of and values_of are helpers (they hand their statement to the
+    # compiler's own door) whose callers _door_sites counts, by origin.
+    executors = _EXECUTORS | (helpers - _DOORS)
 
     def passes_on(function: Function | None, call: ast.Call) -> bool:
         # A helper's own call of the SQL it was handed: its callers count it.
-        return function is not None and function.name in helpers and _runs_its_parameter(function, call)
+        return function is not None and function.name in helpers and _runs_its_parameter(function, call, helpers - _DOORS)
 
     counts = {name: sum(1 for function, call in _calls_by_function(tree) if _callee(call) in executors and not passes_on(function, call)) for name, tree in modules.items()}
     for name, count in _door_sites(modules).items():
@@ -379,21 +413,6 @@ def _imports_re(node: ast.AST) -> bool:
     return False
 
 
-def regex_outside_the_reader(modules: dict[str, ast.Module]) -> set[str]:
-    """Each module outside the reader that imports ``re``, or takes a
-    private name (a compiled pattern, say) from a reader module."""
-    found: set[str] = set()
-    for name, tree in modules.items():
-        if name in READER:
-            continue
-        for node in ast.walk(tree):
-            if _imports_re(node):
-                found.add(name)
-            if isinstance(node, ast.ImportFrom) and (node.module or "").rsplit(".", 1)[-1] in READER and any(alias.name.startswith("_") for alias in node.names):
-                found.add(f"{name}:{','.join(alias.name for alias in node.names if alias.name.startswith('_'))}")
-    return found
-
-
 #: The one reader module a pattern may be built or applied in (contract 6).
 LEXICON = "lexicon"
 
@@ -405,34 +424,52 @@ def _is_re_call(node: ast.AST) -> bool:
     return isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "re"
 
 
-def regex_in_the_reader(modules: dict[str, ast.Module]) -> dict[str, int]:
-    """How many ``re`` calls each reader module outside the lexicon makes
-    (:func:`_is_re_call`), for the modules that make any. Contract 6 says
-    the lexicon holds every pattern the reader is read by; the Phase 3
-    review (2026-10-11) found the exit "the reader's regexes outside the
-    lexicon are gone" measured by :func:`regex_outside_the_reader`, which
-    counts modules OUTSIDE the reader and so read 0 while ``point.py`` kept
-    12 compiled patterns, ``parse.py`` 5 calls (one of them compiling the
-    parent grammar's 23 rows, kept there) and ``line.py`` one ``re.sub``.
-    Counted per module, as the SQL is, so a listed module cannot grow
-    patterns freely; the grammar's rows are strings one call compiles, so a
-    new ROW does not raise this count - moving the rows to the lexicon is
-    Phase 4's, with the rows as predicates over typed values."""
-    found: dict[str, int] = {}
-    for name, tree in modules.items():
-        if name not in READER or name == LEXICON:
+def _type_checking(node: ast.AST) -> bool:
+    """Whether ``node`` is an ``if TYPE_CHECKING:`` block (or
+    ``typing.TYPE_CHECKING``), whose imports never run."""
+    if not isinstance(node, ast.If):
+        return False
+    test = node.test
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
+
+
+def _run_time_nodes(tree: ast.AST) -> list[ast.AST]:
+    """Every node of ``tree`` but the bodies of its ``TYPE_CHECKING`` blocks."""
+    found: list[ast.AST] = []
+    pending: list[ast.AST] = [tree]
+    while pending:
+        node = pending.pop()
+        found.append(node)
+        if _type_checking(node):
+            assert isinstance(node, ast.If)
+            pending.extend(node.orelse)
             continue
-        calls = sum(1 for node in ast.walk(tree) if _is_re_call(node))
-        if calls:
-            found[name] = calls
+        pending.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def regex_outside_the_lexicon(modules: dict[str, ast.Module]) -> set[str]:
+    """Each module but the lexicon that imports ``re`` at run time or calls
+    it (:func:`_is_re_call`) - a reader module's pattern of its own, which
+    ``regex_in_the_reader`` counted until Phase 4, step 6 - and each module
+    outside the reader that takes a private name (a compiled pattern, say)
+    from a reader module. Contract 6: the lexicon holds every pattern."""
+    found: set[str] = set()
+    for name, tree in modules.items():
+        if name == LEXICON:
+            continue
+        for node in _run_time_nodes(tree):
+            if _imports_re(node) or _is_re_call(node):
+                found.add(name)
+            if name not in READER and isinstance(node, ast.ImportFrom) and (node.module or "").rsplit(".", 1)[-1] in READER and any(alias.name.startswith("_") for alias in node.names):
+                found.add(f"{name}:{','.join(alias.name for alias in node.names if alias.name.startswith('_'))}")
     return found
 
 
 CHECKS: dict[str, Callable[[dict[str, ast.Module]], set[str] | dict[str, int]]] = {
     "question_outside_the_reader": question_outside_the_reader,
     "sql_outside_the_relations": sql_outside_the_relations,
-    "regex_outside_the_reader": regex_outside_the_reader,
-    "regex_in_the_reader": regex_in_the_reader,
+    "regex_outside_the_lexicon": regex_outside_the_lexicon,
     "con_in_the_reader": con_in_the_reader,
 }
 

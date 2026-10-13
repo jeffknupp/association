@@ -3,26 +3,19 @@
   "history:RunHistory.write"
  ],
  "sql_outside_the_relations": {
-  "compose.core": 1,
   "conditions": 7,
   "connection": 1,
   "entities": 3,
-  "game_label": 1,
-  "netpoints": 6,
-  "player_games": 4,
+  "netpoints": 7,
+  "player_games": 5,
   "player_relation": 18,
-  "season_line": 13,
+  "season_line": 12,
   "shots": 3,
   "standings": 4,
   "team_games": 2,
   "team_relation": 5,
   "team_seasons": 7
  },
- "regex_outside_the_reader": [],
- "regex_in_the_reader": {
-  "line": 1,
-  "parse": 5,
-  "point": 11
- },
+ "regex_outside_the_lexicon": [],
  "con_in_the_reader": []
 }

@@ -126,8 +126,8 @@ class _Working:
     team_words: tuple[str, ...]
     #: The lines the words state, as the lines tagger typed them
     #: (:class:`~association.query.line.LinesNamed`): the rules read the
-    #: typed values, never the line's words, which the question they read
-    #: holds marked (``lexicon.mark_lines``).
+    #: typed values, never the line's words, which the grammar's text they
+    #: read holds apart (:meth:`~association.query.line.LinesNamed.numbered`).
     lines: LinesNamed
     #: Whether a companion reached a line in a clause led by "when" ("sixers
     #: record when maxey scored 20+ points"), as the subject reading typed
@@ -137,7 +137,7 @@ class _Working:
 
 
 def settle(
-    question: str,
+    question: str | lexicon.GrammarText,
     asked: PointShape | None,
     *,
     subject: reading.Subject | None = None,
@@ -162,24 +162,30 @@ def settle(
        ``router.settle`` until Phase 3, step 4, which took a slot dict and
        the names typed (``router.Named``) and ran the taggers after the
        rules, returning a ``router.Route``.
+
+    .. versionchanged:: 6.0.0
+       Reads the grammar's text (:class:`~association.query.lexicon.GrammarText`:
+       each line's number typed apart from the words) as well as a plain
+       question (Phase 4, step 6).
     """
     who = subject if subject is not None else reading.Subject()
-    typed = lines if lines is not None else lines_named(question)
+    text = lexicon.GrammarText.of(question)
+    typed = lines if lines is not None else lines_named(text.text)
     # The team nicknames the words hold, read ONCE by the subject reading's
     # reader and handed to the rules as the typed subject is (slice (c)):
     # a rule that writes one as the team claims its words below, where
     # the rules' probe read them again and joined the claim with the
     # opponent's.
-    team_words = team_words_in(question)
-    working = _working(question, asked, who, opponent, stat, typed, team_words, reached_when)
-    coach = _settle_rules(working, question, companions)
+    team_words = team_words_in(text.text)
+    working = _working(text, asked, who, opponent, stat, typed, team_words, reached_when)
+    coach = _settle_rules(working, text.text, companions)
     # What the rules read: the words whose deletion changes the key they
     # settle or a name they write (span.read_by) - the rules are over the
     # whole question ("which team", "as a starter", "log"), so what they
     # read is what their decision turned on (Phase 3, step 3).
-    claims = read_by(question, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed, team_words, reached_when))
+    claims = read_by(text, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed, team_words, reached_when))
     return Asked(
-        asked=working.asked, coach=coach, subject=working.subject, opponent=working.opponent, stat=working.stat, claims=(*claims, *_team_word_claims(question, who, working.subject, team_words))
+        asked=working.asked, coach=coach, subject=working.subject, opponent=working.opponent, stat=working.stat, claims=(*claims, *_team_word_claims(text.text, who, working.subject, team_words))
     )
 
 
@@ -195,7 +201,14 @@ def _team_word_claims(question: str, handed: reading.Subject, settled: reading.S
 
 
 def _working(
-    question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, stat: Any, lines: LinesNamed, team_words: tuple[str, ...], reached_when: bool = False
+    question: lexicon.GrammarText,
+    asked: PointShape | None,
+    subject: reading.Subject,
+    opponent: str | None,
+    stat: Any,
+    lines: LinesNamed,
+    team_words: tuple[str, ...],
+    reached_when: bool = False,
 ) -> _Working:
     """The rules' working reading of ``question`` before any rule has run:
     the key and the names as handed, the grammar's subject and the team
@@ -205,7 +218,7 @@ def _working(
 
 
 def _settle_read(
-    question: str,
+    question: lexicon.GrammarText,
     asked: PointShape | None,
     subject: reading.Subject,
     opponent: str | None,
@@ -220,7 +233,7 @@ def _settle_read(
     words they read are claimed by (:func:`settle`). The measure key is the
     tagger's context, not the rules' reading."""
     working = _working(question, asked, subject, opponent, stat, lines, team_words, reached_when)
-    coach = _settle_rules(working, question, companions)
+    coach = _settle_rules(working, question.text, companions)
     return working.asked, coach, working.subject, working.opponent
 
 

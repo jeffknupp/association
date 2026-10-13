@@ -50,9 +50,8 @@ the abbreviations only the line readers.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
 from association.query import lexicon
@@ -63,6 +62,9 @@ from association.query.reading import (
     MeasureSide,
     MeasureWhose,
 )
+
+if TYPE_CHECKING:
+    import re
 
 # --- The catalog ---------------------------------------------------------------------------
 

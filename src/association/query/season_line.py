@@ -12,9 +12,9 @@ This module holds what the season line's readers
 answer: the subject settled over it, the span a read covers, and each
 statement a read runs - a season's line, a career's summed line, an
 advanced stat's season or weighted career, a stat season by season and the
-career total beneath it, the NetPoints summary a comparison shows, a
-season's or a career's ranking with the rules it is ranked under (the
-qualifier, the traded-player dedup, the postseason copy, the career pool),
+career total beneath it, a season's or a career's ranking with the rules
+it is ranked under (the qualifier, the traded-player dedup, the postseason
+copy, the career pool),
 and the seasons a player is on record for (the defaulted-season redirect,
 the first and last season the compiler and two charts read). Every
 statement is built AND run here, through the compiler's one door
@@ -23,13 +23,16 @@ statement is built AND run here, through the compiler's one door
 rows by column name), taken at call time since the compiler imports this
 module: a reader names the read it takes (:func:`season_row`,
 :func:`career_row`, :func:`advanced_row`, :func:`history_rows`,
-:func:`history_total`, :func:`netpoints_row`) and executes nothing of its
+:func:`history_total`) and executes nothing of its
 own - since Phase 4, step 5, when the six reads ``compose.seasons`` ran
-itself through the door moved here, the statements unchanged. Phase 2's slice (iii)
+itself through the door moved here, the statements unchanged; the sixth, a
+comparison's NetPoints rows, went on the same day to the NetPoints
+relation (:func:`association.query.netpoints.netpoints_row`), whose
+table it reads. Phase 2's slice (iii)
 (``ROADMAP.md``): the statements are the retired templates'
 (``templates.players._season_row``, ``_career_player_stat``,
 ``_player_stat_advanced``, ``_player_history_read``,
-``_player_history_career_count``, ``_compare_netpoints``), moved whole;
+``_player_history_career_count``), moved whole;
 since step 4 the ranking's (``query/leaderboard.py``, folded in whole, its
 own execution gone) and the season-range reads
 (``templates.common.season_redirect``,
@@ -377,21 +380,6 @@ def history_total_statement(athlete_id: str, stat: str, season_type: int, latest
     return Statement(f"SELECT SUM({amount}) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND season <= ? AND gamesPlayed > 0", [athlete_id, season_type, latest])
 
 
-def netpoints_statement(athlete_id: str, season: int, season_type: int) -> Statement:
-    """One player's NetPoints summary for a comparison
-    (:data:`NETPOINTS_COMPARE_ROWS`' columns). ``net_points_player`` uses
-    its OWN string season_type; filtering it with the numeric one every
-    other table uses silently matches nothing. The table exists only where
-    the NetPoints fetch was run, so its absence is the caller's to catch.
-
-    .. versionadded:: 5.0.0
-       ``templates.players._compare_netpoints``' statement.
-    """
-    label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
-    selected = ", ".join(column for _, column in NETPOINTS_COMPARE_ROWS)
-    return Statement(f"SELECT {selected} FROM net_points_player WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?", [athlete_id, season, label])
-
-
 def _values(con: duckdb.DuckDBPyConnection, statement: Statement) -> list[tuple[Any, ...]]:
     """``statement`` run through the compiler's one door
     (:func:`~association.query.compose.core.values_of`), for the reads this
@@ -551,18 +539,6 @@ def history_total(con: duckdb.DuckDBPyConnection, athlete_id: str, stat: str, se
        Run by ``compose.seasons``' history reader until then.
     """
     return _first(_values(con, history_total_statement(athlete_id, stat, season_type, latest)))
-
-
-def netpoints_row(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, season_type: int) -> tuple[Any, ...] | None:
-    """One player's NetPoints summary for a comparison
-    (:func:`netpoints_statement`): its one row, or ``None``. Raises
-    ``duckdb.Error`` where the NetPoints table does not exist, which the
-    caller catches - the table exists only where the NetPoints fetch was run.
-
-    .. versionadded:: 6.0.0
-       Run by ``compose.seasons``' comparison reader until then.
-    """
-    return _first(_values(con, netpoints_statement(athlete_id, season, season_type)))
 
 
 # The ranking: a season's or a career's leaders by one metric, with every

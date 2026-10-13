@@ -32,9 +32,8 @@ gone rather than ported.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from association.query import lexicon
 from association.query.reading import (
@@ -44,6 +43,9 @@ from association.query.reading import (
     Window,
 )
 from association.query.span import range_named, relative_seasons
+
+if TYPE_CHECKING:
+    import re
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -84,6 +86,24 @@ class WindowCandidates:
     order_words: tuple[tuple[str, Claim], ...]
     rank: tuple[Literal["most", "fewest", "best", "worst"], Claim] | None
     ranked_by: tuple[str, tuple[Claim, ...]] | None
+
+    def of_games(self) -> tuple[Claim, ...]:
+        """Where a window of GAMES is read from - the grammar's end and count,
+        and the looser end words - which the parent grammar asks for where it
+        stands (``parse.grammar_text``). A ranking's "top 5" names a count
+        and no end, and is a word the ranking rows read, so it is no window
+        of games here; nor is a count of seasons, which a history's child
+        grammar reads; nor one game named as the subject's own ("his last
+        game" - the grammar's "last game" inside it is one), whose stretch
+        reaches over words other rows read ("barnes's first quarter game":
+        the period's).
+
+        .. versionadded:: 6.0.0
+           ``parse._window_spans`` until Phase 4, step 6.
+        """
+        order, _count, claim = self.grammar
+        windows = [claim] if order is not None and claim is not None else []
+        return (*windows, *(claim for _, claim in self.order_words))
 
 
 @dataclass(frozen=True)

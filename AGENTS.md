@@ -123,38 +123,51 @@ this tree:
   file's writer, `history.RunHistory.write`, which records the question
   asked and answers nothing), how many statements each module executes (105 in 19
   modules when it was first counted, 2026-10-02; 80 in 20 since
-  2026-10-05 - counted per module because a listed module could grow
+  2026-10-05; 74 in 12 since Phase 4, step 5 (2026-10-12): the relation
+  modules and their shared steps (`conditions` among them), `entities`
+  (the name index's two loads and the resolver's elimination read) and
+  `connection` (the latest season), and no module of `compose/` - counted
+  per module because a listed module could grow
   statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
   package's own string-SQL helpers since 2026-10-03, when a statement
   through `entities._read_table` counted as none (each found by its body
-  since 2026-10-12 - a function that runs the SQL it is handed - and its
-  own call of that SQL no longer counted beside its callers', which read
-  the name index's two loads as three); and since 2026-10-05
+  since 2026-10-12 - a function that runs the SQL it is handed, as a
+  parameter (`con.execute(sql)`) or an attribute of one
+  (`con.execute(statement.sql, ...)`), or hands its parameter on to such a
+  function - and its own call of that SQL no longer counted beside its
+  callers', which read the name index's two loads as three and the
+  compiler's one door, `compose.core._executed`, as a statement of
+  `compose.core`'s, #397); and since 2026-10-05
   every `core.rows_of`/`core.values_of` call over a statement the compiler
   did not build, in the module making the call, and every call of a
   function that only hands its parameter to one, such as
   `season_line._values` - Phase 2 moved 35 hand-written statements behind
   that door, where the count read 38 and the sites were 105 still; the
-  argument's tracing is `_origin`'s docstring), a module outside the
-  reader that imports `re` by any route or takes a reader's private
-  pattern (6, then 4 since `refusals.py` went, 3 since `calendar.py`'s
-  patterns moved to the lexicon with the games' cuts, 0 since Phase 3,
-  step 4, slice (b): `entities`' last pattern is `lexicon.word_start`, and
-  its LIKE reading needs none), how many `re` calls each reader module
-  outside the lexicon makes, by module (`regex_in_the_reader`, since
-  2026-10-11: `point` 12 compiled patterns, `parse` 5 - one compiling the
-  parent grammar's 23 rows kept there - `line` 1; the Phase 3 review found
-  the step 4 exit "the reader's regexes outside the lexicon are gone"
-  measured by the ratchet before it, which counts modules OUTSIDE the
-  reader and so read 0 over these 18; a new grammar ROW does not raise the
-  count, since one call compiles them all - Phase 4 moves the rows to the
-  lexicon as predicates over typed values), and a reader function that
+  argument's tracing is `_origin`'s docstring), a module but the lexicon
+  that calls `re` or imports it at run time, or a module outside the
+  reader that takes a reader's private pattern (`regex_outside_the_lexicon`
+  since Phase 4, step 6; `regex_outside_the_reader` until then, which saw
+  modules OUTSIDE the reader only: 6, then 4 since `refusals.py` went, 3
+  since `calendar.py`'s patterns moved to the lexicon with the games'
+  cuts, 0 since Phase 3, step 4, slice (b), where `entities`' last pattern
+  became `lexicon.word_start` - and `regex_in_the_reader` beside it, the
+  `re` calls each reader module but the lexicon made, by module, since
+  2026-10-11: `point` 12, `parse` 5 with the parent grammar's 23 rows,
+  `line` 1, the 18 the Phase 3 review found the step 4 exit "the reader's
+  regexes outside the lexicon are gone" blind to; 2 after step 6's first
+  slice moved the point reader's and the refusals' patterns to the
+  lexicon, 0 after its second made the grammar's rows predicates over
+  typed values with their words in the lexicon, and folded in then - an
+  import under `TYPE_CHECKING`, for an annotation, is none), and a reader
+  function that
   takes a DuckDB connection, by its name or its annotation (23, 0 since
   slice (b): the reader takes the names' in-memory index,
   `names.NameIndex`, which the answering loop reads before the parser
   runs, `entities.names_of`). The two at zero are held as empty lists, so
-  a new one fails. A sixth ratchet, a private name `compose/` took from
-  `templates/`, reached 0 and was deleted with `templates/` (step 6). It fails
+  a new one fails. Two more are gone: a private name `compose/` took from
+  `templates/`, which reached 0 and was deleted with `templates/` (step 6),
+  and `regex_in_the_reader`, folded into `regex_outside_the_lexicon` at 0
+  (Phase 4, step 6). It fails
   on a NEW one or a count that grew, and on a listed one that is GONE or a
   count that fell, so the lists only shrink. A NEW failure is fixed in the
   code - pass the Reading, not the question; narrow through the relation's
@@ -282,7 +295,7 @@ this tree:
   `scripts/ledger_held.json`, as the ratchets are: the unread words by
   count and the questions holding an unread number by question, each
   population's, and the feed's disagreements by question and its joins by
-  kind (`situation+date` 4, #354). `run` writes which population it read
+  kind (none since Phase 4, step 6 fixed #354's `situation+date` 4). `run` writes which population it read
   on its first line, and `report` exits 1 on a grown count or a question
   new to a list, and - on a run of the whole population - on one that fell
   or left it, until `report --shrink` lowers the file with the change (it
@@ -567,10 +580,12 @@ gets turned off.
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py` and the
-    standings' reads beside it, `standings.py`, and the two declared
+    standings beside it, `standings.py`, which builds and runs the four
+    statements a team's record reads, and the two declared
     relations' own since Phase 4, step 5: `netpoints.py`, the NetPoints
     relation, which builds and runs every statement the NetPoints reader
-    and the fingerprint read, and `shots.py`, the shot relation, every
+    and the fingerprint read and a comparison's NetPoints rows, and
+    `shots.py`, the shot relation, every
     statement its chart and distance read - each relation module runs
     its own statements, and `compose/` runs only what the compiler built
     or a relation hands it, Phase 4, step 5), the
@@ -1059,8 +1074,10 @@ a shape:
   on a run of every recorded question - on one that fell or vanished until
   the table is lowered with the change.
   None is held since step 4's slice (c): the 628 have no join, and the
-  2,710 only #354's four (`situation+date`, one tagger reading a day's
-  month again - a word two RULES of one tagger read is still a bug). The
+  2,710 had only #354's four (`situation+date`, one tagger reading a day's
+  month again - a word two RULES of one tagger read is still a bug) until
+  Phase 4, step 6 fixed them: no join on either population since, and any
+  new one fails the report. The
   joins that were held - a child grammar's words over a tagger's
   (`intent+line` 12, `intent+opponent` 4, ...) went with slice (b)'s
   marks, the companions', the windows' and a dated range's with slice
@@ -1124,11 +1141,12 @@ a shape:
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader - held inside the reader by the `regex_in_the_reader`
-  ratchet since 2026-10-11, at the counts the Phase 3 review found:
-  `point.py` 12 compiled patterns, `parse.py` 5 `re` calls with the parent
-  grammar's 23 rows, `line.py` one; `regex_outside_the_reader` counts
-  modules OUTSIDE the reader and read 0 over them). **A tagger reads the words alone, never the key
+  layer of the reader - held by the `regex_outside_the_lexicon` ratchet,
+  empty: no module but the lexicon calls `re` or imports it at run time,
+  since Phase 4, step 6 moved the point reader's 11 patterns, the
+  refusals' 3, `line.py`'s one and the parent grammar's rows here; the
+  `regex_in_the_reader` count it took in stood at the 18 the Phase 3
+  review found inside the reader until then). **A tagger reads the words alone, never the key
   the words ask** (Phase 3, step 4, slice (b)): each family is read twice
   over in `parse._tagged` - the tagger reads every candidate the words
   hold (`line.LineCandidates`, `window.WindowCandidates`,
@@ -1745,16 +1763,24 @@ a shape:
     as missing (`team_games.unnarrowed_games`). The standings', a module
     of their own (`query/standings.py`, the team-season relation's reads
     of ESPN's `standings` and the season totals they are checked against:
-    `season_row`, `career_rows`, `first_season`, `season_games`), which
+    `season_row`, `career_rows`, `first_season`, `season_games`, with the
+    four statements they run, built there since the step's close), which
     `compose/standings.py` reads. The season line's (`season_line.season_row`
-    and the five beside it; `compose/seasons.py` executes nothing), the
+    and the four beside it; `compose/seasons.py` executes nothing, and
+    takes a comparison's NetPoints rows from the NetPoints relation,
+    `netpoints.netpoints_row`, which the season line ran until the step's
+    close), the
     team seasons' (`team_seasons`' `read_team_lines`, `read_team_records`
     and the five beside them, the team compiler's season total among
     them; `compose/team_stats.py` executes nothing), and the team-games
     relation's shared steps hold the three a team reader ran over the
     games (`team_relation.team_season_game_counts`, `team_game_list_gaps`,
     `team_games_total`; `compose/team_records.py` and `compose/team.py`
-    execute nothing).
+    execute nothing). And a single-game chart's label
+    (`game_label.game_label`, which the fingerprint and the shot chart
+    print) words the row the player-games relation reads for it
+    (`player_games.game_label_row`, beside the relation's join) and runs
+    nothing.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body
@@ -2098,57 +2124,86 @@ a shape:
   `threshold_count` and "who lead the league in avg 3 point distance" (no
   player) off `shot_distance`. Measured when the seven left the router's
   prompt: 0 false positives over 261 recorded questions of other intents.
-  **A grammar reads a line or an opponent as its tagger types it, never
-  by its words** (Phase 3, step 4, slice (b)): the child grammars read the
-  question with each line the lines tagger reads written over by its mark
-  (`line.LinesNamed.marked`: the number with its plus, the stat, the
-  words that lead a line under a number - `lexicon.LINE_MARK_*`), the
-  parent grammar and the grammar's rules with each line's NUMBER marked
-  (`numbered`: they read a stat word as a measure's, "most 10 points games"
-  is no team ranking) and the rules the typed values beside it
-  (`LinesNamed.threshold`, `below`), and the parent grammar the opponent
-  the subject reading read, versus word and team, marked
-  (`lexicon.mark_opponent`, `subject.opponent_read`: `_PLAYER_LOG`'s
-  "games against boston" is "games" before an opponent), and since slice
-  (c) each companion's phrase as the subject reading read it
-  (`lexicon.mark_companions` over `subject.Subject.companion_phrases`, the
-  phrases whole - the probed claims are cut to the words the companion
-  reading needed and can land on a word a row reads;
-  `COMPANION_MARK_PRESENCE` where the phrase holds a presence word, which
-  the with/without split's rows read, `COMPANION_MARK` otherwise), each
-  window of games the window tagger reads (`WINDOW_MARK`: the grammar's
-  end and count and the looser end words - not a ranking's "top 5", a
-  count of seasons or one game named as the subject's own, whose stretch
-  reaches over words other rows read) and a range opened on a dated day
-  (`DATE_MARK`, "since 1/26/20"; a calendar day and a month stay words),
-  which the log rows read where they read the words (`parse._PLAYER_LOG`,
-  the team's log row; `parse.marked_for_grammar` is the same text for a
-  test of the rows over words alone). The rules are handed the team
-  nicknames the words hold (`subject.team_words_in`, read once by
-  `grammar.settle` and claimed as the `team` where a rule writes one), a
-  reached companion's "when" clause (`reached_when`; `lexicon.WHEN_REACHES`
-  stays for a clause with no companion in it) and his name as a line
-  record's player (`grammar._restored_subject`). Every mark keeps
-  each character where it stands, so a row's distances hold and a child's
-  words in its decision are the question's own. A grammar so claims its
-  own words around the value and the value's characters are its tagger's:
-  measured on the 2,710 readings (`route_family.py`), `intent+line` 17 ->
-  0 and `intent+opponent` 5 -> 0 joined claims at slice (b), every reading,
-  answer and unread word identical, and the 11 left but #354's at slice
-  (c), where a window read as the typed window no longer needs its "games"
-  (48 of the 2,710 readings' unread words grew by it, 12 of the 628's) and a
-  broader window the tagger reads is a log as "last 10 games" is (14
-  readings' key moved and 10 answers with them, 1 of the 628 and 9 feed,
-  each named in `CHANGES.md`; kept by Jeff's ruling, 2026-10-11 - two of
-  them answer a narrower question than asked, `ISSUES.md`). A row that reads a number or a versus word reads
-  the mark beside it (`N_PLUS`, `MARKED_NUMBER`, `MEETING_WORDS`,
-  `_PAIR_MEETING`); a new row does the same. The count's child grammar
-  reads no bare digits beside its marks: a count is named from a line the
-  tagger read, so a number no line is read from ("games with 40 field
-  goal percentage") stays in `Reading.unread`, where it was hidden in the
-  child's claim (`intent+measure`, 11 -> 0; ISSUES.md, the P1 it hid).
-  A season type or a venue may stand between the marked line and "games"
-  ("how many 40 point playoff games does kobe have", ISSUES.md #375).
+  **A grammar reads the values the taggers typed, never their words**
+  (Phase 3, step 4, slices (b) and (c), as marks written into the question;
+  since Phase 4, step 6 by value). What a grammar reads is the grammar's
+  text, `lexicon.GrammarText`: the question's words with every character
+  a tagger typed written as `lexicon.TYPED` (U+FFFC, the same for every
+  kind, so a pattern over the words sees that something stands there -
+  no word, no space, no digit - and never what), and beside them what was
+  typed at each character, a closed `lexicon.TypedKind`: a line's number
+  by how it is stated (`line_plus`, `line_at_least`, `line_number`), the
+  words that lead a line under a number and a line's stat (`line_lead`,
+  `line_stat`) - the lines tagger's (`line.LinesNamed`); the opponent the
+  subject reading read, with its versus word, by that word
+  (`opponent_against`, `opponent_versus`, `opponent`;
+  `subject.opponent_read`); each companion's phrase as the subject reading
+  read it, by whether a presence word is in it (`companion_with`, which the
+  with/without split's rows read, or `companion`; the phrases whole, from
+  `subject.Subject.companion_phrases` - the probed claims are cut to the
+  words the companion reading needed and can land on a word a row reads);
+  each window of games the window tagger reads (`window`:
+  `window.WindowCandidates.of_games`, the grammar's end and count and the
+  looser end words - not a ranking's "top 5", a count of seasons or one
+  game named as the subject's own, whose stretch reaches over words other
+  rows read); and a range opened on a dated day (`date`:
+  `cuts.CutsRead.dated`, "since 1/26/20"; a calendar day and a month stay
+  words). The child grammars read the text with each line typed whole
+  (`LinesNamed.marked`); the parent grammar and the grammar's rules with
+  each line's NUMBER typed (`numbered`: they read a stat word as a
+  measure's, "most 10 points games" is no team ranking) and the rules the
+  typed values beside it (`LinesNamed.threshold`, `below`); the parent
+  grammar the rest typed over it, a later value over an earlier, a line
+  inside a companion's phrase kept the line (`parse.grammar_text`, which
+  called with the question alone types the windows and the days, for a
+  test of the rows over words alone). A value is asked BY VALUE, two ways.
+  A parent row is a predicate over the text (`lexicon.GrammarRow`): words
+  read anywhere (`Words`, the lexicon's `*_ROW` patterns), a value
+  standing anywhere (`Stands`: "a window of games is read here"), right
+  after the words that lead it (`StandsAfter`: "games" and then the
+  opponent, `_PLAYER_LOG`'s "games against boston") or right before the
+  words after it (`StandsBefore`: a window and then "log"), and any, all
+  or none of those (`AnyOf`, `AllOf`, `NoneOf`) - `parse.PARENT_GRAMMAR`
+  holds the rows, which kinds each applies to and the shape it names; the
+  lexicon holds the words. A child grammar's or the rules' pattern that
+  reads a value WHERE it stands among the words ("a line's number, then
+  its stat, then 'games'") is an `lexicon.Ask`: a regex whose values are
+  `lexicon.typed(kind, ...)` fragments, matched against the text with each
+  typed character spelled by its kind (`GrammarText.spelled`, built from
+  the typed values when the ask is searched and nowhere else - a character
+  of that alphabet in the question's own words is written as `TYPED`, so
+  no question can spell a value by typing it; ISSUES.md #383, where a
+  typed mark forged a 10-game window, needs no intake since). The rules
+  are handed the team nicknames the words hold (`subject.team_words_in`,
+  read once by `grammar.settle` and claimed as the `team` where a rule
+  writes one), a reached companion's "when" clause (`reached_when`;
+  `lexicon.WHEN_REACHES` stays for a clause with no companion in it) and
+  his name as a line record's player (`grammar._restored_subject`). Every
+  typed value keeps each character where it stands, so a row's distances
+  hold and a child's words in its decision are the question's own, and a
+  rule's probe deletes a word from the text with the values in place
+  (`GrammarText.without`, which `span.needed`/`read_by` take as they take a
+  string). A grammar so claims its own words around the value and the
+  value's characters are its tagger's: measured on the 2,710 readings
+  (`route_family.py`), `intent+line` 17 -> 0 and `intent+opponent` 5 -> 0
+  joined claims at slice (b), every reading, answer and unread word
+  identical, and the 11 left but #354's at slice (c), where a window read
+  as the typed window no longer needs its "games" (48 of the 2,710
+  readings' unread words grew by it, 12 of the 628's) and a broader window
+  the tagger reads is a log as "last 10 games" is (14 readings' key moved
+  and 10 answers with them, 1 of the 628 and 9 feed, each named in
+  `CHANGES.md`; kept by Jeff's ruling, 2026-10-11 - two of them answer a
+  narrower question than asked, `ISSUES.md`); Phase 4, step 6's move from
+  marks to values moved none of the 2,710 readings, claims included. A
+  row that reads a number or a versus word reads the typed value beside
+  it (`N_PLUS`, `LINE_NUMBER_NO_PLUS`, `MEETING_WORDS`, `_PAIR_MEETING`); a
+  new row does the same. The count's child grammar reads no bare digits
+  beside its lines: a count is named from a line the tagger read, so a
+  number no line is read from ("games with 40 field goal percentage")
+  stays in `Reading.unread`, where it was hidden in the child's claim
+  (`intent+measure`, 11 -> 0; ISSUES.md, the P1 it hid). A season type or
+  a venue may stand between the typed line and "games" ("how many 40
+  point playoff games does kobe have", ISSUES.md #375).
   The child is named from the grammar alone (`subject.child_named`), and
   the grammar's rules run ONCE, under it (`parse._read_route_staged`); they
   may decline it (a count with no threshold is a ranking), and only then
@@ -2734,6 +2789,16 @@ The habits that caught real bugs here, in rough order of how often they paid:
   failed write looks like a diff or a crash unrelated to the change. Compress
   or hash large outputs, delete them once compared, and check `df -h /tmp`
   before a large run.
+- **Never gate rebased commits with `git rebase --exec` running the suite
+  or the hooks.** The rebase exports `GIT_DIR` to the command, and the tests
+  that build a scratch repository (`git init`, `git config`, `git commit`
+  in a `tmp_path`) and the scripts they call inherited it: on 2026-10-12 they
+  wrote into the real shared repository - `core.bare=true` and
+  `user.name=Test` in its config, test commits on a worktree's HEAD, its
+  index clobbered. `tests/conftest.py` removes every `GIT_*` variable before
+  a test runs now (`without_git_variables`), but a hook is not a test: squash
+  or reorder with no `--exec`, then run the gate chain once on the tip, as a
+  plain command.
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.

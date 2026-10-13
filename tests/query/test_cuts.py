@@ -98,8 +98,12 @@ def _situation(text: str) -> Situation:
         ("Ayton stats in game 4 playoff games", PLAYER_LOG, Cuts(game_n=4)),
         ("his 18th season", PLAYER_LINE, Cuts(season_n=18)),
         ("most points in 15th season played", PLAYER_RANKING, Cuts(season_n=15)),
-        # A day and its own month, both (ISSUES.md, "A month is read from the words of a day in it").
-        ("nba Anthony Davis most offensive rebound in march 24 2018", GAME_HIGHS, Cuts(date="2018-03-24", situation=_situation("in march"))),
+        # The opponents by their seeding: an alignment nothing reads, read whole so it is refused by
+        # name - its "top 3" was a window of his last 3 games (ISSUES.md #396, fixed in Phase 4, step 6).
+        ("luka doncic stats vs top 3 seed teams in the 2026 season", PLAYER_LINE, Cuts(situation=_situation("vs top 3 seed teams"))),
+        ("tatum points against top seeds", PLAYER_LINE, Cuts(situation=_situation("against top seeds"))),
+        # A day, and no month of its own beside it (ISSUES.md #354, fixed in Phase 4, step 6).
+        ("nba Anthony Davis most offensive rebound in march 24 2018", GAME_HIGHS, Cuts(date="2018-03-24")),
     ],
 )
 def test_the_words_read_as_one_cuts(question: str, shape: PointShape | None, expected: Cuts) -> None:
@@ -148,10 +152,19 @@ def test_the_tagger_claims_the_characters_it_read_once() -> None:
     assert [(question[c.start : c.end], c.what) for c in read.claims] == [("home", "venue"), ("game 4", "game_n"), ("finals", "round"), ("7th season", "season_n"), ("christmas", "situation")]
 
 
-def test_a_day_and_its_own_month_are_one_claim_named_for_both() -> None:
+def test_a_day_reads_no_month_of_its_own() -> None:
+    """ISSUES.md #354: "in march 24 2018" is one day, and the month in it no
+    cut of its own - the situation's month read "in march" inside it, and
+    the two claims over "march" were joined (``situation+date``) and the
+    answer named the month beside the day. A month with no day after it is
+    still the situation; a month before a year is no day."""
     question = "nba Anthony Davis most offensive rebound in march 24 2018"
     read = cuts_under(GAME_HIGHS, read_cuts(question, CutsContext()), split=None)
-    assert [(question[c.start : c.end], c.what) for c in read.claims] == [("in march 24 2018", "situation+date")]
+    assert read.cuts.situation is None and read.cuts.date is not None
+    assert [(question[c.start : c.end], c.what) for c in read.claims] == [("march 24 2018", "date")]
+    for question in ("lebron points in march", "lebron points in march 2018"):
+        read = cuts_under(GAME_HIGHS, read_cuts(question, CutsContext()), split=None)
+        assert read.cuts.situation is not None and read.cuts.situation.text == "in march", question
 
 
 def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None:

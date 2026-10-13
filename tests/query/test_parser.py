@@ -19,7 +19,7 @@ from association.query.entities import names_of
 from association.query.line import threshold_named as _threshold_from_text
 from association.query.lines import threshold_of
 from association.query.measure import named
-from association.query.parse import classify_span, marked_for_grammar, read_route
+from association.query.parse import classify_span, grammar_text, read_route
 from association.query.parse import parent_asked as _parent_asked
 from association.query.reading import (
     GAMES_COUNTED,
@@ -164,8 +164,8 @@ def _route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | Non
 
 def parent_asked(question: str, kind: str, companions: bool = False) -> PointShape | None:
     """The parent grammar over ``question`` as ``read_route`` hands it: the
-    windows of games and the dated ranges marked (``marked_for_grammar``)."""
-    return _parent_asked(marked_for_grammar(question), kind, companions)
+    windows of games and the dated ranges typed (``grammar_text``)."""
+    return _parent_asked(grammar_text(question), kind, companions)
 
 
 def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
@@ -774,9 +774,10 @@ def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.
 
 def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: duckdb.DuckDBPyConnection) -> None:
     """Phase 3, step 4, slice (b): the child grammars read each line the
-    lines tagger reads written over by its mark, and the parent grammar the
-    opponent the subject reading read (``lexicon.mark_lines``,
-    ``mark_opponent``), so a grammar claims its own words around them and
+    lines tagger reads as the value it typed, and the parent grammar the
+    opponent the subject reading read (``lexicon.GrammarText``, marks
+    written into the question until Phase 4, step 6), so a grammar claims
+    its own words around them and
     the line's and the opponent's characters are their readers' alone - no
     claim is joined from the two (``intent+line``, ``intent+opponent``), and
     the child's words in its decision are the question's own."""
@@ -795,8 +796,8 @@ def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: 
 
 def test_the_grammars_read_the_companions_the_windows_and_the_dates_as_the_taggers_type_them(con: duckdb.DuckDBPyConnection) -> None:
     """Slice (c): a companion's phrase, a window of games and a dated range
-    are marked the same way (``lexicon.mark_companions``, ``WINDOW_MARK``,
-    ``DATE_MARK``), and the rules are handed the team words, a reached
+    are typed the same way (``parse.grammar_text``), and the rules are
+    handed the team words, a reached
     companion's "when" clause and his name typed - no claim is joined from
     two readings of one word. The names go in before the first read: the
     index is loaded once per test."""
@@ -825,45 +826,95 @@ def test_a_rank_word_beside_no_quarter_names_no_team(con: duckdb.DuckDBPyConnect
     assert (reading.asked, reading.who.teams, reading.cuts.opponent) == (PLAYER_LOG, (), "Golden State Warriors")
 
 
-def test_a_line_and_an_opponent_are_marked_where_their_words_stand() -> None:
-    """The marks keep every character where it stands: a line's number (with
-    its plus) and stat, the words that lead a line under a number, and an
-    opponent with its versus word, each written over by its own mark."""
+def test_a_line_and_an_opponent_are_typed_where_their_words_stand() -> None:
+    """The grammar's text keeps every character where it stands and holds
+    what each tagger typed apart from the words (Phase 4, step 6; marks
+    written into the question until then): a line's number by how it is
+    stated and its stat, the words that lead a line under a number (each
+    word, the spaces between left), an opponent by its versus word, a
+    companion's phrase by its presence word with a line inside it kept, a
+    window of games and a dated range - each a run of
+    :data:`~association.query.lexicon.TYPED` in the words, so no pattern
+    over the words reads what stands there."""
     from association.query import lexicon
     from association.query.line import lines_named
+
+    def runs(text: lexicon.GrammarText) -> list[tuple[str, str | None]]:
+        out: list[tuple[str, str | None]] = []
+        for char, kind in zip(text.source, text.kinds, strict=True):
+            if out and out[-1][1] == kind:
+                out[-1] = (out[-1][0] + char, kind)
+            else:
+                out.append((char, kind))
+        return out
 
     question = "games with 20+ points or under 14 fta"
     lines = lines_named(question)
     assert lines.threshold == 20 and lines.below
     marked, numbered = lines.marked(question), lines.numbered(question)
-    assert len(marked) == len(numbered) == len(question)
-    assert (
-        marked == "games with " + lexicon.LINE_MARK_PLUS * 3 + " " + lexicon.LINE_MARK_STAT * 6 + " or " + lexicon.LINE_MARK_LEAD * 5 + " " + lexicon.LINE_MARK * 2 + " " + lexicon.LINE_MARK_STAT * 3
-    )
-    assert numbered == "games with " + lexicon.LINE_MARK_PLUS * 3 + " points or under " + lexicon.LINE_MARK * 2 + " fta"
-    assert lexicon.mark_opponent("games vs boston", ((6, 15),)) == "games " + lexicon.OPPONENT_MARK_AGAINST * 9
-    # A companion's phrase by its presence word, a line inside it kept; any other phrase by the plain mark; a window and a dated range by theirs.
-    assert lexicon.mark_companions("record when maxey scored \ue000\ue000\ue000 points", ((7, 28),)) == "record " + lexicon.COMPANION_MARK_PRESENCE * 18 + "\ue000" * 3 + " points"
-    assert lexicon.mark_companions("log in games embiid missed", ((4, 26),)) == "log " + lexicon.COMPANION_MARK * 22
-    assert marked_for_grammar("randle last 10 game log since 1/26/20") == "randle " + lexicon.WINDOW_MARK * 12 + " log " + lexicon.DATE_MARK * 13
+    assert len(marked.text) == len(numbered.text) == len(question) and lexicon.TYPED not in question
+    assert runs(marked) == [
+        ("games with ", None),
+        ("20+", "line_plus"),
+        (" ", None),
+        ("points", "line_stat"),
+        (" or ", None),
+        ("under", "line_lead"),
+        (" ", None),
+        ("14", "line_number"),
+        (" ", None),
+        ("fta", "line_stat"),
+    ]
+    assert runs(numbered) == [("games with ", None), ("20+", "line_plus"), (" points or under ", None), ("14", "line_number"), (" fta", None)]
+    assert numbered.text == "games with " + lexicon.TYPED * 3 + " points or under " + lexicon.TYPED * 2 + " fta"
+    opposed = lexicon.GrammarText.of("games vs boston").typed_over(((6, 15, lexicon.opponent_kind("vs boston")),))
+    assert runs(opposed) == [("games ", None), ("vs boston", "opponent_against")]
+    question = "record when maxey scored 30+ points"
+    text = lines_named(question).numbered(question)
+    text = text.typed_over(((7, 28, lexicon.companion_kind(text.text[7:28])),), under=lexicon.LINE_KINDS)
+    assert runs(text) == [("record ", None), ("when maxey scored ", "companion_with"), ("30+", "line_plus"), (" points", None)]
+    text = lexicon.GrammarText.of("log in games embiid missed").typed_over(((4, 26, lexicon.companion_kind("in games embiid missed")),))
+    assert runs(text) == [("log ", None), ("in games embiid missed", "companion")]
+    assert runs(grammar_text("randle last 10 game log since 1/26/20")) == [("randle ", None), ("last 10 game", "window"), (" log ", None), ("since 1/26/20", "date")]
 
 
-#: Every mark the grammars read a typed value as (``lexicon``'s private-use
-#: characters, U+E000-U+E00B), by name.
-_MARKS = (
-    "LINE_MARK_PLUS",
-    "LINE_MARK",
-    "LINE_MARK_AT_LEAST",
-    "LINE_MARK_STAT",
-    "LINE_MARK_LEAD",
-    "OPPONENT_MARK_AGAINST",
-    "OPPONENT_MARK_VERSUS",
-    "OPPONENT_MARK",
-    "COMPANION_MARK_PRESENCE",
-    "COMPANION_MARK",
-    "WINDOW_MARK",
-    "DATE_MARK",
-)
+def test_a_probe_keeps_each_typed_value_where_it_stands() -> None:
+    """A rule asks itself whether it needed a word by deleting it (the
+    claims ledger's probe): over the grammar's text the gap is closed as
+    in a plain question, and each typed value keeps its place among the
+    words left, partly deleted where the word held part of it."""
+    from association.query import lexicon
+
+    text = lexicon.GrammarText.of("show his  games vs boston").typed_over(((16, 25, "opponent_against"),))
+    probed = text.without(5, 8)
+    assert probed.text == "show games " + lexicon.TYPED * 9 and probed.kind_at(11) == "opponent_against" and probed.kind_at(10) is None
+    assert probed.text == lexicon.without_word(text.text, 5, 8)
+    edge = lexicon.GrammarText.of("games vs boston's").typed_over(((6, 15, "opponent_against"),)).without(6, 17)
+    assert edge.text == "games" and not edge.holds(frozenset({"opponent_against"}))
+
+
+def test_an_ask_reads_a_typed_value_by_value_and_never_a_character_typed_in() -> None:
+    """An :class:`~association.query.lexicon.Ask` reads a value where it
+    stands by its kind, spelled for the match from the typed values alone:
+    the same characters typed into the question, or the one every typed
+    character is written as in the words, read as nothing typed."""
+    from association.query import lexicon
+
+    plus = lexicon.ask(lexicon.typed("line_plus") + "+ games")
+    text = lexicon.GrammarText.of("30+ games").typed_over(((0, 3, "line_plus"),))
+    assert plus.search(text) is not None
+    assert plus.search(text.typed_over(((0, 3, "line_number"),))) is None
+    spelled_by_hand = text.spelled[:3] + " games"
+    assert plus.search(spelled_by_hand) is None and plus.search(lexicon.TYPED * 3 + " games") is None
+    assert plus.search(lexicon.GrammarText.of(spelled_by_hand)) is None
+
+
+#: Characters a user could type to try to forge a typed value: the
+#: private-use characters the grammars read typed values as until Phase 4,
+#: step 6 (U+E000-U+E00B), the alphabet an ask spells a kind by inside its
+#: match (from U+E100), and the one every typed character is written as in
+#: the grammar's words (U+FFFC, ``lexicon.TYPED``).
+_MARKS = tuple(chr(code) for code in (*range(0xE000, 0xE00C), *range(0xE100, 0xE10C), 0xFFFC))
 
 
 @pytest.mark.parametrize("mark", _MARKS)
@@ -871,32 +922,19 @@ _MARKS = (
     "question",
     ["nikola jokic {} stats this season", "how many games {}{} {}{} did nikola jokic have", "{}joel embiid game log vs boston", "luka doncic {} points per game in 2024 {}"],
 )
-def test_a_mark_typed_into_the_question_is_read_as_a_space(con: duckdb.DuckDBPyConnection, question: str, mark: str) -> None:
-    """A user who types a private-use character forges nothing (ISSUES.md
-    #383): the grammars read the question with each typed value written over
-    by a mark (``lexicon.mark_lines``, ``mark_opponent``, ...), so a mark
-    typed by hand was read as a value the taggers never read - "nikola jokic
-    <WINDOW_MARK> stats this season" answered a 10-game log. The parser's
-    first step reads every character of the private-use range as a space,
-    where it stands, so the reading is the one of the question with a space
-    there, every claim at the same place."""
-    from association.query import lexicon
-
-    char = getattr(lexicon, mark)
-    assert "" <= char <= ""
+def test_a_mark_typed_into_the_question_forges_no_value(con: duckdb.DuckDBPyConnection, question: str, mark: str) -> None:
+    """A user who types one of these characters forges nothing (ISSUES.md
+    #383): until Phase 4, step 6 the grammars read the question with each
+    typed value written over by a mark, so a mark typed by hand was read as
+    a value the taggers never read - "nikola jokic <WINDOW_MARK> stats this
+    season" answered a 10-game log - and the parser's first step read every
+    private-use character as a space. Now no value is read from a
+    character: the grammars read what the taggers typed
+    (``lexicon.GrammarText``), and an ask spells it inside its match alone,
+    so the reading is the one of the question with a space there, every
+    claim at the same place, with no intake rewriting the question."""
+    char = mark
     typed = question.format(*[char] * question.count("{}"))
     spaced = question.format(*[" "] * question.count("{}"))
     assert _read(con, typed) == _read(con, spaced)
     assert _read(con, typed, ["nikola jokic"]) == _read(con, spaced, ["nikola jokic"])
-
-
-def test_every_mark_is_in_the_range_the_parser_reads_as_a_space() -> None:
-    """The marks are drawn from the range the parser's first step blanks, so
-    none can be typed: a mark added outside it fails here."""
-    from association.query import lexicon
-
-    marks = {name: value for name, value in vars(lexicon).items() if name.endswith("_MARK") or "_MARK_" in name}
-    assert set(_MARKS) <= set(marks)
-    for name, value in marks.items():
-        if isinstance(value, str) and len(value) == 1:
-            assert lexicon.PRIVATE_USE_FIRST <= value <= lexicon.PRIVATE_USE_LAST, name

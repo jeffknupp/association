@@ -17,13 +17,15 @@ where a phrase stood. One reading now, before the cuts tagger that reads it
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import cast, get_args
+from typing import TYPE_CHECKING, cast, get_args
 
 from association.query import lexicon
 from association.query.reading import Claim, Companion, ScopeError, Split
 from association.query.subject import _companion_phrases, _condition_role, _near
+
+if TYPE_CHECKING:
+    import re
 
 OWN_READ_ROLES = frozenset({"started", "bench"})
 """The roles a companion can have that narrow the subject's OWN games as a

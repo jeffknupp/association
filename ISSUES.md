@@ -69,7 +69,7 @@ before that commit needs re-checking against the current warehouse.
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c), enumerating the readings the window marks moved (the team's log row read "last 10" by its own words, and still does).
 - **Evidence:** the parent grammar's team log row reads `(last|past|previous|most recent) COUNT` with anything after the count, so "raptors record last 10 season", "portland trailblazers winning percentage last 10 seasons" and "hornets on the road vs magic last 2 seasons" (3 of the 2,082 feed questions, none of the 628) are `game_log`, and the window tagger reads the count as games: the feed answers are "Toronto Raptors, last 10 games (all-time, 2026 regular season) (6-4): ...", the Blazers' last 10 games (7-3) and the Hornets' last 4 games against the Magic. A span tagger reading of "last 10 seasons" as the window's count of SEASONS exists for a player's history (`Window.of == "seasons"`, "the past 5 years").
 - **User sees:** a fluent wrong answer - ten games where ten seasons were asked.
-- **Next step:** the team log row reads a window of games as the window tagger types it (`lexicon.WINDOW_MARK`) and no longer its own `last COUNT` words, and "last N seasons" on a team becomes the team-season relation's history over N seasons (`Window.of == "seasons"`, as a player's history reads it) - with the 3 answers enumerated. Slice (c) kept the row's words beside the mark so no team reading moved but "warriors first 10 game record every season" (refused since 2026-10-11 as a window of games in each season, #379's `window_per_season`).
+- **Next step:** the team log row reads a window of games as the window tagger types it (`lexicon.stands("window")`, `WINDOW_MARK` until Phase 4, step 6) and no longer its own `last COUNT` words (`lexicon.TEAM_LOG_ROW`), and "last N seasons" on a team becomes the team-season relation's history over N seasons (`Window.of == "seasons"`, as a player's history reads it) - with the answers enumerated. Measured in Phase 4, step 6 (lane A, `9ee8c8f`; the row's `(last|past|previous|most recent) COUNT` alternative dropped, the 2,710 readings and the feed answers): 8 readings move, all feed, none of the 628 - "raptors record last 10 season" and "... last 5 season" become the team's record over the range ("The Toronto Raptors are 438-362 (.547) in the regular seasons since 2017", right); "portland trailblazers winning percentage last 10 seasons" and "... last 15", "sacramento kings winning percentage last 10 seasons" and "raptors last 5 season" become `team_stat` refusing the range ("the seasons since 2016-17 cannot be read here"), honest where they were wrong; but "hornets on the road vs magic last 2 seasons" (the 4 road games against Orlando since 2025, right today) and "suns vs jazz last 10 match ups" (the form the tagger does not type) become `team_stat` refusals too. So the row's words cannot simply go: a team's season-by-season line (or `team_stat` over a range) is the missing piece, on the answer side, and the row then reads "last N seasons" as that and keeps its words for a team's narrowed games.
 - **Priority:** P1 - a wrong answer fluently.
 - **Source:** ours.
 - **GitHub:** #372
@@ -500,15 +500,6 @@ those were found.
 - **Priority:** P1 - 7 of the 2,082 answered or refused as a different question (an eighth, "harden 61 points", is the feed's input: with no model names "harden" alone is read as nobody).
 - **Source:** ours.
 - **GitHub:** #394
-
-### "vs top 3 seed teams" is read as a window of the last 3 games: "luka dončić stats vs top 3 seed teams in the 2026 season" answers his last 3 games
-- **Found:** 2026-10-12, Phase 4, step 1 (lane B), the one answer whose page rendering moved: drawn as a log table where it was prose, which showed what it answered.
-- **Evidence:** on `aaa0a8a`, feed run (`scripts/stage_snapshots.py run --feed`, no names, no stat): the reading's window is `count 3, of games` from "top 3", `Reading.unread` is `stats, seed, teams, season`, no cut is set, and the answer is "Luka Doncic, last 3 of 64 games of the 2026 regular season:" with those three games. 1 of the 2,082 feed questions; "seed" occurs in no other.
-- **User sees:** a wrong answer - his last three games, fluently, where his line against the top-three seeds was asked.
-- **Next step:** the window tagger reads "top N" as a window only where the words rank (a ranking's "top 5"); "vs top N seed teams" is an opponent alignment nothing reads, so refused by a cause naming it (the situation's unread words) until a cut of opponents by seed exists - the reader seam's (lane A's) files, `query/window.py` and the lexicon.
-- **Priority:** P1 - a different question answered fluently.
-- **Source:** ours.
-- **GitHub:** #396
 
 ## P2: misleading or incomplete
 
@@ -2988,15 +2979,6 @@ those were found.
 - **Priority:** P4 - a refusal's wording, the cause right; 7 answers over the two populations.
 - **GitHub:** #398
 
-### The SQL ratchet counts the compiler's one door as a hand-written statement in `compose.core`
-- **Found:** 2026-10-12, Phase 4, step 5, lane C2, moving the standings', periods' and logs' statements into their relations.
-- **Evidence:** `scripts/ratchets.json` holds `"compose.core": 1`, and the roadmap's step 5 assigned it to `_box_notes`' read; but `_box_notes` executes nothing (its read is `player_relation.box_score_notes_read`, in the relation since Phase 2). The one site is `compose.core._executed` (`con.execute(statement.sql, statement.params)`), the door every `rows_of`/`values_of` statement runs through - its statement is a parameter typed `Compiled | TeamCompiled | Statement`, which `check_ratchets._origin` already reads as "compiled" for a door call, but `sql_outside_the_relations` counts every `.execute` call whatever its argument. Measured over every `_EXECUTORS` call in `query/` (2026-10-12, `phase4-laneC2`): one other `.execute` passes on a statement it was handed - `entities._read_table`'s `con.execute(sql)`, a string-SQL door counted beside its two callers (`_read_players`, `_read_teams`: 3 counted for 2 statements) - so a rule "an `.execute` of a statement traced to a parameter is a door, its callers are counted" (the one `_door_sites` already applies to the `rows_of`/`values_of` wrappers) would move `compose.core` 1 -> 0 and `entities` 4 -> 3, and nothing else.
-- **User sees:** nothing; the step's exit ("the ratchet's count reads the relation modules and nothing else") cannot be met while the door counts, and the count would read a statement where there is none.
-- **Next step:** the lead's call (a ratchet's definition): count an `.execute` whose statement traces to a parameter as a door, as `_door_sites` does for the doors' wrappers, watch it fail on a hand statement written into `_executed`, and lower `compose.core` and `entities` with `--shrink` in the same commit.
-- **Source:** ours.
-- **Priority:** P4 - a count, no answer.
-- **GitHub:** #397
-
 ### A measure tagger's claim holds the team's name: "how many 3 pointers have the magic made" is claimed whole as the measure
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, adding the subject reading's claims.
 - **Evidence:** on the 2,710 readings 4 settled team names claim no characters of their own: their words sit inside a `measure` claim the measure tagger made over the whole team-total phrase (`lexicon.TEAM_TOTAL`: "how many 3 pointers have the magic made", "so far this season, how many three-pointers have the magic made?", "How many 10+ point leads did the Sacramento Kings have", "How many games in the 23-24 NBA season did the Los Angeles lakers have"), so the team's claim folds into it (`span.claimed`). Every reading is right; the claims say "measure" for the team's words.
@@ -3022,15 +3004,6 @@ those were found.
 - **Next step:** when the split's reader (`compose/presence.py`) takes the typed companions directly, narrow the games by the companions who played before dividing by the absent ones, and say so; and read the grammar for a team's record with one teammate and without another, which no row names today.
 - **Priority:** P4 - no wording reaches it.
 - **GitHub:** #360
-
-### A month is read from the words of a day in it: "in march 24 2018" narrows by the month and the day, and the answer says both
-- **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (the cuts tagger's claims: the situation's "in march" and the day's "march 24 2018" overlap on one word).
-- **Evidence:** `lexicon.SITUATION`'s month alternative (`in (the month of )?<month>`) matches "in march" inside "in march 24 2018", and `CALENDAR_DATE` matches "march 24 2018", so the reading carries `situation="in march"` beside `date="2018-03-24"`; the relation applies both (the month redundantly: the day is in it) and `Narrowed.filters` says both ("on 2018-03-24 in March"). 4 of the 2,710 readings ("nba Anthony Davis most offensive rebound in march 24 2018", "nba Clint capela double double in march 24 2018" <!-- codespell:ignore capela - a surname, as the feed typed it -->, "nba jerry stcokhouse mkst 3pm in march 14 2001", "nba rip hamilton mkst 3pm in march 14 2001"), all the feed's, none of the 628. The two claims are joined into one (`span.claimed`, "situation+date"), so the ledger counts "in" and "march" as read; dropping the month where a day inside it is named would reword those 4 answers (the redundant "in March" gone from the heading).
-- **User sees:** a correct answer whose heading names the month beside the day, redundantly.
-- **Next step:** the situation's month alternative stops at a month followed by a day number (a lookahead for `\s+\d{1,2}\b`), with the 4 feed answers enumerated before and after - a rewording commit.
-- **Priority:** P4 - the numbers are right; one redundant phrase.
-- **Source:** ours.
-- **GitHub:** #354
 
 ### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
 - **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).
