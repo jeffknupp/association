@@ -142,9 +142,10 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     (frozenset({"team+companions"}), lexicon.AnyOf((lexicon.PRESENCE_ROW, lexicon.stands("companion_with"))), PRESENCE_SPLIT),
     # A log word, or a window of games as the window tagger typed it ("last
     # 10 games", "the season opener") - or the window words the row read
-    # before the window was typed, for a form the tagger does not type
-    # ("last 5 season", ISSUES.md #372).
-    (frozenset({"team"}), lexicon.AnyOf((lexicon.TEAM_LOG_ROW, lexicon.stands("window"))), PLAYER_LOG),
+    # before the window was typed, for a form the tagger does not type,
+    # never a count of seasons - or its games against an opponent over its
+    # last N seasons (ISSUES.md #372).
+    (frozenset({"team"}), lexicon.AnyOf((lexicon.TEAM_LOG_ROW, lexicon.stands("window"), lexicon.TEAM_GAMES_OVER_SEASONS_ROW)), PLAYER_LOG),
     (frozenset({"team"}), lexicon.STREAK_ROW, TEAM_RECORD),
     (frozenset({"team"}), lexicon.TEAM_RECORD_ROW, TEAM_RECORD),
     (frozenset({"team"}), lexicon.TEAM_OUTLOOK_ROW, TEAM_OUTLOOK),
