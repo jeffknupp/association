@@ -427,6 +427,14 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #392
 
+### A two-digit year, a decade written short, and a year glued to a word are read by nothing, and the current season answers: "who averaged the most points per game in the nba between 03 to 25" answers 2026
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** 12 of the 2,082 feed questions hold a season the span does not read: "who averaged the most points per game in the nba between 03 to 25" and "most pts in the 80s" (the 2026 leaders; `lexicon.DECADE` reads "the 1980s" and "the 2010s" only, `RANGE_BETWEEN` four-digit years only), "How many players averaged 30 ppg in the 80s" (the same), "Gilbert arenas 06 playoffs numbers" ("no 2026 postseason numbers"), "Shaquille O neal 01" (the points ranking; the name too), and typos nothing could read ("202r", "20222-23", "29025%3F", "the 201", "2024playoff", "2019 20most"); two restate a season that is read ("kawhi leonard 2012- 2013": 2013; "tmac 2001 to 2001-02": the span's 2002, the bare year before it left as its test holds).
+- **User sees:** a wrong answer for the first five: the current season where 2003-2025, the 1980s or 2006 was asked.
+- **Next step:** "between YY to YY"/"YY to YY" read as a range only where both are two-digit years the league played and "between"/"from" opens it; "the 80s"/"the '90s" as the decade 19x0 where "the" stands before it and no percentage word follows ("shooting in the 90s from the line" is a free-throw percentage); "'06"/"06 playoffs" as season 2006 only beside a season-type word. Measure each on both corpora before writing it; the moved answers enumerated.
+- **Priority:** P1 - 5 of the 2,082 answered for the wrong seasons.
+- **Source:** ours.
+- **GitHub:** #393
 ### The team after a versus word is read from a span that only ends in a team: "zach lavine vs magic on bulls" is his games against the Bulls
 - **Found:** 2026-10-13, lane N of the P1 sweep, enumerating #346's moves ("zach lavigne vs magic on bulls" moved from the Magic-Bulls meetings to LaVine's games vs the Bulls).
 - **Evidence:** `subject._team_after_versus` tries the words after "vs" as spans of three, two and one, and `_team_named` reads "magic on bulls" (three words) as the Chicago Bulls - a span holding a team's word anywhere - before the one word "magic" is tried. On `be033d7`'s tree, through the whole agent with no names, "zach lavine vs magic on bulls" answers "Zach LaVine averaged 30 points ... in 1 game vs the Chicago Bulls in the 2026 regular season"; "zach lavine vs magic for the bulls" reads Orlando as the opponent and the Bulls as his tenure, rightly. 1 of the 2,082 feed questions (the typo'd twin, since #346).
@@ -2306,6 +2314,15 @@ those were found.
 - **Next step:** refuse a rate per N possessions for N != 100 by a cause naming the unit, and add the "50" case to `span.needed`'s `gives_up` checks so the number stays unread until it is.
 - **Priority:** P2 - a different figure than asked, with the unit said.
 - **GitHub:** #376
+
+### A "compare A to B" whose A is words nothing resolves answers B alone, with no sentence saying a side was dropped: "compare Karl anything town to khris middleton" is Middleton's line
+- **Found:** 2026-10-13, Jeff reading lane N's held disagreement for #346 (relayed by the lead).
+- **Evidence:** on `8c84100` (sweep-N), the feed's no-names reading of "compare Karl anything town to khris middleton" holds `who.players == ['Khris Middleton']`, unread `['compare', 'karl', 'anything', 'town']`, `misread` empty, `left_out` None, and answers "Khris Middleton averaged 10.2 points, 3.7 rebounds and 2.8 assists per game in 63 games in the 2026 regular season." The one note that says a compared side was dropped, `subject.compared_but_unmatched` (`Reading.left_out`, said as the `name_left_out` decision), takes "vs" and not "compare" by design ("compare Jokic's fingerprint to last season" compares seasons), and is read for a fingerprint alone (`parse._reading_from_route_left_out`, `agent._unmatched_fingerprint`). Measured: of the 2,082 feed questions, 4 hold "compare" and 1 is this class (a compare word, name-shaped unread words on one side of "to"/"and"/"with", one player read); of the 2,710 readings and the 628, no other ("compare khris middleton" compares nothing; "compare curry vs the celtics this season" is a player against a team).
+- **User sees:** a comparison asked, one side silently dropped - a narrower answer with nothing saying so.
+- **Next step:** read the dropped side on the Reading where a compare word joins two sides by "to"/"and"/"with" and one side is name-shaped words no claim covers (`Reading.left_out` beyond the fingerprint), and say it on every shape the answer side answers (`agent._unmatched_fingerprint`'s note generalized, `say.say_left_out`) - or refuse by a cause naming the words (`reading.CAUSES`, `say.refusal_phrase`). The reading half is lane N's (subject/parse); the saying half is the answer side's (`agent.py`, `compose/say.py`). Reach 1 of the 2,082.
+- **Priority:** P2 - a narrower answer than asked, with no caveat.
+- **Source:** ours.
+
 
 ### A range of seasons reaching under the ranking's floor is answered over what is left, or as "No games ... (1994-1989)": "most pts in the 1980s"
 - **Found:** 2026-10-13, the P1 sweep (lane S), fixing #393 (a decade written short).
