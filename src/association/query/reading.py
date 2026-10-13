@@ -1363,6 +1363,8 @@ CAUSES: frozenset[str] = frozenset(
         "threshold_counts_every_game",
         "line_names_no_stat",
         "line_on_a_percentage",
+        "season_line_unread",
+        "seasons_counted",
         "needs_line",
         "career_place_needs_player",
         "needs_subject",
@@ -1410,6 +1412,10 @@ missing thing, never only the slot"):
   (``line_names_no_stat``: ``phrase``, ``side``), or one on a percentage,
   which no game's box score holds (``line_on_a_percentage``: ``phrase``,
   ``side``, ISSUES.md #371);
+- a ranking of players' seasons stating a line on the season's average or
+  a career total, which it keeps no player past (``season_line_unread``:
+  ``words``, ISSUES.md #390), or counting a player's seasons over one
+  (``seasons_counted``: ``words``, ISSUES.md #391);
 - a league-wide count with no line read at all (``needs_line``); an
   ordinal season with no player to be a place in (``career_place_needs_player``:
   ``season_n``); a record over a line with neither a player nor a team

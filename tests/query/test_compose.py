@@ -2438,6 +2438,8 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "threshold_counts_every_game": {"shape": GAMES_COUNTED, "threshold": 0},
     "line_names_no_stat": {"phrase": "under 30 gizmos", "side": "under"},
     "line_on_a_percentage": {"phrase": "more than 40 field goal percentage", "side": "over"},
+    "season_line_unread": {"words": "averaged 30"},
+    "seasons_counted": {"words": "most seasons averaging 30 ppg"},
     "needs_line": {},
     "career_place_needs_player": {"season_n": 15},
     "needs_subject": {"shape": LINE_RECORD},
