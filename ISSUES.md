@@ -66,6 +66,8 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the measure tagger (lane L's `measure.py`) reads a "+"/"minus" between two measures as a sum nothing reads, and the point reader refuses it by a cause naming both (`fact_not_read` or a new kind), until a summed measure exists; "opp" is #409's.
 - **Priority:** P1 - a narrower answer than asked, fluently (0 of the 2,082 outside the floor; the class is the feed's four).
 - **Source:** ours.
+- **GitHub:** #424
+
 ### A team's log asked "including playoffs" shows the regular season alone: "sixers last 10 games against bos including playoffs" lists ten regular-season meetings
 - **Found:** 2026-10-13, Jeff's queries on master; re-measured by the lead on four trees with the same reply (`v5.0.0`, `4de1801` Phase 3's close, `aaa0a8a` Phase 4's open, master `867b604`): the same ten regular-season games every time, so it is not a regression of the rewrite's phases or the sweep - the team log has never honored both season types.
 - **Evidence:** the reading carries `span: {season_type: 2, both: True, career: True}` and `window: {order: recent, count: 10}` (the span tagger read "including playoffs" as `both`), and the team log executes the team compiler's rows read over `team_relation.team_span_clause`, which reads `season_type` and not `both`; the heading says "(all-time, 2024-2026 regular seasons)". The player log honors `both` ("lebron last 10 games vs celtics including playoffs" lists postseason games), so the same words answer differently by subject. Sibling: the team total ignoring "no season type named" (the entry above, "total points by the raptors in the last 10 games").
