@@ -62,6 +62,12 @@ class SpanContext:
     game_n: int | None = None
     season_n: int | None = None
     dated_since: int | None = None
+    #: The season a range of calendar days with their years ends in
+    #: ("from january 1 2015 to june 2 2021": 2021, ISSUES.md #345).
+    dated_until: int | None = None
+    #: Whether that range can hold a postseason game: naming no season
+    #: type, it reads both.
+    dated_both: bool = False
 
 
 @dataclass(frozen=True)
@@ -123,6 +129,11 @@ def read_span(question: str, context: SpanContext) -> SpanCandidates:
     claims.extend(season_words)
     season_type, both, type_claims = _season_type(question)
     claims.extend(type_claims)
+    if context.dated_both and not both and season_type == 2 and lexicon.RANGE_REGULAR_SEASON.search(question) is None:
+        # A range of calendar days that can hold a postseason game, naming
+        # no season type, is every game played between them (ISSUES.md
+        # #345: "from april 16th 2022 to may 22nd 2022" is the 2022 playoffs).
+        both = True
     career, career_claim = career_named(question)
     if career_claim is not None:
         claims.append(career_claim)
@@ -133,6 +144,11 @@ def read_span(question: str, context: SpanContext) -> SpanCandidates:
         # since 2020" became season=2020 before this, and was answered as the
         # 2020 regular season's games alone.
         season = None
+    if context.dated_until is not None and since == until == context.dated_since == context.dated_until:
+        # A range of calendar days inside one season is that season, cut
+        # at the days (ISSUES.md #345): "between October 10 2016 and
+        # february 19 2017" is the 2017 season's games between them.
+        season, since, until = since, None, None
     return SpanCandidates(
         season=season,
         season_type=season_type,
@@ -204,13 +220,15 @@ def _range(question: str, context: SpanContext, career: bool) -> tuple[int | Non
     characters that named it, and whether a range was read at all (which
     drops a named season) - in the order the stages read them: a range
     opened on a dated day first ("since 1/26/20" starts the seasons at the
-    date's own year - unless a career word stands), then the words' own
+    date's own year, and a range of calendar days with their years ends
+    them at its last day's season - unless a career word stands), then the words' own
     closed and open forms, which replace it, then a relative "past N
     seasons" (which a history reads as its count of seasons instead, since
     its window counts seasons rather than games, and which drops the
     season either way) - the first season that reaches returned apart, for
     the key's reading (:func:`~association.query.point.span_under`)."""
     since: int | None = None if career else context.dated_since
+    until: int | None = None if career else context.dated_until
     ranged = since is not None
     found = _validate_range(question)
     if found is not None:
@@ -218,8 +236,8 @@ def _range(question: str, context: SpanContext, career: bool) -> tuple[int | Non
         return first, last, range_claims, True, None
     relative = _relative_since(question)
     if relative is None:
-        return since, None, [], ranged, None
-    return since, None, [relative[1]], True, relative[0]
+        return since, until, [], ranged, None
+    return since, until, [relative[1]], True, relative[0]
 
 
 def _validate_range(question: str) -> tuple[int, int | None, list[Claim]] | None:

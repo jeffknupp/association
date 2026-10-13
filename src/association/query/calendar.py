@@ -33,6 +33,8 @@ from association.query import lexicon
 from association.query.season_text import MONTH_NAMES as _MONTH_NAMES
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from association.query.reading import Filtered
 
 WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -54,9 +56,11 @@ class CalendarNarrowing:
     holiday that moves falls on: MLK Day is ``(1, 1, 3)``, the third Monday
     of January), ``"since_day"``
     (``(month, day)`` - every game from that day of the season on, in the
-    calendar year that day falls in for the season) or ``"since_date"`` (an
+    calendar year that day falls in for the season), ``"since_date"`` (an
     ISO date - every game from that calendar date on, across seasons: "since
-    1/26/20"). ``label`` is how an
+    1/26/20") or ``"date_range"`` (two ISO dates - every game from the first
+    through the second, across seasons: "from january 1 2015 to june 2
+    2021"). ``label`` is how an
     answer says it: "on Tuesdays", "in October", "on Christmas Day", "since
     January 31".
 
@@ -66,6 +70,10 @@ class CalendarNarrowing:
        ``"since_date"``: a "since" written with a year, one cut across seasons.
        ``"nth_weekday"``: a holiday that falls on a weekday of its month
        rather than on a date.
+
+    .. versionchanged:: 6.0.0
+       ``"date_range"``: two calendar days with their years, one cut across
+       seasons (ISSUES.md #345).
     """
 
     kind: str
@@ -182,8 +190,56 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     m = lexicon.SITUATION_SINCE_NUMERIC.fullmatch(words)
     if m:
         return _since_numeric(m.group("date"))
+    m = lexicon.SITUATION_DATE_RANGE.fullmatch(words)
+    if m:
+        days = date_range(m.groupdict())
+        if days is None:
+            return None
+        first, last = days
+        return CalendarNarrowing("date_range", (first.isoformat(), last.isoformat()), f"from {_day_label(first)} to {_day_label(last)}")
     # A holiday, with or without "on" before it.
     return HOLIDAYS.get(words.removeprefix("on ") if words.startswith("on ") else words)
+
+
+def date_range(groups: Mapping[str, str | None]) -> tuple[date, date] | None:
+    """The first and last calendar day a :data:`~association.query.lexicon.DATE_RANGE`
+    match names (its groups), or None where it names no range: two days joined by "and"
+    with no "between" before them ("march 3 and april 4 2024" is two days),
+    a day no calendar has, or a range that ends before it starts. A first
+    day written without its year takes the last day's, or the year before
+    where it falls later in the calendar ("Feb 28th to April 14th 2026" is
+    2026-02-28 through 2026-04-14; "december 1 to january 31 2021" opens in
+    2020).
+
+    .. versionadded:: 6.0.0
+    """
+    if (groups["joiner"] or "").casefold() == "and" and (groups["lead"] or "").casefold() != "between":
+        return None
+    month1, day1 = lexicon.month_number(groups["month1"] or ""), int(groups["day1"] or 0)
+    month2, day2 = lexicon.month_number(groups["month2"] or ""), int(groups["day2"] or 0)
+    year2 = int(groups["year2"] or 0)
+    year1 = int(groups["year1"]) if groups["year1"] else (year2 if (month1, day1) <= (month2, day2) else year2 - 1)
+    try:
+        first, last = date(year1, month1, day1), date(year2, month2, day2)
+    except ValueError:
+        return None  # "february 31"
+    return (first, last) if first <= last else None
+
+
+def season_of_day(day: date) -> int:
+    """The season a calendar day falls in: October through December belong
+    to the season ending the next year, January on to the one ending that
+    year - this project's numbering (:func:`~association.nba.season.calendar_season`)
+    applied to one day.
+
+    .. versionadded:: 6.0.0
+    """
+    return day.year + 1 if day.month >= 10 else day.year
+
+
+def _day_label(day: date) -> str:
+    """One calendar day as an answer says it: "January 1, 2015"."""
+    return f"{_MONTH_NAMES[day.month - 1]} {day.day}, {day.year}"
 
 
 def _since_numeric(text: str) -> CalendarNarrowing | None:
@@ -248,6 +304,9 @@ def calendar_clause(narrowing: CalendarNarrowing, eastern_date: str, season: str
         return f"{eastern_date} >= make_date({year}, ?, ?)", [month, month, day]
     if narrowing.kind == "since_date":
         return f"{eastern_date} >= CAST(? AS DATE)", [narrowing.value]
+    if narrowing.kind == "date_range":
+        first, last = narrowing.value
+        return f"{eastern_date} BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)", [first, last]
     raise ValueError(f"no calendar narrowing called {narrowing.kind!r}")  # written in code, so a programming error
 
 

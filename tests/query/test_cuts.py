@@ -123,6 +123,26 @@ def test_the_opponent_is_the_subjects_word_unless_it_is_the_absent_teammates_aga
     assert _read("bane game log", opponent=" ").opponent is None
 
 
+@pytest.mark.parametrize(
+    ("question", "text", "since", "until", "both"),
+    [
+        # ISSUES.md #345: a range of calendar days with their years is the
+        # situation, whole; its seasons are the span's, and where it can
+        # hold a postseason game it hands the span both season types.
+        ("james harden ts playoffs from january 1 2015 to june 2 2021", "from january 1 2015 to june 2 2021", 2015, 2021, True),
+        ("Sacramento kings record between October 10 2016 and february 19 2017", "between october 10 2016 and february 19 2017", 2017, 2017, False),
+        ("Scottie Barnes averages Feb 28th to April 14th 2026", "feb 28th to april 14th 2026", 2026, 2026, True),
+        ("how many 20 point games did curry have from april 16th 2022 to may 22nd 2022", "from april 16th 2022 to may 22nd 2022", 2022, 2022, True),
+    ],
+)
+def test_a_range_of_calendar_days_is_one_situation_and_its_seasons(question: str, text: str, since: int, until: int, both: bool) -> None:
+    read = cuts_under(PLAYER_LINE, read_cuts(question, CutsContext()), split=None)
+    situation = read.cuts.situation
+    assert situation is not None and situation.text == text and situation.calendar is not None and situation.calendar.kind == "date_range"
+    assert read.cuts.date is None
+    assert (read.dated_since, read.dated_until, read.dated_both) == (since, until, both)
+
+
 def test_a_dated_range_hands_its_year_to_the_span_and_a_worded_one_without_a_year_hands_none() -> None:
     read = cuts_under(PLAYER_LINE, read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
     assert isinstance(read, CutsRead) and read.dated_since == 2020 and read.cuts.situation is not None and read.cuts.situation.calendar is not None
