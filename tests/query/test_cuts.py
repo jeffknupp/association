@@ -143,6 +143,28 @@ def test_a_range_of_calendar_days_is_one_situation_and_its_seasons(question: str
     assert (read.dated_since, read.dated_until, read.dated_both) == (since, until, both)
 
 
+@pytest.mark.parametrize(
+    ("question", "text", "since"),
+    [
+        # ISSUES.md #353: a worded since-date with its year is the
+        # situation whole, and the season its day falls in opens the span.
+        ("lebron ppg since january 31st 2020", "since january 31st 2020", 2020),
+        ("Nick Richards stats after Dec 11 2023", "after dec 11 2023", 2024),
+        ("Since January 31st, 2015, what is the best NBA record?", "since january 31st, 2015", 2015),
+    ],
+)
+def test_a_worded_since_with_its_year_hands_its_season_to_the_span(question: str, text: str, since: int) -> None:
+    read = cuts_under(PLAYER_LINE, read_cuts(question, CutsContext()), split=None)
+    situation = read.cuts.situation
+    assert situation is not None and situation.text == text and situation.calendar is not None and situation.calendar.kind == "since_date"
+    assert read.dated_since == since
+
+
+def test_a_worded_since_beside_another_circumstance_keeps_that_one() -> None:
+    read = read_cuts("celtics record vs eastern conference since september 11th 2001", CutsContext())
+    assert read.cuts.situation is not None and read.cuts.situation.text == "vs eastern conference" and read.dated_since is None
+
+
 def test_a_dated_range_hands_its_year_to_the_span_and_a_worded_one_without_a_year_hands_none() -> None:
     read = cuts_under(PLAYER_LINE, read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
     assert isinstance(read, CutsRead) and read.dated_since == 2020 and read.cuts.situation is not None and read.cuts.situation.calendar is not None

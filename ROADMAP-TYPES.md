@@ -1403,13 +1403,12 @@ moves into `data` before the slice that rewords its answer:
     Three cells (`calendar`, `alignment`, and the unread words as the
     draft's `Unsupported`) with the planner refusing the third is the
     typed shape, and it rewords those 33 answers - a decline-to-Cause
-    commit of its own, after this slice. The same for a worded since-date
-    with a year: "since january 31st 2020" is read as the 2020 season cut
-    at January 31 (the span's year and the calendar's day, separately),
-    where "since 1/31/2020" is every game from that date on across seasons
-    (`since_date`); the typed value records what was read, and the
-    decision which the words mean is open (ISSUES.md, "A worded since-date
-    with a year...").
+    commit of its own, after this slice. A worded since-date with a year
+    ("since january 31st 2020", "after Dec 11 2023") is every game from
+    that date on across seasons, a `since_date`, as "since 1/31/2020" is -
+    decided in the P1 sweep (ISSUES.md #353, 2026-10-13); until then it was
+    read as the 2020 season cut at January 31 (the span's year and the
+    calendar's day, separately).
 11. **The team relation declares no `companion` cell, and the companions it
     honors are its shapes' rows'.** Four readers on `team_games` take a
     companion beyond the team relation's table (`ShapeCells.taken`, since

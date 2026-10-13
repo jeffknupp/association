@@ -231,6 +231,22 @@ def test_a_range_of_days_that_names_no_range_is_none(text: str) -> None:
     assert match is not None and date_range(match.groupdict()) is None
 
 
+@pytest.mark.parametrize(
+    ("text", "kind", "value"),
+    [
+        # ISSUES.md #353: a worded day with its year is that day on, across
+        # seasons, as the numeric form is; a month written short is read.
+        ("since january 31st 2020", "since_date", "2020-01-31"),
+        ("since january 31st, 2015", "since_date", "2015-01-31"),
+        ("after dec 11 2023", "since_date", "2023-12-11"),
+        ("after dec 11", "since_day", (12, 11)),
+    ],
+)
+def test_parse_situation_reads_a_worded_since_with_its_year_across_seasons(text: str, kind: str, value: object) -> None:
+    narrowing = parse_situation(text)
+    assert narrowing is not None and (narrowing.kind, narrowing.value) == (kind, value)
+
+
 def test_a_day_falls_in_the_season_its_month_belongs_to() -> None:
     assert season_of_day(date(2020, 12, 1)) == 2021
     assert season_of_day(date(2021, 6, 2)) == 2021
