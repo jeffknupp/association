@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
@@ -23,6 +23,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import Routed, Said, planned_query, reading_of, said, with_subject
+from warehouse_rows import insert_rows
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -167,7 +168,7 @@ PODZ, CURRY, BROWN, SABONIS = "10", "11", "12", "13"
 
 
 @pytest.fixture
-def cx_ctx(tmp_path: Path) -> AnswerContext:
+def cx_ctx(tmp_path: Path) -> Iterator[AnswerContext]:
     """A small two-season warehouse: Golden State (Podziemski, Curry),
     Boston (Brown) and Detroit (Sabonis), plus two extra players with 22
     games each (Marcus Fillmore, Derek Vollmer) for the league-ranking tests,
@@ -203,25 +204,23 @@ def cx_ctx(tmp_path: Path) -> AnswerContext:
         "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
         "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
     )
-    c.executemany(
-        "INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)",
-        [
-            ("g1", s, f"{s - 1}-11-01T20:00Z", BOS, GS, 100, 110, GS),
-            ("g2", s, f"{s - 1}-12-01T20:00Z", GS, DET, 99, 105, DET),
-            ("g3", s, f"{s}-01-10T20:00Z", GS, DET, 120, 101, GS),
-            ("g4", s, f"{s}-02-10T20:00Z", LAL, GS, 100, 90, LAL),
-            ("g5", s, f"{s}-03-01T20:00Z", GS, BOS, 100, 95, GS),
-            ("g6", s - 1, f"{s - 1}-02-01T20:00Z", BOS, GS, 100, 90, BOS),
-            ("g7", s - 1, f"{s - 1}-03-01T20:00Z", GS, DET, 110, 90, GS),
-        ],
-    )
-    # 22 games apiece for the two ranking-only players, so the league read
-    # clears PER_GAME_MIN_GAMES (20) - nothing else in this fixture does.
-    extra_games = [(f"x{n}", s, (date(s - 1, 11, 5) + timedelta(days=2 * n)).isoformat() + "T20:00Z", LAL, DET, 100, 90, LAL) for n in range(22)]
-    c.executemany("INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)", extra_games)
+    games = [
+        ("g1", s, 2, f"{s - 1}-11-01T20:00Z", BOS, GS, 100, 110, GS),
+        ("g2", s, 2, f"{s - 1}-12-01T20:00Z", GS, DET, 99, 105, DET),
+        ("g3", s, 2, f"{s}-01-10T20:00Z", GS, DET, 120, 101, GS),
+        ("g4", s, 2, f"{s}-02-10T20:00Z", LAL, GS, 100, 90, LAL),
+        ("g5", s, 2, f"{s}-03-01T20:00Z", GS, BOS, 100, 95, GS),
+        ("g6", s - 1, 2, f"{s - 1}-02-01T20:00Z", BOS, GS, 100, 90, BOS),
+        ("g7", s - 1, 2, f"{s - 1}-03-01T20:00Z", GS, DET, 110, 90, GS),
+        # 22 games apiece for the two ranking-only players, so the league read
+        # clears PER_GAME_MIN_GAMES (20) - nothing else in this fixture does.
+        *((f"x{n}", s, 2, (date(s - 1, 11, 5) + timedelta(days=2 * n)).isoformat() + "T20:00Z", LAL, DET, 100, 90, LAL) for n in range(22)),
+    ]
+    insert_rows(c, "games", games)
     c.execute(f"CREATE TABLE player_box_stats ({_BOX_COLUMNS})")
-    c.executemany(
-        f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
+    insert_rows(
+        c,
+        "player_box_stats",
         [
             _box("g1", s, GS, BOS, PODZ, minutes=30, pts=20, reb=5, ast=3),
             _box("g2", s, GS, DET, PODZ, minutes=28, pts=15, reb=4, ast=6),
@@ -258,10 +257,7 @@ def cx_ctx(tmp_path: Path) -> AnswerContext:
     # `test_a_career_predating_box_scores_gets_the_floor_note` adds an older
     # row of its own to turn the note on.
     c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")
-    c.executemany(
-        "INSERT INTO player_season_stats_deduped VALUES (?, ?, 2, 1)",
-        [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
-    )
+    insert_rows(c, "player_season_stats_deduped", [(pid, season, 2, 1) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)])
     # `_player_own_seasons` (`compose.core`) reuses `templates.players.seasons_on_record`,
     # which reads the RAW table `player_season_stats_deduped` is a view over
     # in the real warehouse - so a plain career sentence can name a player's
@@ -270,11 +266,9 @@ def cx_ctx(tmp_path: Path) -> AnswerContext:
     # deduped table above: this fixture has no postseason-copy row for either
     # to disagree about.
     c.execute("CREATE TABLE player_season_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER)")
-    c.executemany(
-        "INSERT INTO player_season_stats VALUES (?, ?, 2, NULL, 1, NULL)",
-        [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
-    )
-    return AnswerContext(con=c, out_dir=tmp_path)
+    insert_rows(c, "player_season_stats", [(pid, season, 2, None, 1, None) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)])
+    yield AnswerContext(con=c, out_dir=tmp_path)
+    c.close()
 
 
 def _run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
@@ -806,8 +800,9 @@ def team_cx_ctx(tmp_path: Path) -> AnswerContext:
         "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
         "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
     )
-    c.executemany(
-        "INSERT INTO games VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    insert_rows(
+        c,
+        "games",
         [
             # Orlando: one regular-season and one postseason game, just to
             # prove the relation reads real games at all - the season TOTAL
@@ -824,8 +819,9 @@ def team_cx_ctx(tmp_path: Path) -> AnswerContext:
     )
     real_games.build_table(c, {"games", "teams"})
     c.execute("CREATE TABLE team_season_stats (season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER, threePointFieldGoalsMade INTEGER)")
-    c.executemany(
-        "INSERT INTO team_season_stats VALUES (?, ?, ?, ?, ?, ?)",
+    insert_rows(
+        c,
+        "team_season_stats",
         [
             (_TS, 2, "1", 82, 9200, 961),  # Orlando's regular-season total
             (_TS, 3, "1", 7, 780, 78),  # Orlando's finished playoff run

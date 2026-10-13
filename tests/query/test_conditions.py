@@ -17,16 +17,17 @@ templates have to get right, measured in the real warehouse first:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import duckdb
 import pytest
 from routed import Said
 from routed import planned_answer as compose_answer
 from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
+from warehouse_rows import insert_rows
 
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
@@ -115,8 +116,17 @@ def _blank(athlete: str, team: str) -> Line:
     return (athlete, team, None, 0, False, False)
 
 
-def _game(
-    c: duckdb.DuckDBPyConnection,
+class GameRows(NamedTuple):
+    """One game's rows: its ``games`` row, its two ``team_box_stats`` rows
+    and a ``player_box_stats`` row per line, as :func:`_insert_games` takes
+    them."""
+
+    game: tuple[Any, ...]
+    team_box: list[tuple[Any, ...]]
+    player_box: list[tuple[Any, ...]]
+
+
+def _game_rows(
     event: str,
     date: str,
     home: str,
@@ -130,26 +140,23 @@ def _game(
     season_type: int = 2,
     neutral_site: bool = False,
     venue_city: str = "Boston",
-) -> None:
+) -> GameRows:
     decided = (home if home_score > away_score else away) if winner == "auto" else winner
-    c.execute("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?)", [event, season, season_type, date, home, away, home_score, away_score, decided, neutral_site, venue_city])
-    for team, opponent, side in ((home, away, "home"), (away, home, "away")):
-        # totalRebounds (40) is deliberately NOT offensiveRebounds +
-        # defensiveRebounds (12 + 23 = 35) - the way a real pre-2022 row
-        # differs, with a few rebounds ESPN credits to no player. Reading the
-        # stale column would show 40.0; see test_conditions.py's rebounds test.
-        stats = [40, 12, 23, 20, 10, 40, 85] if team_box else [None] * 7
-        c.execute("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", [event, season, season_type, team, opponent, side, *stats])
-    for athlete, team, minutes, points, starter, dnp in lines:
-        opponent = away if team == home else home
-        c.execute(
-            "INSERT INTO player_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [
+    # totalRebounds (40) is deliberately NOT offensiveRebounds +
+    # defensiveRebounds (12 + 23 = 35) - the way a real pre-2022 row
+    # differs, with a few rebounds ESPN credits to no player. Reading the
+    # stale column would show 40.0; see test_conditions.py's rebounds test.
+    stats = [40, 12, 23, 20, 10, 40, 85] if team_box else [None] * 7
+    return GameRows(
+        game=(event, season, season_type, date, home, away, home_score, away_score, decided, neutral_site, venue_city),
+        team_box=[(event, season, season_type, team, opponent, side, *stats) for team, opponent, side in ((home, away, "home"), (away, home, "away"))],
+        player_box=[
+            (
                 event,
                 season,
                 season_type,
                 team,
-                opponent,
+                away if team == home else home,
                 athlete,
                 starter,
                 dnp,
@@ -165,12 +172,23 @@ def _game(
                 points,
                 0,
                 0,
-            ],
-        )
+            )
+            for athlete, team, minutes, points, starter, dnp in lines
+        ],
+    )
+
+
+def _insert_games(c: duckdb.DuckDBPyConnection, *games: GameRows) -> None:
+    """Insert ``games`` with one statement per table, in the order given -
+    a statement per row cost the ``league`` fixture 0.1s of every test
+    (``tests/warehouse_rows.py``)."""
+    insert_rows(c, "games", [game.game for game in games])
+    insert_rows(c, "team_box_stats", [row for game in games for row in game.team_box])
+    insert_rows(c, "player_box_stats", [row for game in games for row in game.player_box])
 
 
 @pytest.fixture
-def league(tmp_path: Path) -> AnswerContext:
+def league(tmp_path: Path) -> Iterator[AnswerContext]:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
@@ -194,34 +212,36 @@ def league(tmp_path: Path) -> AnswerContext:
     c.execute("INSERT INTO teams VALUES (?, 'BOS', 'Boston Celtics'), (?, 'LAL', 'Los Angeles Lakers'), (?, 'PHI', 'Philadelphia 76ers')", [BOS, LAL, PHI])
 
     last = S - 1
-    # Last season. e0z comes before Tatum's first box score, so it is never a
-    # game the Celtics played "without" him. The Celtics end the season on
-    # three straight wins (e0c, e0a, e0d) and open this one with a fourth.
-    _game(c, "e0z", f"{last - 1}-10-15T23:30Z", BOS, PHI, 100, 90, [_played(BROWN, BOS, 20)], season=last)
-    _game(c, "e0b", f"{last - 1}-10-20T23:30Z", PHI, BOS, 110, 100, [_played(TATUM, BOS, 20), _played(JOURNEYMAN, BOS, 8), _played(EMBIID, PHI, 35)], season=last)
-    _game(c, "e0c", f"{last - 1}-10-25T23:30Z", BOS, PHI, 105, 95, [_played(TATUM, BOS, 25), _played(EMBIID, PHI, 20)], season=last)
-    _game(c, "e0a", f"{last - 1}-11-10T00:30Z", BOS, LAL, 100, 90, [_played(TATUM, BOS, 30), _played(JOURNEYMAN, BOS, 10), _played(LEBRON, LAL, 25)], season=last)
-    _game(c, "e0d", f"{last - 1}-11-20T00:30Z", BOS, LAL, 101, 99, [_played(TATUM, BOS, 28), _played(LEBRON, LAL, 22)], season=last)
-
-    # This season. Journeyman has moved to the Lakers.
-    # e1 tips 8:30pm Eastern on October 31st: its UTC date is November 1st.
-    _game(c, "e1", f"{S - 1}-11-01T00:30Z", BOS, LAL, 110, 100, [_played(TATUM, BOS, 30), _played(BROWN, BOS, 20), _played(LEBRON, LAL, 28), _played(JOURNEYMAN, LAL, 5, False)])
-    # Tatum listed DNP.
-    _game(c, "e2", f"{S - 1}-11-03T00:30Z", LAL, BOS, 105, 100, [_dnp(TATUM, BOS), _played(BROWN, BOS, 25), _played(LEBRON, LAL, 30), _played(JOURNEYMAN, LAL, 12)])
-    # Tatum not in the box score at all.
-    _game(c, "e3", f"{S - 1}-11-05T00:30Z", BOS, PHI, 120, 100, [_played(BROWN, BOS, 18), _played(EMBIID, PHI, 22)])
-    # A 0-0 placeholder with no winner, between two Celtics wins.
-    _game(c, "e6", f"{S - 1}-11-06T17:00Z", BOS, PHI, 0, 0, [], winner=None)
-    _game(c, "e4", f"{S - 1}-11-07T00:30Z", PHI, BOS, 98, 99, [_played(TATUM, BOS, 35, False), _played(BROWN, BOS, 10), _played(EMBIID, PHI, 40)])
-    # The Celtics' box score is missing: both of theirs have NULL minutes.
-    _game(c, "e5", f"{S - 1}-11-09T00:30Z", BOS, LAL, 101, 99, [_blank(TATUM, BOS), _blank(BROWN, BOS), _played(LEBRON, LAL, 20)], team_box=False)
-    # 8pm Eastern on November 30th. Journeyman has the NULL-minutes shape
-    # beside teammates who played: a game he did not play.
-    _game(c, "e7", f"{S - 1}-12-01T01:00Z", LAL, BOS, 115, 105, [_played(TATUM, BOS, 31), _played(BROWN, BOS, 12), _played(LEBRON, LAL, 33), _blank(JOURNEYMAN, LAL)])
-    # A two-game postseason series vs Philadelphia, for `game_n`: p1 first by
-    # date, p2 second - numbered over real_games, not insertion order.
-    _game(c, "p1", f"{S}-04-20T23:30Z", BOS, PHI, 100, 90, [_played(PLAYOFF_GUY, BOS, 22), _played(EMBIID, PHI, 18)], season_type=3)
-    _game(c, "p2", f"{S}-04-23T23:30Z", PHI, BOS, 95, 105, [_played(PLAYOFF_GUY, BOS, 26), _played(EMBIID, PHI, 20)], season_type=3)
+    _insert_games(
+        c,
+        # Last season. e0z comes before Tatum's first box score, so it is never a
+        # game the Celtics played "without" him. The Celtics end the season on
+        # three straight wins (e0c, e0a, e0d) and open this one with a fourth.
+        _game_rows("e0z", f"{last - 1}-10-15T23:30Z", BOS, PHI, 100, 90, [_played(BROWN, BOS, 20)], season=last),
+        _game_rows("e0b", f"{last - 1}-10-20T23:30Z", PHI, BOS, 110, 100, [_played(TATUM, BOS, 20), _played(JOURNEYMAN, BOS, 8), _played(EMBIID, PHI, 35)], season=last),
+        _game_rows("e0c", f"{last - 1}-10-25T23:30Z", BOS, PHI, 105, 95, [_played(TATUM, BOS, 25), _played(EMBIID, PHI, 20)], season=last),
+        _game_rows("e0a", f"{last - 1}-11-10T00:30Z", BOS, LAL, 100, 90, [_played(TATUM, BOS, 30), _played(JOURNEYMAN, BOS, 10), _played(LEBRON, LAL, 25)], season=last),
+        _game_rows("e0d", f"{last - 1}-11-20T00:30Z", BOS, LAL, 101, 99, [_played(TATUM, BOS, 28), _played(LEBRON, LAL, 22)], season=last),
+        # This season. Journeyman has moved to the Lakers.
+        # e1 tips 8:30pm Eastern on October 31st: its UTC date is November 1st.
+        _game_rows("e1", f"{S - 1}-11-01T00:30Z", BOS, LAL, 110, 100, [_played(TATUM, BOS, 30), _played(BROWN, BOS, 20), _played(LEBRON, LAL, 28), _played(JOURNEYMAN, LAL, 5, False)]),
+        # Tatum listed DNP.
+        _game_rows("e2", f"{S - 1}-11-03T00:30Z", LAL, BOS, 105, 100, [_dnp(TATUM, BOS), _played(BROWN, BOS, 25), _played(LEBRON, LAL, 30), _played(JOURNEYMAN, LAL, 12)]),
+        # Tatum not in the box score at all.
+        _game_rows("e3", f"{S - 1}-11-05T00:30Z", BOS, PHI, 120, 100, [_played(BROWN, BOS, 18), _played(EMBIID, PHI, 22)]),
+        # A 0-0 placeholder with no winner, between two Celtics wins.
+        _game_rows("e6", f"{S - 1}-11-06T17:00Z", BOS, PHI, 0, 0, [], winner=None),
+        _game_rows("e4", f"{S - 1}-11-07T00:30Z", PHI, BOS, 98, 99, [_played(TATUM, BOS, 35, False), _played(BROWN, BOS, 10), _played(EMBIID, PHI, 40)]),
+        # The Celtics' box score is missing: both of theirs have NULL minutes.
+        _game_rows("e5", f"{S - 1}-11-09T00:30Z", BOS, LAL, 101, 99, [_blank(TATUM, BOS), _blank(BROWN, BOS), _played(LEBRON, LAL, 20)], team_box=False),
+        # 8pm Eastern on November 30th. Journeyman has the NULL-minutes shape
+        # beside teammates who played: a game he did not play.
+        _game_rows("e7", f"{S - 1}-12-01T01:00Z", LAL, BOS, 115, 105, [_played(TATUM, BOS, 31), _played(BROWN, BOS, 12), _played(LEBRON, LAL, 33), _blank(JOURNEYMAN, LAL)]),
+        # A two-game postseason series vs Philadelphia, for `game_n`: p1 first by
+        # date, p2 second - numbered over real_games, not insertion order.
+        _game_rows("p1", f"{S}-04-20T23:30Z", BOS, PHI, 100, 90, [_played(PLAYOFF_GUY, BOS, 22), _played(EMBIID, PHI, 18)], season_type=3),
+        _game_rows("p2", f"{S}-04-23T23:30Z", PHI, BOS, 95, 105, [_played(PLAYOFF_GUY, BOS, 26), _played(EMBIID, PHI, 20)], season_type=3),
+    )
     # The shared filtered list every query here reads; e6 is dropped by it.
     real_games.build_table(c, {"games", "teams", "player_box_stats"})
     # For `season_n`: Tatum's two regular seasons on record, last season and
@@ -234,7 +254,8 @@ def league(tmp_path: Path) -> AnswerContext:
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
-    return AnswerContext(con=c, out_dir=tmp_path)
+    yield AnswerContext(con=c, out_dir=tmp_path)
+    c.close()
 
 
 def _rows(result: Said, split: str) -> dict[str, dict[str, Any]]:
@@ -1845,8 +1866,11 @@ def old_postseason_and_cup_final(league: AnswerContext) -> AnswerContext:
     played (``team_games.py``: "the NBA Cup final is flagged rather than
     dropped")."""
     c = league.con
-    _game(c, "old1", "1991-05-01T23:30Z", BOS, LAL, 100, 90, [_played(TATUM, BOS, 22)], season=1990, season_type=3)
-    _game(c, "cup", f"{S - 1}-12-14T01:30Z", BOS, LAL, 97, 95, [_played(TATUM, BOS, 24), _played(LEBRON, LAL, 30)], neutral_site=True, venue_city="Las Vegas")
+    _insert_games(
+        c,
+        _game_rows("old1", "1991-05-01T23:30Z", BOS, LAL, 100, 90, [_played(TATUM, BOS, 22)], season=1990, season_type=3),
+        _game_rows("cup", f"{S - 1}-12-14T01:30Z", BOS, LAL, 97, 95, [_played(TATUM, BOS, 24), _played(LEBRON, LAL, 30)], neutral_site=True, venue_city="Las Vegas"),
+    )
     real_games.build_table(c, {"games", "teams", "player_box_stats"})
     return league
 
@@ -1911,8 +1935,7 @@ def old_franchises(league: AnswerContext) -> AnswerContext:
     c = league.con
     c.execute("INSERT INTO teams VALUES ('17','BKN','Brooklyn Nets'),('29','MEM','Memphis Grizzlies')")
     c.execute("INSERT INTO players VALUES ('70','Kenyon Martin'),('71','Pau Gasol')")
-    for i in range(6):
-        _game(c, f"v{i}", f"2001-01-1{i}T00:30Z", "17", "29", 100, 90, [_played("70", "17", 20), _played("71", "29", 15)], season=2001)
+    _insert_games(c, *(_game_rows(f"v{i}", f"2001-01-1{i}T00:30Z", "17", "29", 100, 90, [_played("70", "17", 20), _played("71", "29", 15)], season=2001) for i in range(6)))
     real_games.build_table(c, {"games", "teams", "player_box_stats"})
     return league
 
@@ -2092,7 +2115,7 @@ def test_since_narrows_to_a_range_of_seasons(league: AnswerContext) -> None:
     "since {S-1}" differs from both the plain current-season default (3
     games) and a full career that would also count the older one (8)."""
     c = league.con
-    _game(c, "e00", f"{S - 2}-11-01T00:30Z", BOS, PHI, 100, 90, [_played(TATUM, BOS, 22)], season=S - 2)
+    _insert_games(c, _game_rows("e00", f"{S - 2}-11-01T00:30Z", BOS, PHI, 100, 90, [_played(TATUM, BOS, 22)], season=S - 2))
     real_games.build_table(c, {"games", "teams", "player_box_stats"})
     result = player_splits(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2, since=(S - 1))))
     assert result.data["games"] == 7  # e0b, e0c, e0a, e0d (S-1) + e1, e4, e7 (S) - not e00 (S-2)
