@@ -31,6 +31,16 @@ first slice, so dropping the template boundary in step 6 took no call out of
 the population - ``templates.TEMPLATES`` was already empty.
 A phase that moves a boundary adds the new one to :data:`BOUNDARIES` before
 it deletes the old, so both trees record the same calls.
+
+Phase 4, step 4 folds two records into their neighbors (the planning into
+the Query-or-Cause, the sayer's reply into the ``Answer``), and two
+boundaries carry them: ``compose:answer`` takes the planning (``planned=``)
+and returns what the sayer said, and ``refusal_result`` returns what the
+sayer said. Both are recorded by what crosses them, in the form the stage
+snapshot holds, since 2026-10-12 - the planning as the snapshot's ``query``
+record (:func:`_planned_argument`) and what was said as its sentence, its
+data and its files (:func:`_said`) - so the record is the same before the
+fold and after it.
 """
 
 from __future__ import annotations
@@ -124,8 +134,17 @@ def _record(out: Path, name: str, args: tuple[Any, ...], kwargs: dict[str, Any],
         handle.write(json.dumps(row, sort_keys=True) + "\n")
 
 
-def _recording(out: Path, name: str, function: Callable[..., Any], shown: Callable[[Any, tuple[Any, ...]], Any]) -> Callable[..., Any]:
-    """``function``, with every call's arguments and outcome written to ``out``."""
+def _recording(
+    out: Path,
+    name: str,
+    function: Callable[..., Any],
+    shown: Callable[[Any, tuple[Any, ...]], Any],
+    argued: Callable[[tuple[Any, ...], dict[str, Any]], dict[str, Any]] | None = None,
+) -> Callable[..., Any]:
+    """``function``, with every call's arguments and outcome written to
+    ``out``; ``argued`` names how a boundary's keyword arguments are
+    recorded where one is a record the stage snapshot holds in its own form
+    (:func:`_planned_argument`)."""
 
     @functools.wraps(function)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -142,12 +161,13 @@ def _recording(out: Path, name: str, function: Callable[..., Any], shown: Callab
                 caller_declined(reason)
 
             kwargs["declined"] = declined
+        recorded = kwargs if argued is None else argued(args, kwargs)
         try:
             result = function(*args, **kwargs)
         except Exception as exc:
-            _record(out, name, args, kwargs, {"raised": f"{type(exc).__name__}: {exc}", **_declines(heard)})
+            _record(out, name, args, recorded, {"raised": f"{type(exc).__name__}: {exc}", **_declines(heard)})
             raise
-        _record(out, name, args, kwargs, {"returned": _plain(shown(result, args)), **_declines(heard)})
+        _record(out, name, args, recorded, {"returned": _plain(shown(result, args)), **_declines(heard)})
         return result
 
     return wrapper
@@ -182,6 +202,28 @@ def _planned(planned: Any, args: tuple[Any, ...]) -> Any:
     return read_stages(args[0], planned=planned)["query"]
 
 
+def _planned_argument(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """``compose.answer``'s keyword arguments as recorded: the planning it is
+    handed (``planned=``) as the stage snapshot's ``query`` record of it over
+    the Reading it is handed beside it (:func:`_planned`) - the planned
+    query, the refusal said or the decline's reason - so the record is the
+    same whatever type carries the planning (Phase 4, step 4 folds the
+    ``Planned`` record into the Query-or-Cause)."""
+    if kwargs.get("planned") is None:
+        return kwargs
+    return {**kwargs, "planned": _planned(kwargs["planned"], args[1:])}
+
+
+def _said(said: Any, _args: tuple[Any, ...]) -> Any:
+    """What the sayer said, as recorded: its sentence (``answer``), its data
+    and its files - the said part of an answer, whatever record carries it
+    (Phase 4, step 4 folds the sayer's ``Reply`` into the ``Answer``); None
+    where the answer side declined."""
+    if said is None:
+        return None
+    return {"answer": said.answer, "data": said.data, "artifacts": said.artifacts}
+
+
 def install(directory: Path) -> None:
     """Wrap every boundary so each call is recorded under ``directory``.
     Called once, from ``conftest.py``, before any test module is imported -
@@ -200,11 +242,16 @@ def install(directory: Path) -> None:
     def as_returned(result: Any, _args: tuple[Any, ...]) -> Any:
         return result
 
-    shown: dict[str, Callable[[Any, tuple[Any, ...]], Any]] = {"association.query.compose.plan:plan_point": _planned}
+    shown: dict[str, Callable[[Any, tuple[Any, ...]], Any]] = {
+        "association.query.compose.plan:plan_point": _planned,
+        "association.query.compose.plan:refusal_result": _said,
+        "association.query.compose:answer": _said,
+    }
+    argued = {"association.query.compose:answer": _planned_argument}
     for boundary in BOUNDARIES:
         module_name, function_name = boundary.split(":")
         original = getattr(importlib.import_module(module_name), function_name)
-        _rebind(original, _recording(out, boundary, original, shown.get(boundary, as_returned)))
+        _rebind(original, _recording(out, boundary, original, shown.get(boundary, as_returned), argued.get(boundary)))
 
     def as_snapshot(answer: Any, args: tuple[Any, ...]) -> Any:
         return snapshot(args[0].reading, answer, planned=args[0].planned, unanswered=args[0].unanswered, unsaid=args[0].unsaid)
