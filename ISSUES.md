@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** lane T (the team compiler and the season reader): read the opponent's row for a measure whose `whose` is `opponent` (`team_box_stats` of the other side, as #403's `team_figure` LEFT JOIN reads a game's), or refuse naming the opponent's figure where no row holds it; then widen `lexicon.GIVEN_UP_KEYS` to every stat the reader answers given up, measured on the feed.
 - **Source:** ours.
 - **Priority:** P1 - a different figure answered fluently (1 feed question by the verb; the "allowed" wordings 0 of the 2,710).
+- **GitHub:** #425
 
 ### A team's record or games over a line on points given up are read on its own points: "celtics record when allowing 100+ points" answers its record when it scored 100+
 - **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), probing #348's neighbors.
@@ -61,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** a line's side: `Line` gains whose figure it is (the opponent's where a given-up verb or "allowed" leads it, `lexicon.GIVEN_UP_VERB`), the team relation narrows by the opponent's score on it (lane T: `team_relation`'s line narrowing over `points_allowed`), and the count's and the log's grammar read "games where they gave up N points" as the team's; refuse by a cause naming the opponent's line until the relation reads it.
 - **Source:** ours.
 - **Priority:** P1 - a different question answered fluently (0 of the 2,710; natural wordings).
+- **GitHub:** #426
 
 ### A team's log asked "including playoffs" shows the regular season alone: "sixers last 10 games against bos including playoffs" lists ten regular-season meetings
 - **Found:** 2026-10-13, Jeff's queries on master; re-measured by the lead on four trees with the same reply (`v5.0.0`, `4de1801` Phase 3's close, `aaa0a8a` Phase 4's open, master `867b604`): the same ten regular-season games every time, so it is not a regression of the rewrite's phases or the sweep - the team log has never honored both season types.
@@ -440,6 +442,7 @@ those were found.
 - **Next step:** the team relation's period read (lane T: `team_games.period_games`) reads the opponent's row of the same game where the measure's `whose` is `opponent`, and `_team_quarter_points_measure` keys an opponent's measure on the rebuilt columns; refuse only what neither row holds.
 - **Source:** ours.
 - **Priority:** P2 - a refusal naming the wrong cause.
+- **GitHub:** #427
 
 ### A season line on a percentage, on the game-level ranking or on a figure no season line holds is refused: "nba players who average 18 ppg 3.5 assists and shot 54% or better" has no reader
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
