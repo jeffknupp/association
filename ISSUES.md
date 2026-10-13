@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A team's log asked "including playoffs" shows the regular season alone: "sixers last 10 games against bos including playoffs" lists ten regular-season meetings
+- **Found:** 2026-10-13, Jeff's queries on master; re-measured by the lead on four trees with the same reply (`v5.0.0`, `4de1801` Phase 3's close, `aaa0a8a` Phase 4's open, master `867b604`): the same ten regular-season games every time, so it is not a regression of the rewrite's phases or the sweep - the team log has never honored both season types.
+- **Evidence:** the reading carries `span: {season_type: 2, both: True, career: True}` and `window: {order: recent, count: 10}` (the span tagger read "including playoffs" as `both`), and the team log executes the team compiler's rows read over `team_relation.team_span_clause`, which reads `season_type` and not `both`; the heading says "(all-time, 2024-2026 regular seasons)". The player log honors `both` ("lebron last 10 games vs celtics including playoffs" lists postseason games), so the same words answer differently by subject. Sibling: the team total ignoring "no season type named" (the entry above, "total points by the raptors in the last 10 games").
+- **User sees:** ten regular-season games where the playoffs were asked for by name, the omission stated only as "regular seasons" in the heading.
+- **Next step:** `team_relation.team_span_clause` honors `Span.both` as the player relation's `span_of` does (both season types in one read, the postseason selected by the calendar year it was played in), the heading saying "regular season and playoffs"; a test on the team fixture with a postseason meeting; the feed measured for the class first (every team log or team total with "including playoffs", "regular season and playoffs", "playoffs included").
+- **Source:** ours.
+- **Priority:** P1 - a different set of games than asked, the words that asked for them ignored.
+- **GitHub:** #416
+
 ### A ranking by games played is answered as the points-per-game ranking: "most games played by a player denver nuggets" ranks the Nuggets by points per game
 - **Found:** 2026-10-13, the P1 sweep's lane T, reading master's (`c04ac33`) feed answers for #167.
 - **Evidence:** on the 2,082 feed questions (recorded replies, master `c04ac33`) "games played" is read by nothing - `measure` None, "games" and "played" in `Reading.unread` - and a ranking's default answers: "most games played by a player denver nuggets" and "most games played in nba by a player denver nuggets" answer "every player with the Denver Nuggets, 2026 regular season, by player (points per game, minimum 20 games): Nikola Jokic 65 G points 27.7 ..."; "player with most games played for one time nba" and "Name the top 10 players by games played under Lon Kruger in NBa" answer the league's points-per-game leaders. The catalog has the key (`measure.CATALOG["games_played"]`, aliases "games", "game", "gp") and the season line the column (`gamesPlayed`), so the words are all that is missing on a ranking; "anthony edwards games played last season" (6 wordings) answers his line, which says "in 79 games" - right by accident.
@@ -266,6 +275,7 @@ those were found.
 - **Evidence:** "history" is not read as a career: on master `c04ac33` (the feed, recorded replies) "most points in a game in cavs history" and "... in pistons history" read the team's players' high (`team_players`, since lane N's #364) over the 2026 regular season and answer "every player with the Cleveland Cavaliers, 2026 regular season - top 3 by points: ... Donovan Mitchell ... 48" - the team said, the season not the franchise's history. The sentence half is done on both paths the high takes: the compiler's own sentence names the team ("every player with the ..."), and since lane T the high's reader does too where it answers ("Donovan Mitchell had the most points in a single game for the Cleveland Cavaliers in the 2026 regular season: 48 ..."; over a career, "... for the Cleveland Cavaliers in the regular season since 1993-94: 71, on 2023-01-02 vs CHI. Next: Kyrie Irving (57), LeBron James (57)." - `tests/query/test_team_players_high.py`). 65 of 1,972 reasonable large-set questions (3.3%) say history/all-time/franchise.
 - **User sees:** the right team's players over the wrong span - this season, where the question asks the franchise's history.
 - **Next step:** (the span tagger's, lane S) read "history"/"all-time"/"franchise" beside a team as a career (`Span(career=True)`); the answer side reads it (tested); a case per wording, the readings and the feed enumerated.
+- **GitHub:** #417
 ### A team's single-game high is answered as the team's season line: "most points in a game in cavs history"
 - **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/`; the span half fixed in the P1 sweep (lane S, 2026-10-13).
 - **Evidence:** "in <team> history", "in <team> franchise history", "of the <team>'s history" and "franchise leader/record" are read as every season on record since the sweep (`lexicon.CAREER_WORDS`): "most points in a game in pistons history power forward" answers the Pistons power forwards' best games since 1994, naming the team ("every power forward with the Detroit Pistons, regular season career (1994 on) - top 3 by points"). But "most points in a game in cavs history", "... in pistons history" and "most points in the history of the philadelphia 76ers" are read under the team's season line (`team_seasons`/`scalar`/`line`, #364's shape) and are refused now ("every season of a career cannot be read here"), where they answered the 2026 points per game.
@@ -390,6 +400,7 @@ those were found.
 - **User sees:** a wrong answer: one season's line where the first nine of his career were asked.
 - **Next step:** an end of a player's OWN seasons ("his first/last N seasons", "through their first N") read as a span over the seasons on record for him (`season_line.seasons_on_record`), the comparison's per player; refused by a cause until then.
 - **Priority:** P1 - 3 of the 2,082.
+- **GitHub:** #418
 ### A player's first or last N seasons is refused: "lebron james stats through their first 9 seasons"
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers); refused by a cause in the P1 sweep (lane S, 2026-10-13).
 - **Evidence:** a count of a career's own seasons by their place ("their first 9 seasons", "his last 9 seasons", "first 2 years": `lexicon.OWN_SEASONS`) is refused by the parser before any reader runs (`own_seasons_window`, `window.own_seasons_window`): "A career's own seasons by their place ('their first 9 seasons') are read by nothing here yet - name the seasons themselves ...". 3 of the 2,082 feed questions ("lebron james stats through their first 9 seasons", "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons", "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?"); until the sweep they answered his 2026 line, their 2026 lines and LeBron's line since 2018.
@@ -406,6 +417,7 @@ those were found.
 - **Next step:** a span after a versus word names a team only where its FIRST word is a trace of that team (the shorter spans then reach "magic"), and "on <team>" after the opponent is the tenure as "for <team>" is (`lexicon.FOR_TEAM_PHRASE`). Measure on the 2,710 readings; a case per wording.
 - **Priority:** P1 - a different question answered.
 - **Source:** ours.
+- **GitHub:** #419
 
 ### A team's former name with no season is read by nothing, so its players' question is the league's: "highest scoring games of supersonics players" answers the league's 2026 high
 - **Found:** 2026-10-13, lane N of the P1 sweep, enumerating the "best/highest scoring games" fix (the question moved from the league's points per game to the league's single-game high; it was the league's question both times).
@@ -414,6 +426,7 @@ those were found.
 - **Next step:** a team word that names only a former franchise, with no season named, is that franchise over its era (`nba/franchises.py`'s `FranchiseEra`), the span its years - as a tenure "for Miami" with no season is a career; read in `subject._team_names` / `_team_named` with the season unset. A case per wording; measure on the 2,710.
 - **Priority:** P1 - a different question answered (1 feed question).
 - **Source:** ours.
+- **GitHub:** #420
 
 ### The players' ranking answers points per game where the words name a measure nothing reads, and a yes/no measure over a span of seasons ranks by points too
 - **Found:** 2026-10-13, lane N of the P1 sweep, measuring the "nba"-alone fix (the lead held these back from it: read as the players' ranking they would turn a refusal into a fluent wrong answer).
@@ -422,6 +435,7 @@ those were found.
 - **Next step:** lane L's measure (`measure.py`, `point.measure_under`) and the ranking (`compose/rankings.py`): a ranking whose words name no measure it reads refuses by a cause naming the words (`no_ranking_measure` exists), never the points default; the season-line ranking ranks a yes/no game measure over a span or refuses it. Then lift the gate in `parse._parent_asked_nba_unmeasured` and enumerate the 8.
 - **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
+- **GitHub:** #421
 
 ### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers). Rewritten 2026-10-13 (lane N of the P1 sweep) to what remains: the team-ranking row steps aside for games kept by a line with no team word (`lexicon.LINE_OF_GAMES_ROW`), so "most 40 point games in nba history" (and 50, 60) and "nba most playoff games with 2+ block and 2+ steals" are the players' count, and the count's child grammar is named under the with/without split, so "how many 30 point games did maxey have without embiid" is his count over the games Embiid missed (`CHANGES.md`).
@@ -464,6 +478,7 @@ those were found.
 - **Next step:** the game-level ranking's qualifier scaled to the games the cuts leave (or dropped under an opponent, with the floor said as a decision), or the empty result refused naming the qualifier rather than "No games"; `compose/rankings.py` and the compiler's `minimum_games` (lane L's files).
 - **Source:** ours.
 - **Priority:** P2 - a refusal naming the wrong cause; 75 feed answers.
+- **GitHub:** #422
 ### Every reader keyed on a line but the team's record reads its number as "N+", whatever its comparison
 - **Found:** 2026-10-13, the P1 sweep's lane T, fixing #325's answer half.
 - **Evidence:** `lines.threshold_of` hands a reader the keyed line's NUMBER alone, and every caller but the team's record (since lane T) compares with `>=`: the point reader's log predicate (`point._threshold_line`: `[(col, ">=", threshold)]`) and its count, record, run and high points (`point.py` 382, 399, 690, 839, 914, 998), the player's record over a line (`compose.records._own_line`), the count (`compose.counts`), the run (`compose.runs`), the log (`compose.logs`). No reading writes a keyed line with another comparison today (0 of the 123 keyed lines on the 2,710 readings are not `>=`), so nothing answers wrong yet - but the reading half of #325 (or any "more than N" / "N or fewer" a tagger keys) would be answered as "N+" on every one of these shapes, fluently.
@@ -2309,6 +2324,7 @@ those were found.
 - **Next step:** read the dropped side on the Reading where a compare word joins two sides by "to"/"and"/"with" and one side is name-shaped words no claim covers (`Reading.left_out` beyond the fingerprint), and say it on every shape the answer side answers (`agent._unmatched_fingerprint`'s note generalized, `say.say_left_out`) - or refuse by a cause naming the words (`reading.CAUSES`, `say.refusal_phrase`). The reading half is lane N's (subject/parse); the saying half is the answer side's (`agent.py`, `compose/say.py`). Reach 1 of the 2,082.
 - **Priority:** P2 - a narrower answer than asked, with no caveat.
 - **Source:** ours.
+- **GitHub:** #423
 
 
 ### A range of seasons reaching under the ranking's floor is answered over what is left, or as "No games ... (1994-1989)": "most pts in the 1980s"
