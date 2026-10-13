@@ -302,13 +302,37 @@ those were found.
 - **Priority:** P1 - a broader question answered (1 of the 2,082), and a refusal by the wrong cause (2).
 - **GitHub:** #266
 
-### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
-- **Found:** 2026-09-28, fixing #259.
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Gabe Vincent", "laker"]`, stat `threePointFieldGoalsMade`): routes `player_stat` with no stat and answers "Gabe Vincent averaged 4.4 points, 1 rebounds and 1.4 assists per game in 53 games in the 2026 regular season". `parse.MEASURE_GRAMMAR` reads "3s", "threes" and "3 pointers", and "3's" is none of them; the model's key is not kept for a line the words do not name. "Jarred 3’s as a laker" is the corpus's other one. Both also carry "as a laker", which the answer does not honor (Vincent's 2026 line is not a Laker's).
-- **User sees:** a wrong answer - his scoring line where his threes were asked.
-- **Next step:** read "3's" (and "3’s", folded since #259) as threes made in `MEASURE_GRAMMAR`; a case in `tests/query/test_parser.py`.
+### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
+- **Found:** 2026-09-28, fixing #259 (one of the 19 research-corpus questions with a typographic apostrophe).
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["De'aaron fox"]`): routes `{'player': "De'Aaron Fox", 'season': 2023, 'situation': 'in november'}` and lists "De'Aaron Fox in November, last 10 of 13 games of the 2023 regular season", dated 2022-11-11 to 2022-11-30. November 2023 is in the 2024 season (2023-24): `season_text.season_from_text` reads "2023" as the season ending that year, which is right for a year alone and wrong beside October, November or December. Of the 3,084 distinct research-corpus questions, 7 name a month with its year; this is the only one whose month falls before the new year ("Luka doncic march 2026", "steph stats april 2021" and the rest read right).
+- **User sees:** a wrong answer - the right player's games from a year earlier, captioned as the month asked.
+- **Next step:** where a month from October to December is written with its year, read the season as that year + 1 (`router._validate_season` beside the situation reader); a case per month in `tests/query/test_router.py`.
 - **Source:** ours.
-- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 3 - "Gabe Vincent 3’s as a laker", "Jarred 3’s as a laker" (a team's line), "steph curry 3's per season" (his points line).
+- **GitHub:** #267
+
+### A possessive on a name several players share drops the player: "Curry's stats by month 2016" answers the league's 2016 scorers
+- **Found:** 2026-09-28, fixing #259.
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Curry's"]`, and `["Curry’s"]`, which reads the same since #259): routes `leaderboard` with no player and answers "every player, 2016 regular season, by player (points per game, minimum 20 games): Stephen Curry ... James Harden ...". `parse.classify_span` strips the possessive for its team check but looks the player up as given: `find_players(con, "Curry's")` needs a player holding the word "s", and the near-spelling fallback takes only a single near spelling, which "Curry" (six players) is not - so the span is nobody's and dropped. "curry stats by month 2016" keeps the name, and the template asks which Curry.
+- **User sees:** a wrong answer - the league ranked where one player, a name several share, was asked about.
+- **Next step:** in `classify_span`, look the player up with the possessive stripped too (the `low` it already computes), so a shared surname stays a player's span for the template to ask about; a case in `tests/query/test_parser.py`.
+- **Source:** ours.
+- **GitHub:** #268
+
+### A team named for a player's tenure beside an opponent is dropped: "d'angelo russell vs pistons as a laker" answers his 2026 games as a Maverick
+- **Found:** 2026-09-28, fixing #259 (the question carries a typographic apostrophe; its straight twin reads the same).
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["d'angelo russell", "pistons", "laker"]`): routes `{'player': "D'Angelo Russell", 'opponent': 'Detroit Pistons'}` with no team, and answers "D'Angelo Russell averaged 17.5 points ... in 2 games vs the Detroit Pistons in the 2026 regular season" - his 2026 season is Dallas's (`player_season_stats_deduped`: 26 games for the Mavericks); his Lakers years are 2016-2017 and 2023-2025. The model's "laker" is dropped by `parse._read_route_names` once the reading placed an opponent, and `subject._apply_own_team` writes no `own_team` where an opponent is set (`subject.py:1091`), so "as a laker" narrows nothing.
+- **User sees:** a wrong answer - another team's games, where a tenure was asked.
+- **Next step:** read "as a <team>" beside an opponent as `own_team` (the tenure) rather than dropping it; a case in `tests/query/test_one_writer.py`.
+- **Source:** ours.
+- **GitHub:** #269
+
+### "as a laker" with no opponent beside it, and "per season", are read by nothing: "Gabe Vincent 3’s as a laker" answers his 2026 line as a Heat player
+- **Found:** 2026-09-28, fixing #259; "3's" itself read since 2026-10-13 (the P1 sweep's lane L, #270).
+- **Evidence:** on sweep-L, "Gabe Vincent 3’s as a laker" answers "Gabe Vincent averaged 1.1 3-pointers per game in 53 games in the 2026 regular season" (`Cuts.tenure` None: "as a laker" unread; his 2026 season is not a Laker's), "Jarred 3’s as a laker" answers the Lakers' team line (no player read from "Jarred"), and "steph curry 3's per season" answers his 2026 line where a season-by-season history was asked ("per season" unread). The tenure is the subject reading's (`subject._apply_own_team`, lane N; #339 is its neighbor beside an opponent), "per season" the grammar's history row.
+- **User sees:** a fluent line for the wrong span or the wrong team.
+- **Next step:** read "as a <team singular>" as the tenure with no opponent beside it; "per season"/"by season" as the history (`SEASON_HISTORY`); a case per wording.
+- **Priority:** P1 - a narrower or different question answered; 3 of the 2,082.
+- **Source:** ours.
 - **GitHub:** #270
 
 ### A ranking within the subject's own conference or division is refused: "top scorers in the western conference this season"

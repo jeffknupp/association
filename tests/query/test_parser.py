@@ -1138,3 +1138,11 @@ def test_a_teams_record_under_a_number_is_keyed_on_that_line(con: duckdb.DuckDBP
     assert reading.asked == LINE_RECORD and reading.point is not None and reading.point.on == "team_games"
     keyed = [each for each in reading.point.lines if each.keyed]
     assert [(each.measure, each.op, each.value) for each in keyed] == [line] and not any(each.narrows for each in reading.point.lines)
+
+
+@pytest.mark.parametrize("question", ["Gabe Vincent 3\u2019s as a laker", "steph curry 3's per season", "jokic 3's this season"])
+def test_three_apostrophe_s_is_threes_made(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ISSUES.md #270: "3's" (and its curly spelling) was read by no measure word, and the
+    player's points line answered where his threes were asked."""
+    reading = _read(con, question)
+    assert reading.measure is not None and reading.measure.key == "threePointFieldGoalsMade"
