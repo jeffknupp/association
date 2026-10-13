@@ -2010,7 +2010,7 @@ or more).
    ``SUBJECT_RESTORABLE_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """
 
-OWN_TEAM_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({PLAYER_LINE})
+OWN_TEAM_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({PLAYER_LINE, GAME_HIGHS})
 """What the words ask where a player's OWN team, named beside him and left
 out by the model, is worth restoring (``player_stat``) - narrower than :data:`PLAYER_ASKS` on
 purpose, since honoring the restored tenure (``Cuts.tenure``, the

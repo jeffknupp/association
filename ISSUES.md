@@ -458,6 +458,14 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #393
 
+### A team's former name with no season is read by nothing, so its players' question is the league's: "highest scoring games of supersonics players" answers the league's 2026 high
+- **Found:** 2026-10-13, lane N of the P1 sweep, enumerating the "best/highest scoring games" fix (the question moved from the league's points per game to the league's single-game high; it was the league's question both times).
+- **Evidence:** on the feed's no-names reading at sweep-N `8c84100`+, "highest scoring games of supersonics players" reads `who.kind == 'everyone'`, no team, "supersonics" and "players" unread. A former name IS read where a season of its era is named ("kevin durant points per game for the sonics in 2008" is his SuperSonics tenure, "kobe points against the supersonics in 2006" the opponent): the team words are resolved over the season the question names, and with none named, over the current one, which no SuperSonics play in. 1 of the 2,082.
+- **User sees:** the league's answer where one franchise's players were asked about.
+- **Next step:** a team word that names only a former franchise, with no season named, is that franchise over its era (`nba/franchises.py`'s `FranchiseEra`), the span its years - as a tenure "for Miami" with no season is a career; read in `subject._team_names` / `_team_named` with the season unset. A case per wording; measure on the 2,710.
+- **Priority:** P1 - a different question answered (1 feed question).
+- **Source:** ours.
+
 ### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers). Rewritten 2026-10-13 (lane N of the P1 sweep) to what remains: the team-ranking row steps aside for games kept by a line with no team word (`lexicon.LINE_OF_GAMES_ROW`), so "most 40 point games in nba history" (and 50, 60) and "nba most playoff games with 2+ block and 2+ steals" are the players' count, and the count's child grammar is named under the with/without split, so "how many 30 point games did maxey have without embiid" is his count over the games Embiid missed (`CHANGES.md`).
 - **Evidence:** "most 0 point games in nba team history" answers the teams' points per game, "0" and "games" unread: the lines tagger reads no line at 0 points, so the row sees no line, and "team history" holds a team word besides. "most 30 point triple doubles in the last 3 years" ranks single games with a triple-double by points (top 3), the 30 unread: a line beside a boolean stat is no line the tagger reads. (The third the entry named, "nba most fga with 0 fgm single game", is #266's.)
