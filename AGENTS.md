@@ -901,7 +901,14 @@ drops, doubles and swaps of the 591 2026 players' surnames, 3,597 default -
 every one to the player misspelled - and 2,731 still ask. The cost is a name
 that is right but not on record reading as one that is: of 36 famous pre-1994
 names absent from `players`, "Willis Reed" reads as Willie Reed and "Bernard
-King" as Gerard King, each saying so.
+King" as Gerard King, each saying so. A team's near spelling is read the
+same way in one place only, since 2026-10-13 (ISSUES.md #247): the word a
+versus word leads, where it is near exactly one team's word
+(`entities.near_team`) and is no player's whole word or near spelling - "gui
+last 5 games vs sours" is the Spurs' games, kept as typed on the reading and
+read by `entities.resolved_team`, which says so ("('sours' matches no team
+exactly and was read as the San Antonio Spurs ...)"); "vs clevland" stays
+unread, being near Antonius Cleveland too.
 
 **A reasonable default beats a question, where the default is visible and can
 be corrected.** Jeff's rule, 2026-09-21, and it supersedes the older stance

@@ -62,8 +62,10 @@ from association.query.entities import (
     _suggest_players_by_spelling,
     _team_named,
     _words,
+    checked_players,
     find_players,
     find_teams,
+    near_team,
     team_abbreviations,
     team_columns,
     teammate_names,
@@ -536,6 +538,28 @@ def _read_opponent(index: names.NameIndex, question: str, scope: Filtered, seaso
     team = _team_named(index.teams, scope.who.team, season) if held_team is None else None
     if team is not None and lexicon.AGAINST_PHRASE.search(question) and not _team_grounded(index.teams, question, team):
         return team.name
+    return _read_opponent_near(index, question)
+
+
+def _read_opponent_near(index: names.NameIndex, question: str) -> str | None:
+    """The word a versus word leads, as typed, where it is a near spelling
+    of exactly one team and no player's (:func:`~association.query.entities.near_team`):
+    "gui last 5 games vs sours" is the Spurs' games, and was his last 5
+    games against anybody, the word read by nothing (ISSUES.md #247). Kept
+    as typed - names arrive as typed - so the relation's team resolution
+    reads it and the answer says so
+    (:func:`~association.query.entities.resolved_team`). Not a word that is
+    a whole word of some player's name, or within the budget of one ("vs
+    hawes" is Spencer Hawes, one edit from the Hawks)."""
+    players = checked_players(index.players)
+    for match in lexicon.AGAINST_PHRASE.finditer(question):
+        words = _team_words(match.group(1))[:1]
+        if not words:
+            continue
+        word = words[0]
+        if near_team(index.teams, word) is None or _exact_name_span(index.players, [word]) or players.near([(word, _edit_budget(word))]):
+            continue
+        return word
     return None
 
 

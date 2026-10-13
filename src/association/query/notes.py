@@ -66,7 +66,7 @@ NOTE_KINDS: dict[str, str] = {
 """
 
 DECISION_KINDS: dict[str, str] = {
-    "name_reading": "a name several players share, or a near spelling, read as one player",
+    "name_reading": "a name several players share, or a near spelling, read as one player or team",
     "name_left_out": "a name the question holds that the answer is not about",
     "also_matched": "the best match was answered; others matched too",
     "season_redirected": "the season read by default holds nothing for him; the seasons that do",

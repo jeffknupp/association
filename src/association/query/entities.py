@@ -1674,7 +1674,78 @@ def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
         case Ambiguous(candidates=candidates):
             return clarify(text, candidates, kind="team")
         case _:
+            # A typo of one franchise's word, read as that team and said so
+            # (ISSUES.md #247): the subject reading keeps the word as typed
+            # where a versus word leads it ("gui last 5 games vs sours"), and
+            # the index reads it here, as it reads a player's near spelling.
+            near = near_team(teams_of(con), text)
+            if near is not None:
+                named = resolve_team(con, near.name, season)
+                chosen = named if isinstance(named, Entity) else near
+                note_team_typo_reading(text, chosen)
+                return chosen
             return Refusal(kind="name_unmatched", facts={"asked": text, "kind": "team"})
+
+
+# A team's words a near spelling is measured against: the words of its
+# name, its singular, its nicknames and the name run together - less the two
+# words a two-word city shares with ordinary prose ("state", "city"), which a
+# typed "stats" or "cite" would otherwise reach.
+_NEAR_TEAM_PLAIN_WORDS = frozenset({"state", "city"})
+
+
+def near_team(teams: names.TeamIndex, text: str) -> Entity | None:
+    """The one team ``text`` - a single word - is a near spelling of, or None:
+    every word a question carries a team by (a word of its name, its
+    singular, a nickname, the name run together) measured within
+    :func:`_edit_budget` of the word, as a player's near spelling is, and
+    taken only where exactly one team is that near and none is the word
+    outright ("sours" is the Spurs, "nuggest" the Nuggets, "clevland" the
+    Cavaliers; ISSUES.md #247). A word of three letters or fewer is never
+    near anything, and a word two teams are near names neither.
+
+    Never call this on words a question merely contains: it is for the word
+    a versus word leads (the subject reading's opponent) or a name slot
+    nothing matched - the discipline :func:`read_near_spelling` keeps for a
+    player ("Hawks" is one edit from Spencer Hawes).
+
+    .. versionadded:: 6.0.0
+    """
+    word = text.strip().casefold()
+    if len(word) < 4 or not word.isalpha():
+        return None
+    budget = _edit_budget(word)
+    found: dict[str, Entity] = {}
+    for row in team_columns(teams, "team_id", "display_name").rows:
+        name = row["display_name"]
+        if name is None:
+            continue
+        traces = {w for w in names.sql_words(str(name)) if len(w) >= 4} - _NEAR_TEAM_PLAIN_WORDS
+        traces |= _run_together(str(name))
+        traces |= {key for key, team in lexicon.TEAM_SINGULARS.items() if team == name and key.isalpha()}
+        traces |= {key for key, team in _TEAM_NICKNAMES.items() if team == name and key.isalpha() and len(key) >= 4}
+        if word in traces:
+            return None
+        if any(names.distance(word, trace) <= budget for trace in traces):
+            found[str(row["team_id"])] = Entity(id=str(row["team_id"]), name=str(name))
+    return next(iter(found.values())) if len(found) == 1 else None
+
+
+def note_team_typo_reading(text: str, chosen: Entity) -> None:
+    """Say a team's near spelling was read as ``chosen`` (:func:`near_team`),
+    where somebody is listening - :func:`note_typo_reading`'s sentence for a
+    team: who the word was read as, and that spelling the name exactly asks
+    about another team.
+
+    .. versionadded:: 6.0.0
+    """
+    notes = _NAME_READINGS.get()
+    if notes is None:
+        return
+    note = f"({text!r} matches no team exactly and was read as the {chosen.name}, the only near spelling on record - spell the name exactly to ask about another team.)"
+    decided("name_reading", note, field="team", before=text, chose=chosen.name, why="near_spelling")
+    if note not in notes:
+        notes.append(note)
 
 
 def slot_season(scope: Filtered) -> int | None:
