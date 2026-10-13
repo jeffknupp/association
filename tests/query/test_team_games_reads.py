@@ -39,7 +39,7 @@ def test_game_list_gaps_name_the_seasons_the_tally_is_short(team_ctx: AnswerCont
 
 def test_a_games_total_sums_the_column_with_its_games_and_record(team_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = 3", "tg.season = ?"], base_params=["18", S])
-    assert team_games_total(team_ctx.con, narrowed, "tg.team_score") == (434, 4, 3, 1)
-    assert team_games_total(team_ctx.con, narrowed, "tg.opponent_score") == (406, 4, 3, 1)
+    assert team_games_total(team_ctx.con, narrowed, "tg.team_score") == (434, 4, 3, 1, 4)
+    assert team_games_total(team_ctx.con, narrowed, "tg.opponent_score") == (406, 4, 3, 1, 4)
     nothing = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = 3", "tg.season = ?"], base_params=["30", S])
-    assert team_games_total(team_ctx.con, nothing, "tg.team_score") == (None, 0, None, None)
+    assert team_games_total(team_ctx.con, nothing, "tg.team_score") == (None, 0, None, None, 0)

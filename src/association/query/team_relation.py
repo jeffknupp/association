@@ -589,14 +589,20 @@ def team_game_list_gaps(
     return con.execute(sql, params).fetchall()
 
 
-def team_games_total(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, column: str) -> tuple[Any, ...] | None:
-    """A sum over the narrowed team games' own ``column`` (a game-level
-    measure's, never a slot) with the games, wins and losses it covers -
-    ``(total, games, wins, losses)``, or ``None`` with no row.
+def team_games_total(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, column: str, *, join: str = "") -> tuple[Any, ...] | None:
+    """A sum over the narrowed team games' ``column`` (a game-level
+    measure's, or a box-score figure over ``join``'s box row - never a slot)
+    with the games, wins and losses it covers and how many games have a
+    figure to sum - ``(total, games, wins, losses, counted)``, or ``None``
+    with no row.
 
     .. versionadded:: 6.0.0
        ``compose.team._compile_team_games_total``'s statement, moved whole.
+
+    .. versionchanged:: 6.0.0
+       ``join`` and ``counted``: a box-score count summed over the narrowed
+       games (ISSUES.md #403), and the games it could not be read in.
     """
-    selects = [f"SUM({column}) AS total", "COUNT(*) AS games", "SUM(tg.won::INT) AS wins", "SUM((NOT tg.won)::INT) AS losses"]
-    sql, params = aggregate_sql(narrowed, selects)
+    selects = [f"SUM({column}) AS total", "COUNT(*) AS games", "SUM(tg.won::INT) AS wins", "SUM((NOT tg.won)::INT) AS losses", f"COUNT({column}) AS counted"]
+    sql, params = aggregate_sql(narrowed, selects, join=join)
     return con.execute(sql, params).fetchone()

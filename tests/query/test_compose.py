@@ -32,7 +32,7 @@ from association.query.compose.core import Query, Refused, Unsupported, compile_
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import plan, plan_point, refusal_result
 from association.query.compose.say import say
-from association.query.compose.sentence import sentence
+from association.query.compose.sentence import sentence, team_sentence
 from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
@@ -972,23 +972,33 @@ def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: A
     ) == TeamSeasonQuery(**(replace(named, who=replace(named.who, kind="everyone"))).filters(), relation="team_seasons", shape="scalar")
 
 
-def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: AnswerContext) -> None:
-    """A box-score count (3-pointers made, not a game-outcome figure) narrowed
-    to a window needs a join the team-games relation does not have yet
-    (ISSUES.md) - refused rather than silently answering the season instead."""
-    q = team_move_point(
-        team_cx_ctx.con,
-        Reading(
-            who=Who(kind="team", teams=("Toronto Raptors",)),
-            measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"),
-            span=Span(season_type=2),
-            window=Window(order="recent", count=3),
-        ),
-        "3 pointers made by the raptors in their last 3 games",
+def test_a_box_stat_count_narrowed_to_a_window_is_summed_over_the_games_box_rows(team_cx_ctx: AnswerContext) -> None:
+    """ISSUES.md #403: a box-score count (3-pointers made, not a game-outcome
+    figure) narrowed to a window is summed over the narrowed games' own team
+    box rows - it was refused for want of the join - and the games with no
+    box row are said, since the total is short by them. A percentage is no
+    total, and stays declined."""
+    team_cx_ctx.con.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, team_id VARCHAR, threePointFieldGoalsMade INTEGER, threePointFieldGoalsAttempted INTEGER)")
+    # Toronto's last three: r3 and r4 carry a box row, r5 none.
+    team_cx_ctx.con.executemany("INSERT INTO team_box_stats VALUES (?, ?, '3', ?, ?)", [("r3", _TS, 12, 30), ("r4", _TS, 9, 33), ("r2", _TS, 20, 40)])
+    reading = Reading(
+        who=Who(kind="team", teams=("Toronto Raptors",)),
+        measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"),
+        span=Span(season_type=2),
+        window=Window(order="recent", count=3),
     )
+    q = team_move_point(team_cx_ctx.con, reading, "3 pointers made by the raptors in their last 3 games")
     assert isinstance(q, TeamQuery)
+    result = run_team(team_cx_ctx.con, q)
+    assert (result.value, result.games, result.blank) == (21.0, 3, 1)
+    said = team_sentence(q, result)
+    assert said.endswith("(1 of these games has no 3-pointers on record; the figure is over the rest.)"), said
+    pct = team_move_point(
+        team_cx_ctx.con, replace(reading, measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct")), "3 point percentage of the raptors in their last 3 games"
+    )
+    assert isinstance(pct, TeamQuery)
     with pytest.raises(Unsupported):
-        run_team(team_cx_ctx.con, q)
+        run_team(team_cx_ctx.con, pct)
 
 
 def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:

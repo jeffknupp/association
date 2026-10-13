@@ -485,10 +485,19 @@ class LogFacts:
     merged (``mixed``: no season type was named for "last N games").
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``figure`` and ``whose``: the box-score figure a team's log shows
+       (ISSUES.md #403).
     """
 
     stat: Any = None
     mixed: bool = False
+    #: The catalog key of the box-score figure a team's log shows beside
+    #: each game (ISSUES.md #403), or None; and whose box row it is read
+    #: from, the team's (``"own"``) or its opponent's (``"opponent"``).
+    figure: str | None = None
+    whose: str = "own"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -787,6 +796,7 @@ RUN_CAUSES: frozenset[str] = frozenset(
         "never_together",
         "together_outside_span",
         "team_stat_unrecorded",
+        "team_figure_unread",
         "no_team_totals",
         "metric_before_first_season",
         "no_team_record",

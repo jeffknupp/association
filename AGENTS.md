@@ -1911,9 +1911,14 @@ a shape:
   own game-level columns (points, points allowed, differential) through
   `scoped_team`/`team_games`, the same shared steps every team reader
   narrows through - never a hand-written clause here either. A box-score
-  count (3-pointers made, not a game-outcome figure) narrowed to a window
-  refuses rather than answering the season instead, since the relation has no
-  box-score join yet. `read_point` tries `team_read_point` before the
+  count (3-pointers made, not a game-outcome figure) narrowed to a window is
+  summed over the narrowed games' own team box rows, saying how many games
+  had none (`compose.team.team_figure`, a LEFT JOIN of `team_box_stats` on
+  the team's row or the opponent's, the P1 sweep's lane T, ISSUES.md #403;
+  it refused before, for want of the join), and a team's log shows the same
+  figure beside each game; a percentage is no total and is declined, and a
+  figure no team game carries (pace, a rating, usage) is refused by name
+  (`team_figure_unread`). `read_point` tries `team_read_point` before the
   league-wide reading, and nothing after the parser restores a subject:
   "magic" is also Magic Johnson's given name, and the compiler's own
   dropped-subject restoration (`repair()`, gone with plan item 6, step (e))

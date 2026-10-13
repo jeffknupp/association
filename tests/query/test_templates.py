@@ -3,6 +3,7 @@ question that failed three times through the tool-calling agent."""
 
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -1502,6 +1503,46 @@ def test_a_teams_log_says_how_many_games_its_window_cut_from(gl_con: AnswerConte
     assert (first.text or "").startswith(f"New York Knicks, first of 2 games of the {s} regular season (1-0):")
     every = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season_type=2), window=Window(order="recent", count=5)))
     assert (every.text or "").startswith(f"New York Knicks, last 2 games of the {s} regular season (1-1):")
+
+
+def _gl_box(gl_con: AnswerContext) -> None:
+    """The Knicks' and the Celtics' box rows for the two Knicks games, with
+    the figures a log is asked for: e1's both sides, e2's Celtics row only
+    (the Knicks' e2 row stands with no figures, as an empty box serves it)."""
+    for column in ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted", "offensiveRebounds", "defensiveRebounds"):
+        gl_con.con.execute(f"ALTER TABLE team_box_stats ADD COLUMN {column} INTEGER")
+    gl_con.con.execute("UPDATE team_box_stats SET threePointFieldGoalsMade = 12, threePointFieldGoalsAttempted = 30, offensiveRebounds = 10, defensiveRebounds = 35 WHERE event_id = 'e1'")
+    gl_con.con.execute("INSERT INTO team_box_stats VALUES ('e1', ?, 2, '2', '18', 'away', 8, 32, 9, 30), ('e2', ?, 2, '2', '18', 'home', 15, 36, 12, 33)", [current_season()] * 2)
+
+
+def test_a_teams_log_shows_the_box_score_figure_it_was_asked_for(gl_con: AnswerContext) -> None:
+    """ISSUES.md #403: "show the 76ers 3pt% for each game last season" listed
+    the scores and no 3pt%, saying nothing - the team-games relation had no
+    box-score join. The log shows the figure beside each game and over them
+    all (a percentage over the makes and attempts summed), says the game with
+    no box row, and reads the opponent's figure from the opponent's row."""
+    _gl_box(gl_con)
+    asked = Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season_type=2), measure=Measure(key="threePointFieldGoalPct", as_typed="3pt%"))
+    lines = (game_log(gl_con, asked).text or "").split("\n")
+    assert lines[1].endswith("at Boston Celtics  3P% -") and lines[2].endswith("vs Boston Celtics  3P% 40.0% (12-30)"), lines
+    assert lines[3:] == ["  3-point percentage: 40.0% (12-30).", "  (1 of these games has no 3-point percentage on record; the figure is over the rest.)"]
+    rebounds = game_log(gl_con, replace(asked, measure=Measure(key="rebounds", as_typed="rebounds", whose="opponent")))
+    lines = (rebounds.text or "").split("\n")
+    assert lines[1].endswith("opp REB 45") and lines[2].endswith("opp REB 39") and lines[3] == "  Total opponents' rebounds: 84 (42.0 per game).", lines
+    assert rebounds.data["figure_total"] == 84 and rebounds.data["figure_whose"] == "opponent"
+
+
+def test_a_teams_log_asked_for_a_figure_no_game_carries_is_refused_by_name(gl_con: AnswerContext) -> None:
+    """ISSUES.md #403: a figure a team's games do not carry game by game
+    (pace, a player's usage) is refused by name, where the log listed the
+    scores without it."""
+    pace = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="pace", as_typed="pace")))
+    assert pace.text == (
+        "A team's games carry no pace game by game - only the score, the result and the box score (rebounds, assists, shooting, turnovers). "
+        "Its season's pace is on record - ask for the New York Knicks' pace over a season."
+    )
+    usage = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="usage_pct", as_typed="usage rate")))
+    assert usage.text == "A team's games carry no usage rate game by game - only the score, the result and the box score (rebounds, assists, shooting, turnovers)."
 
 
 def test_a_teams_last_n_games_all_one_type_reads_exactly_as_before(gl_con: AnswerContext) -> None:

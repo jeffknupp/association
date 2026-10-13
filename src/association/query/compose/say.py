@@ -29,6 +29,7 @@ from association.nba.coverage import unavailable
 from association.query.answer import Answer, Artifact
 from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.entities import MAX_CLARIFY_CANDIDATES
+from association.query.measure import CATALOG
 from association.query.measures import PERIOD_COLUMNS
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import Note, decided, note
@@ -106,7 +107,7 @@ from association.query.season_text import MONTH_NAMES, SEASON_TYPE_NAMES, season
 from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
 
-from .logs import LOG_PERCENTAGES, log_key
+from .logs import LOG_COLUMNS, LOG_PERCENTAGES, log_key
 from .sentence import LABELS
 
 # --- notes: one phrase per kind -----------------------------------------------
@@ -338,6 +339,11 @@ def _say_games_unseen(facts: dict[str, Any], consequence: str = "") -> str:
 
 
 def _say_stat_blank(facts: dict[str, Any]) -> str:
+    if facts.get("whose") == "team_log":
+        # A team's log, or two teams' meetings, showing a box-score figure
+        # (ISSUES.md #403): the games it lists with no box row.
+        games = facts["games"]
+        return f"({games} of these games {'has' if games == 1 else 'have'} no {CATALOG[facts['stat']].label} on record; the figure is over the rest.)"
     if "columns" in facts:
         return f" Rebounds, assists, 3-pointers and FG% are missing from {facts['games']} of those games' box scores and are averaged over the rest."
     unit = _unit(facts["stat"])
@@ -1088,6 +1094,58 @@ def _team_log_scope(count: int, ascending: bool, date: str | None, total: int | 
     return f"{'first' if ascending else 'last'} {count} of {total:,} games"
 
 
+#: The heading a team's box-score figure is shown under beside each game:
+#: the player log's own (``logs.LOG_COLUMNS``, ``LOG_PERCENTAGES``), and the
+#: two figures only a team's box row holds.
+TEAM_FIGURE_HEADERS: dict[str, str] = {
+    **{key: header for header, key in LOG_COLUMNS.items()},
+    **{key: header for header, (_, _, key) in LOG_PERCENTAGES.items()},
+    "points_in_paint": "PITP",
+    "fast_break_points": "FBP",
+}
+"""A team log's figure (a catalog key) -> its heading beside each game.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def _team_figure_cell(game: Mapping[str, Any]) -> str:
+    """One game's figure as the log shows it: a count, or a percentage with
+    the makes and attempts behind it; a dash where the game has no box row."""
+    figure = game["figure"]
+    if figure is None:
+        return "-"
+    if "attempts" not in game:
+        return f"{int(figure)}"
+    attempts = int(game["attempts"] or 0)
+    return f"{100 * int(figure) / attempts:.1f}% ({int(figure)}-{attempts})" if attempts else f"- ({int(figure)}-0)"
+
+
+def _team_figure_line(key: str, whose: str, summary: Mapping[str, Any]) -> str:
+    """The figure over the games listed, beneath them: a count's total and
+    per game, a percentage over the makes and attempts summed - never an
+    average of each game's percentage."""
+    label = CATALOG[key].label
+    if whose == "opponent":
+        label = f"opponents' {label}"
+    counted = summary["figure_games"]
+    if not counted:
+        return f"\n  No {label} on record for any of these games."
+    if "attempts" in summary:
+        attempts = summary["attempts"]
+        pct = f"{100 * summary['figure'] / attempts:.1f}%" if attempts else "-"
+        return f"\n  {label[0].upper()}{label[1:]}: {pct} ({summary['figure']:,}-{attempts:,})."
+    return f"\n  Total {label}: {summary['figure']:,} ({summary['figure'] / counted:.1f} per game)."
+
+
+def _team_figure_data(key: str, whose: str, summary: Mapping[str, Any]) -> dict[str, Any]:
+    """The figure over the games listed, as plain values for the page."""
+    data: dict[str, Any] = {"figure": key, "figure_whose": whose, "figure_total": summary["figure"], "figure_games": summary["figure_games"]}
+    if "attempts" in summary:
+        data["figure_attempts"] = summary["attempts"]
+    return data
+
+
 def say_team_log(result: Result) -> Answer:
     """A team's log, worded: the heading with its record, one line per game,
     the total the question asked for beneath them.
@@ -1110,10 +1168,19 @@ def say_team_log(result: Result) -> Answer:
         scope_text = _team_log_scope(len(games), window.ascending, span.date, body.total_before_window)
     header = f"{result.subject}{result.narrowing.phrase}, {scope_text}{where} ({record}):"
     mark = {True: "W", False: "L", None: "?"}
+    facts = _facts(result, LogFacts)
     lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
-    stat = _facts(result, LogFacts).stat
+    stat = facts.stat
     data = {"team": result.subject, "wins": wins, "losses": losses, "games": games, "headline": header.rstrip(":"), **_team_total_data(games, stat)}
-    return Answer(data=data, text="\n".join([header, *lines]) + _team_total_line(games, stat))
+    if facts.figure is None:
+        return Answer(data=data, text="\n".join([header, *lines]) + _team_total_line(games, stat))
+    # The box-score figure the log was asked for, beside each game and over
+    # them all (ISSUES.md #403), and the games it could not be read in.
+    heading = f"{'opp ' if facts.whose == 'opponent' else ''}{TEAM_FIGURE_HEADERS.get(facts.figure, facts.figure)}"
+    lines = [f"{line}  {heading} {_team_figure_cell(g)}" for line, g in zip(lines, games, strict=True)]
+    notes = _said(result)
+    data.update(_team_figure_data(facts.figure, facts.whose, body.summary), notes=notes)
+    return Answer(data=data, text="\n".join([header, *lines]) + _team_figure_line(facts.figure, facts.whose, body.summary) + "".join(f"\n  {n}" for n in notes))
 
 
 def _say_rows(result: Result) -> Answer:
@@ -4143,6 +4210,16 @@ def defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, ca
 # --- refusals: the phrase table ------------------------------------------------
 
 
+def _say_team_figure_unread(facts: Mapping[str, Any]) -> str:
+    """A figure no game of a team carries, asked of its games game by game
+    (ISSUES.md #403): named, and where the team's season does carry it, the
+    question that reaches it."""
+    key = facts["stat"]
+    label = CATALOG[key].label if key in CATALOG else str(key)
+    season = f" Its season's {label} is on record - ask for the {facts['team']}' {label} over a season." if key in CATALOG and CATALOG[key].team is not None else ""
+    return f"A team's games carry no {label} game by game - only the score, the result and the box score (rebounds, assists, shooting, turnovers).{season}"
+
+
 #: The run's own causes (:data:`~association.query.result.RUN_CAUSES`), one
 #: phrase each, from the Refusal's facts.
 _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
@@ -4204,6 +4281,7 @@ _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "no_venue_split": lambda facts: f"ESPN's {facts['season']} standings carry no home/road split (it reads 0-0 for every team before 1993-94).",
     "short_of_games": lambda facts: short_of_games_said(TEAM_METRICS[facts["metric"]], season_phrase(facts["season"], facts["season_type"]), facts["short"]),
     "team_none_matched": lambda facts: f"The {facts['team']} played {facts['games']:,} games {facts['during']}, none of them{facts['narrowing']}.",
+    "team_figure_unread": _say_team_figure_unread,
 }
 
 
