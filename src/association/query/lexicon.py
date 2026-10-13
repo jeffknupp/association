@@ -514,6 +514,14 @@ YEAR = re.compile(r"\b((?:19|20)\d{2})\b")
 
 .. versionadded:: 6.0.0
 """
+LATE_MONTH_YEAR = re.compile(r"\b(?:october|november|december|oct|nov|dec)\.?,?\s+((?:19|20)\d{2})\b")
+"""A year written right after October, November or December: the season
+that starts in that year, not the one ending in it ("November 2023" is
+2023-24, the season 2024; ISSUES.md #267). The year's characters are the
+span's; the month's are the situation's (:data:`SITUATION`).
+
+.. versionadded:: 6.0.0
+"""
 PREVIOUS_SEASON = re.compile(r"\b(?:last|previous|prior)\s+(?:season|year)\b|\ba year ago\b")
 """The season before the current one, named relatively.
 
@@ -1162,6 +1170,9 @@ _MONTH_WORD = r"(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|j
 _MONTH_NAME = r"(?P<month>january|february|march|april|may|june|july|august|september|october|november|december)"
 #: The season's months, in full: the ones "in <month>" is read for.
 _SEASON_MONTHS = r"october|november|december|january|february|march|april|may|june"
+#: The season's months written out or short, as a month before a year is
+#: read ("march 2026", "oct 2024").
+_SEASON_MONTH_WORDS = r"october|oct|november|nov|december|dec|january|jan|february|feb|march|mar|april|apr|may|june|jun"
 
 
 def month_number(word: str) -> int:
@@ -1436,6 +1447,11 @@ SITUATION = re.compile(
     # calendar date's (CALENDAR_DATE), and the month in it no cut of its own
     # (ISSUES.md #354: the answer named the month beside the day).
     rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b(?!\s+\d{{1,2}}\b)|"
+    # A season's month written right before its year, with no "in": "Luka
+    # doncic march 2026", "steph stats may 2021" (the year is the span's,
+    # ISSUES.md #267's season rule). Until it the month was read by nothing
+    # and the whole season answered.
+    rf"\b(?:{_SEASON_MONTH_WORDS})\.?(?=,?\s+(?:19|20)\d\d\b)|"
     # A conference or division, kept WITH its name and its "vs"/"against"/"in"
     # so `calendar.parse_alignment` reads it whole: "vs southeast division"
     # used to be captured as the word "division" alone (#213), and the
@@ -1492,8 +1508,9 @@ SITUATION_WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thu
 .. versionadded:: 6.0.0
    ``calendar._WEEKDAY`` until Phase 3, step 2.
 """
-SITUATION_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH_NAME}$", re.IGNORECASE)
-"""A situation value that is a month.
+SITUATION_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH_WORD}\.?$", re.IGNORECASE)
+"""A situation value that is a month, written out or short ("oct" before
+its year).
 
 .. versionadded:: 6.0.0
    ``calendar._IN_MONTH`` until Phase 3, step 2.
@@ -1511,6 +1528,24 @@ written out or short ("after dec 11", ISSUES.md #353).
 # read twice - the year as THE season, the day as a "since <day>" inside it
 # - and "lebron ppg since january 31st 2020" answered the 2019-20 season's
 # last weeks.
+# A range opened on a month with its year: "since january 2021", "from
+# oct 2019" - every game from the month's first day on, across seasons;
+# "after" a month is from the next month's first day. Until it the year was
+# read as THE season and the words "since january" by nothing, and
+# "nikola jokić stats since january 2021" answered the 2021 season's games.
+SINCE_MONTH_YEAR = re.compile(
+    rf"\b(?P<lead>since|from|after)\s+(?:the\s+)?(?:(?:start|beginning)\s+of\s+)?{_MONTH_WORD}\.?,?\s+(?P<year>(?:19|20)\d\d)\b",
+    re.IGNORECASE,
+)
+"""A range opened on a month with its year.
+
+.. versionadded:: 6.0.0
+"""
+SITUATION_SINCE_MONTH = re.compile(r"^" + SINCE_MONTH_YEAR.pattern.removeprefix(r"\b").removesuffix(r"\b") + r"$", re.IGNORECASE)
+"""A situation value opening a range on a month with its year (:data:`SINCE_MONTH_YEAR`, whole).
+
+.. versionadded:: 6.0.0
+"""
 SITUATION_SINCE_DATED = re.compile(
     rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_WORD}\.?\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?,?\s+(?P<year>(?:19|20)\d\d)$",  # codespell:ignore nd - an ordinal suffix
     re.IGNORECASE,
@@ -1709,7 +1744,9 @@ def season_from_text(text: str) -> int | None:
 def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
     """The season :func:`season_from_text` reads, with the characters it
     read it from: one span, every occurrence of the one year, or the
-    relative words. None where the words name no season, or two.
+    relative words. None where the words name no season, or two. A year
+    right after October, November or December is the season starting in
+    it (:data:`LATE_MONTH_YEAR`).
 
     .. versionadded:: 6.0.0
     """
@@ -1722,7 +1759,17 @@ def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
 
     years = [(y, m) for m in YEAR.finditer(low) for y in (_in_range(int(m.group(1))),) if y is not None]
     if len({y for y, _ in years}) == 1:
-        return years[0][0], tuple((m.start(), m.end()) for _, m in years)
+        year, read = years[0][0], tuple((m.start(), m.end()) for _, m in years)
+        late = LATE_MONTH_YEAR.search(low)
+        # A year beside October, November or December names the season that
+        # STARTS in it: "November 2023" is 2023-24, the season 2024, where a
+        # year alone is the season ending in it (ISSUES.md #267; April 2021
+        # is 2021 either way). The characters read are the year's; the
+        # month is the situation's, and the reading depends on it.
+        if late is not None and int(late.group(1)) == year:
+            season = _in_range(year + 1)
+            return None if season is None else (season, read)
+        return year, read
     if years:
         return None
 

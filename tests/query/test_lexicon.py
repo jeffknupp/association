@@ -60,6 +60,26 @@ def test_two_different_years_is_not_ours_to_decide() -> None:
     assert season_from_text("Compare 2023 and 2024") is None
 
 
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("How many points did De'aaron fox average in November 2023", 2024),
+        ("lebron december 2025 game log", 2026),
+        ("nov 2019 harden points", 2020),
+        ("curry in october, 2021", 2022),
+        ("steph stats april 2021", 2021),
+        ("jokic stats in 2023", 2023),
+        ("most points in march 2024", 2024),
+        ("andre drummond rebounds nov 23 2018", 2018),
+    ],
+)
+def test_a_year_after_october_november_or_december_is_the_season_that_starts_in_it(question: str, expected: int) -> None:
+    # ISSUES.md #267: "November 2023" is 2023-24, the season 2024, where a
+    # year alone - or beside a month after the new year, or after a day of
+    # the month, which the day fixes itself - is the season ending in it.
+    assert season_from_text(question) == expected
+
+
 def test_the_same_year_twice_is_still_that_year() -> None:
     assert season_from_text("in 2024, who led 2024 in scoring?") == 2024
 

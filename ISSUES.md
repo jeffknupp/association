@@ -313,14 +313,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #266
 
-### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
-- **Found:** 2026-09-28, fixing #259 (one of the 19 research-corpus questions with a typographic apostrophe).
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["De'aaron fox"]`): routes `{'player': "De'Aaron Fox", 'season': 2023, 'situation': 'in november'}` and lists "De'Aaron Fox in November, last 10 of 13 games of the 2023 regular season", dated 2022-11-11 to 2022-11-30. November 2023 is in the 2024 season (2023-24): `season_text.season_from_text` reads "2023" as the season ending that year, which is right for a year alone and wrong beside October, November or December. Of the 3,084 distinct research-corpus questions, 7 name a month with its year; this is the only one whose month falls before the new year ("Luka doncic march 2026", "steph stats april 2021" and the rest read right).
-- **User sees:** a wrong answer - the right player's games from a year earlier, captioned as the month asked.
-- **Next step:** where a month from October to December is written with its year, read the season as that year + 1 (`router._validate_season` beside the situation reader); a case per month in `tests/query/test_router.py`.
-- **Source:** ours.
-- **GitHub:** #267
-
 ### A possessive on a name several players share drops the player: "Curry's stats by month 2016" answers the league's 2016 scorers
 - **Found:** 2026-09-28, fixing #259.
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Curry's"]`, and `["Curry’s"]`, which reads the same since #259): routes `leaderboard` with no player and answers "every player, 2016 regular season, by player (points per game, minimum 20 games): Stephen Curry ... James Harden ...". `parse.classify_span` strips the possessive for its team check but looks the player up as given: `find_players(con, "Curry's")` needs a player holding the word "s", and the near-spelling fallback takes only a single near spelling, which "Curry" (six players) is not - so the span is nobody's and dropped. "curry stats by month 2016" keeps the name, and the template asks which Curry.
@@ -470,7 +462,7 @@ those were found.
 - **Evidence:** the parent grammar's player log row (`lexicon.PLAYER_LOG_ROW`, `parse._PLAYER_LOG`) reads `\d+/\d+` and the month names `march|january|february|april|december|november|october` as a log, ahead of every row that reads a line, and nothing reads "average" against it. On the readings run of `21f12bd` plus #353's fix (`reader_pop.py`, the 2,710): "How many points did De'aaron fox average in November 2023" ("De'Aaron Fox in November, last 10 of 13 games ..."), "Scottie Barnes averages Feb 28th to April 14th 2026" and its "... ts%" twin (his last 10 games between the days) are `player_games`/`rows`/`date` - 3 of the 2,082 feed questions, "average" unread in each. Probed with the model's names and stat (`lebron`, `points`): "how many points did lebron average since 1/31/2020" and "... since january 31 2020" list his last 10 of 381 games, "average" unread; "tatum averages since 12/11/2023" lists his last 10 of 141, where "tatum averages since dec 11 2023" (a month the row does not hold) answers his line, 26.2 points per game in 141 games.
 - **User sees:** ten rows of a log where one average was asked - a different shape, fluently.
 - **Next step:** the log row reads a month or a slashed day only where no line word ("average(s)", "avg", "ppg", "per game") stands beside it, so the line's row takes the question with the cut on it; measure the 2,710 readings and both answer populations first, every moved answer enumerated. The row is the grammar family's (lane N's), not the cuts'.
-- **Priority:** P1 - a different shape answered fluently; 3 of the 2,082 (and #267's own question).
+- **Priority:** P1 - a different shape answered fluently; 3 of the 2,082 (#267's own question among them: since #267 it lists the right November's 9 games, as a log).
 - **Source:** ours.
 
 ## P2: misleading or incomplete
