@@ -1964,14 +1964,13 @@ def _window_order(asked: PointShape | None, read: WindowCandidates, order: str |
     is read from the looser end words where exactly one matches - after one
     game named as his ("his last home game") - and on the four where an end
     means ONE game it stands only where the words name a game at one end;
-    on any other key an end read beside a count of two or more stands
-    only where the words say it with "games"
-    (:func:`_window_order_elsewhere`). Returns the end, its claim, and
-    whether one game of a line was named."""
+    on any other key the end stands as the grammar read it, for the planner
+    to refuse by name where the reader honors none (ISSUES.md #352).
+    Returns the end, its claim, and whether one game of a line was named."""
     if asked in _WINDOW_ORDER_ON_A_SINGLE_GAME:
         if read.single is not None:
             return read.single[0], read.single[1], True
-        return *_window_order_elsewhere(read, order, count), False
+        return order, None, False
     if asked in ORDER_ASKS:
         claim = None
         if order is None and count is None and asked in _WINDOW_ONE_GAME_NAMED and read.single is not None:
@@ -1981,23 +1980,13 @@ def _window_order(asked: PointShape | None, read: WindowCandidates, order: str |
         if order is not None and asked in _WINDOW_ORDER_IS_ONE_GAME and read.single is None and not read.order_words:
             return None, None, False
         return order, claim, False
-    return *_window_order_elsewhere(read, order, count), False
-
-
-def _window_order_elsewhere(read: WindowCandidates, order: str | None, count: int | None) -> tuple[str | None, Claim | None]:
-    """An end on a key whose reader honors none: kept beside a count of one
-    (one game is what was asked, and the reader refuses or hands it on by
-    name) or where the words say it with "games" - the looser end words, or
-    the grammar's own window words ("last ten games", "last 10 home games",
-    ISSUES.md #352) - for the planner to refuse by name; dropped beside a
-    larger count said with no "games" ("damian lillard stats vs magic last
-    10"), the count standing. Until #352 the grammar's "games" did not
-    count, the reader read the bare count as the newest N inside the
-    default season, and "Warriors vs Mavs record last ten games" tallied
-    this season's three meetings."""
-    if order is not None and count not in (None, 1) and not read.order_words and not read.games_said:
-        return None, None
-    return order, None
+    # On any other key the end stands as the grammar read it, whatever word
+    # follows the count, and the planner refuses it by name where the key's
+    # reader cannot honor one (ISSUES.md #352): dropped beside a count of two
+    # or more until then, the reader read the bare count as the newest N
+    # inside the default season, and "Warriors vs Mavs record last ten games"
+    # tallied this season's three meetings.
+    return order, None, False
 
 
 #: The career a key implies, by the words' rule it reads under
