@@ -268,20 +268,14 @@ def read_lines(question: str) -> LineCandidates:
 def _read_lines_stated(question: str) -> list[LineCandidate]:
     """The lines kept over or at a number on a stat, stated by their lead -
     "more than 40 points", "above 9 rebounds", "exactly 25 field goal
-    attempts" (:data:`~association.query.lexicon.LINE_OVER_OR_AT`) - or as "fga
+    attempts" (:data:`~association.query.lexicon.LINE_OVER_OR_AT`), "15+
+    fga", "at least 15 fga" (:data:`~association.query.lexicon.LINE_AT_LEAST`,
+    a threshold spelling's pair inside one left to the pair) - or as "fga
     = 25" (:data:`~association.query.lexicon.EQUALS_LINE`, the longest run
     of words before the sign that names a stat), read on every key a line
     under a number is but a ranking of players' seasons (ISSUES.md #371,
     :func:`~association.query.point.lines_under`)."""
-    found: list[LineCandidate] = []
-    for m in lexicon.LINE_OVER_OR_AT.finditer(question):
-        phrase_number = _phrase_number(question, m.start(), m.end())
-        if phrase_number is not None and not m.group(0).casefold().startswith(lexicon.EXACT_LEADS):
-            # "more than 30" states a line over a number as "30+" does: typed as one.
-            phrase_number = (phrase_number[0], phrase_number[1], "plus")
-        # The lead ("more than", "exactly") is the tagger's, typed as a line under a number's lead is.
-        lead = (m.start(), m.start() + len(question[m.start() : phrase_number[0]].rstrip())) if phrase_number is not None else None
-        found.append(LineCandidate(phrase_line(m.group(0), below=False), m.start(), Claim(m.start(), m.end(), "line"), "stated", phrase_number, _phrase_stat(question, phrase_number, m.end()), lead))
+    found = [candidate for candidate in _read_lines_stated_any(question) if candidate.line.measure is not None or lexicon.PERCENTAGE_WORDS.search(candidate.line.as_typed)]
     for m in lexicon.EQUALS_LINE.finditer(question):
         words = m.group(1).split()
         for width in range(len(words), 0, -1):
@@ -291,6 +285,29 @@ def _read_lines_stated(question: str) -> list[LineCandidate]:
                 line = Line(measure=measure, op="=", value=int(m.group(2)), as_typed=question[start : m.end()].casefold(), narrows=True)
                 found.append(LineCandidate(line, start, Claim(start, m.end(), "line"), "stated", (m.start(2), m.end(2), "bare"), (start, start + len(" ".join(words[-width:])))))
                 break
+    return found
+
+
+def _read_lines_stated_any(question: str) -> list[LineCandidate]:
+    """The lines stated by a lead or a plus, whatever their words name - the
+    caller keeps those naming a stat or a percentage, and leaves the rest
+    ("30+ feet", "10+ regular season games") to the words."""
+    found: list[LineCandidate] = []
+    for m in lexicon.LINE_OVER_OR_AT.finditer(question):
+        phrase_number = _phrase_number(question, m.start(), m.end())
+        if phrase_number is not None and not m.group(0).casefold().startswith(lexicon.EXACT_LEADS):
+            # "more than 30" states a line over a number as "30+" does: typed as one.
+            phrase_number = (phrase_number[0], phrase_number[1], "plus")
+        # The lead ("more than", "exactly") is the tagger's, typed as a line under a number's lead is.
+        lead = (m.start(), m.start() + len(question[m.start() : phrase_number[0]].rstrip())) if phrase_number is not None else None
+        found.append(LineCandidate(phrase_line(m.group(0), below=False), m.start(), Claim(m.start(), m.end(), "line"), "stated", phrase_number, _phrase_stat(question, phrase_number, m.end()), lead))
+    for m in lexicon.LINE_AT_LEAST.finditer(question):
+        if any(m.start() <= pair.start() and pair.end() <= m.end() for pair in lexicon.threshold_pairs(question)):
+            continue  # "20+ points", "at least 50 points": the pair's, as it was
+        phrase_number = _phrase_number(question, m.start(), m.end())
+        if phrase_number is not None:
+            phrase_number = (phrase_number[0], phrase_number[1], "at_least" if m.group(0).casefold().startswith("at") else "plus")
+        found.append(LineCandidate(phrase_line(m.group(0), below=False), m.start(), Claim(m.start(), m.end(), "line"), "stated", phrase_number, _phrase_stat(question, phrase_number, m.end())))
     return found
 
 
