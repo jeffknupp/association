@@ -278,6 +278,12 @@ class Subject(reading.Subject):
     #: "compare sga and embiid"). :func:`apply_subject` replaces or reports
     #: each, whatever kind the subject is.
     invented: tuple[str, ...] = ()
+    #: The router's player names the question DOES hold, as the router spelled
+    #: them: what :func:`apply_subject` counts a spare name against when it
+    #: replaces an invented one from the question's own names (the question's
+    #: names the model never copied are the spares; since the parser keeps an
+    #: invented name off the players, ISSUES.md #373).
+    supported: tuple[str, ...] = ()
     #: The season the question ITSELF names, if one - what the tenure rule
     #: reads ("for Miami" with no season is a career, not this season), and
     #: never a defaulted "current season".
@@ -1135,6 +1141,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     return replace(
         subject,
         invented=tuple(invented),
+        supported=tuple(routed),
         named_season=season_from_text(question),
         asked=asked,
         filler=filler,
@@ -1630,18 +1637,27 @@ def _apply_players(subject: Subject, scope: Filtered, asked: PointShape | None =
     maxey scored 20+"), a reached companion is a spare name the way the
     subject's own are: the router invented Joel Embiid there (day5), a
     model's name may do the same, and the question's Maxey replaces him
-    rather than the question refusing."""
+    rather than the question refusing. An invented name is never among the
+    players the parser hands here (``parse._read_route_players``, ISSUES.md
+    #373): it is reported from :attr:`Subject.invented` as dropped, so the
+    answering loop's by-name refusal still fires on a player shape, while
+    the kind and the key were decided from the names the question holds."""
     scope, decisions, routed = _apply_filler_players(subject, scope)
-    if not routed:
-        return scope, decisions, []
-    dropped = [r for r in routed if r in subject.invented]
+    dropped = [*(r for r in routed if r in subject.invented), *(name for name in subject.invented if name not in routed)]
     kept = [r for r in routed if r not in dropped]
-    spare = _spare_names(subject, kept, asked)
+    # The spares are the question's own names the model never copied,
+    # counted against the model's names it DID hold (``Subject.supported``),
+    # not against the players written here, which are the question's names
+    # already: "compare sga and embiid" with a model's [SGA, Nurkic] has Embiid
+    # spare for Nurkic; "lebron stats" with [LeBron, Durant] has none.
+    spare = _spare_names(subject, list(subject.supported), asked) if dropped else []
     if dropped and len(spare) != len(dropped):
         return scope, [], dropped
     field = _players_slot(scope)
     replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the model omitted: not put back here
     decisions.extend(Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items())
+    if not routed:
+        return scope, decisions, []
     respelled = _respellings(kept, subject.players)
     replacement.update(respelled)
     decisions.extend(Decision("subject", field, was, now, "spelled as the question names the player") for was, now in respelled.items())

@@ -479,10 +479,17 @@ def _read_route_names(subject: Subject, slots: dict[str, Any]) -> tuple[ReadSubj
 def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
     """The subject's players, then each player span of the model's that is
     none of the reading's names or companions (``question_supports``, so
-    "lebron" is LeBron James and "embid" Joel Embiid)."""
+    "lebron" is LeBron James and "embid" Joel Embiid) - and that the question
+    holds at all: a span the reading lists as invented (no word of the
+    question supports it) rides on :attr:`Reading.misread
+    <association.query.reading.Reading.misread>` alone, never among the
+    players, so it changes neither the subject's kind nor the key the
+    grammar names ("points per quarter for Luka" with an invented Stephen
+    Curry is Luka's quarter breakdown, not the league's ranking; ISSUES.md
+    #373)."""
     read = (*subject.players, *subject.companions)
     typed = [slots["player"]] if isinstance(slots.get("player"), str) else list(slots.get("players") or [])
-    return [*subject.players, *(span for span in typed if not any(question_supports(name, span) for name in read))]
+    return [*subject.players, *(span for span in typed if span not in subject.invented and not any(question_supports(name, span) for name in read))]
 
 
 # The columns asked for beside a ranking ("top 5 scorers with their rebounds

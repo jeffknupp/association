@@ -811,6 +811,13 @@ about what happens next, and the third is the one that was got wrong first:
   naming Jeff Withey; and allowing a one-letter span makes the possessive left
   behind by "Jokic's" name John S. Williams, who is in nine of the routing
   corpus's questions.
+  Since 2026-10-13 a name the question never held never reaches the
+  subject's players at all (`parse._read_route_players`, ISSUES.md #373
+  closed): it rides on `Reading.misread`, so the kind and the key are the
+  question's own, and `apply_subject` replaces it from the question's names
+  where the count is exact - counted against the model's names the
+  question does hold, `Subject.supported` - or reports it for the by-name
+  refusal.
 - **Trim a name back to the part the question holds only where that part is
   ambiguous.** Expanding half a name is usually the model doing its job:
   "luka", "jokic" and "embiid" each reach exactly one player, so undoing the
