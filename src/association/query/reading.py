@@ -1374,6 +1374,7 @@ CAUSES: frozenset[str] = frozenset(
         "window_ends_contradict",
         "window_per_season",
         "fact_not_read",
+        "team_game_high",
         "no_player_reading",
         "playoff_round",
         "non_calendar_situation",
@@ -1428,7 +1429,9 @@ missing thing, never only the slot"):
   game no table holds or nothing reads - a draft position, a birth date, a
   height, a jersey number, a lead, a four-point play, a role, an
   opponent's wins (``fact_not_read``: ``fact``, ``words``, ISSUES.md
-  #389), or a player named on a question whose
+  #389), a team's own best single
+  game, which nothing ranks yet (``team_game_high``: ``team``, ``shape``;
+  ISSUES.md #364), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
   ``shape``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,

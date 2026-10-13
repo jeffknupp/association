@@ -91894,10 +91894,13 @@
   }
  },
  {
-  "name": "misspelled_games_window#369a",
-  "why": "A misspelled \"games\" after \"last N\" - one edit from \"game(s)\" - is the window's games, as \"last 5 games\" is (ISSUES.md #369): his last 5 games, not his season line.",
-  "question": "Lamelo ball stats last 5 gMes",
-  "names": [],
+  "name": "issue_247_a_misspelled_opponent_after_vs",
+  "why": "ISSUES.md #247: a word a versus word leads that is a near spelling of exactly one team, and of no player, is that team, kept as typed for the relation's team resolution to read and say so; it was dropped and his last 5 games against anybody answered.",
+  "question": "gui last 5 games vs sours",
+  "names": [
+   "gui",
+   "sours"
+  ],
   "stat": "",
   "expected": {
    "asked": {
@@ -91908,13 +91911,13 @@
    "who": {
     "kind": "player",
     "players": [
-     "LaMelo Ball"
+     "Gui Santos"
     ],
     "teams": [],
     "position": null
    },
    "cuts": {
-    "opponent": null,
+    "opponent": "sours",
     "tenure": null,
     "venue": null,
     "date": null,
@@ -91929,8 +91932,8 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": true,
-    "career": false,
+    "both": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -91944,18 +91947,15 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "stats",
-    "gmes"
-   ],
+   "unread": [],
    "subject": {
     "kind": "player",
     "players": [
-     "LaMelo Ball"
+     "Gui Santos"
     ],
     "teams": [],
     "position": null,
-    "opponent": null,
+    "opponent": "sours",
     "own_team": null,
     "companions": [],
     "invented": [],
@@ -91976,15 +91976,22 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LaMelo Ball']"
+     "reason": "question names players ['Gui Santos']; router players the question supports ['gui']; question spells 'gui' as 'Gui Santos'; against 'sours'"
     },
     {
      "stage": "subject",
      "field": "players",
      "before": null,
      "after": [
-      "LaMelo Ball"
+      "Gui Santos"
      ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "opponent",
+     "before": null,
+     "after": "sours",
      "reason": "from the question's own words"
     }
    ],
@@ -92059,7 +92066,204 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": true,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "Gui Santos"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": "sours",
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": "recent",
+     "count": 5,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_247_a_misspelled_opponent_after_vs_the",
+  "why": "ISSUES.md #247: the near spelling after \"vs the\" is the opponent; his season line answered.",
+  "question": "jalen brunson points vs the celtcs this season",
+  "names": [
+   "jalen brunson",
+   "celtcs"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Jalen Brunson"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": "celtcs",
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Jalen Brunson"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": "celtcs",
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Jalen Brunson']; router players the question supports ['jalen brunson']; question spells 'jalen brunson' as 'Jalen Brunson'; against 'celtcs'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Jalen Brunson"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "opponent",
+     "before": null,
+     "after": "celtcs",
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "per_game",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
      "career": false,
      "since": null,
      "until": null
@@ -92067,7 +92271,383 @@
     "who": {
      "kind": "player",
      "players": [
-      "LaMelo Ball"
+      "Jalen Brunson"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": "celtcs",
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_247_a_misspelled_team_met",
+  "why": "ISSUES.md #247: a team's record against a near-spelled team is the two teams meeting; the Lakers' season record answered.",
+  "question": "lakers record vs the nuggest",
+  "names": [
+   "lakers",
+   "nuggest"
+  ],
+  "stat": "record",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "comparison",
+    "by": "opponent"
+   },
+   "who": {
+    "kind": "teams",
+    "players": [],
+    "teams": [
+     "Los Angeles Lakers"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": "nuggest",
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "record",
+    "as_typed": "record",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "teams",
+    "players": [],
+    "teams": [
+     "Los Angeles Lakers",
+     "nuggest"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_games",
+     "shape": "comparison",
+     "by": "opponent"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "teams",
+     "reason": "team word 'Los Angeles Lakers'; against 'nuggest'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Los Angeles Lakers",
+      "nuggest"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "comparison",
+     "by": "opponent"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "comparison",
+    "by": "opponent",
+    "measures": [
+     {
+      "key": "record",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "opponent",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "teams",
+     "players": [],
+     "teams": [
+      "Los Angeles Lakers"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": "nuggest",
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "record",
+     "as_typed": "record",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_247_a_player_one_edit_from_a_team",
+  "why": "ISSUES.md #247: a word that is a player's whole name, or near one, is never read as a team it is near (\"hawes\" is Spencer Hawes, one edit from the Hawks).",
+  "question": "sam hauser vs hawes",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "comparison",
+    "by": "met"
+   },
+   "who": {
+    "kind": "pair",
+    "players": [
+     "Sam Hauser",
+     "Spencer Hawes"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "pair",
+    "players": [
+     "Sam Hauser",
+     "Spencer Hawes"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "comparison",
+     "by": "met"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "pair",
+     "reason": "question names players ['Sam Hauser', 'Spencer Hawes']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Sam Hauser",
+      "Spencer Hawes"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "comparison",
+     "by": "met"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "comparison",
+    "by": "met",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "pair",
+     "players": [
+      "Sam Hauser",
+      "Spencer Hawes"
      ],
      "teams": [],
      "position": null
@@ -92088,7 +92668,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": true,
+     "both": false,
      "career": false,
      "since": null,
      "until": null
@@ -92096,8 +92676,8 @@
     "split": null,
     "period": null,
     "window": {
-     "order": "recent",
-     "count": 5,
+     "order": null,
+     "count": null,
      "of": "games",
      "rank": null,
      "by": null
@@ -92109,27 +92689,27 @@
   }
  },
  {
-  "name": "misspelled_games_window#369b",
-  "why": "A misspelled \"games\" after \"last N\" beside an opponent is his last N meetings across his career, as \"last 6 games\" is (ISSUES.md #369).",
-  "question": "Draymond green vs mavs last 6 gamew",
+  "name": "issue_364_on_the_team_is_its_players",
+  "why": "ISSUES.md #364: a team named \"on the <team>\" beside a single game is its players (team_players), whose best game is the league's high narrowed to the team; the team's season line answered.",
+  "question": "most points in a single game on the 76ers",
   "names": [],
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_games",
-    "shape": "rows",
-    "by": "date"
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "Draymond Green"
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
     ],
-    "teams": [],
     "position": null
    },
    "cuts": {
-    "opponent": "Dallas Mavericks",
+    "opponent": null,
     "tenure": null,
     "venue": null,
     "date": null,
@@ -92140,44 +92720,55 @@
    },
    "companions": [],
    "lines": [],
-   "measure": null,
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
    "span": {
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": true,
+    "career": false,
     "since": null,
     "until": null
    },
    "split": null,
    "period": null,
    "window": {
-    "order": "recent",
-    "count": 6,
+    "order": null,
+    "count": null,
     "of": "games",
     "rank": null,
     "by": null
    },
    "minimum": null,
    "unread": [
-    "gamew"
+    "single"
    ],
    "subject": {
-    "kind": "player",
-    "players": [
-     "Draymond Green"
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
     ],
-    "teams": [],
     "position": null,
-    "opponent": "Dallas Mavericks",
+    "opponent": null,
     "own_team": null,
     "companions": [],
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_games",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
     },
     "asked_reason": null,
     "conditions": [],
@@ -92189,39 +92780,32 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "question names players ['Draymond Green']; team word 'Dallas Mavericks'; against 'Dallas Mavericks'"
+     "after": "team_players",
+     "reason": "team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
-     "field": "players",
+     "field": "teams",
      "before": null,
      "after": [
-      "Draymond Green"
+      "Philadelphia 76ers"
      ],
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "opponent",
-     "before": null,
-     "after": "Dallas Mavericks",
      "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_games",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
     },
-    "relation": "player",
+    "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "date",
+    "by": "",
     "measures": [
      {
-      "key": "minutes",
+      "key": "points",
       "as_typed": null,
       "how": null,
       "unit": null,
@@ -92233,7 +92817,7 @@
       "beside": []
      },
      {
-      "key": "points",
+      "key": "minutes",
       "as_typed": null,
       "how": null,
       "unit": null,
@@ -92272,29 +92856,22 @@
     "aggregate": "none",
     "group": "none",
     "predicates": [],
-    "order": "date",
+    "order": "measure",
     "direction": "desc",
-    "limit": 6,
+    "limit": 3,
     "minimum_games": null,
     "available": null,
-    "subject_span": {
-     "season": null,
-     "season_type": 2,
-     "both": false,
-     "career": true,
-     "since": null,
-     "until": null
-    },
+    "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "Draymond Green"
+     "kind": "team_players",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
      ],
-     "teams": [],
      "position": null
     },
     "cuts": {
-     "opponent": "Dallas Mavericks",
+     "opponent": null,
      "tenure": null,
      "venue": null,
      "date": null,
@@ -92305,20 +92882,31 @@
     },
     "companions": [],
     "lines": [],
-    "measure": null,
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
     "span": {
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": true,
+     "career": false,
      "since": null,
      "until": null
     },
     "split": null,
     "period": null,
     "window": {
-     "order": "recent",
-     "count": 6,
+     "order": null,
+     "count": null,
      "of": "games",
      "rank": null,
      "by": null
@@ -92330,27 +92918,27 @@
   }
  },
  {
-  "name": "match_games_window#369c",
-  "why": "\"match\" after \"last N\" is the window's games (ISSUES.md #369).",
-  "question": "anthony davis vs orlando last 5 match",
+  "name": "issue_364_by_a_team_singular_is_its_players",
+  "why": "ISSUES.md #364: \"by a knick\" beside a single game is one of the team's players.",
+  "question": "most points by a knick in a game this season",
   "names": [],
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_games",
-    "shape": "rows",
-    "by": "date"
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "Anthony Davis"
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "New York Knicks"
     ],
-    "teams": [],
     "position": null
    },
    "cuts": {
-    "opponent": "Orlando Magic",
+    "opponent": null,
     "tenure": null,
     "venue": null,
     "date": null,
@@ -92361,44 +92949,53 @@
    },
    "companions": [],
    "lines": [],
-   "measure": null,
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
    "span": {
-    "season": null,
+    "season": 2026,
     "season_type": 2,
     "both": false,
-    "career": true,
+    "career": false,
     "since": null,
     "until": null
    },
    "split": null,
    "period": null,
    "window": {
-    "order": "recent",
-    "count": 5,
+    "order": null,
+    "count": null,
     "of": "games",
     "rank": null,
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "match"
-   ],
+   "unread": [],
    "subject": {
-    "kind": "player",
-    "players": [
-     "Anthony Davis"
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "New York Knicks"
     ],
-    "teams": [],
     "position": null,
-    "opponent": "Orlando Magic",
+    "opponent": null,
     "own_team": null,
     "companions": [],
     "invented": [],
-    "named_season": null,
+    "named_season": 2026,
     "asked": {
-     "relation": "player_games",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
     },
     "asked_reason": null,
     "conditions": [],
@@ -92410,39 +93007,32 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "question names players ['Anthony Davis']; team word 'Orlando Magic'; against 'Orlando Magic'"
+     "after": "team_players",
+     "reason": "team word 'New York Knicks'"
     },
     {
      "stage": "subject",
-     "field": "players",
+     "field": "teams",
      "before": null,
      "after": [
-      "Anthony Davis"
+      "New York Knicks"
      ],
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "opponent",
-     "before": null,
-     "after": "Orlando Magic",
      "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_games",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
     },
-    "relation": "player",
+    "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "date",
+    "by": "",
     "measures": [
      {
-      "key": "minutes",
+      "key": "points",
       "as_typed": null,
       "how": null,
       "unit": null,
@@ -92454,7 +93044,7 @@
       "beside": []
      },
      {
-      "key": "points",
+      "key": "minutes",
       "as_typed": null,
       "how": null,
       "unit": null,
@@ -92493,29 +93083,22 @@
     "aggregate": "none",
     "group": "none",
     "predicates": [],
-    "order": "date",
+    "order": "measure",
     "direction": "desc",
-    "limit": 5,
+    "limit": 3,
     "minimum_games": null,
     "available": null,
-    "subject_span": {
-     "season": null,
-     "season_type": 2,
-     "both": false,
-     "career": true,
-     "since": null,
-     "until": null
-    },
+    "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "Anthony Davis"
+     "kind": "team_players",
+     "players": [],
+     "teams": [
+      "New York Knicks"
      ],
-     "teams": [],
      "position": null
     },
     "cuts": {
-     "opponent": "Orlando Magic",
+     "opponent": null,
      "tenure": null,
      "venue": null,
      "date": null,
@@ -92526,20 +93109,820 @@
     },
     "companions": [],
     "lines": [],
-    "measure": null,
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
     "span": {
-     "season": null,
+     "season": 2026,
      "season_type": 2,
      "both": false,
-     "career": true,
+     "career": false,
      "since": null,
      "until": null
     },
     "split": null,
     "period": null,
     "window": {
-     "order": "recent",
-     "count": 5,
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_364_in_team_history_is_its_players",
+  "why": "ISSUES.md #364: \"in <team> history\" beside a single game is the team's players' best game (the span's \"history\" is #167's).",
+  "question": "most points in a game in cavs history",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "Cleveland Cavaliers"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "Cleveland Cavaliers"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team_players",
+     "reason": "team word 'Cleveland Cavaliers'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Cleveland Cavaliers"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 3,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team_players",
+     "players": [],
+     "teams": [
+      "Cleveland Cavaliers"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_364_by_the_team_is_its_own_game",
+  "why": "ISSUES.md #364: the team's own best single game, which nothing ranks yet, is refused by the cause naming it (team_game_high) where the team's season line answered.",
+  "question": "most points in a game by the 76ers this season",
+  "names": [
+   "76ers"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "team word 'Philadelphia 76ers'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Philadelphia 76ers"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "team_seasons",
+    "on": "team_seasons",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "refused": {
+    "kind": "team_game_high",
+    "facts": {
+     "team": "Philadelphia 76ers",
+     "shape": {
+      "relation": "team_seasons",
+      "shape": "scalar",
+      "by": "line"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "issue_364_a_teams_highest_scoring_game",
+  "why": "ISSUES.md #364: the team's own highest-scoring game is refused by team_game_high, not answered with its points per game.",
+  "question": "what was the knicks highest scoring game",
+  "names": [
+   "knicks"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "New York Knicks"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "scoring",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "New York Knicks"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "team word 'New York Knicks'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "New York Knicks"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "team_seasons",
+    "on": "team_seasons",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "New York Knicks"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "scoring",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "refused": {
+    "kind": "team_game_high",
+    "facts": {
+     "team": "New York Knicks",
+     "shape": {
+      "relation": "team_seasons",
+      "shape": "scalar",
+      "by": "line"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "issue_364_a_teams_per_game_line_stands",
+  "why": "ISSUES.md #364: a team's points per game names no single game and stays the team's line.",
+  "question": "76ers points per game this season",
+  "names": [
+   "76ers"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points per game",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "team word 'Philadelphia 76ers'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Philadelphia 76ers"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "team_seasons",
+    "on": "team_seasons",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points per game",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
      "of": "games",
      "rank": null,
      "by": null

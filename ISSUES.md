@@ -92,15 +92,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #373
 
-### A team named with "in a single game" is answered with the team's season line: "most points in a single game on the 76ers" answers 115.9 points per game
-- **Found:** 2026-10-10, Phase 3, step 2's subject slice, reading the feed answers the "76ers" fix moved (`b1daa88`).
-- **Evidence:** on the 2,710 readings 13 feed questions read a `team` subject, words naming one game ("in a game", "in a single game") and `team_stat` - "most points in a single game on the 76ers" / "... on the knicks" / "... on the magic" / "... on the thunder", "most points in a game in cavs history", "most points in a game in pistons history", "most points in a game by a knicks playter", "most points by a knick in a game; 1988-89", "most fgm + opp fgm in a game by Knicks; 1988-89", "best free throw percentage in a game with 13+ free throw attempts by the 76ers", ... - and each answers the team's season line ("The Philadelphia 76ers' points per game was 115.9 in the 2026 regular season (82 games), 14th-best of 30 teams."). The parent grammar's team rows send a team subject with no "players"/"scorers" word to `team_stat` (`parse.PARENT_GRAMMAR`), and the `single_game_high` child is gated off team kinds (`subject._CHILD_GRAMMARS`, `_NOT_A_TEAM`). Production reads these the same way: with the model's span `["76ers"]` the subject slice's tree reads `team_stat {'team': '76ers', 'stat': 'points'}` for the first. Until `b1daa88` the words-only reading missed "76ers" and answered two of them right by accident (the quarter stage filed the nickname as the team of a `single_game_high`: Tyrese Maxey's 54). #167 is the span half of the same family ("history" not read as a career) and assumed the compiler's single-game read.
-- **User sees:** a team's season average where its (or its players') best single game was asked - a different question, fluently.
-- **Next step:** read "on the <team>" / "<team> player" / a single game beside a team as the team's players' single-game high (`team_players`, the league's read narrowed to the team, as "most points in a game for a 76ers player" already answers), and "by the <team>" as the team's own single-game high on the team relation; decide the two in the child grammar (step 4's), every moved answer enumerated.
-- **Source:** ours.
-- **Priority:** P1 - 13 feed questions answered as another question.
-- **GitHub:** #364
-
 ### A position group beside a named player is read and dropped: "centers vs gobert gamelog with 34 minutes 2024" answers Gobert's own log
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the subject family (`~/association-research/stages/subject_family.py`).
 - **Evidence:** 51 of the 2,710 readings carry a position group; 50 are `position` subjects and every league-wide point honors the group. One is a `player` subject carrying the group C ("centers vs gobert gamelog with 34 minutes 2024", the feed): the point reader honors a position on the league's own moves alone (`point._everyone_point`), so the point is Rudy Gobert's game log with 34+ minutes, and the answer lists his games. The question is the centers' games against Gobert.
@@ -2349,6 +2340,15 @@ those were found.
 - **GitHub:** #376
 
 ## P3: refusal or gap
+
+### A team's own best single game has no reader: "most points in a game by the 76ers" is refused `team_game_high`
+- **Found:** 2026-10-10 (#364, the team's season line answering a single game); rewritten 2026-10-13 by the P1 sweep's lane N, which read a team named as its players' team beside a single game as the team's players ("on the 76ers", "by a knick", "in cavs history": `subject._decide_team_players`, the league's high narrowed to the team) and refused the team's own (`team_game_high`, said by `say.refusal_phrase`), where both answered the team's season line.
+- **Evidence:** on the 2,082 feed questions at the fix's commit, 5 are refused `team_game_high` ("most fgm + opp fgm in a game by Knicks; 1988-89", "most ortg + drtg ...", the two "fewest field goal misses ..." wordings, "best free throw percentage in a game with 13+ free throw attempts by the 76ers"); the league's own form, "most 3s made in a single game by a team" and the overtime wordings ("most 3ot points in a game by a team nba"), still read as the teams' season ranking (the `everyone` kind). The team-games relation keeps no box-score columns past points (#403, #404), and no `PointShape` ranks a team's games by a measure - a shape (D4).
+- **User sees:** a refusal naming the missing reader, with the players' wording that is answered.
+- **Next step:** a team's games ranked by a measure on the team-games relation (lane T's reader, the shape the decision is Jeff's), then the `team_game_high` cause and the league's "by a team" form read as it.
+- **Source:** ours.
+- **Priority:** P3 - a refusal; 5 feed questions, and the league's form 6.
+- **GitHub:** #364
 
 
 ### "most ppg without free throws" is refused as if "free throws" were a teammate: "games without free throws cannot be read here"
