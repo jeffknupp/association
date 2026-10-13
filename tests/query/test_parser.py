@@ -366,6 +366,28 @@ def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: du
     assert (possessive.asked, possessive.who.player, possessive.who.invented) == (SEASON_HISTORY, "embids", ())
 
 
+def test_an_invented_name_never_changes_the_kind_or_the_key(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #373: a model name the question never held rides on
+    ``misread`` alone - never among the players, so the subject's kind and
+    the grammar's key are the question's own - and is replaced from the
+    question's names where the count is exact (AGENTS.md, "Replace only
+    from what the question itself names"), or reported where it is not."""
+    from association.query.reading import PERIOD_LOG, PLAYER_LINE, PLAYER_LOG
+
+    quarter = _route(con, "points per quarter for Luka", ["Jayson Tatum"], "points")
+    assert (quarter.asked, quarter.who.kind, quarter.who.players, quarter.misread) == (PERIOD_LOG, "player", ("Luka Doncic",), ())
+    log = _route(con, "jokic game log this season", ["Jayson Tatum"], "points")
+    assert (log.asked, log.who.players, log.misread) == (PLAYER_LOG, ("Nikola Jokic",), ())
+    # Two model names for one question name: one is fiction with no spare,
+    # and the answering loop refuses it by name on a player's shape.
+    extra = _route(con, "tatum stats", ["Jayson Tatum", "Joel Embiid"], "points")
+    assert (extra.asked, extra.who.players, extra.misread) == (PLAYER_LINE, ("Jayson Tatum",), ("Joel Embiid",))
+    # No name in the question at all: the model's span is nobody the words
+    # hold, so it is reported, and the answering loop refuses it by name.
+    nobody = _route(con, "game log this season", ["Jayson Tatum"], "points")
+    assert nobody.misread == ("Jayson Tatum",) and "Jayson Tatum" not in nobody.who.players[1:]
+
+
 def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> None:
     """One number table, every count pattern built from it: "last twelve
     games" read as a season line while "last 12 games" read the log (the
