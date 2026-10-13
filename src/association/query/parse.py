@@ -865,10 +865,10 @@ def _tagged_worded_key(question: str, model_key: Any) -> Any:
     return worded[0] if worded is not None else model_key
 
 
-def _tagged_cuts(read: CutsRead) -> tuple[Cuts, int | None]:
-    """What the cuts tagger writes into the reading: the cuts, and the year
-    a dated range opened at, which the span tagger reads."""
-    return read.cuts, read.dated_since
+def _tagged_cuts(read: CutsRead) -> tuple[Cuts, int | None, int | None, bool]:
+    """What the cuts tagger writes into the reading: the cuts, and the
+    seasons a dated range opens and ends at, which the span tagger reads."""
+    return read.cuts, read.dated_since, read.dated_until, read.dated_both
 
 
 def _tagged_lines(read: LinesRead) -> tuple[tuple[Line, ...], str | None]:
@@ -915,6 +915,8 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         game_n=cuts.cuts.game_n,
         season_n=cuts.cuts.season_n,
         dated_since=cuts.dated_since,
+        dated_until=cuts.dated_until,
+        dated_both=cuts.dated_both,
     )
 
 

@@ -560,6 +560,16 @@ REGULAR_SEASON_WORDS = re.compile(r"\bregular[- ]season\b", re.IGNORECASE)
 
 .. versionadded:: 6.0.0
 """
+# The regular season as a range of calendar days asks about it: written out
+# or short ("in the reg season"). A range of days naming no season type is
+# every game played between them, both types (ISSUES.md #345: "from april
+# 16th 2022 to may 22nd 2022" is the 2022 playoffs, and the regular season
+# alone held none of it).
+RANGE_REGULAR_SEASON = re.compile(r"\breg(?:ular)?\.?[- ]season\b", re.IGNORECASE)
+"""The regular season named beside a range of calendar days, short or in full.
+
+.. versionadded:: 6.0.0
+"""
 
 # Both season types at once, named outright: "including the playoffs",
 # "including postseason", "regular season and playoffs", "playoffs included".
@@ -1177,6 +1187,38 @@ CALENDAR_DATE = re.compile(
     re.IGNORECASE,
 )
 """A calendar day, or a range opened on one.
+
+.. versionadded:: 6.0.0
+"""
+# A range of calendar days with their years: "from january 1 2015 to june 2
+# 2021", "between October 10 2016 and february 19 2017", "Feb 28th to April
+# 14th 2026" - the first day's year may be left to the second's (ISSUES.md
+# #345). Until it the cuts tagger read the first day alone - "since January
+# 1" within each season of the default span, or the one game on it - and
+# nothing read the end: "james harden ts playoffs from january 1 2015 to june
+# 2 2021" listed his 2026 playoff games since January 1. The days are read
+# with their years, so the range is one cut across seasons (a "date_range"
+# narrowing, `calendar.parse_situation`) and the span is the seasons the two
+# days fall in. "and" joins the days only after "between".
+_RANGE_DAY = (
+    r"(?P<month{n}>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(?P<day{n}>\d{{1,2}})"
+    r"(?:st|nd|rd|th)?"  # codespell:ignore nd - an ordinal suffix
+)
+_DATE_RANGE = (
+    r"(?:(?P<lead>from|between)\s+(?:the\s+)?)?"
+    + _RANGE_DAY.format(n=1)
+    + r"(?:,?\s+(?P<year1>(?:19|20)\d\d))?,?\s+(?P<joiner>to|through|thru|until|till|and|-)\s+(?:the\s+)?"
+    + _RANGE_DAY.format(n=2)
+    + r",?\s+(?P<year2>(?:19|20)\d\d)"
+)
+DATE_RANGE = re.compile(r"\b" + _DATE_RANGE + r"\b", re.IGNORECASE)
+"""A range of calendar days, the last with its year (the first's may be
+left to it): "from january 1 2015 to june 2 2021".
+
+.. versionadded:: 6.0.0
+"""
+SITUATION_DATE_RANGE = re.compile(r"^" + _DATE_RANGE + r"$", re.IGNORECASE)
+"""A situation value that is a range of calendar days (:data:`DATE_RANGE`, whole).
 
 .. versionadded:: 6.0.0
 """

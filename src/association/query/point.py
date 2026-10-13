@@ -1767,7 +1767,7 @@ def cuts_under(asked: PointShape | None, read: CutsRead, *, split: str | None) -
     venue_split = asked == PLAYER_SPLITS and split == "home_away"
     cuts = replace(read.cuts, venue=None) if venue_split else read.cuts
     kept = () if venue_split or read.venue_claim is None else (read.venue_claim,)
-    return CutsRead(cuts, claimed([*kept, *read.claims]), read.dated_since)
+    return CutsRead(cuts, claimed([*kept, *read.claims]), read.dated_since, dated_until=read.dated_until, dated_both=read.dated_both)
 
 
 def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: bool = False) -> LinesRead:

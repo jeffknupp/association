@@ -38,6 +38,7 @@ from typing import Literal
 
 from association.nba.season import current_season
 from association.query import lexicon
+from association.query.calendar import date_range, season_of_day
 from association.query.reading import Claim, Cuts, situation_of
 from association.query.span import career_named
 
@@ -63,7 +64,9 @@ class CutsContext:
 class CutsRead:
     """What the tagger read: the :class:`~association.query.reading.Cuts`,
     the characters it claimed, and the year a range opened on a dated day
-    names ("since 1/26/20"), which the span tagger starts the seasons at.
+    names ("since 1/26/20"), which the span tagger starts the seasons at -
+    with, for a range of calendar days with their years, the season it ends
+    in.
 
     .. versionadded:: 6.0.0
     """
@@ -71,6 +74,14 @@ class CutsRead:
     cuts: Cuts
     claims: tuple[Claim, ...]
     dated_since: int | None = None
+    #: The last season a range of calendar days with their years reaches
+    #: ("from january 1 2015 to june 2 2021" ends in 2021), which the span
+    #: tagger ends the seasons at (ISSUES.md #345).
+    dated_until: int | None = None
+    #: Whether that range can hold a postseason game - it crosses from one
+    #: season into the next, or a day of it falls from April to September -
+    #: so naming no season type it is every game between its days.
+    dated_both: bool = False
     #: The venue's characters, apart from :attr:`claims` until the key's
     #: reading keeps the venue or drops it (:func:`~association.query.point.cuts_under`).
     venue_claim: Claim | None = None
@@ -95,10 +106,22 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
     """
     claims: list[Claim] = []
     venue, venue_claim = _venue(question)
-    situation, situation_claim = _situation(question)
-    day, day_claim = _day(question)
-    dated_since = None
-    if day_claim is None and situation is None:
+    dated_since = dated_until = None
+    dated_both = False
+    situation: str | None
+    situation_claim: Claim | None
+    ranged = _date_range(question)
+    if ranged is not None:
+        # A range of calendar days with their years is the situation, read
+        # whole, and the seasons its two days fall in are the span's: its
+        # first day is no single game, and no "since <day>" within a season
+        # (ISSUES.md #345).
+        situation, dated_since, dated_until, dated_both, situation_claim = ranged
+        day, day_claim = None, None
+    else:
+        situation, situation_claim = _situation(question)
+        day, day_claim = _day(question)
+    if ranged is None and day_claim is None and situation is None:
         # A date that named itself but could not be pinned to one day - a
         # range opened on it, or a day on a career question - is a
         # situation, which the relation reads or refuses by value, and the
@@ -127,7 +150,7 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
         game_n=game_n,
         season_n=season_n,
     )
-    return CutsRead(cuts, tuple(claims), dated_since, venue_claim)
+    return CutsRead(cuts, tuple(claims), dated_since, dated_until=dated_until, dated_both=dated_both, venue_claim=venue_claim)
 
 
 def _venue(question: str) -> tuple[Literal["home", "away"] | None, Claim | None]:
@@ -201,6 +224,26 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
         return date(year, month, day).isoformat(), Claim(match.start(), match.end(), "date")
     except ValueError:
         return None, None  # "february 31"
+
+
+def _date_range(question: str) -> tuple[str, int, int, bool, Claim] | None:
+    """A range of calendar days with their years
+    (:data:`~association.query.lexicon.DATE_RANGE`) as the situation it is -
+    its words, casefolded, which :func:`~association.query.calendar.parse_situation`
+    reads back as one ``date_range`` cut across seasons - with the seasons
+    its first and last day fall in, whether it can hold a postseason game
+    (it crosses a season, or a day of it falls from April to September),
+    and the characters read; or None where the words name no such range
+    ("march 3 and april 4 2024" is two days)."""
+    match = lexicon.DATE_RANGE.search(question)
+    if match is None:
+        return None
+    days = date_range(match.groupdict())
+    if days is None:
+        return None
+    first, last = days
+    postseason = season_of_day(first) != season_of_day(last) or any(4 <= day.month <= 9 for day in days)
+    return match.group(0).casefold(), season_of_day(first), season_of_day(last), postseason, Claim(match.start(), match.end(), "situation")
 
 
 def _dated_situation(question: str) -> tuple[str | None, int | None, Claim | None]:

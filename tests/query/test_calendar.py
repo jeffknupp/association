@@ -20,10 +20,12 @@ from association.query.calendar import (
     CalendarNarrowing,
     alignment_clause,
     calendar_clause,
+    date_range,
     parse_alignment,
     parse_situation,
+    season_of_day,
 )
-from association.query.lexicon import HOLIDAY_WORDS, UNREAD_HOLIDAYS
+from association.query.lexicon import DATE_RANGE, HOLIDAY_WORDS, UNREAD_HOLIDAYS
 
 
 @pytest.mark.parametrize(
@@ -195,6 +197,56 @@ def test_calendar_clause_reads_a_since_date_across_seasons() -> None:
     con.executemany("INSERT INTO g VALUES (?, ?)", [("2020-01-25", 2020), ("2020-01-26", 2020), ("2020-10-11", 2020), ("2025-12-16", 2026), ("2021-01-20", 2021)])
     rows = con.execute(f"SELECT eastern_date FROM g WHERE {sql}", params).fetchall()
     assert sorted(str(r[0]) for r in rows) == ["2020-01-26", "2020-10-11", "2021-01-20", "2025-12-16"]
+
+
+@pytest.mark.parametrize(
+    ("text", "first", "last"),
+    [
+        # ISSUES.md #345: a range of calendar days with their years.
+        ("from january 1 2015 to june 2 2021", "2015-01-01", "2021-06-02"),
+        ("between october 10 2016 and february 19 2017", "2016-10-10", "2017-02-19"),
+        ("from may 10th 2019 to april 30th 2023", "2019-05-10", "2023-04-30"),
+        ("from december 1st 2020 to november 28th 2021", "2020-12-01", "2021-11-28"),
+        # The first day's year left to the last day's, or the year before it.
+        ("feb 28th to april 14th 2026", "2026-02-28", "2026-04-14"),
+        ("from december 1 to january 31 2021", "2020-12-01", "2021-01-31"),
+    ],
+)
+def test_parse_situation_reads_a_range_of_calendar_days_across_seasons(text: str, first: str, last: str) -> None:
+    narrowing = parse_situation(text)
+    assert narrowing is not None and narrowing.kind == "date_range" and narrowing.value == (first, last)
+    assert narrowing.label.startswith("from ") and " to " in narrowing.label
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "jokic march 3 and april 4 2024",  # two days, "and" with no "between"
+        "from february 31 2020 to march 3 2020",  # a day no calendar has
+        "from june 2 2021 to january 1 2015",  # ends before it starts
+    ],
+)
+def test_a_range_of_days_that_names_no_range_is_none(text: str) -> None:
+    match = DATE_RANGE.search(text)
+    assert match is not None and date_range(match.groupdict()) is None
+
+
+def test_a_day_falls_in_the_season_its_month_belongs_to() -> None:
+    assert season_of_day(date(2020, 12, 1)) == 2021
+    assert season_of_day(date(2021, 6, 2)) == 2021
+    assert season_of_day(date(2015, 10, 1)) == 2016
+
+
+def test_calendar_clause_reads_a_date_range_across_seasons() -> None:
+    """A range of calendar days is one cut, from the first day through the
+    last, whatever season each game is in (ISSUES.md #345)."""
+    narrowing = CalendarNarrowing("date_range", ("2020-01-26", "2021-01-20"), "from January 26, 2020 to January 20, 2021")
+    sql, params = calendar_clause(narrowing, "g.eastern_date", "g.season")
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE g (eastern_date DATE, season INTEGER)")
+    con.executemany("INSERT INTO g VALUES (?, ?)", [("2020-01-25", 2020), ("2020-01-26", 2020), ("2020-10-11", 2020), ("2025-12-16", 2026), ("2021-01-20", 2021), ("2021-01-21", 2021)])
+    rows = con.execute(f"SELECT eastern_date FROM g WHERE {sql}", params).fetchall()
+    assert sorted(str(r[0]) for r in rows) == ["2020-01-26", "2020-10-11", "2021-01-20"]
 
 
 def test_calendar_clause_rejects_an_unwritten_kind() -> None:

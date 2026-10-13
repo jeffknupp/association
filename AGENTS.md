@@ -1184,7 +1184,12 @@ a shape:
   the year fixed by the season the words name or the current one, never
   on a career question; a date that opens a range or stands on a career
   question is a situation, and the year it wrote is handed to the span
-  tagger), a playoff round, a game of a series, an ordinal season - over
+  tagger; a range of calendar days with their years, `DATE_RANGE`, is
+  one situation cut across seasons, a `date_range` narrowing, and hands
+  the span the seasons its first and last day fall in - one season where
+  both fall in it - and both season types where it can hold a postseason
+  game and names no type, ISSUES.md #345), a playoff round, a game of a
+  series, an ordinal season - over
   the opponent and absent teammates the subject
   reading read (an opponent that is the `without` list again is dropped;
   the tenure the subject reading writes after the taggers; a venue beside

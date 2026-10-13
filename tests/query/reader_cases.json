@@ -92549,5 +92549,668 @@
    "point_declined": null,
    "point_refusal": null
   }
+ },
+ {
+  "name": "date_range_with_years#345a",
+  "why": "A range of calendar days with their years is one cut across seasons, and the span is the seasons its days fall in (ISSUES.md #345): his 2015-2021 playoff games between the two days, not his 2026 postseason since January 1.",
+  "question": "james harden ts playoffs from january 1 2015 to june 2 2021",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "James Harden"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": {
+     "text": "from january 1 2015 to june 2 2021",
+     "calendar": {
+      "kind": "date_range",
+      "value": [
+       "2015-01-01",
+       "2021-06-02"
+      ],
+      "label": "from January 1, 2015 to June 2, 2021"
+     },
+     "alignment": null
+    },
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 3,
+    "both": false,
+    "career": false,
+    "since": 2015,
+    "until": 2021
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "ts"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "James Harden"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['James Harden']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "James Harden"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": 2015,
+     "until": 2021
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "James Harden"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": {
+      "text": "from january 1 2015 to june 2 2021",
+      "calendar": {
+       "kind": "date_range",
+       "value": [
+        "2015-01-01",
+        "2021-06-02"
+       ],
+       "label": "from January 1, 2015 to June 2, 2021"
+      },
+      "alignment": null
+     },
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": 2015,
+     "until": 2021
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "date_range_with_years#345b",
+  "why": "\"between <day> <year> and <day> <year>\" is a range of calendar days (ISSUES.md #345): the Kings' record between them, where the first day was read as one game and refused.",
+  "question": "Sacramento kings record between October 10 2016 and february 19 2017",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "scalar",
+    "by": "record"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Sacramento Kings"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": {
+     "text": "between october 10 2016 and february 19 2017",
+     "calendar": {
+      "kind": "date_range",
+      "value": [
+       "2016-10-10",
+       "2017-02-19"
+      ],
+      "label": "from October 10, 2016 to February 19, 2017"
+     },
+     "alignment": null
+    },
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": 2017,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Sacramento Kings"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_games",
+     "shape": "scalar",
+     "by": "record"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "team word 'Sacramento Kings'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Sacramento Kings"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "scalar",
+     "by": "record"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "scalar",
+    "by": "record",
+    "measures": [
+     {
+      "key": "record",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Sacramento Kings"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": {
+      "text": "between october 10 2016 and february 19 2017",
+      "calendar": {
+       "kind": "date_range",
+       "value": [
+        "2016-10-10",
+        "2017-02-19"
+       ],
+       "label": "from October 10, 2016 to February 19, 2017"
+      },
+      "alignment": null
+     },
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2017,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "date_range_with_years#345c",
+  "why": "The first day's year left to the last day's (ISSUES.md #345): February 28 through April 14, 2026, where the first day alone was read as one game.",
+  "question": "Scottie Barnes averages Feb 28th to April 14th 2026",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Scottie Barnes"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": {
+     "text": "feb 28th to april 14th 2026",
+     "calendar": {
+      "kind": "date_range",
+      "value": [
+       "2026-02-28",
+       "2026-04-14"
+      ],
+      "label": "from February 28, 2026 to April 14, 2026"
+     },
+     "alignment": null
+    },
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": true,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "averages"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Scottie Barnes"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Scottie Barnes']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Scottie Barnes"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": true,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "Scottie Barnes"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": {
+      "text": "feb 28th to april 14th 2026",
+      "calendar": {
+       "kind": "date_range",
+       "value": [
+        "2026-02-28",
+        "2026-04-14"
+       ],
+       "label": "from February 28, 2026 to April 14, 2026"
+      },
+      "alignment": null
+     },
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": true,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
  }
 ]

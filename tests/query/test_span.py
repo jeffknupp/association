@@ -116,6 +116,16 @@ def test_a_range_opened_on_a_dated_day_starts_the_seasons_there() -> None:
     assert _read("towns career rec since 1/26/20", dated_since=2020) == Span(season_type=2, career=True)
 
 
+def test_a_range_of_calendar_days_is_the_seasons_its_days_fall_in() -> None:
+    # ISSUES.md #345: the cuts tagger hands the span the first and last season.
+    assert _read("james harden ts playoffs from january 1 2015 to june 2 2021", dated_since=2015, dated_until=2021, dated_both=True) == Span(season_type=3, since=2015, until=2021)
+    # Inside one season it is that season, cut at the days.
+    assert _read("curry from april 16th 2022 to may 22nd 2022", dated_since=2022, dated_until=2022, dated_both=True) == Span(season=2022, season_type=2, both=True)
+    # A regular season named, short or in full, keeps the type.
+    assert _read("curry from december 1st 2020 to november 28th 2021 in the reg season", dated_since=2021, dated_until=2022, dated_both=True) == Span(season_type=2, since=2021, until=2022)
+    assert _read("kings record between october 10 2016 and february 19 2017", dated_since=2017, dated_until=2017) == Span(season=2017, season_type=2)
+
+
 def test_a_count_a_pair_and_a_log_imply_a_career_without_a_career_word() -> None:
     assert _read("how many times has embiid fouled out?", shape=GAMES_COUNTED, player_named=True, how_many=True).career
     assert not _read("how many times has embiid fouled out this season?", shape=GAMES_COUNTED, player_named=True, how_many=True).career
