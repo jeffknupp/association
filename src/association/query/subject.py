@@ -2362,9 +2362,21 @@ def _team_after_versus(teams: names.TeamIndex, question: str, season: int | None
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
                 team = _team_named(teams, " ".join(words[:size]), season)
-                if team is not None and not _team_after_versus_a_name(teams, team, words[:size], held):
+                if team is not None and not _team_after_versus_a_name(teams, team, words[:size], held) and not _team_after_versus_led_by_another(teams, team, words[:size], season):
                     return team
     return None
+
+
+def _team_after_versus_led_by_another(teams: names.TeamIndex, team: Entity, span: list[str], season: int | None) -> bool:
+    """Whether ``span``, two words or more, starts with a word that names a
+    team other than ``team`` - a span that only ENDS in ``team``: "vs magic
+    on bulls" is the Magic, never the Bulls the three words hold (ISSUES.md,
+    "The team after a versus word is read from a span that only ends in a
+    team")."""
+    if len(span) < 2:
+        return False
+    first = _team_named(teams, span[0], season)
+    return first is not None and first.id != team.id
 
 
 def _team_after_versus_a_name(teams: names.TeamIndex, team: Entity, span: list[str], held: set[str]) -> bool:
@@ -2390,7 +2402,7 @@ def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = 
     .. versionadded:: 4.4.0
     """
     for match in lexicon.FOR_TEAM_PHRASE.finditer(question):
-        span_text = match.group(1) or match.group(2) or match.group(3) or ""
+        span_text = match.group(1) or match.group(2) or match.group(3) or match.group(4) or ""
         words = _team_words(span_text)[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:

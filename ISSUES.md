@@ -458,14 +458,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #393
 
-### The team after a versus word is read from a span that only ends in a team: "zach lavine vs magic on bulls" is his games against the Bulls
-- **Found:** 2026-10-13, lane N of the P1 sweep, enumerating #346's moves ("zach lavigne vs magic on bulls" moved from the Magic-Bulls meetings to LaVine's games vs the Bulls).
-- **Evidence:** `subject._team_after_versus` tries the words after "vs" as spans of three, two and one, and `_team_named` reads "magic on bulls" (three words) as the Chicago Bulls - a span holding a team's word anywhere - before the one word "magic" is tried. On `be033d7`'s tree, through the whole agent with no names, "zach lavine vs magic on bulls" answers "Zach LaVine averaged 30 points ... in 1 game vs the Chicago Bulls in the 2026 regular season"; "zach lavine vs magic for the bulls" reads Orlando as the opponent and the Bulls as his tenure, rightly. 1 of the 2,082 feed questions (the typo'd twin, since #346).
-- **User sees:** a different opponent - his games against a team he was asked about playing FOR.
-- **Next step:** a span after a versus word names a team only where its FIRST word is a trace of that team (the shorter spans then reach "magic"), and "on <team>" after the opponent is the tenure as "for <team>" is (`lexicon.FOR_TEAM_PHRASE`). Measure on the 2,710 readings; a case per wording.
-- **Priority:** P1 - a different question answered.
-- **Source:** ours.
-
 ### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers). Rewritten 2026-10-13 (lane N of the P1 sweep) to what remains: the team-ranking row steps aside for games kept by a line with no team word (`lexicon.LINE_OF_GAMES_ROW`), so "most 40 point games in nba history" (and 50, 60) and "nba most playoff games with 2+ block and 2+ steals" are the players' count, and the count's child grammar is named under the with/without split, so "how many 30 point games did maxey have without embiid" is his count over the games Embiid missed (`CHANGES.md`).
 - **Evidence:** "most 0 point games in nba team history" answers the teams' points per game, "0" and "games" unread: the lines tagger reads no line at 0 points, so the row sees no line, and "team history" holds a team word besides. "most 30 point triple doubles in the last 3 years" ranks single games with a triple-double by points (top 3), the 30 unread: a line beside a boolean stat is no line the tagger reads. (The third the entry named, "nba most fga with 0 fgm single game", is #266's.)
