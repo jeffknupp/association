@@ -1552,6 +1552,14 @@ SITUATION = re.compile(
     # slot the relation filters on.
     # A window defined by an event rather than a date.
     r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
+    # A quarter or half named as a vague condition on which games count -
+    # "after a big first quarter", "when he has a hot second half" - with no
+    # line a game could be kept past (ISSUES.md #291): a circumstance
+    # nothing narrows by, refused by value, never the period asked about.
+    # A condition with a line ("after making one three in the first
+    # quarter") is the line family's (`line.read_period_line`), read first.
+    r"\b(?:after|following|coming\s+off)\s+(?:a|an|his|her|their)\s+(?:[a-z]+\s+){1,2}(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|qtr|half)\b|"
+    r"\b(?:when|if)\s+(?:he|she|they)\s+(?:has|have|had|gets?|got)\s+(?:a|an)\s+(?:[a-z]+\s+){1,2}(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|qtr|half)\b|"
     # Games after a result ("after a playoff loss", "coming off a win"): a
     # circumstance nothing narrows by - the games carry no "the game before"
     # - so it is refused by value rather than the whole span answered

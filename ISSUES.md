@@ -158,25 +158,6 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** a `head_to_head` with a box-score stat is the meetings' totals (the team compiler's rows read sums them), or a refusal naming the stat.
 - **GitHub:** #326
 
-### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
-- **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);
-  re-verified offline the same day at `011091f`.
-- **Evidence:** "jokic assists per game after a big first quarter"
-  (normalizer reply `jokic` / `assists`) reads `period_split` with
-  `period: 1` and answers "Nikola Jokic had 240 assists in the 1st quarter
-  over 65 games of the 2026 regular season, averaging 3.7." The question
-  asks for his whole-game assists in games whose first quarter was "big".
-  `parse.read_period_condition` reads a condition only where a number
-  names the line ("after making one three in the first quarter"), and
-  `refusals._period_as_condition` did not fire: "big" names no line.
-- **User sees:** a fluent answer to a different question.
-- **Next step:** "after|following|when ... <quarter>" with no line is a
-  condition nothing can hold: refuse it naming the missing number, rather
-  than read the quarter as the period. A reader fix; goes with the read
-  stage's work (`ROADMAP.md`, Phase 1) unless it shows up in the wild
-  first.
-- **GitHub:** #291
-
 ### "single game" before a boolean stat is read as a single-game high: "who has the most single game triple doubles" answers a single-game high, never the triple-double leaderboard
 - **Found:** 2026-09-28, a probe the #260 fix agent invented (in no corpus) and reported; re-measured by the lead on the merged tree (`95c8a21`, the main warehouse, the parser with no model).
 - **Evidence:** `parse.read_route` reads "who has the most single game triple doubles" (and "... this season") as parent `leaderboard`, then the `single_game_high` child (`subject._CHILD_GRAMMARS`, the `\bsingle[- ]game\b` alternative #260 added): `intent=single_game_high kind=everyone slots={'stat': 'triple_double', 'season_type': 2}`, reason "the words 'single game' name single_game_high". "who has the most triple doubles" and "most triple doubles in a single season" stay `leaderboard`. A triple-double is a boolean measure (`compose.core.BOOLEAN_MEASURES`): "single game" here modifies the stat - every triple-double is one game's - not the question's shape, and a league-wide single-game high of a boolean has nothing to rank by. Through the agent with the route as read (answered_by=fast intent=single_game_high): "every player, 2026 regular season with a triple-double - top 3 by points:   2025-12-25  Nikola Jokic     vs MIN  W  points 56  minutes 43  rebounds 16  assists 15   2025-11-10  Cade Cunningham  vs WSH  W  points 46  minutes 45  rebounds 12  assists 11   2025-12-18  Luka Doncic      @ UTAH W  points ".
