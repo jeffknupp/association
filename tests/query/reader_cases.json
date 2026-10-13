@@ -7697,8 +7697,10 @@
     "by": "fingerprint"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -7746,8 +7748,10 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -7770,8 +7774,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
@@ -7795,8 +7808,10 @@
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -7857,13 +7872,15 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -7883,7 +7900,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": false,
     "since": null,
     "until": null
@@ -7898,10 +7915,14 @@
     "by": null
    },
    "minimum": null,
-   "unread": [],
+   "unread": [
+    "games"
+   ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -7910,9 +7931,9 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
     "asked_reason": null,
     "conditions": [],
@@ -7924,21 +7945,42 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_games",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -7950,20 +7992,53 @@
       "category": null,
       "won": null,
       "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
      }
     ],
-    "aggregate": "per_game",
-    "group": "player",
+    "aggregate": "none",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
     "limit": 5,
-    "minimum_games": 20,
+    "minimum_games": null,
     "available": null,
-    "subject_span": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": true,
+     "career": false,
+     "since": null,
+     "until": null
+    },
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -7983,7 +8058,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": false,
      "since": null,
      "until": null
@@ -8407,13 +8482,15 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -8448,13 +8525,12 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "best",
-    "game"
-   ],
+   "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -8463,9 +8539,9 @@
     "invented": [],
     "named_season": 2025,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
     "asked_reason": null,
     "conditions": [],
@@ -8477,21 +8553,42 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_games",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -8503,20 +8600,53 @@
       "category": null,
       "won": null,
       "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
      }
     ],
-    "aggregate": "per_game",
-    "group": "player",
+    "aggregate": "none",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
     "limit": 10,
-    "minimum_games": 20,
+    "minimum_games": null,
     "available": null,
-    "subject_span": null,
+    "subject_span": {
+     "season": 2025,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -8686,8 +8816,10 @@
     "by": "shots"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -8726,8 +8858,10 @@
     "games"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -8750,8 +8884,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
@@ -8775,8 +8918,10 @@
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -9257,13 +9402,15 @@
   "stat": "points",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -9313,8 +9460,10 @@
     "stats"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -9323,9 +9472,9 @@
     "invented": [],
     "named_season": 2026,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
     "asked_reason": null,
     "conditions": [],
@@ -9337,21 +9486,42 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
-    "relation": "everyone",
-    "on": "player_seasons",
-    "shape": "ranking",
-    "by": "player",
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -9363,20 +9533,53 @@
       "category": null,
       "won": null,
       "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
      }
     ],
-    "aggregate": "per_game",
-    "group": "player",
+    "aggregate": "none",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
-    "direction": "desc",
+    "order": "date",
+    "direction": "asc",
     "limit": 1,
-    "minimum_games": 20,
+    "minimum_games": null,
     "available": null,
-    "subject_span": null,
+    "subject_span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -15879,8 +16082,10 @@
     "by": "shots"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -15919,8 +16124,10 @@
     "all-star"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -15943,8 +16150,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
@@ -15968,8 +16184,10 @@
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -16019,13 +16237,15 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "shots",
+    "shape": "scalar",
+    "by": "distance"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -16041,18 +16261,7 @@
    },
    "companions": [],
    "lines": [],
-   "measure": {
-    "key": "shot_distance",
-    "as_typed": "shot_distance",
-    "how": null,
-    "unit": null,
-    "whose": "own",
-    "side": null,
-    "shot_value": null,
-    "category": null,
-    "won": null,
-    "beside": []
-   },
+   "measure": null,
    "span": {
     "season": 2026,
     "season_type": 2,
@@ -16072,12 +16281,15 @@
    },
    "minimum": null,
    "unread": [
+    "shot",
     "all",
     "star"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -16086,11 +16298,11 @@
     "invented": [],
     "named_season": 2026,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
     },
-    "asked_reason": null,
+    "asked_reason": "the words 'distance' name shots/scalar/distance",
     "conditions": [],
     "filler": []
    },
@@ -16100,16 +16312,88 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "shots/scalar/distance",
+     "reason": "the words 'distance' name shots/scalar/distance"
     }
    ],
-   "point": null,
+   "point": {
+    "asked": {
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
+    },
+    "relation": "shots",
+    "on": "shots",
+    "shape": "scalar",
+    "by": "distance",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
    "point_declined": null,
-   "point_refusal": {
-    "kind": "shot_distance_ranking",
-    "facts": {}
-   }
+   "point_refusal": null
   }
  },
  {
@@ -32425,8 +32709,10 @@
     "by": "shots"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "Curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -32474,8 +32760,10 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "Curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -32498,8 +32786,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['Curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
@@ -32523,8 +32820,10 @@
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "Curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -49406,8 +49705,10 @@
     "by": "shots"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -49444,8 +49745,10 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -49468,8 +49771,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
@@ -49493,8 +49805,10 @@
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -49549,8 +49863,10 @@
     "by": "shots"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -49587,8 +49903,10 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -49611,8 +49929,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
@@ -49636,8 +49963,10 @@
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -49687,13 +50016,15 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -49713,7 +50044,7 @@
    "span": {
     "season": 2025,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": false,
     "since": null,
     "until": null
@@ -49730,8 +50061,10 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -49740,9 +50073,9 @@
     "invented": [],
     "named_season": 2025,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
     "asked_reason": null,
     "conditions": [],
@@ -49754,21 +50087,42 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_games",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -49780,20 +50134,53 @@
       "category": null,
       "won": null,
       "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
      }
     ],
-    "aggregate": "per_game",
-    "group": "player",
+    "aggregate": "none",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
     "limit": 10,
-    "minimum_games": 20,
+    "minimum_games": null,
     "available": null,
-    "subject_span": null,
+    "subject_span": {
+     "season": 2025,
+     "season_type": 2,
+     "both": true,
+     "career": false,
+     "since": null,
+     "until": null
+    },
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -49813,7 +50200,7 @@
     "span": {
      "season": 2025,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": false,
      "since": null,
      "until": null
@@ -79868,13 +80255,15 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "shots",
+    "shape": "scalar",
+    "by": "distance"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -79890,18 +80279,7 @@
    },
    "companions": [],
    "lines": [],
-   "measure": {
-    "key": "shot_distance",
-    "as_typed": "shot_distance",
-    "how": null,
-    "unit": null,
-    "whose": "own",
-    "side": null,
-    "shot_value": null,
-    "category": null,
-    "won": null,
-    "beside": []
-   },
+   "measure": null,
    "span": {
     "season": 2026,
     "season_type": 2,
@@ -79921,11 +80299,14 @@
    },
    "minimum": null,
    "unread": [
-    "average"
+    "average",
+    "shot"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -79934,11 +80315,11 @@
     "invented": [],
     "named_season": 2026,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
     },
-    "asked_reason": null,
+    "asked_reason": "the words 'distance' name shots/scalar/distance",
     "conditions": [],
     "filler": []
    },
@@ -79948,16 +80329,88 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "shots/scalar/distance",
+     "reason": "the words 'distance' name shots/scalar/distance"
     }
    ],
-   "point": null,
+   "point": {
+    "asked": {
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
+    },
+    "relation": "shots",
+    "on": "shots",
+    "shape": "scalar",
+    "by": "distance",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
    "point_declined": null,
-   "point_refusal": {
-    "kind": "shot_distance_ranking",
-    "facts": {}
-   }
+   "point_refusal": null
   }
  },
  {
@@ -80170,13 +80623,15 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
     "teams": [],
     "position": null
    },
@@ -80211,12 +80666,12 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "games"
-   ],
+   "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
     "teams": [],
     "position": null,
     "opponent": "Boston Celtics",
@@ -80225,9 +80680,9 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
     "asked_reason": null,
     "conditions": [],
@@ -80239,8 +80694,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": "team word 'Boston Celtics'; against 'Boston Celtics'"
+     "after": "player",
+     "reason": "router players the question supports ['maxey']; team word 'Boston Celtics'; against 'Boston Celtics'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "maxey"
+     ],
+     "reason": "from the question's own words"
     },
     {
      "stage": "subject",
@@ -80248,19 +80712,38 @@
      "before": null,
      "after": "Boston Celtics",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/split/season",
+     "after": "player_games/rows/date",
+     "reason": "the words 'in the past two seasons' name player_seasons/split/season, and the stages declined it"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_games",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -80272,20 +80755,53 @@
       "category": null,
       "won": null,
       "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
      }
     ],
-    "aggregate": "per_game",
-    "group": "player",
+    "aggregate": "none",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
     "limit": 10,
-    "minimum_games": 20,
+    "minimum_games": null,
     "available": null,
-    "subject_span": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": 2025,
+     "until": null
+    },
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "maxey"
+     ],
      "teams": [],
      "position": null
     },
@@ -84655,13 +85171,15 @@
   "stat": "points",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "shots",
+    "shape": "scalar",
+    "by": "distance"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -84708,12 +85226,13 @@
    },
    "minimum": null,
    "unread": [
-    "twos",
-    "distance"
+    "twos"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -84722,11 +85241,11 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
     },
-    "asked_reason": null,
+    "asked_reason": "the words 'distance' name shots/scalar/distance",
     "conditions": [],
     "filler": []
    },
@@ -84736,46 +85255,51 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "shots/scalar/distance",
+     "reason": "the words 'distance' name shots/scalar/distance"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
     },
-    "relation": "everyone",
-    "on": "player_seasons",
-    "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "threePointFieldGoalsMade",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
-    "aggregate": "per_game",
-    "group": "player",
+    "relation": "shots",
+    "on": "shots",
+    "shape": "scalar",
+    "by": "distance",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": null,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -84837,12 +85361,14 @@
   "expected": {
    "asked": {
     "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "shape": "scalar",
+    "by": "line"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -84890,8 +85416,10 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -84901,8 +85429,8 @@
     "named_season": null,
     "asked": {
      "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "shape": "scalar",
+     "by": "line"
     },
     "asked_reason": null,
     "conditions": [],
@@ -84914,20 +85442,29 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
      "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "shape": "scalar",
+     "by": "line"
     },
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_seasons",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "scalar",
+    "by": "line",
     "measures": [
      {
       "key": "threePointFieldGoalPct",
@@ -84943,17 +85480,19 @@
      }
     ],
     "aggregate": "per_game",
-    "group": "player",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": null,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
-     "kind": "everyone",
-     "players": [],
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
      "teams": [],
      "position": null
     },
@@ -85393,13 +85932,15 @@
   "stat": "points",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "shots",
+    "shape": "scalar",
+    "by": "distance"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null
    },
@@ -85416,13 +85957,13 @@
    "companions": [],
    "lines": [],
    "measure": {
-    "key": "shot_distance",
-    "as_typed": "shot_distance",
+    "key": "points",
+    "as_typed": "points",
     "how": null,
     "unit": null,
     "whose": "own",
     "side": null,
-    "shot_value": null,
+    "shot_value": 3,
     "category": null,
     "won": null,
     "beside": []
@@ -85446,11 +85987,13 @@
    },
    "minimum": null,
    "unread": [
-    "3pt"
+    "shot"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "curry"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -85459,11 +86002,11 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
     },
-    "asked_reason": null,
+    "asked_reason": "the words 'distance' name shots/scalar/distance",
     "conditions": [],
     "filler": []
    },
@@ -85473,16 +86016,99 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "curry"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "shots/scalar/distance",
+     "reason": "the words 'distance' name shots/scalar/distance"
     }
    ],
-   "point": null,
+   "point": {
+    "asked": {
+     "relation": "shots",
+     "shape": "scalar",
+     "by": "distance"
+    },
+    "relation": "shots",
+    "on": "shots",
+    "shape": "scalar",
+    "by": "distance",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "curry"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": 3,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
    "point_declined": null,
-   "point_refusal": {
-    "kind": "shot_distance_ranking",
-    "facts": {}
-   }
+   "point_refusal": null
   }
  },
  {
@@ -95866,6 +96492,661 @@
      "both": false,
      "career": false,
      "since": 2021,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_268_a_possessive_on_a_shared_surname_keeps_the_player",
+  "why": "ISSUES.md #268: \"Curry's\" is a player's span with its possessive off, which the reader asks about (Seth or Stephen); the span was nobody's and the league's 2016 scorers answered.",
+  "question": "Curry's stats by month 2016",
+  "names": [
+   "Curry's"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "splits"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Curry"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": 2016,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": "month",
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "stats"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Curry"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2016,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "splits"
+    },
+    "asked_reason": "the words 'by month' name player_games/split/splits",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "router players the question supports ['Curry']; the words 'by month' name player_games/split/splits"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Curry"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "player_games/split/splits",
+     "reason": "the words 'by month' name player_games/split/splits"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "splits"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "split",
+    "by": "splits",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "steals",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "blocks",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "turnovers",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "threePointFieldGoalsMade",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "fieldGoalPct",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "venue",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Curry"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2016,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": "month",
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_268_a_possessive_on_a_chart_keeps_the_player",
+  "why": "ISSUES.md #268: \"Plot Curry's threes\" draws a Curry's shots (asked which), where it was refused as naming no player.",
+  "question": "Plot Curry's threes",
+  "names": [
+   "Curry's"
+  ],
+  "stat": "threePointFieldGoalsMade",
+  "expected": {
+   "asked": {
+    "relation": "shots",
+    "shape": "chart",
+    "by": "shots"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Curry"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "threePointFieldGoalsMade",
+    "as_typed": "threePointFieldGoalsMade",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": 3,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Curry"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "shots",
+     "shape": "chart",
+     "by": "shots"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "router players the question supports ['Curry']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Curry"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "shots",
+     "shape": "chart",
+     "by": "shots"
+    },
+    "relation": "shots",
+    "on": "shots",
+    "shape": "chart",
+    "by": "shots",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Curry"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "threePointFieldGoalsMade",
+     "as_typed": "threePointFieldGoalsMade",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": 3,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_268_a_possessive_on_a_unique_surname_reads_the_player",
+  "why": "ISSUES.md #268: \"jokic's\" handed on without its possessive is still Nikola Jokic, as the words read him.",
+  "question": "jokic's stats this season",
+  "names": [
+   "jokic's"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Nikola Jokic"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "stats"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Nikola Jokic"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Nikola Jokic']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Nikola Jokic"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "player",
+    "on": "player_seasons",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "per_game",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Nikola Jokic"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
      "until": null
     },
     "split": null,

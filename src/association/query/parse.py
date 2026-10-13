@@ -376,7 +376,8 @@ def _slots_from_names(index: names.NameIndex, names: list[str], stat: str) -> di
     """The names as the slot shape the readers take today: ``player`` /
     ``players``, ``team`` and a second team as ``opponent``, ``stat``."""
     teams = [n for n in names if classify_span(index, n) == "team"]
-    players = [n for n in names if n not in teams and classify_span(index, n) == "player"]
+    players = [n if classify_span(index, n) == "player" else _slots_from_names_shared(index, n) for n in names if n not in teams]
+    players = [n for n in players if n]
     slots: dict[str, Any] = {}
     if len(players) == 1:
         slots["player"] = players[0]
@@ -389,6 +390,22 @@ def _slots_from_names(index: names.NameIndex, names: list[str], stat: str) -> di
     if stat:
         slots["stat"] = stat
     return slots
+
+
+def _slots_from_names_shared(index: names.NameIndex, name: str) -> str | None:
+    """A possessive on a surname two or more players share, with the
+    possessive taken off - ``"Curry"`` for ``"Curry's"`` - or None. Such a
+    span is nobody's as typed ("Curry's" holds no word "s", and six Currys
+    are no single near spelling), so it was dropped and "Curry's stats by
+    month 2016" ranked the league's 2016 scorers (ISSUES.md #268); the
+    question's own words cannot settle a name it shares either, so the span
+    is handed on for the reader to ask which. A possessive on a name one
+    player holds is left to the words, which read him."""
+    stripped = name.strip()
+    for suffix in ("'s", "'S", "\u2019s", "\u2019S"):
+        if stripped.endswith(suffix) and len(find_players(index.players, stripped[: -len(suffix)])) >= 2:
+            return stripped[: -len(suffix)]
+    return None
 
 
 def _model_reading(slots: dict[str, Any]) -> Reading:
