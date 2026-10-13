@@ -200,6 +200,19 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         taken=frozenset({"split"}),
         declined="plan",
     ),
+    # A team's best single game, or every team's (D4 lifted for it, Jeff
+    # 2026-10-13): its games ranked by one figure over the span, at a venue,
+    # against an opponent, on a weekday, month or holiday, or in one game of
+    # a series - the point's only answer.
+    PointShape("team_games", "rows", "measure"): ShapeCells(
+        unstated={
+            "window": "a best game ranks every game in the span; the best of the last N games is not built",
+            "period": "a team's box row is a whole game's; a quarter or half of each has no figure to rank by",
+            "both": "a best game is read in one season type; both at once would rank regular-season and playoff games as one",
+            "date": "one calendar date is one game, which a game log answers directly",
+        },
+        declined="plan",
+    ),
     # The team-season readers (compose.team_stats, over the standings and the
     # power index) settle no span of their own: one season's line, one
     # season's projection, or a ranking of one season's (or one since-bounded
@@ -354,7 +367,7 @@ def team_span_clause(span: ResolvedSpan) -> tuple[str, list[Any]]:
     return span.clause("tg.season")
 
 
-def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, scope: Filtered, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Unanswered:
+def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: ResolvedSpan, scope: Filtered, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Unanswered:
     """``team``'s games in ``span``, narrowed to an opponent, a venue, one
     Eastern date, one game of each playoff series (``game_n``) and a window of
     the newest or oldest N (``scope.window``) where the question named
@@ -413,12 +426,18 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
        game (:meth:`~association.query.team_games.TeamNarrowed.narrow_periods`).
     """
     clause, params = team_span_clause(span)
-    narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
+    if team is None:
+        # Every team's games - the league's teams, each game once per side
+        # (a team's best single game asked of any team: "most 3s made in a
+        # single game by a team", D4 lifted for it, Jeff 2026-10-13).
+        narrowed = TeamNarrowed(base=["tg.season_type = ?", clause], base_params=[span.season_type, *params], team=None)
+    else:
+        narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
     if opponent:
         rival = opponent if isinstance(opponent, Entity) else resolved_team(con, opponent, season=span.season)
         if isinstance(rival, Unanswered):
             return rival
-        if rival.id == team.id:
+        if team is not None and rival.id == team.id:
             raise Unsupported("a team cannot be its own opponent")
         narrowed.opponent = rival
         narrowed.narrow("tg.opponent_id = ?", rival.id)

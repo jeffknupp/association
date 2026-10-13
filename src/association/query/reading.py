@@ -1416,7 +1416,6 @@ CAUSES: frozenset[str] = frozenset(
         "window_ends_contradict",
         "window_per_season",
         "fact_not_read",
-        "team_game_high",
         "own_seasons_window",
         "own_alignment",
         "no_player_reading",
@@ -1479,9 +1478,7 @@ missing thing, never only the slot"):
   game no table holds or nothing reads - a draft position, an award, a birth date, a
   height, a jersey number, a lead, a four-point play, a role, an
   opponent's wins (``fact_not_read``: ``fact``, ``words``, ISSUES.md
-  #389), a team's own best single
-  game, which nothing ranks yet (``team_game_high``: ``team``, ``shape``;
-  ISSUES.md #364), a count of a career's own
+  #389), a count of a career's own
   seasons by their place, which the reader does not hold
   (``own_seasons_window``: ``seasons``, the words of each), a conference
   or division a ranking's subject belongs to, which nothing ranks
@@ -1672,6 +1669,14 @@ PERIOD_RANKING = PointShape("player_periods", "ranking", "player")
 """
 TEAM_RECORD = PointShape("team_games", "scalar", "record")
 """A team's record (``team_record``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_GAME_HIGHS = PointShape("team_games", "rows", "measure")
+"""A team's own games, or every team's, ranked by one box-score figure - a
+team's best single game ("most 3s made in a game by the 76ers", "most 3s
+made in a single game by a team"). The first key added after the freeze
+(decision D4), by Jeff's lifting of it for #364's remainder, 2026-10-13.
 
 .. versionadded:: 6.0.0
 """

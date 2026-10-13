@@ -92,7 +92,6 @@ from association.query.subject import (
     read_subject,
     settle_subject,
     subject_claims,
-    team_game_high_asked,
     team_named_in,
 )
 from association.query.window import MinimumRead, WindowContext, contradicting_ends, own_seasons_window, per_season_window, read_minimum, read_window
@@ -1156,12 +1155,6 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       games of 2026, "every season" unread (ISSUES.md #379) - nothing reads
       a window per season yet
       (:func:`~association.query.window.per_season_window`).
-    - a team's own best single game (``team_game_high``): "most points in
-      a game by the 76ers" was answered with the team's season line
-      (ISSUES.md #364) - the team relation ranks no games yet, and its
-      players' best game is a different question, which the words "by a
-      76er" or "a 76ers player" ask
-      (:func:`~association.query.subject.team_game_high_asked`).
     - a count of a career's own seasons by their place
       (``own_seasons_window``): "lebron james stats through their first 9
       seasons" answered his 2026 line (ISSUES.md #392) - which seasons are
@@ -1190,8 +1183,6 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     per_season = per_season_window(question)
     if per_season:
         return Cause(kind="window_per_season", facts={"window": question[per_season[0].start : per_season[0].end], "per": question[per_season[1].start : per_season[1].end]})
-    if reading.who.kind == "team" and reading.who.team is not None and team_game_high_asked(question):
-        return Cause(kind="team_game_high", facts={"team": reading.who.team, "shape": reading.asked})
     own = own_seasons_window(question)
     if own:
         return Cause(kind="own_seasons_window", facts={"seasons": [question[claim.start : claim.end] for claim in own]})

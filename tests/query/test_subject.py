@@ -35,6 +35,8 @@ from association.query.reading import (
     SEASON_HISTORY,
     SHOT_CHART,
     SHOT_DISTANCE,
+    TEAM_GAME_HIGHS,
+    TEAM_LINE,
     TEAM_MEETINGS,
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
@@ -678,11 +680,11 @@ def test_a_single_game_named_without_an_article_is_one_game(con: duckdb.DuckDBPy
     )
     assert asked == GAME_HIGHS and reading.who.player == "Nikola Jokic" and _stat(reading) == "rebounds"
     asked, reading = _assigned(
-        con, "celtics most points single game", None, scope=Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2))
+        con, "celtics most points single game", TEAM_LINE, scope=Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2))
     )
-    # The team's own best game, which nothing ranks: refused by the cause
-    # naming it (ISSUES.md #364), where the team's season line answered.
-    assert asked is None and reading.refused is not None and reading.refused.kind == "team_game_high"
+    # The team's own best game: its games ranked by the figure (ISSUES.md
+    # #364; D4 lifted for it), where the team's season line answered.
+    assert asked == TEAM_GAME_HIGHS and reading.who.team == "Boston Celtics" and reading.refused is None
     # A plural is games, not one game.
     asked, _ = _assigned(con, "jokic single games stats", PLAYER_LOG, scope=Reading(who=Who(kind="player", players=("Nikola Jokic",)), span=Span(season_type=2)))
     assert asked == PLAYER_LOG

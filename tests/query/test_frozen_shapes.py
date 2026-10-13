@@ -70,6 +70,9 @@ FROZEN = frozenset(
         ("team_seasons", "scalar", "line"),
         ("player_games", "scalar", "count"),
         ("team_games", "split", "presence"),
+        # D4 lifted (Jeff, 2026-10-13) for #364's remainder: a team's own
+        # games, or every team's, ranked by one figure.
+        ("team_games", "rows", "measure"),
     }
 )
 

@@ -90,6 +90,7 @@ from association.query.reading import (
     SHOT_CHART,
     SHOT_DISTANCE,
     SUBJECT_RESTORABLE_ASKS,
+    TEAM_GAME_HIGHS,
     TEAM_LINE,
     TEAM_MEETINGS,
     TEAM_OUTLOOK,
@@ -161,6 +162,12 @@ _CHILD_GRAMMARS: tuple[tuple[PointShape, lexicon.Ask, frozenset[str], frozenset[
     # "per game" is an average, never one game; "single game" is one game
     # with an article or without (the lexicon's CHILD_SINGLE_GAME_HIGH).
     (GAME_HIGHS, lexicon.CHILD_SINGLE_GAME_HIGH, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    # A team's own best single game, or every team's ("most 3s made in a
+    # game by the 76ers", "most 3s made in a single game by a team"): under
+    # the team's own parents, and the league's teams' ranking for the
+    # league's (ISSUES.md #364; D4 lifted for it, Jeff 2026-10-13). A team
+    # named as its players' team is ``team_players`` and the players' high.
+    (TEAM_GAME_HIGHS, lexicon.CHILD_SINGLE_GAME_HIGH, frozenset({"team", "everyone"}), frozenset({TEAM_LINE, TEAM_RECORD, TEAM_RANKING})),
     (SHOT_DISTANCE, lexicon.CHILD_SHOT_DISTANCE, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS | {SHOT_CHART}),
     (LINE_RUNS, lexicon.CHILD_STREAK, SUBJECT_KINDS, frozenset({TEAM_RECORD, TEAM_LINE, TEAM_RANKING, TEAM_OUTLOOK, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS),
     (LINE_RECORD, lexicon.CHILD_RECORD_WHEN_LINE, SUBJECT_KINDS, frozenset({TEAM_RECORD, TEAM_LINE, PRESENCE_SPLIT, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS),
@@ -1386,19 +1393,6 @@ def _team_named_by(teams: names.TeamIndex, phrase: re.Pattern[str], question: st
         if lexicon.TEAM_SINGULARS.get(word) == team or team_named_in(teams, word) == team:
             return match, match.start(group), match.end(group)
     return None
-
-
-def team_game_high_asked(question: str) -> bool:
-    """Whether a team subject's question names a single game - the team's
-    own best game ("most points in a game by the 76ers", "the knicks
-    highest scoring game"), which nothing reads yet, where the subject
-    reading kept the team as the subject and not its players
-    (:func:`_decide_team_players`; ISSUES.md #364). The parser refuses it by
-    the ``team_game_high`` cause, where the team's season line answered.
-
-    .. versionadded:: 6.0.0
-    """
-    return lexicon.CHILD_SINGLE_GAME_HIGH.search(question) is not None
 
 
 def _decide_claims(teams: names.TeamIndex, subject: Subject, question: str) -> tuple[Claim, ...]:

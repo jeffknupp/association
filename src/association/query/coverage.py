@@ -198,6 +198,9 @@ SOURCES: dict[PointShape, Tables] = {
     PointShape("team_games", "split", "line"): _TEAM_GAME_TABLES,
     PointShape("player_games", "runs", "line"): _PLAYER_GAME_TABLES,
     PointShape("team_games", "runs", "won"): _TEAM_GAME_TABLES,
+    # A team's best single game reads the team box row the figure is on
+    # beside the games (points, the score, is the games' own).
+    PointShape("team_games", "rows", "measure"): _TEAM_GAME_TABLES,
     PointShape("player_games", "comparison", "met"): _PLAYER_GAME_TABLES,
     # The with/without split reads whether named teammates played: the
     # player box scores, on the team relation.

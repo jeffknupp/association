@@ -46,6 +46,14 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A sum of two measures is read as its first: "most fgm + opp fgm in a game by Knicks this season" answers the Knicks' field goals made alone
+- **Found:** 2026-10-13, lane N of the P1 sweep, building a team's best single game (`team_games/rows/measure`).
+- **Evidence:** on sweep-N-team, "most fgm + opp fgm in a game by Knicks this season" reads the measure `fieldGoalsMade`, "+", "opp" and the second "fgm" unread, and answers "The New York Knicks' most field goals made in a single game in the 2026 regular season was 55 ..."; the season form, "knicks fgm + opp fgm per game this season", answers "The New York Knicks' field goals made per game was 42.7 ...". The feed's four such wordings ("most fgm + opp fgm ...", "most ortg + drtg ...", the two "fewest field goal misses + opp fga minus opp fgm ...") name 1988-89 and are refused by the team box scores' floor, which hides it there.
+- **User sees:** one figure where the sum of two (the team's and its opponent's) was asked - fluently.
+- **Next step:** the measure tagger (lane L's `measure.py`) reads a "+"/"minus" between two measures as a sum nothing reads, and the point reader refuses it by a cause naming both (`fact_not_read` or a new kind), until a summed measure exists; "opp" is #409's.
+- **Priority:** P1 - a narrower answer than asked, fluently (0 of the 2,082 outside the floor; the class is the feed's four).
+- **Source:** ours.
+
 ### A ranking by games played is answered as the points-per-game ranking: "most games played by a player denver nuggets" ranks the Nuggets by points per game
 - **Found:** 2026-10-13, the P1 sweep's lane T, reading master's (`c04ac33`) feed answers for #167.
 - **Evidence:** on the 2,082 feed questions (recorded replies, master `c04ac33`) "games played" is read by nothing - `measure` None, "games" and "played" in `Reading.unread` - and a ranking's default answers: "most games played by a player denver nuggets" and "most games played in nba by a player denver nuggets" answer "every player with the Denver Nuggets, 2026 regular season, by player (points per game, minimum 20 games): Nikola Jokic 65 G points 27.7 ..."; "player with most games played for one time nba" and "Name the top 10 players by games played under Lon Kruger in NBa" answer the league's points-per-game leaders. The catalog has the key (`measure.CATALOG["games_played"]`, aliases "games", "game", "gp") and the season line the column (`gamesPlayed`), so the words are all that is missing on a ranking; "anthony edwards games played last season" (6 wordings) answers his line, which says "in 79 games" - right by accident.
@@ -2298,13 +2306,6 @@ those were found.
 
 ## P3: refusal or gap
 
-### A team's own best single game has no reader: "most points in a game by the 76ers" is refused `team_game_high`
-- **Found:** 2026-10-10 (#364, the team's season line answering a single game); rewritten 2026-10-13 by the P1 sweep's lane N, which read a team named as its players' team beside a single game as the team's players ("on the 76ers", "by a knick", "in cavs history": `subject._decide_team_players`, the league's high narrowed to the team) and refused the team's own (`team_game_high`, said by `say.refusal_phrase`), where both answered the team's season line.
-- **Evidence:** on the 2,082 feed questions at the fix's commit, 5 are refused `team_game_high` ("most fgm + opp fgm in a game by Knicks; 1988-89", "most ortg + drtg ...", the two "fewest field goal misses ..." wordings, "best free throw percentage in a game with 13+ free throw attempts by the 76ers"); the league's own form, "most 3s made in a single game by a team" and the overtime wordings ("most 3ot points in a game by a team nba"), still read as the teams' season ranking (the `everyone` kind). The team-games relation keeps no box-score columns past points (#403, #404), and no `PointShape` ranks a team's games by a measure - a shape (D4).
-- **User sees:** a refusal naming the missing reader, with the players' wording that is answered.
-- **Next step:** a team's games ranked by a measure on the team-games relation (lane T's reader, the shape the decision is Jeff's), then the `team_game_high` cause and the league's "by a team" form read as it.
-- **Priority:** P3 - a refusal; 5 feed questions, and the league's form 6.
-- **GitHub:** #364
 ### "most ppg without free throws" is refused as if "free throws" were a teammate: "games without free throws cannot be read here"
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 3).
 - **Evidence:** `fe806a6` feed run, 2 questions ("most ppg without free throws", "most ppg excluding free throws"), the planner's decline.

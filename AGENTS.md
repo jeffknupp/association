@@ -73,10 +73,12 @@ this tree:
 
 - **New shapes are frozen** (decision D4). No new shape the words can ask,
   template, presenter, scoping table or renderer.
-  `tests/query/test_frozen_shapes.py` holds the 25 shapes the grammar can
+  `tests/query/test_frozen_shapes.py` holds the 26 shapes the grammar can
   name (the grammar's keys, `reading.PointShape` as relation, shape and
   `by`, since Phase 3, step 4 - the 25 intents' names until then, a freeze
-  retired with the intent), the page's 7 renderers (one per
+  retired with the intent; the 26th, a team's best single game,
+  `team_games/rows/measure`, added where Jeff lifted D4 for it,
+  2026-10-13), the page's 7 renderers (one per
   `reading.Shape`, since Phase 4, step 1 - 22 keyed by the label until
   then) and the 4 scoping
   declarations left in `src` (by module and name, read from the source),

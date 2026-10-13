@@ -799,8 +799,10 @@ keying; a reader returning a typed `Result`; the sayer's phrase; the
 recorded beside it; a test per wording, watched to fail; and the four
 populations with every move enumerated. The other freeze occasions the
 sweep has measured stay refusals by name until decided: #364's remainder
-(a team's own games ranked by a figure, `team_games/rows/measure`, about
-2 feed answers) and #392's remainder (a player's first or last N seasons
+(a team's own games ranked by a figure, `team_games/rows/measure`) was
+decided the same day - Jeff lifted D4 for it, and lane N built it (the
+26th key, a team's or every team's games ranked by one box-score
+figure) - and #392's remainder (a player's first or last N seasons
 resolved over his seasons on record, 3).
 
 Three rules hold throughout, Phase 3's: a decline or a refusal reworded

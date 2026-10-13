@@ -96205,7 +96205,7 @@
  },
  {
   "name": "issue_364_by_the_team_is_its_own_game",
-  "why": "ISSUES.md #364: the team's own best single game, which nothing ranks yet, is refused by the cause naming it (team_game_high) where the team's season line answered.",
+  "why": "ISSUES.md #364: the team's own best single game is its games ranked by the figure (D4 lifted for it, Jeff 2026-10-13), where the cause team_game_high refused it and, before that, the team's season line answered.",
   "question": "most points in a game by the 76ers this season",
   "names": [
    "76ers"
@@ -96213,9 +96213,9 @@
   "stat": "points",
   "expected": {
    "asked": {
-    "relation": "team_seasons",
-    "shape": "scalar",
-    "by": "line"
+    "relation": "team_games",
+    "shape": "rows",
+    "by": "measure"
    },
    "who": {
     "kind": "team",
@@ -96267,7 +96267,9 @@
     "by": null
    },
    "minimum": null,
-   "unread": [],
+   "unread": [
+    "most"
+   ],
    "subject": {
     "kind": "team",
     "players": [],
@@ -96281,11 +96283,11 @@
     "invented": [],
     "named_season": 2026,
     "asked": {
-     "relation": "team_seasons",
-     "shape": "scalar",
-     "by": "line"
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
     },
-    "asked_reason": null,
+    "asked_reason": "the words 'in a game' name team_games/rows/measure",
     "conditions": [],
     "filler": []
    },
@@ -96296,7 +96298,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'Philadelphia 76ers'"
+     "reason": "team word 'Philadelphia 76ers'; the words 'in a game' name team_games/rows/measure"
     },
     {
      "stage": "subject",
@@ -96306,23 +96308,43 @@
       "Philadelphia 76ers"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_seasons/scalar/line",
+     "after": "team_games/rows/measure",
+     "reason": "the words 'in a game' name team_games/rows/measure"
     }
    ],
    "point": {
     "asked": {
-     "relation": "team_seasons",
-     "shape": "scalar",
-     "by": "line"
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
     },
-    "relation": "team_seasons",
-    "on": "team_seasons",
-    "shape": "scalar",
-    "by": "line",
-    "measures": [],
+    "relation": "team",
+    "on": "team_games",
+    "shape": "rows",
+    "by": "measure",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": "points",
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
     "aggregate": "none",
     "group": "none",
     "predicates": [],
-    "order": "date",
+    "order": "measure",
     "direction": "desc",
     "limit": null,
     "minimum_games": null,
@@ -96380,23 +96402,12 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null,
-   "refused": {
-    "kind": "team_game_high",
-    "facts": {
-     "team": "Philadelphia 76ers",
-     "shape": {
-      "relation": "team_seasons",
-      "shape": "scalar",
-      "by": "line"
-     }
-    }
-   }
+   "point_refusal": null
   }
  },
  {
   "name": "issue_364_a_teams_highest_scoring_game",
-  "why": "ISSUES.md #364: the team's own highest-scoring game is refused by team_game_high, not answered with its points per game.",
+  "why": "ISSUES.md #364: the team's own highest-scoring game is its games ranked by points (D4 lifted, Jeff 2026-10-13), not its points per game.",
   "question": "what was the knicks highest scoring game",
   "names": [
    "knicks"
@@ -96404,9 +96415,9 @@
   "stat": "points",
   "expected": {
    "asked": {
-    "relation": "team_seasons",
-    "shape": "scalar",
-    "by": "line"
+    "relation": "team_games",
+    "shape": "rows",
+    "by": "measure"
    },
    "who": {
     "kind": "team",
@@ -96430,7 +96441,7 @@
    "lines": [],
    "measure": {
     "key": "points",
-    "as_typed": "scoring",
+    "as_typed": "points",
     "how": null,
     "unit": null,
     "whose": "own",
@@ -96472,11 +96483,11 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "team_seasons",
-     "shape": "scalar",
-     "by": "line"
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
     },
-    "asked_reason": null,
+    "asked_reason": "the words 'highest scoring game' name team_games/rows/measure",
     "conditions": [],
     "filler": []
    },
@@ -96487,7 +96498,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'New York Knicks'"
+     "reason": "team word 'New York Knicks'; the words 'highest scoring game' name team_games/rows/measure"
     },
     {
      "stage": "subject",
@@ -96497,23 +96508,43 @@
       "New York Knicks"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_seasons/scalar/line",
+     "after": "team_games/rows/measure",
+     "reason": "the words 'highest scoring game' name team_games/rows/measure"
     }
    ],
    "point": {
     "asked": {
-     "relation": "team_seasons",
-     "shape": "scalar",
-     "by": "line"
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
     },
-    "relation": "team_seasons",
-    "on": "team_seasons",
-    "shape": "scalar",
-    "by": "line",
-    "measures": [],
+    "relation": "team",
+    "on": "team_games",
+    "shape": "rows",
+    "by": "measure",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": "points",
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
     "aggregate": "none",
     "group": "none",
     "predicates": [],
-    "order": "date",
+    "order": "measure",
     "direction": "desc",
     "limit": null,
     "minimum_games": null,
@@ -96541,7 +96572,7 @@
     "lines": [],
     "measure": {
      "key": "points",
-     "as_typed": "scoring",
+     "as_typed": "points",
      "how": null,
      "unit": null,
      "whose": "own",
@@ -96571,18 +96602,7 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null,
-   "refused": {
-    "kind": "team_game_high",
-    "facts": {
-     "team": "New York Knicks",
-     "shape": {
-      "relation": "team_seasons",
-      "shape": "scalar",
-      "by": "line"
-     }
-    }
-   }
+   "point_refusal": null
   }
  },
  {
@@ -102204,6 +102224,594 @@
      "count": null,
      "of": "games",
      "rank": "most",
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "team_game_high_a_teams_own_best_game",
+  "why": "ISSUES.md #364 (D4 lifted, Jeff 2026-10-13): a team's own best single game by a figure is its games ranked by it, where the cause team_game_high refused it.",
+  "question": "celtics most 3s made in a single game this season",
+  "names": [
+   "celtics"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "rows",
+    "by": "measure"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Boston Celtics"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "threePointFieldGoalsMade",
+    "as_typed": "threePointFieldGoalsMade",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "most",
+    "made"
+   ],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Boston Celtics"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "asked_reason": "the words 'in a single game' name team_games/rows/measure",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "team word 'Boston Celtics'; the words 'in a single game' name team_games/rows/measure"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Boston Celtics"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_seasons/scalar/line",
+     "after": "team_games/rows/measure",
+     "reason": "the words 'in a single game' name team_games/rows/measure"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "rows",
+    "by": "measure",
+    "measures": [
+     {
+      "key": "threePointFieldGoalsMade",
+      "as_typed": "threePointFieldGoalsMade",
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Boston Celtics"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "threePointFieldGoalsMade",
+     "as_typed": "threePointFieldGoalsMade",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "team_game_high_every_teams_best_game",
+  "why": "ISSUES.md #364 (D4 lifted): the league's form, \"by a team\", is every team's games ranked by the figure, where the teams' season ranking answered.",
+  "question": "most 3s made in a single game by a team",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "rows",
+    "by": "measure"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "threePointFieldGoalsMade",
+    "as_typed": "threePointFieldGoalsMade",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "made"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "asked_reason": "the words 'in a single game' name team_games/rows/measure",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": "the words 'in a single game' name team_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_seasons/ranking/team",
+     "after": "team_games/rows/measure",
+     "reason": "the words 'in a single game' name team_games/rows/measure"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "rows",
+    "by": "measure",
+    "measures": [
+     {
+      "key": "threePointFieldGoalsMade",
+      "as_typed": "threePointFieldGoalsMade",
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "threePointFieldGoalsMade",
+     "as_typed": "threePointFieldGoalsMade",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "team_game_high_a_percentage",
+  "why": "ISSUES.md #364 (D4 lifted): a team's best shooting percentage in a game, made over attempted.",
+  "question": "warriors best 3 point percentage in a single game this season",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "rows",
+    "by": "measure"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Golden State Warriors"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "threePointFieldGoalPct",
+    "as_typed": "threePointFieldGoalPct",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "best"
+   ],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Golden State Warriors"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "asked_reason": "the words 'in a single game' name team_games/rows/measure",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "team word 'Golden State Warriors'; the words 'in a single game' name team_games/rows/measure"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Golden State Warriors"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_seasons/scalar/line",
+     "after": "team_games/rows/measure",
+     "reason": "the words 'in a single game' name team_games/rows/measure"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "rows",
+    "by": "measure",
+    "measures": [
+     {
+      "key": "threePointFieldGoalPct",
+      "as_typed": "threePointFieldGoalPct",
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Golden State Warriors"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "threePointFieldGoalPct",
+     "as_typed": "threePointFieldGoalPct",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
      "by": null
     },
     "minimum": null
