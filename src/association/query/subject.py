@@ -2009,6 +2009,21 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
                 break
             if any(len(w) < 3 for w in span):
                 continue
+            near = _players_named_in_near(players, words[index : index + lexicon.MAX_NAME_WORDS]) if size == 1 else None
+            if near is not None:
+                # Two or three adjacent words that are the single near
+                # spelling of one player outrank a lone word that is somebody
+                # else's exactly - tried after every exact span, so "vince
+                # carter career" is Vince Carter by his two words, and before the
+                # lone word, so "micheal jordan" is Michael Jordan, never
+                # Micheal Williams by his given name (ISSUES.md #346). Never
+                # a single word: one leftover word near a name read
+                # "season" as Tari Eason. Kept as typed, so the entity index
+                # reads the one near spelling and the answer says so
+                # (entities.read_near_spelling) - the default is visible.
+                found.append(" ".join(near))
+                index += len(near)
+                break
             rows = _exact_name_span(players, span)
             if len(rows) == 1:
                 found.append(rows[0].name)
@@ -2021,6 +2036,18 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
         if name not in seen:
             seen.append(name)
     return seen
+
+
+def _players_named_in_near(players: names.PlayerIndex, words: list[str]) -> list[str] | None:
+    """The longest run of two or more of ``words``, from the first, that is
+    the single near spelling of one player (each word three letters or
+    more), or None: "karl anthonyu towns" whole, "micheal jordan" as a pair
+    (:func:`players_named_in`, ISSUES.md #346)."""
+    for size in range(len(words), 1, -1):
+        span = words[:size]
+        if all(len(w) >= 3 for w in span) and len(_fuzzy_name_span(players, span, limit=2)) == 1:
+            return span
+    return None
 
 
 def _anchor_word_position(q_words: list[str], lowered_q: list[str], word: str) -> int | None:

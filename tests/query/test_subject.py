@@ -466,14 +466,17 @@ def test_a_position_phrase_or_a_filler_word_in_the_player_slot_is_not_a_player(c
 def test_the_compare_whose_second_player_the_router_filed_as_the_opponent(con: duckdb.DuckDBPyConnection) -> None:
     """The chain bug the measurement found first: "compare Jaylen Brown and
     Jason Tatum's netpoints" came back with Tatum as `opponent` and fell
-    through. The question names two players; the reading says so."""
+    through. The question names two players; the reading says so - the
+    second as typed, since "jason tatum" is the one near spelling of Jayson
+    Tatum, which the entity index reads and the answer says (ISSUES.md
+    #346: a near-spelled pair is read from the words as typed)."""
     s = _read(
         con,
         "compare Jaylen Brown and Jason Tatum's netpoints over the past four seasons",
         PLAYER_LINE,
         scope=Reading(who=Who(kind="player", players=("Jaylen Brown",)), cuts=Cuts(opponent="Jason Tatum")),
     )
-    assert s.kind == "pair" and s.players == ("Jaylen Brown", "Jayson Tatum")
+    assert s.kind == "pair" and s.players == ("Jaylen Brown", "Jason Tatum")
 
 
 # ---------------------------------------------------------------------------
