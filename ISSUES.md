@@ -160,6 +160,14 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** read "N or fewer"/"N or less" as a below line in the team condition reader (`lines.measure_filters` reads it for a player); until then refuse by name.
 - **GitHub:** #325
 
+### "opp" before a stat is not read as the opponent's figure: "mavs opp fg percentage last 3 games" shows the Mavericks' own FG%
+- **Found:** 2026-10-13, the P1 sweep's lane T, enumerating #403's moves (the team log's box-score join).
+- **Evidence:** "mavs opp fg percentage last 3 games" reads `measure` `fieldGoalPct` with `whose` `own` and "opp" in `Reading.unread`; since the team log shows the figure asked (#403) the feed answer lists the Mavericks' OWN field-goal percentage game by game ("FG% 52.0% (52-100) ... Field-goal percentage: 46.7% (134-287).") where it listed the scores alone. "opp" is read by nothing in 9 of the 2,710 readings (`opp fgm`, `opp pts`, `opp fga`; and "opponent", "opponents'" twice), each unread. The relation reads the opponent's row where the measure says so (`Measure.whose == "opponent"`: "Total opponents' rebounds", tested), so the reading is all that is missing.
+- **User sees:** the team's own figure, labeled "FG%", where the opponent's was asked - visible only to a reader who notices "opp" in the question.
+- **Next step:** (the measure tagger's, lane L) "opp"/"opponent"/"opponents'" before a stat as `whose="opponent"`, as "allowed" after a team metric reads; a case per wording, the 2,710 readings and the feed enumerated.
+- **Source:** ours.
+- **Priority:** P1 - a different figure answered, one feed question (and the class beside it).
+
 ### "knicks vs celtics total points" answers the season series record, not the points
 - **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
 - **Evidence:** the answer is "met 4 times ... won the series 3-1". Before Phase 2 the reading held a team `total` of points that the template ignored; since `4db543a` the reading itself is a `record`. Same answer on both trees, names `["knicks","celtics"]`, stat `points`.
@@ -530,11 +538,11 @@ those were found.
 - **Priority:** P2 - a narrower answer than asked, the narrowing stated only as "last 10".
 - **GitHub:** #402
 
-### The team log drops the stat it was asked for and shows the score: "show the 76ers 3pt% for each game last season" lists W/L and the score, no 3pt%
-- **Found:** 2026-10-13, Jeff's queries on `a5a4e68`.
-- **Evidence:** the reading carries `measure={'key': 'threePointFieldGoalPct'}` and the compiled team log executes `measures=['points']` - the team-games relation has no box-score join (`AGENTS.md`, "A team can be the subject"), so a team log can show the score and the result and nothing else, and nothing says the asked stat was dropped. The same question with "pace" reads the model's `points` over the words' "pace" (`measures=['points']`, `measure.key` `points`), where the season-line form of the question ("the 76ers game with the highest pace") reads `pace` from the words: the log row's measure on a team keeps the model's key. The team compiler's TOTAL refuses a box-score count narrowed to a window for the same want of a join; the log does not.
-- **User sees:** a log of scores where a per-game shooting figure was asked, with no sentence saying so.
-- **Next step:** a team log asked with a box-score stat refuses by a cause naming the stat (as the team total does) until the team-games relation joins `team_box_stats`, which would let it show the column; and the measure tagger reads the words over the key on the team log as it does on the season line.
+### A team log's measure keeps the model's key over the words: "show the 76ers pace for each game last season" reads `points`
+- **Found:** 2026-10-13, Jeff's queries on `a5a4e68`; rewritten 2026-10-13 by the P1 sweep's lane T, which fixed the answer side.
+- **Evidence:** the team-games relation joins `team_box_stats` since lane T (`compose.team.team_figure`): a team's log asked for a box-score figure shows it beside each game and over them all ("Philadelphia 76ers, last 10 of 82 games ...  3P% 27.3% (12-44) ... 3-point percentage: ..."), and a figure no team game carries is refused by name (`team_figure_unread`: "A team's games carry no pace game by game ..."). What is left is the reading: "show the 76ers pace for each game last season" with the model's `points` reads `measure.key` `points` (the words' "pace" unread), where the season-line form ("the 76ers game with the highest pace") reads `pace` from the words; with the model's `pace` the measure reads None. So the log shows the scores and its total points, and the pace refusal is never reached.
+- **User sees:** the scores and a points total where pace was asked, nothing saying pace was not read.
+- **Next step:** (the measure tagger's, lane L) the words over the key on a team log as on the season line; the log then refuses pace by name, as it does on a hand-built reading.
 - **Source:** ours.
 - **Priority:** P2 - the asked figure silently missing.
 - **GitHub:** #403

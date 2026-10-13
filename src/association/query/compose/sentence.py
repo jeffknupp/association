@@ -313,7 +313,18 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     # narrowed the read (TeamNarrowed.filters()) - saying the count again
     # here would read as "over 10 games over their last 10 games".
     games_phrase = "" if "game" in result.narrowed_text else f" over {result.games} games"
-    return f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}."
+    said = f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}."
+    if result.blank:
+        # A box-score count summed over the narrowed games (ISSUES.md #403)
+        # is short by the games with no team box row: said, through the
+        # sayer's one phrase for the kind (a call-time import, as the
+        # compiler's box notes take it: compose.say reads the readers).
+        from association.query.compose.say import note_phrase
+        from association.query.notes import Note
+
+        blank = Note("stat_blank", {"games": result.blank, "stat": q.measure.key if q.measure is not None else q.metric, "whose": "team_log"})
+        said += " " + note(blank.kind, note_phrase(blank), **blank.facts)
+    return said
 
 
 def _team_run_sentence(q: TeamQuery, result: TeamResult, span: str) -> str:

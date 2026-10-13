@@ -20,7 +20,7 @@ of each type were kept.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -35,13 +35,13 @@ from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import Narrowed
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, log_total, no_narrowed_games, scoped_games, span_of
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Filtered, Unsupported, _clamp_limit
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Filtered, Measure, Unsupported, _clamp_limit
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
 from association.query.team_games import TeamNarrowed, unnarrowed_games
 from association.query.team_relation import team_games
 
 from .core import LINE, Compiled, Query, compile_over, compile_query, rows_of
-from .team import TeamQuery, compile_team_count, compile_team_over
+from .team import TEAM_GAME_OWN, TeamQuery, compile_team_count, compile_team_over, team_figure
 
 # A player's log columns, by header -> player_game_log column. The four in
 # _LOG_BASE are always shown, and a named stat adds its own: "luka ft log" and
@@ -354,16 +354,55 @@ def _team_log_games(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     (:data:`~association.query.compose.team.TEAM_ROW_COLUMNS`) as a display
     game. Reads ``team_games.won`` (a nullable boolean, computed once in the
     relation) rather than comparing a raw ``winner_team_id``."""
-    return [{"date": str(r["day"]), "home_away": r["side"], **{key: r[key] for key in ("opponent", "team_score", "opponent_score", "won", "season")}} for r in rows]
+    games = [{"date": str(r["day"]), "home_away": r["side"], **{key: r[key] for key in ("opponent", "team_score", "opponent_score", "won", "season")}} for r in rows]
+    for game, row in zip(games, rows, strict=True):
+        if "figure" in row:
+            # The box-score figure the log was asked for (team.team_figure),
+            # and a percentage's attempts: None where the game has no box row.
+            game["figure"] = row["figure"]
+            if row["attempts"] is not None or row["figure"] is None:
+                game["attempts"] = row["attempts"]
+    return games
 
 
 def _team_log_summary(games: list[dict[str, Any]]) -> dict[str, int]:
     """The wins/losses record tallied over exactly the rows being shown
     rather than recounted later - that recount is where a wins/losses total
-    gets inverted - and the games with no recorded result."""
+    gets inverted - and the games with no recorded result; and, where the
+    log shows a box-score figure, its sum over the games that have one (and
+    a percentage's attempts), and how many do."""
     wins = sum(1 for g in games if g["won"] is True)
     losses = sum(1 for g in games if g["won"] is False)
-    return {"wins": wins, "losses": losses, "unknown": len(games) - wins - losses}
+    summary = {"wins": wins, "losses": losses, "unknown": len(games) - wins - losses}
+    if games and "figure" in games[0]:
+        counted = [g for g in games if g["figure"] is not None]
+        summary["figure"] = sum(int(g["figure"]) for g in counted)
+        summary["figure_games"] = len(counted)
+        if "attempts" in games[0]:
+            summary["attempts"] = sum(int(g["attempts"] or 0) for g in counted)
+    return summary
+
+
+def _team_log_notes(key: str | None, summary: Mapping[str, int], games: int) -> tuple[Note, ...]:
+    """The games the figure asked for could not be read in - a game with
+    no team box row (the empty 2013-2018 Chicago and New Orleans boxes,
+    AGENTS.md) - said beneath the total, which is over the rest."""
+    blank = games - summary.get("figure_games", games)
+    # Where no game has one, the line beneath the games says so instead.
+    return (Note("stat_blank", {"games": blank, "stat": key, "whose": "team_log"}),) if key is not None and 0 < blank < games else ()
+
+
+def _team_log_unread(team_name: str, measure: Measure | None) -> Refusal | None:
+    """Why a team's log cannot show the figure it was asked for, or ``None``:
+    a measure no game of a team carries (pace, a rating, a player's usage) is
+    refused by name, where the log listed the scores without it and said
+    nothing (ISSUES.md #403)."""
+    try:
+        team_figure(measure) if measure is not None else None
+    except Unsupported:
+        assert measure is not None
+        return Refusal(kind="team_figure_unread", facts={"team": team_name, "stat": measure.key, "what": "log"}, shown={"team": team_name, "games": []}, under=())
+    return None
 
 
 def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: ResolvedSpan, narrowed: TeamNarrowed) -> Refusal:
@@ -388,7 +427,7 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
     the team compiler's ``rows`` read over the settled team
     (:func:`~association.query.compose.team.compile_team_over`)."""
     team_name = team.name
-    rows = rows_of(con, compile_team_over(replace(q, shape="rows"), team, span, narrowed, limit=limit, ascending=ascending))
+    rows = rows_of(con, compile_team_over(replace(q, shape="rows"), team, span, narrowed, limit=limit, ascending=ascending, figure=q.measure))
     narrowing = Narrowing(phrase=narrowed.filters(), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue)
     window = Window(limit=limit, ascending=ascending)
     if not rows:
@@ -405,10 +444,19 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
     # read applies its own limit, so the narrowed games carry no window.
     (counted,) = rows_of(con, compile_team_count(narrowed, team, span))
     body = Rows(rows=tuple(games), total_before_window=int(counted["games"]), summary=_team_log_summary(games))
-    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=LogFacts(stat=stat))
+    key = _team_log_figure(q.measure)
+    facts = LogFacts(stat=stat, figure=key, whose=q.measure.whose if key is not None and q.measure is not None else "own")
+    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=facts, notes=_team_log_notes(key, body.summary, len(games)))
 
 
-def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[dict[str, Any]], dict[int, int], str] | Unanswered:
+def _team_log_figure(measure: Measure | None) -> str | None:
+    """The catalog key of the box-score figure a team's log shows, or None."""
+    return measure.key if measure is not None and measure.key is not None and measure.key not in TEAM_GAME_OWN else None
+
+
+def _team_mixed_rows(
+    con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int, figure: Measure | None = None
+) -> tuple[list[dict[str, Any]], dict[int, int], str] | Unanswered:
     """A team's newest ``limit`` games of ``season`` over BOTH season types -
     each type narrowed on its own through
     :func:`~association.query.team_relation.team_games`, compiled as the
@@ -426,21 +474,23 @@ def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, 
         if isinstance(narrowed, Unanswered):
             return narrowed
         narrowed_text = narrowed.filters()
-        rows_by_type[season_type] = rows_of(con, compile_team_over(point, team, type_span, narrowed, limit=limit))
+        rows_by_type[season_type] = rows_of(con, compile_team_over(point, team, type_span, narrowed, limit=limit, figure=figure))
     rows, counts = _merge_season_types(rows_by_type, date_of=lambda row: row["day"], limit=limit, ascending=False)
     return rows, counts, narrowed_text
 
 
-def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any) -> Result | Unanswered:
+def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any, measure: Measure | None = None) -> Result | Unanswered:
     """A team's "last N games" with no season type named: both types, read
     separately and merged by date. Only an opponent and a venue reach here:
     ``without`` refuses outright for a team, a date fixes one game
     regardless of its type, and a series game number is the player
     relation's alone."""
-    mixed = _team_mixed_rows(con, team, season, opponent=opponent, venue=venue, limit=limit)
+    mixed = _team_mixed_rows(con, team, season, opponent=opponent, venue=venue, limit=limit, figure=measure)
     if isinstance(mixed, Unanswered):
         return mixed
     rows, counts, narrowed_text = mixed
+    key = _team_log_figure(measure)
+    facts = LogFacts(stat=stat, mixed=True, figure=key, whose=measure.whose if key is not None and measure is not None else "own")
     narrowing = Narrowing(phrase=narrowed_text, opponent=opponent, venue=venue)
     window = Window(limit=limit, ascending=False)
     about = Span(season=season)
@@ -457,7 +507,7 @@ def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, s
         )
     games = _team_log_games(rows)
     body = Rows(rows=tuple(games), summary=_team_log_summary(games), by_season_type=counts)
-    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=LogFacts(stat=stat, mixed=True))
+    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=facts, notes=_team_log_notes(key, body.summary, len(games)))
 
 
 def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
@@ -500,6 +550,9 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     if isinstance(team, Unanswered):
         return team
     _team_log_refusals(without, measures, game_n)
+    unread = _team_log_unread(team.name, scope.measure)
+    if unread is not None:
+        return unread
     if mixed and (scope.span.since or scope.span.until or scope.cuts.situation):
         # The both-types read is a plain window (an opponent and a venue at
         # most); a range of seasons or a calendar narrowing is refused, as
@@ -509,7 +562,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
         resolved_season = span_of(asked.without_range(), "games", season_type=2).season
         if resolved_season is None:
             raise Unsupported("a career span has no single season to read both season types within")
-        return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=spelled(scope.measure))
+        return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=spelled(scope.measure), measure=scope.measure)
     seasons = span_of(asked, "games", season_type=season_type)
     narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=venue)), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):

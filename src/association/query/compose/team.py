@@ -36,11 +36,12 @@ season line and box scores:
   steps every team reader narrows through, never a hand-written
   clause here.
 
-What this module does NOT do, on purpose, because it needs a join
-``team_games`` does not have yet (ISSUES.md): a box-score count (3-pointers
-made, rebounds, ...) narrowed to a window or an opponent - "3-pointers made
-by the Magic over their last 10 games" - refuses (``Unsupported``) rather than
-silently answering the season instead. A "last N games" question naming no
+A box-score count (3-pointers made, rebounds, ...) narrowed to a window
+or an opponent - "3-pointers made by the Magic over their last 10 games" -
+is summed over the narrowed games' own box rows (:func:`team_figure`,
+ISSUES.md #403), saying how many games had none; a percentage or a figure
+no game carries is declined by name rather than answered as the season. A
+"last N games" question naming no
 season type (F128/F129's own shape) is answered by the team's log
 (``compose.logs._team_log_mixed``, ``templates.games.team_game_log``'s
 ``_team_game_log_mixed`` until Phase 2, which reads both season types and
@@ -309,6 +310,10 @@ class TeamResult:
        :func:`~association.query.coverage.coverage_caveat` to a
        composed answer as it does to a template's, and this carrying one too
        printed ESPN's 2001-playoffs note twice.
+
+    .. versionchanged:: 6.0.0
+       ``blank``: the games a narrowed box-score total has no figure in
+       (ISSUES.md #403).
     """
 
     #: The team - or ``None`` for the league's longest run, which has no one
@@ -334,6 +339,9 @@ class TeamResult:
     #: span's label; ``None`` otherwise.
     first_season: int | None = None
     last_season: int | None = None
+    #: How many of a narrowed box-score total's games have no figure for
+    #: it (no team box row on record), which the total is short by.
+    blank: int = 0
 
 
 def _team_narrowed(scope: Filtered) -> bool:
@@ -441,6 +449,20 @@ def _team_mixed(scope: Filtered) -> bool:
     return scope.span.both and not scope.cuts.date and not scope.span.career and not scope.cuts.game_n
 
 
+def _compile_team_games_mixed_value(metric: str, scores: list[tuple[int, int, Any]], figures: list[Any] | None) -> float | None:
+    """The both-types window's sum: of a box-score count's ``figures`` (the
+    games that have one), or of the scores for a game-outcome figure."""
+    if not scores:
+        return None
+    if figures is not None:
+        return float(sum(figures)) if figures else None
+    if metric == "points":
+        return float(sum(own for own, _, _ in scores))
+    if metric == "points_allowed":
+        return float(sum(theirs for _, theirs, _ in scores))
+    return float(sum(own - theirs for own, theirs, _ in scores))
+
+
 def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     """The window sum over BOTH season types, for a "last N games" question
     naming neither: the games the team log lists for it
@@ -468,20 +490,14 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if span.season is None:
         raise Unsupported("a career span has no single season to read both season types within")
     limit = _clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT)
-    mixed = _team_mixed_rows(con, team, span.season, opponent=scope.cuts.opponent, venue=scope.cuts.venue, limit=limit)
+    box = _team_total_box(q)
+    mixed = _team_mixed_rows(con, team, span.season, opponent=scope.cuts.opponent, venue=scope.cuts.venue, limit=limit, figure=q.measure if box is not None else None)
     if isinstance(mixed, Unanswered):
         raise Refused(mixed)
     rows, counts, narrowed_text = mixed
     scores = [(int(r["team_score"]), int(r["opponent_score"]), r["won"]) for r in rows]
-    value: float | None
-    if not scores:
-        value = None
-    elif q.metric == "points":
-        value = float(sum(own for own, _, _ in scores))
-    elif q.metric == "points_allowed":
-        value = float(sum(theirs for _, theirs, _ in scores))
-    else:
-        value = float(sum(own - theirs for own, theirs, _ in scores))
+    figures = [r["figure"] for r in rows if box is not None and r["figure"] is not None]
+    value = _compile_team_games_mixed_value(q.metric, scores, figures if box is not None else None)
     window = f" over their last {len(rows)} game{'s' if len(rows) != 1 else ''}{mixed_where(span.season, counts)}" if rows else ""
     return TeamResult(
         team=team,
@@ -493,7 +509,22 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
         wins=sum(1 for _, _, won in scores if won is True),
         losses=sum(1 for _, _, won in scores if won is False),
         narrowed_text=narrowed_text + window,
+        blank=len(rows) - len(figures) if box is not None else 0,
     )
+
+
+def _team_total_box(q: TeamQuery) -> tuple[str, str, str | None] | None:
+    """The box row a narrowed total sums ``q``'s measure over, or ``None``
+    for a game-outcome figure (:data:`GAME_MEASURES`): a box-score count
+    (3-pointers, rebounds, ...) through :func:`team_figure`, which the
+    relation summed nothing of before ISSUES.md #403 - a percentage or a
+    figure no game carries is no total, and is declined by name."""
+    if q.metric in GAME_MEASURES:
+        return None
+    box = team_figure(q.measure) if q.measure is not None and q.metric in SEASON_MEASURES else None
+    if box is None or box[2] is not None:
+        raise Unsupported(f"no total of {q.metric!r} over a team's narrowed games")
+    return box
 
 
 def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
@@ -507,8 +538,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
        Reads both season types for ``season_type_unstated``; one type alone
        before, so the sum disagreed with the log's own games.
     """
-    if q.metric not in GAME_MEASURES:
-        raise Unsupported(f"{q.metric!r} needs a box-score join the team relation does not have yet for a narrowed read")
+    box = _team_total_box(q)
     if _team_mixed(q):
         if q.span.since or q.span.until or q.cuts.situation or q.period is not None:
             # The both-types read is a plain window (an opponent and a venue
@@ -517,9 +547,12 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
             raise Unsupported("a window over both season types is read for a plain 'last N games' only")
         return _compile_team_games_mixed(con, q)
     narrowed, team, span = _team_games_narrowed(con, q)
-    column = GAME_MEASURES[q.metric]
-    row = team_games_total(con, narrowed, column)
-    total, games, wins, losses = row if row else (None, 0, 0, 0)
+    if box is None:
+        row = team_games_total(con, narrowed, GAME_MEASURES[q.metric])
+    else:
+        join, figure, _ = box
+        row = team_games_total(con, narrowed, figure, join=join)
+    total, games, wins, losses, counted = row if row else (None, 0, 0, 0, 0)
     return TeamResult(
         team=team,
         span=span,
@@ -530,6 +563,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
         wins=int(wins or 0),
         losses=int(losses or 0),
         narrowed_text=narrowed.filters(),
+        blank=int(games or 0) - int(counted or 0),
     )
 
 
@@ -638,13 +672,22 @@ def compile_team_presence(
     return TeamCompiled(sql, params, None, covered, narrowed)
 
 
-def _compile_team_rows(narrowed: TeamNarrowed, team: Entity | None, span: ResolvedSpan, *, limit: int | None, ascending: bool) -> TeamCompiled:
+def _compile_team_rows(narrowed: TeamNarrowed, team: Entity | None, span: ResolvedSpan, *, limit: int | None, ascending: bool, measure: Measure | None = None) -> TeamCompiled:
     """A ``rows`` read: the team's games in Eastern-date order with
-    :data:`TEAM_ROW_COLUMNS`, the newest (or oldest) ``limit`` of them."""
+    :data:`TEAM_ROW_COLUMNS`, the newest (or oldest) ``limit`` of them - and,
+    for a box-score measure, each game's figure (``figure``) and the attempts
+    a percentage is made over (``attempts``), from the box row the measure is
+    on (:func:`team_figure`), NULL where the game has none."""
     # A rows read applies its own limit, so the relation's window is not
     # what cut these rows - the player compiler's rows rule (core._compile_rows).
     narrowed.window = None
-    sql, params = team_rows_sql(narrowed, ", ".join(TEAM_ROW_COLUMNS), order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=_TEAM_ROWS_JOIN)
+    columns, join = list(TEAM_ROW_COLUMNS), _TEAM_ROWS_JOIN
+    box = team_figure(measure) if measure is not None else None
+    if box is not None:
+        box_join, figure, attempts = box
+        columns += [f"({figure}) AS figure", f"({attempts if attempts is not None else 'NULL'}) AS attempts"]
+        join += box_join
+    sql, params = team_rows_sql(narrowed, ", ".join(columns), order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=join)
     return TeamCompiled(sql, params, team, span, narrowed)
 
 
@@ -715,6 +758,73 @@ for ``points``, the relation's own score.
 _TEAM_BOX_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
 
 
+#: A measure a team's games can show game by game beside the score - its
+#: catalog key -> the figure over the box row ``team_box_stats`` aliased
+#: ``{b}`` and, for a percentage, the attempts it is made over: a team's log
+#: (ISSUES.md #403) and two teams' meetings (#326) read it through the
+#: ``rows`` read, and a narrowed total sums it. The same columns
+#: :data:`TEAM_BOX_COLUMNS` reads a line on, for the same reasons
+#: (rebounds as offensive + defensive, turnovers as ``totalTurnovers``), and
+#: a percentage from the made and attempted counts, never ESPN's rounded
+#: integer percentage column.
+TEAM_GAME_FIGURES: dict[str, tuple[str, str | None]] = {
+    "rebounds": ("{b}.offensiveRebounds + {b}.defensiveRebounds", None),
+    "offensiveRebounds": ("{b}.offensiveRebounds", None),
+    "defensiveRebounds": ("{b}.defensiveRebounds", None),
+    "assists": ("{b}.assists", None),
+    "steals": ("{b}.steals", None),
+    "blocks": ("{b}.blocks", None),
+    "turnovers": ("{b}.totalTurnovers", None),
+    "fouls": ("{b}.fouls", None),
+    "fieldGoalsMade": ("{b}.fieldGoalsMade", None),
+    "fieldGoalsAttempted": ("{b}.fieldGoalsAttempted", None),
+    "threePointFieldGoalsMade": ("{b}.threePointFieldGoalsMade", None),
+    "threePointFieldGoalsAttempted": ("{b}.threePointFieldGoalsAttempted", None),
+    "freeThrowsMade": ("{b}.freeThrowsMade", None),
+    "freeThrowsAttempted": ("{b}.freeThrowsAttempted", None),
+    "fieldGoalPct": ("{b}.fieldGoalsMade", "{b}.fieldGoalsAttempted"),
+    "threePointFieldGoalPct": ("{b}.threePointFieldGoalsMade", "{b}.threePointFieldGoalsAttempted"),
+    "freeThrowPct": ("{b}.freeThrowsMade", "{b}.freeThrowsAttempted"),
+    "points_in_paint": ("{b}.pointsInPaint", None),
+    "fast_break_points": ("{b}.fastBreakPoints", None),
+}
+"""A team's per-game box-score figure, by catalog key: the figure and, for
+a percentage, its attempts.
+
+.. versionadded:: 6.0.0
+"""
+
+#: The measures a team's games carry on the relation itself - the score, the
+#: margin, the result - which a log or a meeting shows with no box row.
+TEAM_GAME_OWN: frozenset[str] = frozenset({"points", "point_differential", "plusMinus", "wins", "losses", "record", "games_played"})
+"""Catalog keys a team's games show from the relation's own columns.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def team_figure(measure: Measure) -> tuple[str, str, str | None] | None:
+    """The box row a team's games need for ``measure`` - ``(join, figure,
+    attempts)``, over the team's own row or, for the opponent's figure
+    (``Measure.whose``), the opponent's - or ``None`` where the measure is
+    the relation's own or none was asked. Raises
+    :class:`~association.query.compose.core.Unsupported` for a measure no
+    game of a team carries (pace, a rating, a player's usage): the caller
+    refuses it by name rather than list the games without it (ISSUES.md
+    #403).
+
+    .. versionadded:: 6.0.0
+    """
+    if measure.key is None or measure.key in TEAM_GAME_OWN:
+        return None
+    if measure.key not in TEAM_GAME_FIGURES:
+        raise Unsupported(f"a team's games carry no per-game {measure.key!r}")
+    whose = "tg.opponent_id" if measure.whose == "opponent" else "tg.team_id"
+    figure, attempts = TEAM_GAME_FIGURES[measure.key]
+    join = f" LEFT JOIN team_box_stats b ON b.event_id = tg.event_id AND b.season = tg.season AND b.team_id = {whose}"
+    return join, figure.format(b="b"), attempts.format(b="b") if attempts is not None else None
+
+
 def compile_team_count(narrowed: TeamNarrowed, team: Entity | None, span: Any, *, blank: str | None = None) -> TeamCompiled:
     """How many of the narrowed games there are (``games``) - or, with
     ``blank`` (a key of :data:`TEAM_BOX_COLUMNS` but ``points``), how many
@@ -753,20 +863,27 @@ def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, st
     return TeamCompiled(sql, {**params, "threshold": threshold}, team, span, narrowed)
 
 
-def compile_team_over(q: TeamQuery, team: Entity | None, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int | None = None, ascending: bool = False) -> TeamCompiled:
+def compile_team_over(
+    q: TeamQuery, team: Entity | None, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int | None = None, ascending: bool = False, figure: Measure | None = None
+) -> TeamCompiled:
     """``q`` as SQL over a team already settled - the team counterpart of
     :func:`~association.query.compose.core.compile_over`, for a reader that
     settles the team, the span and the narrowed games through the shared
     steps (:func:`~association.query.team_relation.team_games`) and reads
     them under one shape: ``rows`` (the team's games listed, ``limit`` of
-    them, oldest first where ``ascending``) or ``grouped`` by a key of
-    :data:`TEAM_GROUPS`. Executed through
+    them, oldest first where ``ascending``, each with its box-score
+    ``figure`` for that measure where one is asked - :func:`team_figure`) or
+    ``grouped`` by a key of :data:`TEAM_GROUPS`. Executed through
     :func:`~association.query.compose.core.rows_of`.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``figure``: a team's log shows the box-score figure it was asked
+       for (ISSUES.md #403).
     """
     if q.shape == "rows":
-        return _compile_team_rows(narrowed, team, span, limit=limit, ascending=ascending)
+        return _compile_team_rows(narrowed, team, span, limit=limit, ascending=ascending, measure=figure)
     if q.shape == "grouped":
         return _compile_team_grouped(q, narrowed, team, span)
     raise Unsupported(f"no team compile for the {q.shape!r} shape")
