@@ -2011,16 +2011,18 @@ def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label:
     withheld from the rebuilt lines that hold them (``withheld``, its note,
     already phrased)."""
     named = result.subject if result.relation == "player" else None
+    # The team a league's high was narrowed to (" for the Cleveland Cavaliers", ISSUES.md #167).
+    team = result.narrowing.phrase
     if not games:
         who = f"{named} has" if named else "There are"
         # A stat outside the rebuilt set with rebuilt lines in scope is a
         # DECISION, not a gap; "no games" said of a player who played 68 of
         # them with empty box scores is the wrong-cause refusal.
         if withheld:
-            return f"{who} no {games_said} with a box score in the warehouse. " + withheld
+            return f"{who} no {games_said}{team} with a box score in the warehouse. " + withheld
         if _facts(result, CountFacts).empty_box_scores:
-            return f"{who} no {games_said} with a box score in the warehouse."
-        return f"{who} no {games_said} in the warehouse."
+            return f"{who} no {games_said}{team} with a box score in the warehouse."
+        return f"{who} no {games_said}{team} in the warehouse."
     top = games[0]
     where = f" vs {top['opponent']}" if top["opponent"] else ""
     if named:
@@ -2032,13 +2034,13 @@ def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label:
         # (ISSUES.md #262: "Stephen Curry and Stephen Curry tied for ...").
         tied_names = [f"{name}{_times_phrase(sum(g['player'] == name for g in tied))}" for name in players]
         names = ", ".join(tied_names[:-1]) + f" and {tied_names[-1]}"
-        sentence = f"{names} tied for the most {label}s in a single game {when}, with {top['value']} each."
+        sentence = f"{names} tied for the most {label}s in a single game{team} {when}, with {top['value']} each."
     elif len(tied) > 1:
         # One player, several games at the top: his games, by date.
         dates = " and ".join(f"on {g['date']}" + (f" vs {g['opponent']}" if g["opponent"] else "") for g in tied)
-        sentence = f"{top['player']} had the most {label}s in a single game {when}: {top['value']}, {_count_times(len(tied))} - {dates}."
+        sentence = f"{top['player']} had the most {label}s in a single game{team} {when}: {top['value']}, {_count_times(len(tied))} - {dates}."
     else:
-        sentence = f"{top['player']} had the most {label}s in a single game {when}: {top['value']}, on {top['date']}{where}."
+        sentence = f"{top['player']} had the most {label}s in a single game{team} {when}: {top['value']}, on {top['date']}{where}."
     rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
@@ -2085,7 +2087,7 @@ def say_single_game_high(result: Result) -> Answer:
     named = result.subject if result.relation == "player" else None
     season = result.span.season
     data = {
-        "question_shape": f"most {label}s in a single game" + (f", {named}" if named else "") + f", {caption}",
+        "question_shape": f"most {label}s in a single game{result.narrowing.phrase}" + (f", {named}" if named else "") + f", {caption}",
         "season": season,
         "span": "career" if season is None else None,
         "stat": stat,
@@ -4268,7 +4270,7 @@ def _say_team_figure_unread(facts: Mapping[str, Any]) -> str:
     question that reaches it."""
     key = facts["stat"]
     label = CATALOG[key].label if key in CATALOG else str(key)
-    season = f" Its season's {label} is on record - ask for the {facts['team']}' {label} over a season." if key in CATALOG and CATALOG[key].team is not None else ""
+    season = f" Its season's {label} is on record - ask for the {possessive(facts['team'])} {label} over a season." if key in CATALOG and CATALOG[key].team is not None else ""
     return f"A team's games carry no {label} game by game - only the score, the result and the box score (rebounds, assists, shooting, turnovers).{season}"
 
 

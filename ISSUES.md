@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A ranking by games played is answered as the points-per-game ranking: "most games played by a player denver nuggets" ranks the Nuggets by points per game
+- **Found:** 2026-10-13, the P1 sweep's lane T, reading master's (`c04ac33`) feed answers for #167.
+- **Evidence:** on the 2,082 feed questions (recorded replies, master `c04ac33`) "games played" is read by nothing - `measure` None, "games" and "played" in `Reading.unread` - and a ranking's default answers: "most games played by a player denver nuggets" and "most games played in nba by a player denver nuggets" answer "every player with the Denver Nuggets, 2026 regular season, by player (points per game, minimum 20 games): Nikola Jokic 65 G points 27.7 ..."; "player with most games played for one time nba" and "Name the top 10 players by games played under Lon Kruger in NBa" answer the league's points-per-game leaders. The catalog has the key (`measure.CATALOG["games_played"]`, aliases "games", "game", "gp") and the season line the column (`gamesPlayed`), so the words are all that is missing on a ranking; "anthony edwards games played last season" (6 wordings) answers his line, which says "in 79 games" - right by accident.
+- **User sees:** a ranking by points per game where one by games played was asked; the "G" column is shown, the order is not by it.
+- **Next step:** (the measure tagger's, lane L) "games played" (and "gp") before or after a ranking word read as `games_played`, and the season-line ranking ranks by `gamesPlayed` (or a cause naming it where the relation cannot); a case per wording, the readings and the feed enumerated.
+- **Source:** ours.
+- **Priority:** P1 - a different ranking answered, 4 feed questions.
+- **GitHub:** #408
+
 ### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
 - **Evidence:** `fe806a6` and `d4f04b9`, recorded-reply probes (the review's `data/adhoc.txt`): "luka stats vs top 3 teams this season" -> "Luka Doncic, last 3 of 64 games of the 2026 regular season: ...", `Reading.window.count` 3, unread `stats`, `teams`; "luka stats against top 5 defenses" -> his last 5 games, unread `stats`, `against`, `defenses`. #396's fix (`76c4e6a`, `lexicon.SITUATION`) reads only the seeding words ("seed", "seeds", "seeded"); "luka stats vs the top 4 seeds" is refused now but its Reading still carries `window.count` 4, its claim folded inside the situation's. No population question holds the class besides #396's own.
@@ -159,6 +168,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** (the measure tagger's, lane L) "opp"/"opponent"/"opponents'" before a stat as `whose="opponent"`, as "allowed" after a team metric reads; a case per wording, the 2,710 readings and the feed enumerated.
 - **Source:** ours.
 - **Priority:** P1 - a different figure answered, one feed question (and the class beside it).
+- **GitHub:** #409
 
 ### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
 - **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);
@@ -274,11 +284,11 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-### A team's single-game high is answered for this season only, and does not name the team: "most points in a game in cavs history"
-- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`); re-measured 2026-09-27 on the compiler, which answers `single_game_high` alone (plan item 6, step (d), part 4).
-- **Evidence:** the router-era template ignored `team` and answered the league's high ("Bam Adebayo ... 83") for "most points in a game in cavs history", "most points in a game by a knicks playter" and "most points in a game in pistons history power forward". The compiler narrows to the team's players now - `compose.answer(ctx, "single_game_high", {"stat": "points", "team": "Cleveland Cavaliers", "season_type": 2}, "most points in a game in cavs history")` answers "Donovan Mitchell had the most points in a single game in the 2026 regular season: 48, on 2025-12-12 vs WSH. Next: Donovan Mitchell (46), Donovan Mitchell (45)." (the main warehouse) - but "history" is not read as a career, and the sentence never says the games are the Cavaliers'. 65 of 1,972 reasonable large-set questions (3.3%) say history/all-time/franchise.
-- **User sees:** the right team's players over the wrong span - this season, where the question asks the franchise's history - with nothing saying a team narrowed it.
-- **Next step:** read "history"/"all-time"/"franchise" beside a team as `span: career` (the parser's window table), and have the single-game sentence name the team it narrowed to (`Narrowed.filters()` already writes it); a test per wording on the relation.
+### A team's players' single-game high is answered for this season only: "most points in a game in cavs history"
+- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`); re-measured 2026-09-27 on the compiler; the sentence half fixed 2026-10-13 (the P1 sweep's lane T).
+- **Evidence:** "history" is not read as a career: on master `c04ac33` (the feed, recorded replies) "most points in a game in cavs history" and "... in pistons history" read the team's players' high (`team_players`, since lane N's #364) over the 2026 regular season and answer "every player with the Cleveland Cavaliers, 2026 regular season - top 3 by points: ... Donovan Mitchell ... 48" - the team said, the season not the franchise's history. The sentence half is done on both paths the high takes: the compiler's own sentence names the team ("every player with the ..."), and since lane T the high's reader does too where it answers ("Donovan Mitchell had the most points in a single game for the Cleveland Cavaliers in the 2026 regular season: 48 ..."; over a career, "... for the Cleveland Cavaliers in the regular season since 1993-94: 71, on 2023-01-02 vs CHI. Next: Kyrie Irving (57), LeBron James (57)." - `tests/query/test_team_players_high.py`). 65 of 1,972 reasonable large-set questions (3.3%) say history/all-time/franchise.
+- **User sees:** the right team's players over the wrong span - this season, where the question asks the franchise's history.
+- **Next step:** (the span tagger's, lane S) read "history"/"all-time"/"franchise" beside a team as a career (`Span(career=True)`); the answer side reads it (tested); a case per wording, the readings and the feed enumerated.
 - **GitHub:** #167
 
 ### A team's `record_when` misreads "they score N points when X starts" as X's own threshold, dropping the start
@@ -481,6 +491,7 @@ those were found.
 - **Next step:** read the keyed line whole (`threshold_line`) where a reader compares, as `compile_team_line` does, or refuse a comparison the shape does not say (a cause naming the line) - in the same change that first writes a keyed line other than `>=`, with a test per shape.
 - **Source:** ours.
 - **Priority:** P2 - latent: a wrong answer the moment a tagger keys a line under a number.
+- **GitHub:** #410
 
 ### A team's stat asked under a companion's line answers the team's record: "how many fgm did the celtics make when tatum scored 30" answers the Celtics' record when Tatum had 30+ points
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 2).
