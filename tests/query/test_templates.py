@@ -2940,6 +2940,24 @@ def test_team_quarter_points_refuses_a_stat_no_period_splits_and_one_it_cannot_r
         assert result.data["total"] == 60
 
 
+@pytest.mark.parametrize(
+    ("measure", "named"),
+    [
+        (Measure(key="points", as_typed="points", whose="opponent"), "opponents' points"),
+        (Measure(key="fieldGoalPct", as_typed="fieldGoalPct", whose="opponent"), "opponents' fieldGoalPct"),
+        (Measure(key="points", as_typed="points allowed", whose="opponent"), "points allowed"),
+    ],
+)
+def test_team_quarter_points_names_the_opponents_figure_it_refuses(tq_con: AnswerContext, measure: Measure, named: str) -> None:
+    """The opponent's figure read by "opp" before the stat (ISSUES.md #409)
+    or the verb after it (#348) is refused by quarter naming it as theirs:
+    "- not points." beside a list that holds points said nothing; a spelling
+    that already says so ("points allowed") is printed as typed."""
+    result = team_quarter_points(tq_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=measure, span=Span(season=current_season()), period=Period(number=1)))
+    assert (result.text or "").endswith(f"- not {named}."), result.text
+    assert "total" not in result.data
+
+
 def test_team_quarter_points_refuses_a_missing_period(tq_con: AnswerContext) -> None:
     with pytest.raises(Unsupported):
         team_quarter_points(tq_con, Reading(who=Who(kind="team", teams=("Knicks",))))

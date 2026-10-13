@@ -3019,6 +3019,16 @@ OPPONENT_STAT = re.compile(r"\b(?:opp|opponents?'?|opponent's)\s+(?!(?:bench|pla
 
 .. versionadded:: 6.0.0
 """
+# A measure's spelling that already says the figure is the opponent's
+# ("points allowed", "opp points", "opponents' fg%"): a refusal naming the
+# opponent's figure prints such a spelling as typed, and says "opponents'"
+# before one that does not ("points", read the opponent's by "opp" before it
+# or a verb after it - measure.spelled_whose).
+OPPONENT_SPELLED = re.compile(r"\b(?:allowed|given\s+up|conceded|against|opp|opponents?'?|opponent's)(?!\w)", re.IGNORECASE)
+"""A measure's spelling that names the opponent's figure.
+
+.. versionadded:: 6.0.0
+"""
 OPPONENT_SUM = re.compile(r"\+|\bminus\b|\band\s+(?:opp|opponents?'?|opponent's)\b", re.IGNORECASE)
 """Two figures added or set side by side, the opponent's among them.
 

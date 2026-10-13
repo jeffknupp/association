@@ -48,7 +48,7 @@ from association.query.conditions import box_source
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.lines import measure_filters
-from association.query.measure import keyed, spelled
+from association.query.measure import keyed, spelled, spelled_whose
 from association.query.measures import PERIOD_RATE_STATS, period_split_measure, resolve_metric
 from association.query.metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.notes import Note
@@ -423,7 +423,10 @@ def _team_quarter_points_measure(asked: Measure | None) -> str | Unanswered:
         return key
     if key in PERIOD_RATE_STATS:
         return PERIOD_RATE_STATS[key]
-    return Refusal(kind="team_period_unknown", facts={"stat": stat}, shown={"stat": stat})
+    # The opponent's figure is named as theirs ("opp points in the 1st
+    # quarter"): "not points" beside a list that holds points said nothing.
+    named = spelled_whose(asked)
+    return Refusal(kind="team_period_unknown", facts={"stat": named}, shown={"stat": named})
 
 
 def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Filtered) -> tuple[Entity, ResolvedSpan] | Unanswered:

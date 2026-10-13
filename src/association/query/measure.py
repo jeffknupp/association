@@ -764,6 +764,21 @@ def spelled(measure: Measure | None) -> str | None:
     return measure.as_typed if measure is not None else None
 
 
+def spelled_whose(measure: Measure | None) -> str | None:
+    """The measure as the reader wrote it (:func:`spelled`), said as the
+    opponents' figure where it is theirs and the spelling does not say so -
+    "points" read the opponent's by "opp" before it is "opponents' points" -
+    what a refusal naming the stat prints, so it never names the team's own
+    figure where the opponent's was asked.
+
+    .. versionadded:: 6.0.0
+    """
+    stat = spelled(measure)
+    if measure is None or stat is None or measure.whose != "opponent" or lexicon.OPPONENT_SPELLED.search(stat):
+        return stat
+    return f"opponents' {stat}"
+
+
 def keyed(measure: Measure | None) -> str | None:
     """The catalog key of the subject's own measure, or None - for no
     measure, one no catalog holds, and the opponent's figure alike.
