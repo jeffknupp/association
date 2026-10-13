@@ -123,6 +123,11 @@ _PLAYER_LOG: lexicon.GrammarRow = lexicon.AnyOf(
 )
 """A player's games rather than his line: a log word, a window, one game, a date."""
 
+_LEAGUE_TEAMS_RANKED = lexicon.AllOf((lexicon.LEAGUE_TEAMS_RANKED_ROW, lexicon.AnyOf((lexicon.TEAM_WORD_ROW, lexicon.NoneOf((lexicon.LINE_OF_GAMES_ROW,))))))
+"""The league's teams ranked: a team word, or "nba" beside wins or losses,
+with no games kept by a line unless a team word is written (ISSUES.md #394)
+- and "nba" alone where no measure is named (:func:`parent_asked`)."""
+
 PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...] = (
     # (kinds the row applies to, the row's predicate over the grammar's
     # text, the parent shape) - first match wins.
@@ -182,11 +187,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     # Not over games kept by a line, with no team word: "most 40 point games
     # in nba history" is the players' count of 40-point games, which "nba"
     # beside "most" read as the teams' ranking (ISSUES.md #394).
-    (
-        frozenset({"everyone"}),
-        lexicon.AllOf((lexicon.LEAGUE_TEAMS_RANKED_ROW, lexicon.AnyOf((lexicon.TEAM_WORD_ROW, lexicon.NoneOf((lexicon.LINE_OF_GAMES_ROW,)))))),
-        TEAM_RANKING,
-    ),
+    (frozenset({"everyone"}), _LEAGUE_TEAMS_RANKED, TEAM_RANKING),
     # A record with no player in it is a team's: "worst record 2025-26" read
     # as the league's scorers, the everyone row below.
     (frozenset({"everyone"}), lexicon.LEAGUE_RECORD_ROW, TEAM_RANKING),
@@ -246,9 +247,25 @@ def parent_asked(question: str | lexicon.GrammarText, kind: str, companions: boo
     """
     text = lexicon.GrammarText.of(question)
     for kinds, predicate, parent in PARENT_GRAMMAR:
-        if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and predicate.holds(text):
+        if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and (predicate.holds(text) or (predicate is _LEAGUE_TEAMS_RANKED and _parent_asked_nba_unmeasured(text))):
             return parent
     return None
+
+
+def _parent_asked_nba_unmeasured(text: lexicon.GrammarText) -> bool:
+    """Whether "nba" alone names the teams' ranking here: the league's
+    words ranked (:data:`~association.query.lexicon.LEAGUE_NBA_RANKED_ROW`),
+    no games kept by a line, and no measure the words name that the
+    players' ranking reads. "most steals in nba in 2025" names steals and is
+    the players' ranking; "nba best shooting percentages 2023" names no
+    measure, and a yes/no one ("triple doubles") ranks by points over a span
+    of seasons - read as the players', each would answer their points per
+    game fluently where the teams' reading refuses (the players' ranking's
+    default measure, ISSUES.md), so each stays the teams'."""
+    if not lexicon.AllOf((lexicon.LEAGUE_NBA_RANKED_ROW, lexicon.NoneOf((lexicon.LINE_OF_GAMES_ROW,)))).holds(text):
+        return False
+    measured = named(text.source)
+    return measured is None or measured[0] in BOOLEAN_KEYS
 
 
 def classify_span(index: names.NameIndex, text: str) -> str | None:

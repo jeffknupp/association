@@ -97027,9 +97027,9 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "team_seasons",
+    "relation": "player_seasons",
     "shape": "ranking",
-    "by": "team"
+    "by": "player"
    },
    "who": {
     "kind": "everyone",
@@ -97051,7 +97051,7 @@
    "lines": [],
    "measure": {
     "key": "points",
-    "as_typed": "point",
+    "as_typed": "points",
     "how": null,
     "unit": null,
     "whose": "own",
@@ -97075,11 +97075,12 @@
     "order": null,
     "count": null,
     "of": "games",
-    "rank": "most",
+    "rank": null,
     "by": null
    },
    "minimum": null,
    "unread": [
+    "most",
     "4",
     "plays"
    ],
@@ -97094,9 +97095,9 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "team_seasons",
+     "relation": "player_seasons",
      "shape": "ranking",
-     "by": "team"
+     "by": "player"
     },
     "asked_reason": null,
     "conditions": [],
@@ -97114,22 +97115,35 @@
    ],
    "point": {
     "asked": {
-     "relation": "team_seasons",
+     "relation": "player_seasons",
      "shape": "ranking",
-     "by": "team"
+     "by": "player"
     },
-    "relation": "team_seasons",
-    "on": "team_seasons",
+    "relation": "everyone",
+    "on": "player_seasons",
     "shape": "ranking",
-    "by": "team",
-    "measures": [],
-    "aggregate": "none",
-    "group": "none",
+    "by": "player",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "per_game",
+    "group": "player",
     "predicates": [],
-    "order": "date",
+    "order": "measure",
     "direction": "desc",
-    "limit": null,
-    "minimum_games": null,
+    "limit": 10,
+    "minimum_games": 20,
     "available": null,
     "subject_span": null,
     "who": {
@@ -97152,7 +97166,7 @@
     "lines": [],
     "measure": {
      "key": "points",
-     "as_typed": "point",
+     "as_typed": "points",
      "how": null,
      "unit": null,
      "whose": "own",
@@ -97176,7 +97190,7 @@
      "order": null,
      "count": null,
      "of": "games",
-     "rank": "most",
+     "rank": null,
      "by": null
     },
     "minimum": null
@@ -101515,6 +101529,510 @@
      "count": null,
      "of": "games",
      "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "nba_alone_is_no_team_word",
+  "why": "Lane N, 2026-10-13: \"nba\" beside \"most <stat>\" is the league, not its teams: the players' ranking, where the teams' steals per game answered.",
+  "question": "most steals in nba in 2025",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "steals",
+    "as_typed": "steals",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2025,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "most"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2025,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "player",
+    "measures": [
+     {
+      "key": "steals",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "per_game",
+    "group": "player",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "steals",
+     "as_typed": "steals",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2025,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "nba_alone_with_a_yes_no_measure_stays_the_teams",
+  "why": "Lane N, 2026-10-13: \"nba\" alone stays the teams' ranking where the measure the words name is a yes/no one: the players' ranking of triple-doubles falls to points per game over a span (ISSUES.md, the players' ranking's default measure), so the teams' refusal stands until it refuses by name.",
+  "question": "nba most triple doubles 2026",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "ranking",
+    "by": "team"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "triple_double",
+    "as_typed": "triple_double",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": "most",
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "ranking",
+     "by": "team"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "ranking",
+     "by": "team"
+    },
+    "relation": "team_seasons",
+    "on": "team_seasons",
+    "shape": "ranking",
+    "by": "team",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "triple_double",
+     "as_typed": "triple_double",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": "most",
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "nba_wins_stay_the_teams",
+  "why": "Lane N, 2026-10-13: \"most wins\" beside \"nba\" stays the teams' ranking.",
+  "question": "most wins nba 2020s",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "ranking",
+    "by": "team"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "wins",
+    "as_typed": "wins",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": 2020,
+    "until": 2029
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": "most",
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "ranking",
+     "by": "team"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "ranking",
+     "by": "team"
+    },
+    "relation": "team_seasons",
+    "on": "team_seasons",
+    "shape": "ranking",
+    "by": "team",
+    "measures": [],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "wins",
+     "as_typed": "wins",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": 2020,
+     "until": 2029
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": "most",
      "by": null
     },
     "minimum": null

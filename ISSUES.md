@@ -294,12 +294,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #248
 
-### "nba most fga with 0 fgm single game" is read as the teams' field goals made, and "without fgm single" as a teammate
-- **Found:** 2026-09-27, checking the answers the #168 fix moved (then part of #260, closed by 2026-09-28's fix: "single game" with no article is one game, and "this season's single game with the most assists" and both "most 3 pointers made in single game ..." read as one); what remains is its own shape.
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `[]`, stat `fieldGoalsAttempted`): "nba most fga with 0 fgm single game" routes `team_leaderboard` `{'stat': 'fgm', 'rank': 'most'}` and answers "Field goals made per game, 2026 regular season - highest first, of 30 teams: Miami Heat 43.7 ..."; "nba most fga without fgm single game" routes the same with `without: ['fgm single']` and falls through ("team_leaderboard cannot honor ['without']"). `parse.PARENT_GRAMMAR`'s everyone row reads "nba" beside "most" as a team ranking, and `single_game_high`'s child row applies only under the player relation's parents (`subject._PLAYER_RELATION_PARENTS`), so "single game" is never read; the measure is "fgm" where "fga" is the ranked one; and the router's without reader takes "fgm single" for a teammate. These are the last 2 of the 29 research-corpus questions saying "single game" that are not read as one game.
-- **User sees:** a wrong answer - the teams' field goals made per game, where one player's single game was asked; a refusal for the second.
-- **Next step:** let `single_game_high`'s row apply under `team_leaderboard` for the everyone kind where no team word ("team", "franchise") is written, measured on the rehearsal and `intent-shrink/port_check.py` first; a single game "with 0 fgm" is a predicate on the high the compiler has not got, so it refuses by name until it has one.
+### "nba most fga with 0 fgm single game" ranks the league's FGA highs with "0 fgm" unread, and "without fgm" is read as a teammate
+- **Found:** 2026-09-27, checking the answers the #168 fix moved. Rewritten 2026-10-13 (lane N of the P1 sweep), which made "nba" alone no team word where a measure is named (`parse._parent_asked_nba_unmeasured`), so both wordings are the players' now and "single game" is the high (`CHANGES.md`).
+- **Evidence:** on sweep-N after that fix, "nba most fga with 0 fgm single game" answers "every player, 2026 regular season - top 3 by FGA: Cade Cunningham 45 ..." - the high over FGA, the "0 fgm" line unread (the lines tagger reads no line at 0, lane L's); "nba most fga without fgm single game" reads "fgm" as an absent teammate and answers "No player found matching 'fgm'.", and "Nba most fga without fgm" is refused "games without fgm cannot be read here".
+- **User sees:** the league's biggest FGA games where games with no made field goal were asked (a broader question, fluently); a refusal naming "fgm" as a player.
+- **Next step:** the lines tagger reads a line at 0 ("0 fgm", and "without fgm" as fgm at 0) - lane L's `line.py`; then the high over FGA keeps the line, or the point reader refuses the predicate by a cause naming it until the compiler has one.
 - **Source:** ours.
+- **Priority:** P1 - a broader question answered (1 of the 2,082), and a refusal by the wrong cause (2).
 - **GitHub:** #266
 
 ### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
@@ -464,6 +465,14 @@ those were found.
 - **User sees:** the league's answer where one franchise's players were asked about.
 - **Next step:** a team word that names only a former franchise, with no season named, is that franchise over its era (`nba/franchises.py`'s `FranchiseEra`), the span its years - as a tenure "for Miami" with no season is a career; read in `subject._team_names` / `_team_named` with the season unset. A case per wording; measure on the 2,710.
 - **Priority:** P1 - a different question answered (1 feed question).
+- **Source:** ours.
+
+### The players' ranking answers points per game where the words name a measure nothing reads, and a yes/no measure over a span of seasons ranks by points too
+- **Found:** 2026-10-13, lane N of the P1 sweep, measuring the "nba"-alone fix (the lead held these back from it: read as the players' ranking they would turn a refusal into a fluent wrong answer).
+- **Evidence:** on sweep-N, with "nba" removed or the team reading not applying, "nba best shooting percentages 2023", "nba current best shooting percentages", "best nba shooting percentages from farther than 30 feet", "most efficienr nba game" and "most per last season nba" read no measure and the players' ranking answers "every player, ... by player (points per game, minimum 20 games): Luka Doncic ..."; "Most triple doubles in the last three years nba" reads `triple_double` over 2024 on and answers a points-per-game ranking, where "nba most triple doubles 2026" (one season) ranks triple-doubles right (Nikola Jokic 34); "most ppg in nba history playoff in a single season" reads no measure from its words (`measure.named` has no "ppg"). The same default answers the wordings without "nba" ("best shooting percentages 2023") today. Held back as the teams' refusals by `parse._parent_asked_nba_unmeasured`: 8 of the 2,082.
+- **User sees:** the league's scorers where shooting percentages, efficiency or PER were asked, and where triple-doubles over seasons were asked - fluently.
+- **Next step:** lane L's measure (`measure.py`, `point.measure_under`) and the ranking (`compose/rankings.py`): a ranking whose words name no measure it reads refuses by a cause naming the words (`no_ranking_measure` exists), never the points default; the season-line ranking ranks a yes/no game measure over a span or refuses it. Then lift the gate in `parse._parent_asked_nba_unmeasured` and enumerate the 8.
+- **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
 
 ### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
