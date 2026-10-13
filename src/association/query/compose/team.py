@@ -838,16 +838,29 @@ def compile_team_count(narrowed: TeamNarrowed, team: Entity | None, span: Any, *
     return TeamCompiled(sql, params, team, span, narrowed)
 
 
-def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, stat: str, threshold: int) -> TeamCompiled:
+#: The comparisons a team's line splits its games by, as SQL - an
+#: allowlist, so no question text reaches a statement as an operator (the
+#: five a :class:`~association.query.reading.Line` holds).
+_TEAM_LINE_OPS: dict[str, str] = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}
+
+
+def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, stat: str, threshold: int, op: str = ">=") -> TeamCompiled:
     """The team's own games divided by whether its figure for ``stat``
-    reached ``threshold`` (``reached``, true or false) - a game with no
-    figure is in neither group, excluded in the join - each group's record,
-    average margin and first and last season (a postseason's by the
-    calendar year it was played in). ``record_when``'s team half, a team's
-    record over its OWN line (ISSUES.md #144).
+    held the line ``op threshold`` (``reached``, true or false: "18+
+    turnovers" is ``>=``, "10 or fewer" ``<=``) - a game with no figure is
+    in neither group, excluded in the join - each group's record, average
+    margin and first and last season (a postseason's by the calendar year
+    it was played in). ``record_when``'s team half, a team's record over
+    its OWN line (ISSUES.md #144, #325).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``op``: the line's comparison, where only ``>=`` was read (ISSUES.md
+       #325).
     """
+    if op not in _TEAM_LINE_OPS:  # ops are written in code (reading.LineOp), so this is a programming error, not a refusal
+        raise ValueError(f"no comparison called {op!r}")
     column = TEAM_BOX_COLUMNS[stat]
     if stat == "points":
         select, join = ["tg.event_id", "tg.season", "tg.eastern_date AS day", "tg.team_score AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"], ""
@@ -857,7 +870,7 @@ def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, st
     base, params = team_named(*team_aggregate_sql(narrowed, select, join=join))
     season = "year(t.day)" if span.season_type == 3 else "t.season"
     sql = (
-        f"WITH t AS ({base}) SELECT t.stat_value >= $threshold AS reached, COUNT(*) AS games, COUNT(*) FILTER (WHERE t.won) AS wins, "
+        f"WITH t AS ({base}) SELECT t.stat_value {_TEAM_LINE_OPS[op]} $threshold AS reached, COUNT(*) AS games, COUNT(*) FILTER (WHERE t.won) AS wins, "
         f"AVG(t.team_score - t.opponent_score) AS margin, MIN({season}) AS first_season, MAX({season}) AS last_season FROM t GROUP BY 1"
     )
     return TeamCompiled(sql, {**params, "threshold": threshold}, team, span, narrowed)

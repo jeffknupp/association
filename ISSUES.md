@@ -145,10 +145,11 @@ before that commit needs re-checking against the current warehouse.
 - **GitHub:** #359
 
 ### "warriors' record last season when committing 10 or fewer turnovers" answers the whole season
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** the "or fewer" line on a team's own stat is not read; the answer is the Warriors' 48-34 2025 standings line with no mention of turnovers, while "... when they had 18+ turnovers" reads the line and answers a record table. Same on `4bb026a` (before Phase 2) and `93db30c`; also 11 and 12 or fewer. Review data: `data/feed-93db30c.jsonl.gz`, names `["warriors"]`, stat `turnovers`.
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`); the answer half fixed 2026-10-13 (the P1 sweep's lane T).
+- **Evidence:** the "or fewer" line on a team's own stat is not read: with the model's `["warriors"]`/`turnovers` the reading holds no line and the key the words ask is the team's record (`team_games/scalar/record`), so the answer is the Warriors' 48-34 2025 standings line with no mention of turnovers; "11 or fewer" the same (re-measured 2026-10-13 on lane T's tree). Two neighbors read a line and are refused instead: "warriors record last season when they had under 12 turnovers" reads a narrowing `< 12` AND a keyed `>= 12` (the key's reading of the bare "12 turnovers") and the planner refuses the narrowing ("... with no named player - only his own games can be narrowed that way"); "warriors record last season with less than 12 turnovers" keeps the record key and is declined ("it would answer for a different span than was asked"). The answer side is ready since lane T: the team's record over its own line reads the keyed line's comparison (`compose.team.compile_team_line(op=)`, `say._TEAM_LINE_SIDES`), so a keyed `Line(op="<=", value=10)` answers "Golden State Warriors record when they had 10 or fewer turnovers" split against "more than 10 turnovers" (tested on a hand-built reading, `tests/query/test_record_when_team_threshold.py`).
 - **User sees:** a fluent answer to a broader question - the season's record where the record under a turnover line was asked.
-- **Next step:** read "N or fewer"/"N or less" as a below line in the team condition reader (`lines.measure_filters` reads it for a player); until then refuse by name.
+- **Next step:** (the lines tagger's, lane L) read "N or fewer"/"N or less"/"under N"/"less than N"/"fewer than N" beside a team's record as the record's OWN keyed line with its comparison (`Line(op="<=" | "<", keyed=True)`, the key `LINE_RECORD`), not as a narrowing beside a keyed `>=` line; a case per wording; the 2,710 readings and the feed enumerated. Mind the next entry: every other keyed reader still reads a keyed line as `>=`.
+- **Priority:** P1 - a different question answered (3 feed wordings).
 - **GitHub:** #325
 
 ### "opp" before a stat is not read as the opponent's figure: "mavs opp fg percentage last 3 games" shows the Mavericks' own FG%
@@ -489,6 +490,13 @@ those were found.
 - **Next step:** the game-level ranking's qualifier scaled to the games the cuts leave (or dropped under an opponent, with the floor said as a decision), or the empty result refused naming the qualifier rather than "No games"; `compose/rankings.py` and the compiler's `minimum_games` (lane L's files).
 - **Source:** ours.
 - **Priority:** P2 - a refusal naming the wrong cause; 75 feed answers.
+### Every reader keyed on a line but the team's record reads its number as "N+", whatever its comparison
+- **Found:** 2026-10-13, the P1 sweep's lane T, fixing #325's answer half.
+- **Evidence:** `lines.threshold_of` hands a reader the keyed line's NUMBER alone, and every caller but the team's record (since lane T) compares with `>=`: the point reader's log predicate (`point._threshold_line`: `[(col, ">=", threshold)]`) and its count, record, run and high points (`point.py` 382, 399, 690, 839, 914, 998), the player's record over a line (`compose.records._own_line`), the count (`compose.counts`), the run (`compose.runs`), the log (`compose.logs`). No reading writes a keyed line with another comparison today (0 of the 123 keyed lines on the 2,710 readings are not `>=`), so nothing answers wrong yet - but the reading half of #325 (or any "more than N" / "N or fewer" a tagger keys) would be answered as "N+" on every one of these shapes, fluently.
+- **User sees:** nothing yet; once a keyed line under a number is read, "maxey record when he scores 10 or fewer points" would answer his 10+ point games.
+- **Next step:** read the keyed line whole (`threshold_line`) where a reader compares, as `compile_team_line` does, or refuse a comparison the shape does not say (a cause naming the line) - in the same change that first writes a keyed line other than `>=`, with a test per shape.
+- **Source:** ours.
+- **Priority:** P2 - latent: a wrong answer the moment a tagger keys a line under a number.
 
 ### A team's stat asked under a companion's line answers the team's record: "how many fgm did the celtics make when tatum scored 30" answers the Celtics' record when Tatum had 30+ points
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 2).
