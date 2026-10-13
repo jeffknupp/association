@@ -46,15 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
-- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
-- **Evidence:** `fe806a6` and `d4f04b9`, recorded-reply probes (the review's `data/adhoc.txt`): "luka stats vs top 3 teams this season" -> "Luka Doncic, last 3 of 64 games of the 2026 regular season: ...", `Reading.window.count` 3, unread `stats`, `teams`; "luka stats against top 5 defenses" -> his last 5 games, unread `stats`, `against`, `defenses`. #396's fix (`76c4e6a`, `lexicon.SITUATION`) reads only the seeding words ("seed", "seeds", "seeded"); "luka stats vs the top 4 seeds" is refused now but its Reading still carries `window.count` 4, its claim folded inside the situation's. No population question holds the class besides #396's own.
-- **User sees:** a fluent log of the last N games where games against the top N teams were asked.
-- **Next step:** read "vs|versus|against (the) top|best|bottom|worst N <teams|defenses|offenses|seeds>" whole as the situation refused by name, a test per wording, and drop a window whose characters lie inside a refused situation.
-- **Source:** ours.
-- **Priority:** P1 - a wrong answer delivered fluently.
-- **GitHub:** #400
-
 ### A player's "stats by season" or "every season" with no stat named answers one season's line: "james wiseman stats by season" answers his 2026 averages
 - **Found:** 2026-10-11, fixing #379 (the per-season window), probing "lebron stats every season".
 - **Evidence:** on `0c597b2`, feed run (no names, no stat): "james wiseman stats by season" -> "James Wiseman averaged 3.3 points, 2 rebounds and 0.8 assists per game in 4 games in the 2026 regular season." (unread: stats), "kevin love nba stats by year" -> his 2026 line, "ant games play each season" / "Jokic games play each season" / "lamelo games play each season" -> each one's 2026 line ("games", "play" unread); with the model's name, "lebron stats every season" -> "LeBron James averaged 20.9 points ... in 60 games in the 2026 regular season." The history child grammar names `player_history` from "by season"/"every season" (`lexicon.CHILD_PLAYER_HISTORY`), and the grammar's rule `grammar._line_and_record` turns a history with no stat named into the player's line ("Jokic career averages" is the whole line, not points by season) - the decision says "the words 'every season' name player_history, and the stages declined it", and the words are claimed by the child, so `Reading.unread` does not show them. 5 of the 2,082 feed questions, none of the 628.

@@ -446,3 +446,20 @@ def test_read_cuts_returns_the_cuts_and_its_claims() -> None:
 )
 def test_a_rankings_own_conference_is_read_apart_from_the_opponents(question: str, shape: PointShape, words: str | None) -> None:
     assert own_alignment(shape, read_cuts(question, CutsContext()).cuts) == words
+
+
+@pytest.mark.parametrize(
+    ("question", "text"),
+    [
+        # ISSUES.md #400: the opponents by their standing are a situation read whole.
+        ("luka stats vs top 3 teams this season", "vs top 3 teams"),
+        ("luka stats against top 5 defenses", "against top 5 defenses"),
+        ("who scores the most vs the best defenses", "vs the best defenses"),
+        ("luka stats vs the top 4 seeds", "vs the top 4 seeds"),
+    ],
+)
+def test_the_opponents_by_their_standing_are_a_situation_nothing_reads(question: str, text: str) -> None:
+    read = read_cuts(question, CutsContext())
+    situation = read.cuts.situation
+    assert situation is not None and situation.text == text and not situation.read
+    assert [question[c.start : c.end] for c in read.unread_situation()] == [text]

@@ -1524,6 +1524,12 @@ SITUATION = re.compile(
     # whole so it is refused by name rather than its "top 3" read as a
     # window of games (ISSUES.md #396: his last 3 games answered).
     r"\b(?:vs\.?|versus|against)\s+(?:the\s+)?(?:top[\s-]+(?:\d+[\s-]+)?)?seed(?:s|ed)?(?:\s+teams?)?\b|"
+    # The opponents by their standing or their unit's rank ("vs top 3
+    # teams", "against top 5 defenses", "vs the worst 10 offenses"): an
+    # alignment no table orders the games by, kept whole and refused by
+    # name, never its "top 3" a window of games (ISSUES.md #400).
+    rf"\b(?:vs\.?|versus|against)\s+(?:the\s+)?(?:top|best|bottom|worst)[\s-]+(?:{COUNT}[\s-]+)?(?:(?:ranked|rated)\s+)?(?:(?:nba|east(?:ern)?|west(?:ern)?)\s+)?"
+    r"(?:teams?|defen[cs]es?|offen[cs]es?|defensive\s+teams?|offensive\s+teams?|opponents?|squads?)\b|"  # codespell:ignore offen - a regex stem of "offense(s)"
     # The conference a ranking leads: "who leads the east in scoring"
     # (ISSUES.md #339) - the subject's own, which the parser refuses by name
     # on a ranking (`cuts.own_alignment`).

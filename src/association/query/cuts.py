@@ -86,6 +86,21 @@ class CutsRead:
     #: reading keeps the venue or drops it (:func:`~association.query.point.cuts_under`).
     venue_claim: Claim | None = None
 
+    def unread_situation(self) -> tuple[Claim, ...]:
+        """Where a situation nothing reads was read from ("vs top 3 teams",
+        "after a playoff loss": no calendar narrowing and no alignment), which
+        the relation refuses by value - and which no other family reads a
+        value of: the window tagger reads the question with these words
+        blanked, so "vs top 3 teams" is no window of his last 3 games
+        (ISSUES.md #400).
+
+        .. versionadded:: 6.0.0
+        """
+        situation = self.cuts.situation
+        if situation is None or situation.read:
+            return ()
+        return tuple(c for c in self.claims if c.what == "situation")
+
     def dated(self, question: str) -> tuple[Claim, ...]:
         """Where a day written in numbers was read from - a range opened on
         one ("since 1/26/20", a situation with the day in it) or one day

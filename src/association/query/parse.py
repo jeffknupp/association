@@ -823,7 +823,8 @@ def _tagged(
     cuts_context = CutsContext(opponent=settled.opponent, without=absent(companions))
     cuts = cuts_under(asked, read_cuts(question, cuts_context), split=split.split)
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
-    window = window_under(asked, read_window(question, window_context))
+
+    window = window_under(asked, read_window(_tagged_window_words(question, asked, cuts_context, split.split), window_context))
     span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts)))
     scope = Reading(
         who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span, minimum=kept.minimum
@@ -839,7 +840,7 @@ def _tagged(
         *needed(question, split.claims, lambda q: read_split(q, companions).split, outside="split", gives_up=True),
         *needed(question, period.claims, lambda q: period_under(asked, read_period(q)).period, outside="period", gives_up=True),
         *needed(question, cuts.claims, lambda q: _tagged_cuts(cuts_under(asked, read_cuts(q, cuts_context), split=split.split)), outside="cuts", gives_up=True),
-        *needed(question, window.claims, lambda q: window_under(asked, read_window(q, window_context)).window, outside="window", gives_up=True),
+        *needed(question, window.claims, lambda q: window_under(asked, read_window(_tagged_window_words(q, asked, cuts_context, split.split), window_context)).window, outside="window", gives_up=True),
         # The qualifier's over the question as typed, its words blanked in the rest.
         *needed(typed, kept.claims, lambda q: minimum_under(asked, read_minimum(q)).minimum, outside="minimum", gives_up=True),
         *needed(question, read.claims, lambda q: _tagged_lines(lines_under(asked, read_lines(q), beside_line=beside_line)), outside="line", gives_up=True),
@@ -857,6 +858,13 @@ def _tagged(
         *needed(question, span.claims, lambda q: span_under(asked, read_span(q, _tagged_span_context(settled, q, window=window.window, cuts=cuts))).span, outside="span", gives_up=True),
     )
     return scope, claims
+
+
+def _tagged_window_words(question: str, asked: PointShape | None, context: CutsContext, split: str | None) -> str:
+    """``question`` as the window tagger reads it: a situation nothing reads
+    is no other family's value, so its words are blanked ("vs top 3 teams"
+    is no window of the last 3 games, ISSUES.md #400)."""
+    return _blanked(question, cuts_under(asked, read_cuts(question, context), split=split).unread_situation())
 
 
 def _tagged_worded_key(question: str, model_key: Any) -> Any:
