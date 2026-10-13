@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** (the measure tagger's, lane L) "games played" (and "gp") before or after a ranking word read as `games_played`, and the season-line ranking ranks by `gamesPlayed` (or a cause naming it where the relation cannot); a case per wording, the readings and the feed enumerated.
 - **Source:** ours.
 - **Priority:** P1 - a different ranking answered, 4 feed questions.
+- **GitHub:** #408
 
 ### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
@@ -176,6 +177,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** (the measure tagger's, lane L) "opp"/"opponent"/"opponents'" before a stat as `whose="opponent"`, as "allowed" after a team metric reads; a case per wording, the 2,710 readings and the feed enumerated.
 - **Source:** ours.
 - **Priority:** P1 - a different figure answered, one feed question (and the class beside it).
+- **GitHub:** #409
 
 ### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
 - **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);
@@ -529,6 +531,7 @@ those were found.
 - **Next step:** read the keyed line whole (`threshold_line`) where a reader compares, as `compile_team_line` does, or refuse a comparison the shape does not say (a cause naming the line) - in the same change that first writes a keyed line other than `>=`, with a test per shape.
 - **Source:** ours.
 - **Priority:** P2 - latent: a wrong answer the moment a tagger keys a line under a number.
+- **GitHub:** #410
 
 ### A team's stat asked under a companion's line answers the team's record: "how many fgm did the celtics make when tatum scored 30" answers the Celtics' record when Tatum had 30+ points
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 2).
