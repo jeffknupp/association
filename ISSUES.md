@@ -46,6 +46,23 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A team's figure given up on a stat other than points is answered as its own total: "assists allowed by the mavericks this season" answers the Mavericks' own 2,072 assists
+- **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), finishing #348 (whether the verb should make every stat given up the opponent's).
+- **Evidence:** probed on `sweep-L-325` with the main warehouse and the recorded-reply harness: "assists allowed by the mavericks this season" (measure `assists`, `whose` `opponent`, no unit) and "total assists allowed by the mavericks this season" (unit `total`) both answer "The Dallas Mavericks had 2,072 assists over the complete 2026 regular season (82 games)." - the team's OWN season total, from `team_season_stats`, where the opponents' assists were asked; the team's season reader reads the measure's key and not its `whose` for any stat but points (`opponent_points` is the one opponent team metric, `team_metrics._ALIASES`). "total points allowed by the celtics this season" is refused "a total cannot be read here - it would answer for a different span than was asked", a wrong cause. The verb ("how many assists on average do the mavericks give up", the one feed question of the class) is left the team's own by #348's fix (`lexicon.GIVEN_UP_KEYS` holds points alone) and answers its own 25.3 per game, as before - reading it the opponent's would move one wrong answer to another.
+- **User sees:** the team's own figure, fluently, where the opponents' was asked; a refusal naming the wrong cause for a total of points allowed.
+- **Next step:** lane T (the team compiler and the season reader): read the opponent's row for a measure whose `whose` is `opponent` (`team_box_stats` of the other side, as #403's `team_figure` LEFT JOIN reads a game's), or refuse naming the opponent's figure where no row holds it; then widen `lexicon.GIVEN_UP_KEYS` to every stat the reader answers given up, measured on the feed.
+- **Source:** ours.
+- **Priority:** P1 - a different figure answered fluently (1 feed question by the verb; the "allowed" wordings 0 of the 2,710).
+- **GitHub:** #425
+
+### A team's record or games over a line on points given up are read on its own points: "celtics record when allowing 100+ points" answers its record when it scored 100+
+- **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), probing #348's neighbors.
+- **Evidence:** probed on `sweep-L-325` with the main warehouse: "celtics record when allowing 100+ points" answers "Boston Celtics record when they had 100+ points, 2026 regular season: 100+ points 73 54-19 ..." and "celtics record when they allow less than 100 points" the same split under 100 - the line is read on the team's own points (`reading.Line` carries a measure and no `whose`; `line.read_lines` reads "100+ points" and nothing reads "allowing"). "celtics games where they gave up 120 points" and "how many games did the celtics allow 130 points this season" are read as the team's season line (`team_seasons/scalar/line`), the number unread, and answer the opponents' 107.2 points per game since #348 (their own 114.9 before). 0 of the 628 and 0 of the 2,082 hold the wording.
+- **User sees:** the record in the games the team scored past the number, fluently, where the games it allowed past it were asked; a season average where a log or a count was asked.
+- **Next step:** a line's side: `Line` gains whose figure it is (the opponent's where a given-up verb or "allowed" leads it, `lexicon.GIVEN_UP_VERB`), the team relation narrows by the opponent's score on it (lane T: `team_relation`'s line narrowing over `points_allowed`), and the count's and the log's grammar read "games where they gave up N points" as the team's; refuse by a cause naming the opponent's line until the relation reads it.
+- **Source:** ours.
+- **Priority:** P1 - a different question answered fluently (0 of the 2,710; natural wordings).
+- **GitHub:** #426
 ### "win percentage" asked of the league's players reads no measure, and the points ranking answers: "player with worst win percentage" lists the 2026 scorers
 - **Found:** 2026-10-13, the P1 sweep's lane L, fixing #350 ("worst" a ranking word).
 - **Evidence:** on sweep-L, "worst win percentage" and "player with worst win percentage" (2 of the 2,082 feed questions) read no measure (`Reading.measure` None; "win percentage" in no measure word), so the players' ranking defaults to points per game, descending - "every player, 2026 regular season, by player (points per game, minimum 20 games): Luka Doncic 64 G points 33.5 ...". A player's win percentage is his team's record in his games (the with/without split and `player_splits` read it per player); no ranking of players reads it, and the bare "worst win percentage" is as likely the teams' standings.
@@ -108,14 +125,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #372
 
-
-### A team's "allowed" figure is read as its own where a longer alias stands: "which team allowed the most points per game" ranks the teams' own scoring
-- **Found:** 2026-10-10, Phase 3 step 2's measure slice, writing the tagger's cases
-- **Evidence:** the team metric's alias is the LONGEST alias text the question holds anywhere (`measure.team_metric_named`, `router._team_metric_in` until the slice; `lexicon.TEAM_METRIC_NAMED`), and "allowed"/"given up"/"conceded" makes it the opponent's only when it follows that alias. "which team allowed the most points per game" holds "points per game" (15 characters) and "points allowed" (14): the longer wins, nothing follows it, and the measure is the teams' own points per game (`measure_of("points per game")`, key `points`, whose `own`); "which team gave up the most points" holds "points" with "gave up" BEFORE it, and reads the teams' own points too. The grammar (`lexicon.MEASURE_GRAMMAR`) reads both as "points allowed" before the stages, and the team alias overwrites it - the one place a later writer beats the grammar. 0 of the 2,710 readings hold either wording; `tests/query/test_measure.py` pins today's reading so the change is deliberate.
-- **User sees:** the league's best offenses listed where its worst defenses were asked - a wrong answer fluently.
-- **Next step:** in the tagger, the opponent's reading the grammar made (`whose="opponent"`) survives the team alias: when the words name a given-up measure of the same key, the alias confirms the key and not whose. Enumerate on the feed first.
-- **Priority:** P1 - a wrong ranking fluently; 0 of the 2,710 readings, the wording natural.
-- **GitHub:** #361
 
 ### A single bare "N stat" line on a reader whose shape is not a line is read by nothing: "2 threes in games Jamal Murray played including playoffs" answers his 3.2 threes per game
 - **Found:** 2026-10-09, Phase 3 step 2's line slice (`~/association-research/stages/line_family.py`); the stated forms fixed and the rest re-measured 2026-10-10, Phase 3, step 3, where the Reading's own unread words name each number.
@@ -342,24 +351,14 @@ those were found.
 - **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
 - **GitHub:** #340
 
-### A team total asked as "how many ... did they make" is answered per game: "how many 3 pointers did the sixers make in the 2001 playoffs" answers 3.8 per game; "... have the magic made" answers the total
-- **Found:** 2026-10-09, the lead, re-measuring #227 with `~/association-research/stages/ask_unnamed.py` (the stat `threePointFieldGoalsMade`).
-- **Evidence:** "how many 3 pointers did the sixers make in the 2001 playoffs" answers "The Philadelphia 76ers' 3-pointers made per game was 3.8 in the 2001 postseason (23 games), 14th-best of 16 teams" - `team_stat`'s per-game line - where "total 3 pointers made by the sixers in the 2001 playoffs" answers "The Philadelphia 76ers had 88 3-pointers made over the complete 2001 postseason (23 games)", and the corpus's "how many 3 pointers have the magic made so far this season" answers the Magic's 961. Both Sixers wordings plan the same point (`PointShape('team_seasons', 'scalar', 'line')`, `aggregate="total"`, `team_read_point`); the difference is the stages' `rate` slot. `router._route_team_total` files `rate: "total"` from `_TEAM_TOTAL`, whose verbs are the past forms `made|scored|have|has|had|hit|grabbed|dished` - "did ... make" (the bare verb after "did") matches none of them, so `rate` stays unset, `team_stat`'s reader does not step aside, and the per-game line answers a point whose own `aggregate` says total.
-- **User sees:** a per-game figure where a count was asked. The sentence says "per game", so the substitution is visible, but it is a different question answered, fluently.
-- **Next step:** read the bare verb after "did"/"do"/"does" (`make|score|hit|grab|dish`) into the same rule, in the lexicon once step 2 moves these patterns there (the rule is `router.py`'s today and the span slice is rewriting that module); a case per wording in `tests/query/test_router.py`; the readings and the feed answers that move enumerated. The deeper fix is Phase 3's: the point already says `aggregate="total"`, and the reader should answer the point rather than a slot the point was read from.
+### "worst" is not a ranking word, so "who has the worst fg% with atleast 1000 fg attempted" (typed as one word) answers the best
+- **Found:** 2026-10-09, the lead, reading the feed population's field-goal rankings while re-floored `fg_pct` (#12); the floor half fixed 2026-10-11 (#377: the stated minimum, "atleast" included, is the Reading's typed `minimum`).
+- **Evidence:** the feed answer is "Nikola Jokic led the league in field-goal percentage in the 2026 regular season (minimum 1,000 field-goal attempts), at 56.9% ..." - the best, where the worst was asked; the floor is the one asked since #377. `point._RANKING` is `leaders?|most|highest|top|best|fewest|least|lowest`: no "worst", so the direction stays descending, and "worst" is the question's one unread word. The same for "who has the worst 3pt% / ft% with atleast 1000 ... attempted" (empty at that floor in one season).
+- **User sees:** the opposite ranking, fluently.
+- **Next step:** "worst" joins the ranking words with "lowest"'s direction (the window family's words, `lexicon.RANK_WORDS` already reads it for a team ranking); a case per wording in `tests/query/test_parser.py`; the readings and feed answers that move enumerated.
 - **Source:** ours.
-- **Priority:** P1 - a different question answered.
-- **GitHub:** #347
-
-### A team's points allowed asked with the verb is answered as its points scored: "how many points did the sixers allow in the 2001 playoffs" answers 92.3 points per game
-- **Found:** 2026-10-09, the lead, probing the team-season caveat fix (#227) with `~/association-research/stages/ask_unnamed.py` (the stat `points allowed`).
-- **Evidence:** "how many points did the sixers allow in the 2001 playoffs" answers "The Philadelphia 76ers' points per game was 92.3 in the 2001 postseason (23 games), 6th-best of 16 teams" - their own scoring - where "sixers points allowed in the 2001 playoffs" reads the right measure (and is refused for the games shortfall, naming it: "Opponent points per game can't be given for the 2001 postseason: ESPN's game list holds 16 of the Philadelphia 76ers' 23 games ..."); "give up" is answered the same wrong way. `point._TEAM_WORD_MEASURES` reads the measure from the words before the model's stat: its opponent-points pattern is `\bpoints? allowed\b|\bopponent'?s? points\b`, which the verb "allow" (and "give up", "concede") does not match, and its points pattern `\bhow many points\b` does, so the measure is `points` and the normalizer's `points allowed` is never consulted. Measured on the main warehouse at `1599742`.
-- **User sees:** a fluent, wrong answer - the other team's side of the score - with nothing in the sentence saying the stat was substituted. The failure shape at the top of `AGENTS.md`.
-- **Next step:** in the team measure grammar (`point._TEAM_WORD_MEASURES`; the lexicon once step 2's line family moves it), read "points ... allow/allowed/allows/allowing", "give up"/"gave up"/"given up" and "concede(d)" as `points_allowed` ahead of the bare points pattern, and prefer the model's `points allowed` over a bare "how many points" match; a case per wording in `tests/query/test_parser.py` (or the point reader's tests); the readings and the feed answers that move enumerated. Not fixed here: `point.py` is the window slice's seam (2026-10-09).
-- **Source:** ours.
-- **Priority:** P1 - a different stat answered.
-- **GitHub:** #348
-
+- **Priority:** P1 - the opposite question answered.
+- **GitHub:** #350
 ### A window on a reader that refuses one is dropped before the planner can refuse it: "Warriors vs Mavs record last ten games" answers this season's series
 - **Found:** 2026-10-09, Phase 3, step 2's window slice (`~/association-research/stages/window_family.py`, the four window slots on all 2,710 readings)
 - **Evidence:** on a shape outside `window.ORDER_ASKS` (and not `player_stat`'s single game) the end a question names beside a count of two or more is dropped and the count kept - `_route_side_and_order`'s rule since the router, ported as-is by the tagger (`window._order_elsewhere`) because the proof holds the four populations identical. The relation then reads the bare count as the newest N (`relation_window`), inside the default season. Measured on the 2,710 readings: 13 carry an end the grammar read that the route no longer holds - `head_to_head` 3 ("Warriors vs Mavs record last ten games", "Oh Washington last ten games vs jazz", "lakers vs mavs record last 10 home games played"), `player_matchup` 1 ("lamelo ball last 7 home games vs suggs"), `leaderboard` 9 (every one an unrecognized name, refused for other reasons). The three head-to-head answers tally this season's 3, 2 and 2 meetings ("met 3 times in the 2026 regular season; the Warriors won the series 2-1") and the matchup "1 meeting, 2026 regular season": fewer than the ten or seven asked for, nothing saying the window was not applied, and no decision recorded. `TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"]["window"]` says "picking the last N of them is not built", and the span tagger's "last N vs an opponent is every meeting" rule (`span._implied_career`) applies to `game_log` alone.
@@ -459,6 +458,15 @@ those were found.
 - **GitHub:** #412
 
 ## P2: misleading or incomplete
+
+### A team's points allowed by quarter is refused as not on record, though the linescore holds the opponent's score: "celtics points allowed in the 4th quarter this season"
+- **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), finishing #348: the verb wording "how many points did the celtics allow in the 4th quarter this season" reads the opponent's points now, and reaches this refusal.
+- **Evidence:** `compose/periods.py` `_team_quarter_points_measure` answers a team's period question from `TEAM_PERIOD_COLUMNS` on the team's OWN measure only (`measure.keyed` is None for the opponent's figure), and refuses everything else as `team_period_unknown`: "A team's points allowed by quarter is not on record: ESPN's linescore holds only the score, and play-by-play rebuilds only points, ... - not points allowed." The linescore's score is both teams': `games` holds `home_linescores` and `away_linescores`, and the relation already reads the other side's (`team_games.py:753`, `theirs = team_period_points_sql(... away_linescores ELSE ... home_linescores ...)`). So the cause is false for points allowed, and likely for the columns the plays rebuild too ("mavs opp rebounds in the 1st quarter": the plays are both teams'), not measured. Probed on `sweep-L-325` with the main warehouse: "celtics points allowed in the 4th quarter this season", "celtics opponent points in the 4th quarter this season", "mavs opp points in the 1st quarter this season" all refuse so; 0 of the 628 and 0 of the 2,082 hold the wording.
+- **User sees:** a refusal naming a cause that is not true - the data is on record.
+- **Next step:** the team relation's period read (lane T: `team_games.period_games`) reads the opponent's row of the same game where the measure's `whose` is `opponent`, and `_team_quarter_points_measure` keys an opponent's measure on the rebuilt columns; refuse only what neither row holds.
+- **Source:** ours.
+- **Priority:** P2 - a refusal naming the wrong cause.
+- **GitHub:** #427
 
 ### A season line on a percentage, on the game-level ranking or on a figure no season line holds is refused: "nba players who average 18 ppg 3.5 assists and shot 54% or better" has no reader
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).

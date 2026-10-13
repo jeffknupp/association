@@ -652,6 +652,7 @@ class MeasureWords:
     per_90: re.Match[str] | None
     per_minutes: re.Match[str] | None
     opponent: re.Match[str] | None
+    given_up: re.Match[str] | None
     rate: re.Match[str] | None
     team_total: re.Match[str] | None
     per_game: bool
@@ -695,6 +696,7 @@ def read_measure(question: str) -> MeasureWords:
         per_90=lexicon.PER_90.search(question),
         per_minutes=lexicon.PER_MINUTES.search(question),
         opponent=None if lexicon.OPPONENT_SUM.search(question) else lexicon.OPPONENT_STAT.search(question),
+        given_up=lexicon.GIVEN_UP_VERB.search(question),
         rate=lexicon.RATE_WORDS.search(question),
         team_total=lexicon.TEAM_TOTAL.search(question),
         per_game=lexicon.PER_GAME_WORDS.search(question) is not None,
@@ -762,6 +764,21 @@ def spelled(measure: Measure | None) -> str | None:
     .. versionadded:: 6.0.0
     """
     return measure.as_typed if measure is not None else None
+
+
+def spelled_whose(measure: Measure | None) -> str | None:
+    """The measure as the reader wrote it (:func:`spelled`), said as the
+    opponents' figure where it is theirs and the spelling does not say so -
+    "points" read the opponent's by "opp" before it is "opponents' points" -
+    what a refusal naming the stat prints, so it never names the team's own
+    figure where the opponent's was asked.
+
+    .. versionadded:: 6.0.0
+    """
+    stat = spelled(measure)
+    if measure is None or stat is None or measure.whose != "opponent" or lexicon.OPPONENT_SPELLED.search(stat):
+        return stat
+    return f"opponents' {stat}"
 
 
 def keyed(measure: Measure | None) -> str | None:

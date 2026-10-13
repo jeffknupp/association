@@ -14,6 +14,7 @@ ranking reads, and the planner declines it where no reader states it.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, get_args
 
@@ -101,8 +102,9 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
         # A team metric's alias text, as asked - and what a team gives up as the opponent's figure.
         ("Lowest defensive rating by a team this season", TEAM_RANKING, "usage_pct_defense", measure_of("defensive rating")),
         ("rebounds allowed per team", TEAM_RANKING, "rebounds", Measure(key="rebounds", as_typed="rebounds allowed", whose="opponent")),
-        # The LONGEST team alias the words hold wins, as the stages read it: "points per game" over the grammar's "points allowed" (ISSUES.md, "A team metric's alias...").
-        ("which team allowed the most points per game", TEAM_RANKING, "points", measure_of("points per game")),
+        # The LONGEST team alias the words hold names the key ("points per game" over the grammar's "points allowed"), and the
+        # verb "allowed" makes it the opponent's (ISSUES.md #361, where the alias read it as the team's own).
+        ("which team allowed the most points per game", TEAM_RANKING, "points", replace(measure_of("points per game"), whose="opponent")),
         ("which team has the most points allowed", TEAM_RANKING, "points", Measure(key="points", as_typed="points allowed", whose="opponent")),
         ("which team has the lowest scoring allowed", TEAM_RANKING, "points", Measure(key=None, as_typed="scoring allowed")),
         # A team's season total, a quarter's log, a run's result, a fingerprint's side, a chart's shots, the columns beside a ranking.

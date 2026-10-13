@@ -2288,7 +2288,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
     if key is None and unit is None and how is None and of_wins is None and side is None and shot_value is None and not beside:
         return MeasureRead(None, distinct)
     catalog_key, whose, keyed_side, keyed_how, category = key_of(key)
-    whose, distinct = _measure_whose(words, catalog_key, whose, distinct)
+    whose, distinct = _measure_whose(asked, words, catalog_key, whose, distinct)
     measure = Measure(
         key=catalog_key,
         as_typed=key,
@@ -2304,13 +2304,20 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
     return MeasureRead(measure, distinct)
 
 
-def _measure_whose(words: MeasureWords, key: str | None, whose: MeasureWhose, claims: tuple[Claim, ...]) -> tuple[MeasureWhose, tuple[Claim, ...]]:
+def _measure_whose(asked: PointShape | None, words: MeasureWords, key: str | None, whose: MeasureWhose, claims: tuple[Claim, ...]) -> tuple[MeasureWhose, tuple[Claim, ...]]:
     """Whose figure the measure is: "opp" before the stat makes it the
-    opponent's (ISSUES.md #409), as "allowed" after a team metric does,
-    with its claim; the catalog's reading otherwise."""
-    if words.opponent is None or key is None or whose != "own":
+    opponent's (ISSUES.md #409), as "allowed" after a team metric does, and
+    so does a team's figure given up by the verb wherever it stands ("how
+    many points did the sixers allow", "which team gave up the most
+    points": ISSUES.md #348, #361), with its claim; the catalog's reading
+    otherwise."""
+    if key is None or whose != "own":
         return whose, claims
-    return "opponent", (*claims, Claim(words.opponent.start(), words.opponent.end() - 1, "measure"))
+    if words.opponent is not None:
+        return "opponent", (*claims, Claim(words.opponent.start(), words.opponent.end() - 1, "measure"))
+    if words.given_up is not None and key in lexicon.GIVEN_UP_KEYS and asked is not None and asked.relation.startswith("team_"):
+        return "opponent", (*claims, Claim(words.given_up.start(), words.given_up.end(), "measure"))
+    return whose, claims
 
 
 def _measure_key_by_ask(asked: PointShape | None, words: MeasureWords, context: MeasureContext, key: str | None, *, from_words: bool) -> str | None:

@@ -3031,6 +3031,37 @@ OPPONENT_STAT = re.compile(r"\b(?:opp|opponents?'?|opponent's)\s+(?!(?:bench|pla
 
 .. versionadded:: 6.0.0
 """
+# A measure's spelling that already says the figure is the opponent's
+# ("points allowed", "opp points", "opponents' fg%"): a refusal naming the
+# opponent's figure prints such a spelling as typed, and says "opponents'"
+# before one that does not ("points", read the opponent's by "opp" before it
+# or a verb after it - measure.spelled_whose).
+OPPONENT_SPELLED = re.compile(r"\b(?:allowed|given\s+up|conceded|against|opp|opponents?'?|opponent's)(?!\w)", re.IGNORECASE)
+"""A measure's spelling that names the opponent's figure.
+
+.. versionadded:: 6.0.0
+"""
+# A team's figure given up, asked by the verb (ISSUES.md #348, #361): "how
+# many points did the sixers allow", "which team gave up the most points",
+# "which team allowed the most points per game" - the opponent's figure,
+# wherever the verb stands (``point._measure_whose``, on a team's key).
+GIVEN_UP_VERB = re.compile(r"\b(?:allow(?:ed|s|ing)?|gave\s+up|give[sn]?\s+up|giving\s+up|conced(?:e|ed|es|ing))\b", re.IGNORECASE)
+"""A figure given up, named by the verb.
+
+.. versionadded:: 6.0.0
+"""
+GIVEN_UP_KEYS: frozenset[str] = frozenset({"points"})
+"""The figures a team's readers read given up (the opponents' points, a
+team metric): the verb makes these the opponent's. Another stat given up
+("how many assists do the mavericks give up") is left the team's own, as
+it was: the team's season reader answers the opponent's figure of any
+stat but points from the team's own row, as its season total (ISSUES.md,
+"A team's figure given up on a stat other than points is answered as its
+own total ..."), so reading it the opponent's would move one wrong answer
+to another.
+
+.. versionadded:: 6.0.0
+"""
 OPPONENT_SUM = re.compile(r"\+|\bminus\b|\band\s+(?:opp|opponents?'?|opponent's)\b", re.IGNORECASE)
 """Two figures added or set side by side, the opponent's among them.
 
@@ -3044,8 +3075,12 @@ PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
 """
 
 #: A team's season TOTAL asked for by "how many ... made/scored/have" or
-#: "total", with no per-game word beside it (:data:`PER_GAME_WORDS`).
-TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit|grabbed|dished)\b|\btotal\b", re.IGNORECASE)
+#: "total", with no per-game word beside it (:data:`PER_GAME_WORDS`) - and
+#: by the bare verb after "did" ("how many 3 pointers did the sixers make in
+#: the 2001 playoffs", ISSUES.md #347): what a team did over a span is a
+#: count. Not after "do"/"does" ("how many points do the celtics score"),
+#: which asks what it does in a game.
+TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit|grabbed|dished)\b|\bhow\s+many\b.{0,60}\bdid\b.{0,40}\b(?:make|score|grab|dish)\b|\btotal\b", re.IGNORECASE)
 """A season total asked of a team's own stat.
 
 .. versionadded:: 6.0.0
