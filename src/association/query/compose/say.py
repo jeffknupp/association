@@ -2276,11 +2276,15 @@ def _leaderboard_qualifier(result: Result, minimum: Decided | None) -> str:
     return decision_phrase(minimum)
 
 
-def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str, qualifier: str, ratio: Sequence[str] | None) -> str:
+def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str, qualifier: str, ratio: Sequence[str] | None, *, ascending: bool = False) -> str:
     if not rows:
         return f"No players qualified for {label} in {where} in the {period}{qualifier}."
     top = rows[0]
-    sentence = f"{top['display_name']} led {where} in {label} in the {period}{qualifier}, at {_leader_value(top, ratio)}."
+    if ascending:
+        # A ranking from the bottom (ISSUES.md #350): the lowest, never "led".
+        sentence = f"{top['display_name']} had the lowest {label} in {where} in the {period}{qualifier}, at {_leader_value(top, ratio)}."
+    else:
+        sentence = f"{top['display_name']} led {where} in {label} in the {period}{qualifier}, at {_leader_value(top, ratio)}."
     rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
@@ -2352,8 +2356,8 @@ def _say_season_lines_ranking(rows: list[dict[str, Any]], facts: RankingFacts, l
     named = ", ".join(f"{row['display_name']} ({_leader_value(row, ratio, short=True)})" for row in rows)
     count = f"{pool:,} {who}{'s' if pool != 1 else ''} {did} in the {period}{qualifier}"
     if pool > len(rows):
-        return f"{count}; the {len(rows)} with the highest {label}: {named}."
-    return f"{count}, by {label}: {named}."
+        return f"{count}; the {len(rows)} with the {'lowest' if facts.ascending else 'highest'} {label}: {named}."
+    return f"{count}, by {label}{', lowest first' if facts.ascending else ''}: {named}."
 
 
 def say_seasons_counted(result: Result) -> Answer:
@@ -2444,9 +2448,11 @@ def say_leaderboard(result: Result) -> Answer:
     if facts.lines and not fields:
         answer = _say_season_lines_ranking(rows, facts, label, period, qualifier, ratio)
     elif fields:
-        answer = _tabulate_leaderboard(rows, label, f"{where}'s players who {season_lines_phrase(facts.lines)}" if facts.lines else where, period, fields, qualifier, ratio)
+        answer = _tabulate_leaderboard(
+            rows, f"{label}, lowest first" if facts.ascending else label, f"{where}'s players who {season_lines_phrase(facts.lines)}" if facts.lines else where, period, fields, qualifier, ratio
+        )
     else:
-        answer = _phrase_leaderboard(rows, label, where, period, qualifier, ratio)
+        answer = _phrase_leaderboard(rows, label, where, period, qualifier, ratio, ascending=facts.ascending)
     data = {
         "question_shape": f"{label}, {period}",
         "season": season,
@@ -2488,7 +2494,7 @@ def _say_career_leaderboard(result: Result, body: Grouped) -> Answer:
         answer = (
             f"Among players active in {since} or later, none {did} in the {kind}{qualifier}. {gap}"
             if not pool
-            else (f"{head}; the {len(rows)} with the highest {label}: {named}. {gap}" if pool > len(rows) else f"{head}, by {label}: {named}. {gap}")
+            else (f"{head}; the {len(rows)} with the {'lowest' if lined.ascending else 'highest'} {label}: {named}. {gap}" if pool > len(rows) else f"{head}, by {label}: {named}. {gap}")
         )
     elif not rows:
         answer = f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
@@ -2496,7 +2502,8 @@ def _say_career_leaderboard(result: Result, body: Grouped) -> Answer:
         top = rows[0]
         years = f"{season_label(top['first_season'])} through {season_label(top['last_season'])}"
         detail = f", over {int(top['games']):,} games ({years})" if top.get("games") else ""
-        sentence = f"Among players active in {since} or later, {top['display_name']} leads in {label} in the {kind}{qualifier}: {_leader_value(top, ratio)}{detail}."
+        leads = "has the lowest" if _facts(result, RankingFacts).ascending else "leads in"
+        sentence = f"Among players active in {since} or later, {top['display_name']} {leads} {label} in the {kind}{qualifier}: {_leader_value(top, ratio)}{detail}."
         rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
         answer = " ".join([sentence, *([f"Next: {', '.join(rest)}."] if rest else []), gap])
     return Answer(

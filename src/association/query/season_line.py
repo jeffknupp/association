@@ -926,7 +926,17 @@ def _pooled(sql: str, order: str) -> str:
 
 
 def ranking_statement(
-    spec: LeaderboardMetric, metric: str, season: int, season_type: int, *, fields: list[str] | None, min_sample: int | None, team_id: str | None, limit: int, lines: tuple[Line, ...] = ()
+    spec: LeaderboardMetric,
+    metric: str,
+    season: int,
+    season_type: int,
+    *,
+    fields: list[str] | None,
+    min_sample: int | None,
+    team_id: str | None,
+    limit: int,
+    lines: tuple[Line, ...] = (),
+    ascending: bool = False,
 ) -> Statement:
     """A season's ranking by ``spec`` (:func:`run_leaderboard`'s statement):
     each player's name, id and figure, the metric's own extra columns and the
@@ -948,7 +958,7 @@ def ranking_statement(
     line_where, line_params = _season_line_where(lines)
     params = select_params + where_params + line_params
     qualify = "QUALIFY ROW_NUMBER() OVER (PARTITION BY t.athlete_id ORDER BY (t.team_id IS NULL) DESC) = 1" if spec.dedup_traded else ""
-    order = "value DESC NULLS LAST, display_name"
+    order = f"value {'ASC' if ascending else 'DESC'} NULLS LAST, display_name"
     if lines:
         # Kept past the season lines (ISSUES.md #390), counted before the cut.
         sql = _pooled(f"SELECT {', '.join(select_cols)} {from_clause} WHERE {' AND '.join([*where, *line_where])} {qualify}", order)
@@ -968,6 +978,7 @@ def run_leaderboard(
     fields: list[str] | None = None,
     limit: int = 10,
     lines: tuple[Line, ...] = (),
+    ascending: bool = False,
 ) -> LeaderboardResult:
     """Rank players by one known metric, with every correctness rule applied.
 
@@ -1001,7 +1012,7 @@ def run_leaderboard(
     if team is not None:
         resolved_team_id, resolved_team_name = _run_leaderboard_team(con, team)
 
-    statement = ranking_statement(spec, metric, resolved_season, season_type, fields=fields, min_sample=effective_min_sample, team_id=resolved_team_id, limit=limit, lines=lines)
+    statement = ranking_statement(spec, metric, resolved_season, season_type, fields=fields, min_sample=effective_min_sample, team_id=resolved_team_id, limit=limit, lines=lines, ascending=ascending)
     try:
         row_dicts = _records(con, statement)
     except Exception as exc:  # e.g. the table needs a warehouse flag that wasn't used
@@ -1046,6 +1057,7 @@ def run_career_leaderboard(
     min_sample: int | None = None,
     limit: int = 10,
     lines: tuple[Line, ...] = (),
+    ascending: bool = False,
 ) -> CareerLeaderboardResult:
     """Rank players by one metric summed over their whole careers.
 
@@ -1077,7 +1089,7 @@ def run_career_leaderboard(
     if season_type not in (REGULAR_SEASON, POSTSEASON):
         raise LeaderboardError(f"Error: a career ranking covers the regular season (2) or the postseason (3) - got {season_type!r}.")
     qualifier = min_sample if min_sample is not None else (career.postseason_min_sample if season_type == POSTSEASON else career.min_sample)
-    statement = career_ranking_statement(spec, career, metric, season_type, qualifier=qualifier, limit=limit, lines=lines)
+    statement = career_ranking_statement(spec, career, metric, season_type, qualifier=qualifier, limit=limit, lines=lines, ascending=ascending)
     try:
         rows = _records(con, statement)
     except Exception as exc:
@@ -1096,7 +1108,9 @@ def run_career_leaderboard(
     )
 
 
-def career_ranking_statement(spec: LeaderboardMetric, career: CareerAggregate, metric: str, season_type: int, *, qualifier: int | None, limit: int, lines: tuple[Line, ...] = ()) -> Statement:
+def career_ranking_statement(
+    spec: LeaderboardMetric, career: CareerAggregate, metric: str, season_type: int, *, qualifier: int | None, limit: int, lines: tuple[Line, ...] = (), ascending: bool = False
+) -> Statement:
     """A career ranking by ``spec`` (:func:`run_career_leaderboard`'s
     statement): each player's name, career figure (``career``'s aggregate),
     games and first and last season, a percentage's summed makes and
@@ -1144,7 +1158,8 @@ def career_ranking_statement(spec: LeaderboardMetric, career: CareerAggregate, m
         f"WHERE {' AND '.join(where)} GROUP BY t.{spec.id_column}, p.display_name HAVING {' AND '.join([*having, *line_having])}"
     )
     # Kept past the career lines (ISSUES.md #390), counted before the cut.
-    sql = _pooled(grouped, "value DESC, display_name") if lines else f"{grouped} ORDER BY value DESC, display_name LIMIT ?"
+    order = f"value {'ASC' if ascending else 'DESC'}, display_name"
+    sql = _pooled(grouped, order) if lines else f"{grouped} ORDER BY {order} LIMIT ?"
     return Statement(sql, params)
 
 
@@ -1314,6 +1329,7 @@ def rank_season_line(
     limit: int,
     min_sample: int | None = None,
     lines: tuple[Line, ...] = (),
+    ascending: bool = False,
 ) -> SeasonLineRanking:
     """The season line's ranking, the one door the reader calls
     (``compose.rankings.read_leaderboard``): a season's ranking
@@ -1340,14 +1356,16 @@ def rank_season_line(
     .. versionchanged:: 6.0.0
        Takes ``lines``, the season lines the players are kept past - a
        season's average or total, or a career's (ISSUES.md #390) - and the
-       result says how many were (``pool``).
+       result says how many were (``pool``); ``ascending``, a ranking from the
+       bottom ("fewest", "lowest", "worst": ISSUES.md #350), which the
+       ranking read top-down whatever the words asked until then.
     """
     if career:
-        found_career = run_career_leaderboard(con, metric, season_type=season_type, min_sample=min_sample, limit=limit, lines=lines)
+        found_career = run_career_leaderboard(con, metric, season_type=season_type, min_sample=min_sample, limit=limit, lines=lines, ascending=ascending)
         return SeasonLineRanking(result=found_career, body=_ranking_body(metric, found_career.rows))
     show_team = "team" in fields
     box_fields = [f for f in fields if f != "team"]
-    found = run_leaderboard(con, metric, season=season, season_type=season_type, min_sample=min_sample, team=team, fields=box_fields or None, limit=limit, lines=lines)
+    found = run_leaderboard(con, metric, season=season, season_type=season_type, min_sample=min_sample, team=team, fields=box_fields or None, limit=limit, lines=lines, ascending=ascending)
     traded = False
     if show_team:
         if found.season_type is None:

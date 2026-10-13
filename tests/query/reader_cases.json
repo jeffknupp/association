@@ -90417,9 +90417,7 @@
     "of": "fg",
     "word": "fg attempted"
    },
-   "unread": [
-    "worst"
-   ],
+   "unread": [],
    "subject": {
     "kind": "everyone",
     "players": [],
@@ -90477,7 +90475,7 @@
     "group": "player",
     "predicates": [],
     "order": "measure",
-    "direction": "desc",
+    "direction": "asc",
     "limit": 10,
     "minimum_games": 20,
     "available": null,

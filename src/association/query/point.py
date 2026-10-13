@@ -180,9 +180,18 @@ def _measure_and_predicates(words: list[str], fallback: str | None) -> tuple[str
     return measure, predicates
 
 
-def _asc_or_desc(question: str) -> Literal["asc", "desc"]:
-    """ "asc" for a "fewest"/"least"/"lowest" question, "desc" otherwise."""
-    return "asc" if lexicon.FEWEST_WORDS.search(question) else "desc"
+def _asc_or_desc(question: str, measure: str | None = None) -> Literal["asc", "desc"]:
+    """ "asc" for a "fewest"/"least"/"lowest" question, and for a "worst"
+    one on a stat a player wants more of (``measure``, where the ranking
+    names it: the worst field-goal percentage is the lowest, the worst
+    turnovers the most - ISSUES.md #350; a ranking whose stat the words do
+    not name keeps its order: "worst win percentage" is no ranking of
+    points from the bottom); "desc" otherwise."""
+    if lexicon.FEWEST_WORDS.search(question):
+        return "asc"
+    if measure is not None and lexicon.WORST_WORD.search(question) and measure not in lexicon.WORST_IS_MOST:
+        return "asc"
+    return "desc"
 
 
 def _everyone_guard(asked: PointShape | None, question: str, position: str | None, *, period_is_condition: bool = False) -> None:
@@ -518,7 +527,7 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
         group="player",
         predicates=predicates,
         order="measure",
-        direction=_asc_or_desc(question),
+        direction=_asc_or_desc(question, measure),
         limit=_clamp_limit(scope.window.count, 10),
         minimum_games=minimum_games,
         relation="everyone",
@@ -577,7 +586,7 @@ def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question
         group="player",
         predicates=[],
         order="measure",
-        direction=_asc_or_desc(question),
+        direction=_asc_or_desc(question, scope.measure.key if scope.measure is not None else None),
         limit=_clamp_limit(scope.window.count, 10),
         minimum_games=PER_GAME_MIN_GAMES,
         relation="everyone",
