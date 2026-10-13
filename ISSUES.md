@@ -4059,3 +4059,12 @@ those were found.
 - **Next step:** reword the six subject strings as the model's ("model players the question supports", ...) in ONE commit that enumerates every moved reading and reader case (a recorded-reading move), or have the reader cases and the stage record leave the evidence prose out of the reason, as `stages._SUBJECT_LEFT_OUT` already leaves the `evidence` field out; reword the epilog, `--verbose`'s help and the `ScopeError` freely (no recorded output holds them - check), and the `bench_points` phrase under the decline rule (its answers enumerated).
 - **Priority:** P4 - docs and trace prose.
 - **GitHub:** #386
+
+### The web UI screenshot in the docs and the README still shows the retired "template" badge
+- **Found:** 2026-10-12, Phase 4, step 7 (the documents): `docs/_static/web_ui_example.png`, used by `docs/usage.rst` and `README.md`, was taken before step 1 keyed the page's renderers by the shape, so its header reads "template leaderboard" where the page now says "answered · ranking by player, player seasons". The caption says so since step 7.
+- **Evidence:** the badge text in `src/association/web/static/index.html` (the meta line names the shape since `c7e0f20`); a no-model preview render of the page shows "server unreachable" in its header, so the screenshot cannot be retaken offline.
+- **User sees:** a documentation image a step behind the page; nothing in an answer.
+- **Next step:** retake the screenshot against a live `association web` server (headless Chromium, as the other `docs/_static` shots were made), and `docs/_static/web_chart_example.png`/`web_chart_dark_example.png` beside it if their headers carry the badge too; drop the caption's note in the same commit.
+- **Source:** ours.
+- **Priority:** P4 - a documentation image.
+- **GitHub:** #399
