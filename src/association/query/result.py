@@ -635,10 +635,17 @@ class MeetingsFacts:
     named as a career (``span``).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``figure``: the stat named beside the meetings (ISSUES.md #326).
     """
 
     games: int
     span: str | None = None
+    #: The catalog key of the figure said beside the wins - each team's
+    #: total over the meetings (``Grouped`` rows' ``figure``) - or None
+    #: (ISSUES.md #326).
+    figure: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

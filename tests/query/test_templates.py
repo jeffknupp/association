@@ -2592,6 +2592,35 @@ def test_head_to_head_plain_wording_is_unchanged_by_the_venue_and_date_additions
     assert answer == f"The New York Knicks and the Boston Celtics met 2 times in the {current_season()} regular season, splitting them 1-1."
 
 
+def test_meetings_asked_with_a_stat_say_each_teams_figure(gl_con: AnswerContext) -> None:
+    """ISSUES.md #326: "knicks vs celtics total points" answered the series
+    record alone. A stat named beside two teams' meetings is said for each
+    team over the games: points from the meetings' own scores, a box-score
+    figure from each side's box row (a percentage over the makes and
+    attempts summed), with a game a side has no box row for said."""
+    s = current_season()
+    asked = Reading(who=Who(kind="teams", teams=("Knicks", "Celtics")), span=Span(season=s), measure=Measure(key="points", as_typed="points"))
+    points = head_to_head(gl_con, asked)
+    assert (points.text or "").endswith("splitting them 1-1. Points: New York Knicks 208, 104.0 a game; Boston Celtics 205, 102.5 a game."), points.text
+    assert points.data["figures"] == {"New York Knicks": {"figure": 208, "figure_games": 2}, "Boston Celtics": {"figure": 205, "figure_games": 2}}
+    _gl_box(gl_con)
+    threes = head_to_head(gl_con, replace(asked, measure=Measure(key="threePointFieldGoalPct", as_typed="3 point percentage")))
+    assert (threes.text or "").endswith(
+        "3-point percentage: New York Knicks 40.0% (12-30); Boston Celtics 33.8% (23-68). (1 of these games has no 3-point percentage on record; the figure is over the rest.)"
+    ), threes.text
+    # Neither side's box row holds the figure (the 2013-18 Bulls' empty box
+    # scores served both rows blank): said once, not "none" for each.
+    gl_con.con.execute("UPDATE team_box_stats SET offensiveRebounds = NULL, defensiveRebounds = NULL")
+    rebounds = head_to_head(gl_con, replace(asked, measure=Measure(key="rebounds", as_typed="rebounds")))
+    assert (rebounds.text or "").endswith("splitting them 1-1. Neither team has rebounds on record for these games."), rebounds.text
+
+
+def test_meetings_asked_with_a_figure_no_game_carries_are_refused_by_name(gl_con: AnswerContext) -> None:
+    """ISSUES.md #326: a figure no team game carries is named, not dropped."""
+    pace = head_to_head(gl_con, Reading(who=Who(kind="teams", teams=("Knicks", "Celtics")), measure=Measure(key="pace", as_typed="pace")))
+    assert (pace.text or "").startswith("A team's games carry no pace game by game")
+
+
 # ---------------- team_record / head_to_head: since, game_n, career (step 3, team cells) ----------------
 
 _TC_S = current_season()

@@ -3185,7 +3185,44 @@ def say_head_to_head(result: Result) -> Answer:
     if result.span.career:
         data.update({"since": result.span.since, "until": result.span.until, "span": facts.span})
     data["headline"] = answer
-    return Answer(data=data, text=answer)
+    if facts.figure is None or not facts.games:
+        return Answer(data=data, text=answer)
+    # The figure the question named beside the meetings (ISSUES.md #326),
+    # each team's over the games, and the games it could not be read in.
+    said = _head_to_head_figure(facts.figure, first, second)
+    notes = _said(result)
+    data.update(figure=facts.figure, figures={a: _head_to_head_figure_data(first), b: _head_to_head_figure_data(second)})
+    return Answer(data=data, text=" ".join([answer, said, *notes]))
+
+
+def _head_to_head_figure_data(side: Mapping[str, Any]) -> dict[str, Any]:
+    """One team's figure over the meetings as the answer's data: the total,
+    a percentage's attempts, and the games it covers."""
+    return {k: side[k] for k in ("figure", "attempts", "figure_games") if k in side}
+
+
+def _head_to_head_figure(key: str, first: Mapping[str, Any], second: Mapping[str, Any]) -> str:
+    """Each team's figure over the meetings, in one sentence: a count's
+    total and per game, a percentage over the makes and attempts summed."""
+    label = CATALOG[key].label
+    if not first["figure_games"] and not second["figure_games"]:
+        # Neither side's box row holds it (the 2013-18 Bulls' and Pelicans'
+        # empty box scores, DATA.md): one sentence, not "none" twice.
+        return f"Neither team has {label} on record for these games."
+
+    return f"{label[0].upper()}{label[1:]}: {_head_to_head_figure_side(first)}; {_head_to_head_figure_side(second)}."
+
+
+def _head_to_head_figure_side(side: Mapping[str, Any]) -> str:
+    """One team's half of the figure's sentence: "New York Knicks 445, 111.2
+    a game", a percentage with its makes and attempts, or none on record."""
+    if not side["figure_games"]:
+        return f"{side['key']} none on record"
+    if "attempts" in side:
+        attempts = side["attempts"]
+        pct = f"{100 * side['figure'] / attempts:.1f}%" if attempts else "-"
+        return f"{side['key']} {pct} ({side['figure']:,}-{attempts:,})"
+    return f"{side['key']} {side['figure']:,}, {side['figure'] / side['figure_games']:.1f} a game"
 
 
 # --- a team's quarter or half ---------------------------------------------------------
