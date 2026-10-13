@@ -150,14 +150,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - a different figure answered, one feed question (and the class beside it).
 - **GitHub:** #409
 
-### "single game" before a boolean stat is read as a single-game high: "who has the most single game triple doubles" answers a single-game high, never the triple-double leaderboard
-- **Found:** 2026-09-28, a probe the #260 fix agent invented (in no corpus) and reported; re-measured by the lead on the merged tree (`95c8a21`, the main warehouse, the parser with no model).
-- **Evidence:** `parse.read_route` reads "who has the most single game triple doubles" (and "... this season") as parent `leaderboard`, then the `single_game_high` child (`subject._CHILD_GRAMMARS`, the `\bsingle[- ]game\b` alternative #260 added): `intent=single_game_high kind=everyone slots={'stat': 'triple_double', 'season_type': 2}`, reason "the words 'single game' name single_game_high". "who has the most triple doubles" and "most triple doubles in a single season" stay `leaderboard`. A triple-double is a boolean measure (`compose.core.BOOLEAN_MEASURES`): "single game" here modifies the stat - every triple-double is one game's - not the question's shape, and a league-wide single-game high of a boolean has nothing to rank by. Through the agent with the route as read (answered_by=fast intent=single_game_high): "every player, 2026 regular season with a triple-double - top 3 by points:   2025-12-25  Nikola Jokic     vs MIN  W  points 56  minutes 43  rebounds 16  assists 15   2025-11-10  Cade Cunningham  vs WSH  W  points 46  minutes 45  rebounds 12  assists 11   2025-12-18  Luka Doncic      @ UTAH W  points ".
-- **User sees:** that, where the count of triple-doubles per player - the leaderboard's answer - was asked: a different question, answered fluently or refused for a cause that is not the question's.
-- **Next step:** the `single_game_high` child declines where the stat is a boolean measure (`BOOLEAN_MEASURES`: a count of such games is the leaderboard's question), with cases in `tests/query/test_subject.py` and `port_check.py`'s corpus, and the rehearsal checked for false negatives ("most points in a single game" must still read as the high). Small: the gate is one condition in `subject._child_intent` or the row's own pattern.
-- **Source:** ours.
-- **GitHub:** #265
-
 ### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
 - **Evidence:** `live_day10.jsonl` (bcf30a8): the router files `head_to_head` (team PHI, opponent BOS); the reading's rule "a player's record against a team, not two teams meeting" (`subject._decide_intent`) reroutes to `with_without` with `without=[Joel Embiid]`, and the template answers "Philadelphia 76ers with and without Joel Embiid vs the Boston Celtics, 2026 regular season: out 2 1-1, played 2 1-1". The key (blind, reading a, dominant): the 76ers went 4-2 in the 6 games Embiid played vs Boston in 2025-26 - 2 regular-season meetings and playoff Games 4-7 (he has no box row for Games 1-3). Two faults: the SHAPE (a split with an "out" row nobody asked for, where the question is his games and their record - dates, outcomes, and reasonably his line in each), and the SCOPE ("this year" narrowed to the regular season by the unstated-season-type default, `_validate_season_type`; `season_type_unstated` widens only "last N games" and "including playoffs" wordings today).
@@ -374,15 +366,6 @@ those were found.
 - **User sees:** a wrong answer: one season's line where the first nine of his career were asked.
 - **Next step:** an end of a player's OWN seasons ("his first/last N seasons", "through their first N") read as a span over the seasons on record for him (`season_line.seasons_on_record`), the comparison's per player; refused by a cause until then.
 - **Priority:** P1 - 3 of the 2,082.
-### A count of seasons over a line has no shape: "most seasons averaging 30 ppg" answers the 2026 points ranking
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
-- **Evidence:** 7 of the 2,082 feed questions count a player's SEASONS over a line and are answered with one season's ranking: "most seasons averaging 30 ppg", "most seasons averaging 10 rebounds" (2 wordings), "Players with most 25 point season" (2), "nba player with most seasons with a per of 30 or more while playing at least 60 games a season", "most 60 win seasons nba players". `threshold_count` counts GAMES over a line; no shape counts season lines.
-- **User sees:** a wrong answer: "Luka Doncic led the league in points per game in the 2026 regular season ..." where the players with the most 30-ppg seasons were asked.
-- **Next step:** refuse by a cause naming the count of seasons until a season-line count exists (the ranking over `player_season_stats_deduped` grouped by player, counting the seasons over the line - the line entry above's typed season line).
-- **Priority:** P1 - 7 of the 2,082.
-- **Source:** ours.
-- **GitHub:** #391
-
 ### A player's first or last N seasons is refused: "lebron james stats through their first 9 seasons"
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers); refused by a cause in the P1 sweep (lane S, 2026-10-13).
 - **Evidence:** a count of a career's own seasons by their place ("their first 9 seasons", "his last 9 seasons", "first 2 years": `lexicon.OWN_SEASONS`) is refused by the parser before any reader runs (`own_seasons_window`, `window.own_seasons_window`): "A career's own seasons by their place ('their first 9 seasons') are read by nothing here yet - name the seasons themselves ...". 3 of the 2,082 feed questions ("lebron james stats through their first 9 seasons", "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons", "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?"); until the sweep they answered his 2026 line, their 2026 lines and LeBron's line since 2018.
@@ -392,14 +375,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #392
 
-### A two-digit year, a decade written short, and a year glued to a word are read by nothing, and the current season answers: "who averaged the most points per game in the nba between 03 to 25" answers 2026
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
-- **Evidence:** 12 of the 2,082 feed questions hold a season the span does not read: "who averaged the most points per game in the nba between 03 to 25" and "most pts in the 80s" (the 2026 leaders; `lexicon.DECADE` reads "the 1980s" and "the 2010s" only, `RANGE_BETWEEN` four-digit years only), "How many players averaged 30 ppg in the 80s" (the same), "Gilbert arenas 06 playoffs numbers" ("no 2026 postseason numbers"), "Shaquille O neal 01" (the points ranking; the name too), and typos nothing could read ("202r", "20222-23", "29025%3F", "the 201", "2024playoff", "2019 20most"); two restate a season that is read ("kawhi leonard 2012- 2013": 2013; "tmac 2001 to 2001-02": the span's 2002, the bare year before it left as its test holds).
-- **User sees:** a wrong answer for the first five: the current season where 2003-2025, the 1980s or 2006 was asked.
-- **Next step:** "between YY to YY"/"YY to YY" read as a range only where both are two-digit years the league played and "between"/"from" opens it; "the 80s"/"the '90s" as the decade 19x0 where "the" stands before it and no percentage word follows ("shooting in the 90s from the line" is a free-throw percentage); "'06"/"06 playoffs" as season 2006 only beside a season-type word. Measure each on both corpora before writing it; the moved answers enumerated.
-- **Priority:** P1 - 5 of the 2,082 answered for the wrong seasons.
-- **Source:** ours.
-- **GitHub:** #393
 ### The team after a versus word is read from a span that only ends in a team: "zach lavine vs magic on bulls" is his games against the Bulls
 - **Found:** 2026-10-13, lane N of the P1 sweep, enumerating #346's moves ("zach lavigne vs magic on bulls" moved from the Magic-Bulls meetings to LaVine's games vs the Bulls).
 - **Evidence:** `subject._team_after_versus` tries the words after "vs" as spans of three, two and one, and `_team_named` reads "magic on bulls" (three words) as the Chicago Bulls - a span holding a team's word anywhere - before the one word "magic" is tried. On `be033d7`'s tree, through the whole agent with no names, "zach lavine vs magic on bulls" answers "Zach LaVine averaged 30 points ... in 1 game vs the Chicago Bulls in the 2026 regular season"; "zach lavine vs magic for the bulls" reads Orlando as the opponent and the Bulls as his tenure, rightly. 1 of the 2,082 feed questions (the typo'd twin, since #346).
