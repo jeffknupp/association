@@ -33,6 +33,7 @@ gives before any reader runs (``coverage.check_coverage``, over
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 import duckdb
 
@@ -41,8 +42,8 @@ from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, qualifies_by
 from association.query.notes import Note
 from association.query.reading import MAX_LIMIT, Filtered, Unsupported, _clamp_limit
-from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Scalar, Span, Unanswered
-from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, LeaderboardResult, rank_season_line
+from association.query.result import Decided, Grouped, Part, RankingFacts, Refusal, Result, Scalar, Span, Unanswered
+from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, LeaderboardResult, rank_season_line, rank_seasons_counted
 
 from .core import Query
 
@@ -132,6 +133,64 @@ def read_players_counted(con: duckdb.DuckDBPyConnection, q: Query) -> Result | U
         return ranked
     pool = ranked.facts.pool if isinstance(ranked.facts, RankingFacts) else None
     return replace(ranked, parts=(Part(body=Scalar(games=0, values={"players": pool or 0}, how="players")), *ranked.parts))
+
+
+def seasons_counted_reads(q: Query) -> bool:
+    """Whether :func:`read_seasons_counted` reads ``q``: the league's
+    players ranked by how many of their seasons a season line holds
+    (ISSUES.md #391), on the season line, over no team or position group.
+
+    .. versionadded:: 6.0.0
+    """
+    return (
+        q.skeleton == "grouped"
+        and q.group == "player"
+        and q.subject == "everyone"
+        and q.source == "seasons"
+        and q.who.team is None
+        and q.position is None
+        and any(line.per != "game" for line in q.lines)
+    )
+
+
+def read_seasons_counted(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
+    """The players with the most seasons a season line holds - "most seasons
+    averaging 30 ppg", "most 25 point seasons", "most seasons with 2000
+    points" (ISSUES.md #391; D4 lifted for the season ranking's shapes by
+    Jeff, 2026-10-13) - read through the season line's door
+    (:func:`~association.query.season_line.rank_seasons_counted`) into a
+    :class:`~association.query.result.Grouped` ranking by ``player`` whose
+    ``ranked_by`` is ``seasons``, as a count of games over a line ranks by
+    ``games``. ``None`` where the point is not that.
+
+    .. versionadded:: 6.0.0
+    """
+    if not seasons_counted_reads(q):
+        return None
+    lines = tuple(line for line in q.lines if line.per != "game")
+    season_type = q.span.season_type or 2
+    try:
+        found = rank_seasons_counted(con, lines, season_type=season_type, limit=_clamp_limit(q.window.count, default=DEFAULT_LEADERBOARD_LIMIT))
+    except LeaderboardError as exc:
+        raise Unsupported(str(exc)) from exc
+    body = _seasons_body(found.rows)
+    decisions = (Decided(kind="minimum", field="minimum", chose=found.min_games, facts={"of": "games", "column": "gamesPlayed"}),) if found.min_games is not None else ()
+    facts = RankingFacts(label="seasons", lines=tuple((str(line.measure), line.op, line.value, line.per) for line in lines), pool=found.pool)
+    span = Span(season=None, season_type=season_type, career=True, first=found.pool_first_season, source="seasons")
+    return Result(subject="every player", relation="everyone", span=span, parts=(Part(body=body),), decisions=decisions, facts=facts)
+
+
+def _seasons_body(rows: list[dict[str, Any]]) -> Grouped:
+    """The players ranked by their count of seasons, a competition rank
+    (two on the same count share it)."""
+    ranked: list[dict[str, Any]] = []
+    rank, previous = 0, None
+    for place, row in enumerate(rows, start=1):
+        if place == 1 or row["value"] != previous:
+            rank = place
+        previous = row["value"]
+        ranked.append({"key": row["display_name"], "rank": rank, "values": {"seasons": row["value"], "first_season": row["first_season"], "last_season": row["last_season"]}})
+    return Grouped(by="player", rows=tuple(ranked), ranked_by="seasons")
 
 
 def _leaderboard_career(scope: Filtered) -> bool:

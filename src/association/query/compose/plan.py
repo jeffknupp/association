@@ -26,7 +26,7 @@ from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping, measure_names
 from .netpoints import NetPointsQuery
-from .rankings import leaderboard_reads, players_counted_reads
+from .rankings import leaderboard_reads, players_counted_reads, seasons_counted_reads
 from .say import decline_body, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
@@ -363,6 +363,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
 _SEASON_LINE_READS = {
     PointShape("player_seasons", "ranking", "player"): leaderboard_reads,
     PointShape("player_seasons", "scalar", "count"): players_counted_reads,
+    PointShape("player_seasons", "ranking", "seasons"): seasons_counted_reads,
     PointShape("player_seasons", "scalar", "line"): player_line_reads,
     PointShape("player_seasons", "split", "season"): player_history_reads,
     PointShape("player_seasons", "comparison", "subject"): player_compare_reads,
@@ -397,9 +398,10 @@ def _game_level(key: PointShape, q: Query) -> Query:
         raise Refused(refusal)
     if q.group == "season":
         return replace(q, **(_career_scope(q)).filters(), source="games")
-    if key == PLAYERS_COUNTED:
-        # How many players a season line holds has no game-level reading:
-        # the line is a season's, declined by name (ISSUES.md #390).
+    if key in (PLAYERS_COUNTED, PointShape("player_seasons", "ranking", "seasons")):
+        # How many players a season line holds, or how many of a player's
+        # seasons it holds, has no game-level reading: the line is a
+        # season's, declined by name (ISSUES.md #390, #391).
         raise Unsupported(decline_body({"cells": [cell_facts(q, "season_line")], "why": _BEYOND_WORDS}))
     if q.group == "player" and q.subject == "everyone":
         stat = spelled(q.measure)

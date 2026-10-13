@@ -2082,6 +2082,22 @@ SEASON_LINE_TOTAL = re.compile(r"\b(?!(?:19|20)\d\d\b)(?P<n>\d{4,})\+?\s+(?P<sta
 
 .. versionadded:: 6.0.0
 """
+# A season named by its line (ISSUES.md #391): "25 point seasons" - a
+# season averaging that many; never "3 point", the shot - and "seasons with 2000 points" - a season's
+# total, a year-like number included, since "seasons with" names a figure.
+SEASON_LINE_SEASON_NOUN = re.compile(
+    r"\b(?!3[\s-]*(?:points?|pts?)\b)(?P<n>\d{1,3}(?:\.\d+)?)(?P<plus>\+)?[\s-]*(?P<stat>points?|pts?|rebounds?|rebs?|assists?|asts?|steals?|blocks?)\s+seasons?\b", re.IGNORECASE
+)
+"""A season named by the average it held ("25 point seasons"), as worded.
+
+.. versionadded:: 6.0.0
+"""
+SEASON_LINE_SEASONS_WITH = re.compile(r"\bseasons?\s+with\s+(?:a\s+)?(?:at\s+least\s+)?(?P<n>\d{3,4})(?P<plus>\+)?\s+(?P<stat>points|rebounds|assists|steals|blocks)\b", re.IGNORECASE)
+"""A season named by the total it held ("seasons with 2000 points"), as
+worded.
+
+.. versionadded:: 6.0.0
+"""
 # A percentage beside a season line ("and shot 54% or better"): a season
 # figure the season line's columns do not keep players past yet, refused by
 # name rather than dropped.

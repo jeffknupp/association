@@ -1232,6 +1232,76 @@ class SeasonLineRanking:
     traded: bool = False
 
 
+@dataclass
+class SeasonsCounted:
+    """Players ranked by how many of their seasons a season line holds
+    (:func:`rank_seasons_counted`, ISSUES.md #391): each row's name, the
+    count (``value``) and its first and last such season; how many players
+    held one at all (``pool``); the per-season games floor a season average
+    was held to; and the first season of the pool.
+
+    .. versionadded:: 6.0.0
+    """
+
+    rows: list[dict[str, Any]]
+    pool: int
+    season_type: int
+    min_games: int | None
+    pool_first_season: int
+
+
+def seasons_counted_statement(lines: tuple[Line, ...], season_type: int, *, min_games: int | None, limit: int) -> Statement:
+    """Players ranked by how many of their seasons hold every one of
+    ``lines`` - each season's deduped row (a traded player's combined one,
+    a postseason copy left out by the view), a season average held to the
+    ``min_games`` floor - most first, with the first and last such season
+    and how many players held one (``pool``), at most ``limit``.
+
+    .. versionadded:: 6.0.0
+    """
+    line_where, line_params = _season_line_where(lines)
+    where = [*line_where, *(["box.gamesPlayed >= ?"] if min_games is not None else [])]
+    params: list[Any] = [season_type, *line_params, *([min_games] if min_games is not None else [])]
+    seasons = "SELECT * FROM player_season_stats_deduped WHERE season_type = ? QUALIFY ROW_NUMBER() OVER (PARTITION BY athlete_id, season ORDER BY (team_id IS NULL) DESC) = 1"
+    grouped = (
+        f"SELECT p.display_name AS display_name, COUNT(*) AS value, MIN(box.season) AS first_season, MAX(box.season) AS last_season "
+        f"FROM ({seasons}) box JOIN players p ON p.athlete_id = box.athlete_id WHERE {' AND '.join(where)} GROUP BY box.athlete_id, p.display_name"
+    )
+    params.append(max(1, min(limit, MAX_LIMIT)))
+    return Statement(_pooled(grouped, "value DESC, last_season DESC, display_name"), params)
+
+
+def rank_seasons_counted(con: duckdb.DuckDBPyConnection, lines: tuple[Line, ...], *, season_type: int, limit: int) -> SeasonsCounted:
+    """The players with the most seasons holding ``lines`` (ISSUES.md #391):
+    "most seasons averaging 30 ppg", "most 25 point seasons", "most seasons
+    with 2000 points". A season's average is held to the per-game ranking's
+    own floor (``avg_points``' default qualifier, its postseason one in a
+    postseason: a 3-game season is no 30 ppg season), a total to none; the pool is the career ranking's - every
+    season of the players active in 1993-94 or later, the table being a
+    survivor sample before it.
+
+    Raises:
+        LeaderboardError: the statement's error.
+
+    .. versionadded:: 6.0.0
+    """
+    spec = LEADERBOARD_METRICS["avg_points"]
+    floor = (spec.postseason_min_sample if season_type == POSTSEASON and spec.postseason_min_sample is not None else spec.default_min_sample) if any(line.per == "season" for line in lines) else None
+    statement = seasons_counted_statement(lines, season_type, min_games=floor, limit=limit)
+    try:
+        rows = _records(con, statement)
+    except Exception as exc:  # the season table missing a column a line reads
+        raise LeaderboardError(f"SQL error: {exc}") from exc
+    coverage = COVERAGE["player_season_stats"]
+    return SeasonsCounted(
+        rows=[{key: value for key, value in row.items() if key != "pool"} for row in rows],
+        pool=rows[0]["pool"] if rows else 0,
+        season_type=season_type,
+        min_games=floor,
+        pool_first_season=coverage.first_ranking_season or coverage.first_season,
+    )
+
+
 def rank_season_line(
     con: duckdb.DuckDBPyConnection,
     metric: str,

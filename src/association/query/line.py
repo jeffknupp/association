@@ -293,7 +293,9 @@ def _read_season_lines(question: str) -> list[LineCandidate]:
     """The lines on a player's season figure the words state
     (:data:`~association.query.lexicon.SEASON_LINE_AVERAGE`,
     :data:`~association.query.lexicon.SEASON_LINE_PER_GAME`,
-    :data:`~association.query.lexicon.SEASON_LINE_TOTAL`, each continued by
+    :data:`~association.query.lexicon.SEASON_LINE_TOTAL`,
+    :data:`~association.query.lexicon.SEASON_LINE_SEASON_NOUN`,
+    :data:`~association.query.lexicon.SEASON_LINE_SEASONS_WITH`, each continued by
     :data:`~association.query.lexicon.SEASON_LINE_NEXT`), as ``season``
     candidates: a line kept on the season's average (``per="season"``) or
     on a total over the span (``per="total"``), its measure None where the
@@ -307,6 +309,8 @@ def _read_season_lines(question: str) -> list[LineCandidate]:
     matches = [(m, season) for m in lexicon.SEASON_LINE_AVERAGE.finditer(question)]
     matches += [(m, season) for m in lexicon.SEASON_LINE_PER_GAME.finditer(question)]
     matches += [(m, total) for m in lexicon.SEASON_LINE_TOTAL.finditer(question)]
+    matches += [(m, season) for m in lexicon.SEASON_LINE_SEASON_NOUN.finditer(question)]
+    matches += [(m, total) for m in lexicon.SEASON_LINE_SEASONS_WITH.finditer(question)]
     for m, per in sorted(matches, key=lambda each: (each[0].start(), -each[0].end())):
         if any((start <= m.start() and m.end() <= end) or m.start() <= start < m.end() for start, end in spans):
             continue  # the same words read by a longer reading

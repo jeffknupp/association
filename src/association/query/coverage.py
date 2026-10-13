@@ -172,6 +172,7 @@ SOURCES: dict[PointShape, Tables] = {
     # 1986 regular season", the wrong cause.
     PointShape("player_seasons", "ranking", "player"): _metric_tables,
     PointShape("player_seasons", "scalar", "count"): _metric_tables,
+    PointShape("player_seasons", "ranking", "seasons"): ("player_season_stats",),
     PointShape("netpoints", "scalar", "ratings"): ("net_points_player", "net_points_player_fingerprint"),
     PointShape("netpoints", "chart", "fingerprint"): ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
     PointShape("team_games", "scalar", "record"): _team_record_tables,

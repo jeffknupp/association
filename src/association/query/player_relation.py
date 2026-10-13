@@ -306,6 +306,19 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         # ISSUES.md #390), which the ranking keeps its players past.
         taken=Measure.CELLS | ReadLine.SEASON_CELLS,
     ),
+    # Players ranked by how many of their seasons a season line holds
+    # (ISSUES.md #391) pool every season on record: no span is stated, and a
+    # season's figure is no game to cut.
+    PointShape("player_seasons", "ranking", "seasons"): ShapeCells(
+        unstated={
+            "range": "a count of seasons pools every season on record; a range of them is not read yet",
+            "both": "a season line is one season type's row; a count over both at once would count two rows per player",
+            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
+        },
+        taken=ReadLine.SEASON_CELLS,
+        declined="plan",
+    ),
     # How many players a season line holds is that ranking counted (ISSUES.md
     # #390): the same cells, said the same way.
     PointShape("player_seasons", "scalar", "count"): ShapeCells(

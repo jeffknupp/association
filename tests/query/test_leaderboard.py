@@ -16,7 +16,7 @@ import pytest
 from association.query.compose.say import season_lines_phrase
 from association.query.connection import connect_read_only
 from association.query.reading import Line, LineOp
-from association.query.season_line import LeaderboardError, run_leaderboard
+from association.query.season_line import LeaderboardError, rank_seasons_counted, run_leaderboard
 
 
 @pytest.fixture
@@ -353,3 +353,25 @@ def test_season_lines_are_said_as_what_the_players_did() -> None:
     assert season_lines_phrase([("points", ">=", 30, "season")]) == "averaged 30+ points per game"
     assert season_lines_phrase([("points", ">=", 16, "season"), ("rebounds", "<", 3.5, "season")]) == "averaged 16+ points per game and under 3.5 rebounds per game"
     assert season_lines_phrase([("points", ">=", 10000, "total")], career=True) == "had 10,000+ points in their careers"
+
+
+def test_players_are_ranked_by_how_many_of_their_seasons_a_season_line_holds(tmp_path: Path) -> None:
+    """ISSUES.md #391: "most seasons averaging 25 ppg" - each season's
+    deduped row (a traded player's combined one), a season average held to
+    the per-game ranking's floor of games, most first, with how many
+    players held one at all."""
+    path = tmp_path / "seasons.duckdb"
+    con = duckdb.connect(str(path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1', 'Stephen Curry'), ('2', 'Klay Thompson')")
+    con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER)")
+    con.execute(
+        "INSERT INTO player_season_stats_deduped VALUES "
+        "('1', 2024, 2, '9', 70, 26.0, 1820), ('1', 2025, 2, '9', 60, 25.5, 1530), ('1', 2026, 2, '9', 10, 30.0, 300), "  # 2026: too few games
+        "('2', 2024, 2, '9', 40, 27.0, 1080), ('2', 2024, 2, '20', 30, 20.0, 600), ('2', 2024, 2, NULL, 70, 24.0, 1680)"  # traded: the combined row reads 24
+    )
+    con.close()
+    found = rank_seasons_counted(connect_read_only(str(path)), (Line(measure="points", op=">=", value=25, as_typed="averaging 25 ppg", per="season"),), season_type=2, limit=10)
+    assert [(row["display_name"], row["value"]) for row in found.rows] == [("Stephen Curry", 2)] and found.pool == 1 and found.min_games == 20
+    totals = rank_seasons_counted(connect_read_only(str(path)), (Line(measure="points", op=">=", value=1500, as_typed="seasons with 1500 points", per="total"),), season_type=2, limit=10)
+    assert [(row["display_name"], row["value"]) for row in totals.rows] == [("Stephen Curry", 2), ("Klay Thompson", 1)] and totals.min_games is None
