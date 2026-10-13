@@ -1298,15 +1298,30 @@ def _say_team_record_when(result: Result, groups: Grouped) -> Answer:
     unit = _unit(stat)
     by_key = {row["key"]: {k: v for k, v in row.items() if k != "key"} for row in groups.rows}
     reached, short, every = by_key["reached"], by_key["short"], by_key["all"]
-    title = f"{result.subject} record when they had {threshold}+ {unit}{result.narrowing.phrase}, {result.span.phrase}:"
-    rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all their games", every)]
+    held, missed = _TEAM_LINE_SIDES[line.op]
+    title = f"{result.subject} record when they had {held.format(n=threshold, unit=unit)}{result.narrowing.phrase}, {result.span.phrase}:"
+    rows = [(held.format(n=threshold, unit=unit), reached), (missed.format(n=threshold, unit=unit), short), ("all their games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
     # Recorded in the Result's order (the template wrote the caveat first),
     # said in the heading's: the pool, the floor, the caveat.
     said = {each.kind: text for each, text in zip(result.notes, _said(result), strict=True)}
     trailer = said.get("definition", "") + said.get("floor", "") + said.get("stat_blank", "")
     data = {"team": result.subject, "stat": stat, "threshold": threshold, "span": result.span.phrase, "reached": reached, "fell_short": short, "headline": title.rstrip(":"), "notes": [trailer]}
+    if line.op != ">=":
+        data["op"] = line.op
     return Answer(data=data, text=f"{table}\n{trailer}")
+
+
+#: A team's line, said by its comparison: the side that held it and the side
+#: that did not ("10 or fewer turnovers" against "more than 10 turnovers",
+#: ISSUES.md #325).
+_TEAM_LINE_SIDES: dict[str, tuple[str, str]] = {
+    ">=": ("{n}+ {unit}", "under {n} {unit}"),
+    ">": ("more than {n} {unit}", "{n} or fewer {unit}"),
+    "<=": ("{n} or fewer {unit}", "more than {n} {unit}"),
+    "<": ("under {n} {unit}", "{n}+ {unit}"),
+    "=": ("exactly {n} {unit}", "other than {n} {unit}"),
+}
 
 
 # --- splits ----------------------------------------------------------------------------

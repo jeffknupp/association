@@ -24,7 +24,7 @@ from routed import Routed, ask_routed
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.agent import Agent
-from association.query.reading import LINE_RECORD, Line, Measure, PointShape, Reading, Span
+from association.query.reading import LINE_RECORD, Line, LineOp, Measure, PointShape, Reading, Span
 from association.query.reading import Subject as Who
 
 S = current_season()
@@ -108,3 +108,44 @@ def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tm
     assert answer.data["reached"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(5.0)}
     assert answer.data["fell_short"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(0.0)}
     assert any("-> (compose) asked=player_games/split/line shape=team_games/split/line" in line for line in lines), lines
+
+
+@pytest.mark.parametrize(
+    ("op", "held", "missed", "reached", "short"),
+    [
+        # "125 or fewer points": g1 (125, W), g3 (110, W), g4 (95, L) - 2-1; g2 (130, L) is more.
+        ("<=", "125 or fewer points", "more than 125 points", (3, 2), (1, 0)),
+        # "under 125 points": g3, g4 - 1-1; g1 (125) and g2 reach 125.
+        ("<", "under 125 points", "125+ points", (2, 1), (2, 1)),
+        # "more than 125 points": g2 alone - 0-1.
+        (">", "more than 125 points", "125 or fewer points", (1, 0), (3, 2)),
+    ],
+)
+def test_a_teams_line_under_a_number_splits_the_games_by_its_own_comparison(tmp_path: Path, op: LineOp, held: str, missed: str, reached: tuple[int, int], short: tuple[int, int]) -> None:
+    """ISSUES.md #325: "warriors' record last season when committing 10 or
+    fewer turnovers" answered the whole season. The team's record over its
+    own line reads the line's comparison, so a line under a number ("N or
+    fewer", "under N") or over it ("more than N") splits the games by it
+    and says it, never as the "N+" split it read every line as."""
+    agent = _agent_with_a_team_threshold_split(tmp_path)
+    answer = ask_routed(
+        agent,
+        f"what was the celtics record when they had {held}",
+        Routed(
+            LINE_RECORD,
+            Reading(
+                who=Who(kind="team", teams=("Boston Celtics",)),
+                lines=(Line(measure="points", op=op, value=125, as_typed=held, keyed=True),),
+                measure=Measure(key="points", as_typed="points"),
+                span=Span(season_type=2),
+            ),
+        ),
+    )
+    assert answer.shape == PointShape("team_games", "split", "line")
+    assert answer.text.startswith(f"Boston Celtics record when they had {held}, "), answer.text
+    rows = answer.text.split("\n")
+    assert rows[2].startswith(held) and rows[3].startswith(missed), rows
+    assert answer.data is not None
+    assert (answer.data["reached"]["games"], answer.data["reached"]["wins"]) == reached
+    assert (answer.data["fell_short"]["games"], answer.data["fell_short"]["wins"]) == short
+    assert answer.data["op"] == op

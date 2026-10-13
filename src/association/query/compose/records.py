@@ -25,7 +25,7 @@ from association.nba.franchises import season_name
 from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source, condition_span_label
 from association.query.coverage import coverage_refusal
 from association.query.entities import optional_team
-from association.query.lines import threshold_of
+from association.query.lines import threshold_line, threshold_of
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
@@ -213,6 +213,10 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Resul
     if team is None:
         raise Unsupported("record_when needs a player or a team")
     stat, threshold = _record_when_team_stat(spelled(scope.measure), threshold_of(scope))
+    # The line's own comparison: "10 or fewer turnovers" splits the games at
+    # or under 10 from the rest, never as "10+" (ISSUES.md #325).
+    keyed = threshold_line(scope)
+    op = keyed.op if keyed is not None else ">="
     span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=scope.cuts.opponent)
     if isinstance(narrowed, Unanswered):
@@ -225,10 +229,10 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Resul
     (matched,) = rows_of(con, compile_team_count(narrowed, team, span))
     if not matched["games"]:
         return condition_team_no_games(con, team, span, narrowed)
-    found = rows_of(con, compile_team_line(narrowed, team, span, stat, threshold))
+    found = rows_of(con, compile_team_line(narrowed, team, span, stat, threshold, op))
     if not found:
         return _record_when_team_no_stat(team, span, narrowed, stat, int(matched["games"]))
-    return _record_when_team_result(con, span, team, narrowed, stat, threshold, found)
+    return _record_when_team_result(con, span, team, narrowed, stat, threshold, found, op)
 
 
 def _record_when_team_stat(stat: str | None, threshold: int | None) -> tuple[str, int]:
@@ -256,8 +260,9 @@ def _record_when_team_no_stat(team: Any, span: Any, narrowed: TeamNarrowed, stat
     return Refusal(kind="team_stat_unrecorded", facts=facts, shown={"team": team.name, "span": team_span_label(span), "games": 0}, under=())
 
 
-def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: Any, narrowed: TeamNarrowed, stat: str, threshold: int, found: list[dict[str, Any]]) -> Result:
-    """The three rows - reached, fell short, every game with a figure - and
+def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: Any, narrowed: TeamNarrowed, stat: str, threshold: int, found: list[dict[str, Any]], op: str = ">=") -> Result:
+    """The three rows - the line held (``reached``, by its ``op``), not
+    held, every game with a figure - and
     the remarks in the order the template wrote them: the games with no
     figure for the stat (never for ``points``, which reads the score), the
     pool, the box-score floor."""
@@ -265,7 +270,7 @@ def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: An
     first, last = min(r["first_season"] for r in found), max(r["last_season"] for r in found)
     groups = Grouped(
         by="threshold",
-        of=Line(column=stat, value=threshold),
+        of=Line(column=stat, op=op, value=threshold),
         rows=({"key": "reached", **_group(by_hit, "reached")}, {"key": "short", **_group(by_hit, "short")}, {"key": "all", **_group(by_hit, "reached", "short")}),
     )
     notes: list[Note] = []
