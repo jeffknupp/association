@@ -3060,7 +3060,11 @@ SUBJECT_OF_COUNT = ask(
     r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:"
     r"games?\s+with\b"
     r"|games?\s+of\b"
-    rf"|(?:(?:\d+\+?|{_ANY_LINE_NUMBER}+)\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?|{_ANY_LINE_NUMBER}+\s*[- ]?\s*{typed('line_stat')}+)\s+games?\b"
+    # The rules read it over their text, where a line's NUMBER stands typed
+    # and its stat stays words (line.LinesNamed.numbered): the stat is read
+    # here by its words. (Until Phase 4, step 6 a second alternative read a
+    # typed stat, which the rules' text never holds.)
+    rf"|(?:\d+\+?|{_ANY_LINE_NUMBER}+)\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?\s+games?\b"
     # "bam adebayo career games in the month of march" (yardstick-v2 F096):
     # the model dropped Bam, and none of the shapes above follows a name
     # with "career games".
