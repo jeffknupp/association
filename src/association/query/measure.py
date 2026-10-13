@@ -651,6 +651,7 @@ class MeasureWords:
     sides: tuple[tuple[str, re.Match[str]], ...]
     per_90: re.Match[str] | None
     per_minutes: re.Match[str] | None
+    opponent: re.Match[str] | None
     rate: re.Match[str] | None
     team_total: re.Match[str] | None
     per_game: bool
@@ -693,6 +694,7 @@ def read_measure(question: str) -> MeasureWords:
         sides=tuple((name, found) for name, pattern in lexicon.SIDE_WORDS.items() if (found := pattern.search(question)) is not None),
         per_90=lexicon.PER_90.search(question),
         per_minutes=lexicon.PER_MINUTES.search(question),
+        opponent=None if lexicon.OPPONENT_SUM.search(question) else lexicon.OPPONENT_STAT.search(question),
         rate=lexicon.RATE_WORDS.search(question),
         team_total=lexicon.TEAM_TOTAL.search(question),
         per_game=lexicon.PER_GAME_WORDS.search(question) is not None,

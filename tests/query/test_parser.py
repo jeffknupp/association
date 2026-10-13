@@ -1146,3 +1146,21 @@ def test_three_apostrophe_s_is_threes_made(con: duckdb.DuckDBPyConnection, quest
     player's points line answered where his threes were asked."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.key == "threePointFieldGoalsMade"
+
+
+@pytest.mark.parametrize(
+    ("question", "whose"),
+    [
+        ("mavs opp fg percentage last 3 games", "opponent"),
+        ("celtics opponent rebounds this season", "opponent"),
+        ("mavs fg percentage last 3 games", "own"),
+        ("most fgm + opp fgm in a game by celtics", "own"),
+        ("celtics vs magic pts and opp pts game logs", "own"),
+    ],
+)
+def test_opp_before_a_stat_is_the_opponents_figure(con: duckdb.DuckDBPyConnection, question: str, whose: str) -> None:
+    """ISSUES.md #409: "opp" before a stat was read by nothing, and the team's
+    own figure answered; it is the opponent's (``whose="opponent"``) - not
+    where two figures are added or set side by side."""
+    reading = _read(con, question)
+    assert reading.measure is not None and reading.measure.whose == whose

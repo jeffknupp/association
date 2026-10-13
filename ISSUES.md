@@ -176,14 +176,6 @@ before that commit needs re-checking against the current warehouse.
   stage's work (`ROADMAP.md`, Phase 1) unless it shows up in the wild
   first.
 - **GitHub:** #291
-### "opp" before a stat is not read as the opponent's figure: "mavs opp fg percentage last 3 games" shows the Mavericks' own FG%
-- **Found:** 2026-10-13, the P1 sweep's lane T, enumerating #403's moves (the team log's box-score join).
-- **Evidence:** "mavs opp fg percentage last 3 games" reads `measure` `fieldGoalPct` with `whose` `own` and "opp" in `Reading.unread`; since the team log shows the figure asked (#403) the feed answer lists the Mavericks' OWN field-goal percentage game by game ("FG% 52.0% (52-100) ... Field-goal percentage: 46.7% (134-287).") where it listed the scores alone. "opp" is read by nothing in 9 of the 2,710 readings (`opp fgm`, `opp pts`, `opp fga`; and "opponent", "opponents'" twice), each unread. The relation reads the opponent's row where the measure says so (`Measure.whose == "opponent"`: "Total opponents' rebounds", tested), so the reading is all that is missing.
-- **User sees:** the team's own figure, labeled "FG%", where the opponent's was asked - visible only to a reader who notices "opp" in the question.
-- **Next step:** (the measure tagger's, lane L) "opp"/"opponent"/"opponents'" before a stat as `whose="opponent"`, as "allowed" after a team metric reads; a case per wording, the 2,710 readings and the feed enumerated.
-- **Priority:** P1 - a different figure answered, one feed question (and the class beside it).
-- **GitHub:** #409
-
 ### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
 - **Evidence:** `live_day10.jsonl` (bcf30a8): the router files `head_to_head` (team PHI, opponent BOS); the reading's rule "a player's record against a team, not two teams meeting" (`subject._decide_intent`) reroutes to `with_without` with `without=[Joel Embiid]`, and the template answers "Philadelphia 76ers with and without Joel Embiid vs the Boston Celtics, 2026 regular season: out 2 1-1, played 2 1-1". The key (blind, reading a, dominant): the 76ers went 4-2 in the 6 games Embiid played vs Boston in 2025-26 - 2 regular-season meetings and playoff Games 4-7 (he has no box row for Games 1-3). Two faults: the SHAPE (a split with an "out" row nobody asked for, where the question is his games and their record - dates, outcomes, and reasonably his line in each), and the SCOPE ("this year" narrowed to the regular season by the unstated-season-type default, `_validate_season_type`; `season_type_unstated` widens only "last N games" and "including playoffs" wordings today).
