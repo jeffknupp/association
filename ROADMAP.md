@@ -720,7 +720,8 @@ of what a new shape must bring, since many of the 44 open P1s are a
 missing shape or row - assumed held and not decided either (Jeff,
 2026-10-13): the proof rules apply to the P1 sweep below as they applied
 to the phase, and D4 stands until a sweep fix needs a shape, which is
-then the decision's occasion. Findings, transcribed with the
+then the decision's occasion - the first such decision is below, "D4
+lifted for the season ranking's shapes". Findings, transcribed with the
 review's evidence: one P1 (#396's class beyond the seeding words), one P2
 (a team's stat under a companion's line answers the record), one P3
 ("without free throws" read as a teammate), four P4s (a plural, a trace
@@ -778,6 +779,29 @@ populations and the feed searched for its class, the lane's own order by
 reach - fixes what it can one entry at a time, closes each entry's
 GitHub issue naming the commit, and reports every fix and every move.
 A shape a fix needs is D4's occasion, reported to the lead and not taken.
+
+**D4 lifted for the season ranking's shapes (Jeff, 2026-10-13).** The
+sweep's first shape decision: lane L's #390 and #391 measured 24 feed
+questions that state a line on a season figure ("players who averaged 30
+ppg", "how many players averaged 30 ppg", "most seasons averaging 30
+ppg") and could only refuse by name, since every reader of lines applies
+them per game. Jeff lifted the freeze for exactly these: the season-line
+ranking kept past a line (a `Line` with a season facet the existing
+`player_seasons/ranking/player` point honors as a HAVING - a cell, not a
+key), a count of the players over it (a new key,
+`player_seasons/scalar/count`) and a count of a player's seasons over a
+line (the ranking by that count, a second new key if the measurement
+says so). Lane L takes them next. **What a new shape brings**, from here
+on, for any shape Jeff lifts the freeze for: the `PointShape` constant;
+the grammar row or rule that names it from the words; the point reader's
+keying; a reader returning a typed `Result`; the sayer's phrase; the
+`coverage.SOURCES` entry; the frozen-keys list grown with the lifting
+recorded beside it; a test per wording, watched to fail; and the four
+populations with every move enumerated. The other freeze occasions the
+sweep has measured stay refusals by name until decided: #364's remainder
+(a team's own games ranked by a figure, `team_games/rows/measure`, about
+2 feed answers) and #392's remainder (a player's first or last N seasons
+resolved over his seasons on record, 3).
 
 Three rules hold throughout, Phase 3's: a decline or a refusal reworded
 is ONE enumerated commit; a boundary that moves is recorded in
