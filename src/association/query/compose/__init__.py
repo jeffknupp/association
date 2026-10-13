@@ -37,7 +37,6 @@ Nothing here reaches ollama, and nothing here reads the question:
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -57,7 +56,7 @@ from .meetings import read_head_to_head
 from .netpoints import NetPointsQuery, draw_fingerprint, read_fingerprint, read_player_netpoints
 from .pairs import read_player_matchup
 from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
-from .plan import Planned, beyond_words, cells_unhonored, shape_cells
+from .plan import NO_READING, PlannedQuery, Verdict, beyond_words, cells_unhonored, planned_shape, shape_cells
 from .presence import read_with_without
 from .rankings import read_leaderboard
 from .records import read_record_when, read_team_record_when
@@ -129,7 +128,7 @@ def answer(
     ctx: AnswerContext,
     reading: Reading,
     *,
-    planned: Planned,
+    planned: Verdict,
     trace: Callable[[Reading], None] | None = None,
     declined: Callable[[str], None] | None = None,
     declined_by: Callable[[Cause], None] | None = None,
@@ -140,8 +139,8 @@ def answer(
     onto its relation (:func:`~association.query.compose.plan.plan_point`):
     the PLAN stage's verdict, made once by whoever calls - the answering
     loop, or a test - and never here. Where there is
-    no query, the verdict stands: a refusal is the answer
-    (:attr:`~association.query.compose.plan.Planned.refusal`), and a decline
+    no query, the verdict stands: a refusal is the answer, worded by the
+    sayer, and a decline (an :class:`~association.query.reading.Unsupported`)
     is ``None`` - the question is not a point on this relation, or carries a
     narrowing the relation cannot honor, and the caller refuses it - with
     the reason given to ``declined``, and - where the decline is a shape's,
@@ -158,8 +157,9 @@ def answer(
     subject is answered by its readers (a team's log, splits, streak,
     with/without split and record over its own line) or
     :func:`~association.query.compose.team.run_team`, a point by its
-    shape's reader and the sayer (``planned.shape``: the answer side reads
-    no intent), and the rest by the
+    shape's reader and the sayer (the planned shape,
+    :func:`~association.query.compose.plan.planned_shape`: the answer side
+    reads no intent), and the rest by the
     compiler's own sentence, with the box-score caveats
     :func:`~association.query.compose.core.run` reads appended (#197); the
     answering loop appends :func:`~association.query.coverage.coverage_caveat`
@@ -194,25 +194,32 @@ def answer(
        the stage snapshot went with step 4.
 
     .. versionchanged:: 5.0.0
-       Chooses the reader by ``planned.shape``
+       Chooses the reader by the planned shape
        (:class:`~association.query.reading.PointShape`), where it read
        the reading's intent (the Phase 2 review's cleanup (b)6); a reader's
        refusal or question is typed and said by the sayer.
 
     .. versionchanged:: 6.0.0
        Takes ``declined_by``: a shape's decline is a cause (Phase 3, step 4).
+
+    .. versionchanged:: 6.0.0
+       ``planned`` is the Query-or-Cause (:data:`~association.query.compose.plan.Verdict`):
+       the planned query, the refusal unworded - worded here, where the
+       ``Planned`` record carried it worded - or the decline itself (Phase 4,
+       step 4).
     """
-    verdict = planned
-    if verdict.refusal is not None:
-        # A copy: the caller appends its notes to the answer it is handed.
-        return copy.deepcopy(verdict.refusal)
-    if verdict.query is None or reading.point is None:
+    if isinstance(planned, Unanswered):
+        # The planner's refusal, worded where it is answered.
+        return say(planned)
+    if isinstance(planned, Unsupported) or reading.point is None:
         if declined is not None:
-            declined(verdict.declined or "the compiler has no reading of this point")
-        if declined_by is not None and verdict.cause is not None:
-            declined_by(verdict.cause)
+            declined((str(planned) if isinstance(planned, Unsupported) else "") or NO_READING)
+        if declined_by is not None and isinstance(planned, ShapeDeclined):
+            declined_by(planned.cause)
         return None
-    return _answer_point(ctx, reading.point, verdict, trace, declined, declined_by)
+    shape = planned_shape(reading, planned)
+    assert shape is not None
+    return _answer_point(ctx, reading.point, planned, shape, trace, declined, declined_by)
 
 
 def _read_log(read: Callable[[], Result | Unanswered | None]) -> Reply | None:
@@ -363,19 +370,18 @@ def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query:
 def _answer_point(
     ctx: AnswerContext,
     point: Reading,
-    planned: Planned,
+    query: PlannedQuery,
+    shape: PointShape,
     trace: Callable[[Reading], None] | None,
     declined: Callable[[str], None] | None,
     declined_by: Callable[[Cause], None] | None = None,
 ) -> Reply | None:
-    """``point``'s planned query, run by its shape (``planned.shape``): a
-    declared relation's reader, a team's own season (and, for a point
-    planned on another relation, the team compiler's sum where it
-    declines), a team's games, or a player's - each the shape's reader,
-    then the compiler's own sentence where it steps aside. :func:`answer`'s
-    tail."""
-    query, shape = planned.query, planned.shape
-    assert query is not None and shape is not None
+    """``point``'s planned ``query``, run by its ``shape``
+    (:func:`~association.query.compose.plan.planned_shape`): a declared
+    relation's reader, a team's own season (and, for a point planned on
+    another relation, the team compiler's sum where it declines), a team's
+    games, or a player's - each the shape's reader, then the compiler's own
+    sentence where it steps aside. :func:`answer`'s tail."""
     # The team-season reader's decline is the one said where every reader
     # declines: the retired template's reason was, since it ran first.
     season_declined: Unsupported | None = None

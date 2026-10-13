@@ -1577,8 +1577,8 @@ a shape:
     here - ...", "a team's record has no reading of this point" (the
     planned shape, a `no_reading_of_point` cause's `planned` fact);
     `coverage.SOURCES`
-    is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
-    and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
+    is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor` (and
+    `Planned` itself since Phase 4, step 4) and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
     sayer from the headline body's type and the one field that says what
     it is (`Scalar.how`, `Grouped.by`, `Rows.by`, `Chart.kind`) - never
     `Span.source`, the relation or a facts key; a sayer reached so may
@@ -1785,8 +1785,16 @@ a shape:
   point the parser read from the question's words once (`Reading.point`,
   `parse.read_route`'s last step) and the planner's verdict on it, planned once
   per question AFTER the parser has read the point
-  (`compose.plan.plan_point`, kept on `Agent.planned`; the parser reads
-  and does not plan), so the compiler plans and runs it and never reads
+  (`compose.plan.plan_point`; the parser reads and does not plan). The
+  planning is ONE value, the Query-or-Cause (`compose.plan.Verdict`, kept
+  on `Agent.query`): the planned query, the refusal it came to unworded
+  (a `result.Refusal`, worded by the sayer where it is answered) or the
+  decline it gave the point up with (the `Unsupported` carrying its
+  sentence, a `ShapeDeclined` carrying its cause); what the point is read
+  and said as is `compose.plan.planned_shape`'s, from the Reading and the
+  planning. Until Phase 4, step 4 a `Planned` record held the query, the
+  decline's sentence, the worded refusal, the shape and the cause beside
+  one another, on `Agent.planned`, so the compiler plans and runs it and never reads
   the question itself. There is no slot door: a caller with a Reading of
   its own (a test handing the compiler a subject it built) reads the point
   into it with `parse.with_point`. Where the point reader refuses (a
@@ -1814,13 +1822,13 @@ a shape:
   a narrowing its words do not state, a point its only reader reads
   nothing of - is a cause since Phase 3, step 4
   (`reading.ShapeDeclined`, raised by `compose.plan.cells_declined` and
-  `compose._read`, its cause on `Planned.cause` or handed to
-  `compose.answer`'s `declined_by`; `cannot_honor`,
+  `compose._read`, the planning itself where the planner declines, its
+  cause handed to `compose.answer`'s `declined_by`; `cannot_honor`,
   `no_reading_of_point`), said by the planner in the decline's own
   sentence, word for word, at the decline's place - after the floor and
   the reading's causes - and answered `"fast"`: 6 of the 628 and 63 of
   the 2,082 moved so, nothing else. `None` is refused with
-  the compiler's reason (`Planned.declined`), after the coverage floor
+  the compiler's reason (the decline's sentence), after the coverage floor
   and the reading's own causes have had their look: a refusal the words
   come to before any point (`Reading.refused` - a championship, both ends
   of the span named at once, `window.contradicting_ends`, a window of
@@ -2576,7 +2584,8 @@ standings - and `RELATION_SOURCES` for a point no reader takes; keyed by
 intent and resolved from slot lists of its own until Phase 3, step 1,
 which is how `player_stat`'s floor read four slots where the reader read
 a longer list, ISSUES.md #212, closed). The answering loop checks the
-floor of the point the words named (`Planned.shape`, set on every verdict)
+floor of the point the words named (`compose.plan.planned_shape`, on every
+verdict; `Planned.shape` until Phase 4, step 4)
 over the point's own scope; a reading with no point has no floor. Three
 things about that module are load-bearing:
 

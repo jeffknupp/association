@@ -13,6 +13,7 @@ from routed import Routed, reading_of, with_subject
 from routed import staged as settle
 
 from association.query.compose.plan import plan_point
+from association.query.compose.say import refusal_phrase
 from association.query.decisions import Decision
 from association.query.entities import names_of
 from association.query.line import threshold_named as _threshold_from_text
@@ -44,8 +45,10 @@ from association.query.reading import (
     Companion,
     PointShape,
     Reading,
+    Unsupported,
 )
 from association.query.reading import Subject as Who
+from association.query.result import Refusal
 from association.query.subject import Subject
 
 
@@ -447,7 +450,7 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     assert reading is not None
     assert [c.predicate for c in reading.companions] == ["started"]
     planned = plan_point(reading)
-    assert planned.query is None and planned.declined is not None and "games Joel Embiid started" in planned.declined, planned
+    assert isinstance(planned, Unsupported) and "games Joel Embiid started" in str(planned), planned
 
 
 def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: duckdb.DuckDBPyConnection) -> None:
@@ -764,7 +767,7 @@ def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.
     planned = plan_point(reading)
     if asked == PERIOD_LOG:
         assert reading.point_refusal is not None and reading.point_refusal.kind == "no_period_stat"
-        assert planned.refusal is not None and "no per-period 'plus_minus'" in planned.refusal.answer
+        assert isinstance(planned, Refusal) and "no per-period 'plus_minus'" in refusal_phrase(planned.kind, planned.facts)
     else:
         assert [cause.kind for cause in reading.unsupported] == ["period_stat"] and reading.unsupported[0].facts["stat"] == "plus_minus"
 

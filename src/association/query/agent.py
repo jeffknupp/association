@@ -21,7 +21,6 @@ reader into a Result and worded by the sayer (``compose``).
 
 from __future__ import annotations
 
-import copy
 import time
 import traceback
 from collections.abc import Callable
@@ -35,10 +34,11 @@ from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
 from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined, key_path
+from association.query.result import Refusal
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
-from .compose.plan import Planned, plan_point, refusal_result
-from .compose.say import nothing_answers, say_left_out
+from .compose.plan import Verdict, plan_point, planned_shape, refusal_result
+from .compose.say import nothing_answers, say, say_left_out
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -148,13 +148,16 @@ class Agent:
         #: .. versionadded:: 5.0.0
         self.reading: Reading | None = None
         #: The last question's Reading planned onto its relation - the
-        #: query, or why there is none
-        #: (:func:`~association.query.compose.plan.plan_point`) - or None
-        #: where nothing was read. Planned once per question, here, and
-        #: handed to whatever answers.
+        #: Query-or-Cause (:data:`~association.query.compose.plan.Verdict`:
+        #: the query, the refusal it came to or the decline it gave the
+        #: point up with, :func:`~association.query.compose.plan.plan_point`)
+        #: - or None where nothing was read. Planned once per question,
+        #: here, and handed to whatever answers.
         #:
-        #: .. versionadded:: 5.0.0
-        self.planned: Planned | None = None
+        #: .. versionadded:: 6.0.0
+        #:    ``Agent.planned``, the ``Planned`` record, until Phase 4, step 4
+        #:    folded it into the Query-or-Cause.
+        self.query: Verdict | None = None
         #: The kinds of the remarks written for the last question whose
         #: sentence did not reach its answer (:func:`association.query.notes.unsaid`):
         #: a caveat computed and then dropped. Empty when every one was said.
@@ -204,7 +207,7 @@ class Agent:
         """
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         self.reading = None
-        self.planned = None
+        self.query = None
         self.unsaid = []
         recorded = ""
         answer: Answer | None = None
@@ -323,7 +326,7 @@ class Agent:
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
         # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
-        self.planned = plan_point(reading)
+        self.query = plan_point(reading)
         for decision in reading.decisions:
             history.record_decision(decision)
         return reading
@@ -393,8 +396,9 @@ class Agent:
         (``refusals.by_question``, ``refusals.unanswerable``) and the team-only
         player was the fast path's own check, after this one."""
         if reading.refused is not None:
-            assert self.planned is not None and self.planned.refusal is not None
-            said = copy.deepcopy(self.planned.refusal)
+            # The planner's refusal (plan_point), worded here.
+            assert isinstance(self.query, Refusal)
+            said = say(self.query)
             history.log(f"  -> (refusal) {reading.refused.kind}: {said.answer}")
             return said
         if reading.asked is not None:
@@ -412,7 +416,8 @@ class Agent:
         listed their names until Phase 3, step 4). Where the
         compiler has no reading of the point, in this order: the
         compiler's own reason - the planner refusing a narrowing the relation
-        cannot honor (``Planned.declined``) - names
+        cannot honor (the decline :func:`~association.query.compose.plan.plan_point`
+        returns) - names
         why the question is refused; a season under a table's floor is
         refused, never answered from nothing; and a shape nothing here reads
         is refused by name - the first thing the words name that nothing
@@ -431,10 +436,9 @@ class Agent:
             history.record_tool_call(f"compose {key_path(reading.asked)}", time.monotonic() - t0)
             return composed
         why = declined[0] if declined else "the compiler has no reading of this point"
-        # The floor of the point the words named (Planned.shape, declared on
+        # The floor of the point the words named (planned_shape, declared on
         # every verdict), over the point's own scope; no point, no floor.
-        assert self.planned is not None
-        refused = check_coverage(self.planned.shape, reading.point if reading.point is not None else scope)
+        refused = check_coverage(self._planned_shape(), reading.point if reading.point is not None else scope)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
             return Reply(data={"message": refused, "season": scope.span.season}, answer=refused)
@@ -469,7 +473,7 @@ class Agent:
 
         # Planned once, beside the Reading (:meth:`_reading`), before anything
         # answers; the compiler takes that planning and never plans.
-        assert self.planned is not None
+        assert self.query is not None
         with collect_name_readings() as readings:
             composed = compose.answer(
                 AnswerContext(con=self.con, out_dir=self.out_dir),
@@ -477,7 +481,7 @@ class Agent:
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
                 declined=declined,
                 declined_by=declined_by,
-                planned=self.planned,
+                planned=self.query,
             )
         if composed is None:
             return None
@@ -487,13 +491,14 @@ class Agent:
             _note(composed, name_reading)
         if readings:
             composed.data["name_readings"] = list(readings)
-        note = coverage_caveat(self.planned.shape, reading.point if reading.point is not None else reading)
+        shape = self._planned_shape()
+        note = coverage_caveat(shape, reading.point if reading.point is not None else reading)
         if note:
             composed.answer = f"{composed.answer} {note}"
             _note(composed, note)
         self._unmatched_fingerprint(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
-        history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(self.planned.shape)} point={point}")
+        history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(shape)} point={point}")
         return composed
 
     def _unmatched_fingerprint(self, reading: Reading, composed: Reply) -> None:
@@ -505,12 +510,19 @@ class Agent:
         never beside the coverage floor's refusal, which read no name (the
         retired template's order: the floor, then the answer and this note).
         Until Phase 3, step 0 this re-read the question."""
-        assert self.planned is not None
-        if reading.left_out is None or check_coverage(self.planned.shape, reading.point if reading.point is not None else reading) is not None:
+        if reading.left_out is None or check_coverage(self._planned_shape(), reading.point if reading.point is not None else reading) is not None:
             return
         unmatched_note = say_left_out(reading.left_out)
         composed.answer = f"{composed.answer} {unmatched_note}"
         _note(composed, unmatched_note)
+
+    def _planned_shape(self) -> PointShape | None:
+        """What the last question's point is read and said as
+        (:func:`~association.query.compose.plan.planned_shape`, from its
+        Reading and its planning), or None where nothing was read or planned."""
+        if self.reading is None or self.query is None:
+            return None
+        return planned_shape(self.reading, self.query)
 
     def _ask_inner(self, question: str, history: RunHistory) -> Answer:
         # A question too short to be one is refused before anything else
@@ -525,8 +537,7 @@ class Agent:
         if fast is not None:
             # The planned point's shape, which the page renders the data by
             # (Phase 4, step 1): the one the answer side chose its reader by.
-            shape = self.planned.shape if self.planned is not None else None
-            return self._answer(question, history, fast.answer, "fast", data=fast.data, artifacts=fast.artifacts, shape=shape)
+            return self._answer(question, history, fast.answer, "fast", data=fast.data, artifacts=fast.artifacts, shape=self._planned_shape())
         # Nothing read the question: the refusal names why, in the words the
         # parser or the compiler gave it up with (#129 - the
         # agent this replaced answered one such question in 23).

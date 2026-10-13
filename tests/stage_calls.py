@@ -196,7 +196,8 @@ def _planned(planned: Any, args: tuple[Any, ...]) -> Any:
     """A planning as the stage snapshot records it (``stages.read_stages``'s
     ``query``): the planned query with its relation and scope, the refusal's
     values and sentence, or the decline's reason - plain values, where the
-    ``Planned`` itself holds a ``Query`` whose record is the snapshot's."""
+    planning itself (the Query-or-Cause) is a ``Query``, a ``Refusal`` or a
+    decline, whose record is the snapshot's."""
     from association.query.stages import read_stages
 
     return read_stages(args[0], planned=planned)["query"]
@@ -254,7 +255,7 @@ def install(directory: Path) -> None:
         _rebind(original, _recording(out, boundary, original, shown.get(boundary, as_returned), argued.get(boundary)))
 
     def as_snapshot(answer: Any, args: tuple[Any, ...]) -> Any:
-        return snapshot(args[0].reading, answer, planned=args[0].planned, unanswered=args[0].unanswered, unsaid=args[0].unsaid)
+        return snapshot(args[0].reading, answer, planned=args[0].query, unanswered=args[0].unanswered, unsaid=args[0].unsaid)
 
     ask = agent_module.Agent.ask
     agent_module.Agent.ask = _recording(out, "Agent.ask", ask, as_snapshot)  # type: ignore[method-assign]

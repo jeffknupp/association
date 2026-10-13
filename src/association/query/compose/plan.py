@@ -11,7 +11,7 @@ field the Reading did not settle is not settled here either.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import Any
 
 from association.query.answer import Reply
@@ -21,13 +21,13 @@ from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
 from association.query.reading import CELL_ORDER, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_facts, cell_set
-from association.query.result import Refusal
+from association.query.result import Refusal, Unanswered
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping, measure_names
 from .netpoints import NetPointsQuery
 from .rankings import leaderboard_reads
-from .say import decline_body, say, say_refusal
+from .say import decline_body, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
 from .team import TeamQuery, team_metric
@@ -408,39 +408,41 @@ def _game_level(key: PointShape, q: Query) -> Query:
     raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
-@dataclass(frozen=True)
-class Planned:
-    """What planning one question's Reading came to: the ``query`` on its
-    relation, or why there is none - ``declined`` (no reading of the point,
-    or a narrowing the relation cannot honor: the caller refuses, naming
-    the reason) or ``refusal`` (an answer of its own to give: a stat nothing
-    ranks, a floor no ranking applies).
+PlannedQuery = Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery
+"""A point planned onto its relation: the compiler's
+:class:`~association.query.compose.core.Query` (a player's or the league's
+games, or the season line), the team compiler's
+:class:`~association.query.compose.team.TeamQuery`, a team's own season
+(:class:`~association.query.compose.team_stats.TeamSeasonQuery`), or a
+declared relation's (:class:`~association.query.compose.netpoints.NetPointsQuery`,
+:class:`~association.query.compose.shots.ShotQuery`).
 
-    .. versionadded:: 5.0.0
+.. versionadded:: 6.0.0
+"""
 
-    .. versionchanged:: 6.0.0
-       ``shape`` is the point's own declaration, on every verdict; ``floor``
-       (the coverage entry by the retired words) is gone - the shape keys
-       the floor (Phase 3, step 1).
-    """
+Verdict = PlannedQuery | Unanswered | Unsupported
+"""What planning one question's Reading comes to (:func:`plan_point`): the
+Query-or-Cause, one value (``ROADMAP.md``, Phase 4, step 4) - the query on
+its relation (:data:`PlannedQuery`); the refusal it came to, unworded, which
+the sayer words where it is answered (a :class:`~association.query.result.Refusal`,
+the Outcome's own type: a cause the words came to before any point, a stat
+nothing ranks, a floor no ranking applies); or the decline it gave the
+point up with (an :class:`~association.query.compose.core.Unsupported`
+carrying its sentence: no reading of the point, a narrowing the relation
+cannot honor - a :class:`~association.query.reading.ShapeDeclined` where a
+shape declines by the :class:`~association.query.reading.Cause` the planner
+says, ``cannot_honor``). The shape the point is read and said as is
+:func:`planned_shape`'s, from the Reading and this.
 
-    query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery | None = None
-    declined: str | None = None
-    refusal: Reply | None = None
-    #: What the point is read and said as (:func:`point_shape`): the answer
-    #: side's one key, and the coverage floor's (``coverage.SOURCES``).
-    #: Wherever the Reading holds a point - a planned query, a decline or a
-    #: refusal alike - so the answering loop's declined path checks the
-    #: floor of the point the words named.
-    shape: PointShape | None = None
-    #: The cause a decline is said by, where the planner declined by one
-    #: (:class:`~association.query.reading.ShapeDeclined`: a narrowing the
-    #: point's shape cannot honor) - said by the answering loop where the
-    #: decline was, after the floor and the reading's own causes
-    #: (:func:`refusal_result`); ``declined`` keeps its sentence, the record's.
-    #:
-    #: .. versionadded:: 6.0.0
-    cause: Cause | None = None
+.. versionadded:: 6.0.0
+   Folds ``compose.plan.Planned``, the record that carried the query, the
+   decline's sentence, the said refusal, the shape and the decline's cause
+   beside one another until Phase 4, step 4.
+"""
+
+#: What a point nothing reads is declined with, where neither the reader nor
+#: the planner named a reason of its own.
+NO_READING = "the compiler has no reading of this point"
 
 
 #: The reading's causes whose page names the cause refused by (``refused``),
@@ -497,7 +499,7 @@ def refusal_result(cause: Cause) -> Reply:
     return say_refusal(refusal_of(cause))
 
 
-def plan_point(reading: Reading) -> Planned:
+def plan_point(reading: Reading) -> Verdict:
     """The PLAN stage for one question (``ROADMAP.md``, Phase 1): the point
     the parser read (:attr:`Reading.point <association.query.reading.Reading.point>`)
     planned onto its relation, once, by the answering loop - never by the
@@ -514,24 +516,47 @@ def plan_point(reading: Reading) -> Planned:
        (:attr:`~association.query.reading.Reading.refused`: a championship,
        a player named on a question whose shape has no reading for one) is
        the planning's refusal, ahead of the point's own.
+
+    .. versionchanged:: 6.0.0
+       Returns the Query-or-Cause (:data:`Verdict`): the planned query, the
+       refusal unworded or the decline itself, where it returned the
+       ``Planned`` record holding them and the shape beside one another, a
+       refusal worded (Phase 4, step 4).
     """
     if reading.refused is not None:
         # The words' own refusal, before any point: a championship, a player
         # named on a question whose shape has no reading for one.
-        return Planned(refusal=refusal_result(reading.refused))
+        return refusal_of(reading.refused)
     if reading.point_refusal is not None:
-        return Planned(refusal=refusal_result(reading.point_refusal))
+        return refusal_of(reading.point_refusal)
     if reading.point is None:
-        return Planned(declined=reading.point_declined or "the compiler has no reading of this point")
-    shape = point_shape(reading.point)
+        return Unsupported(reading.point_declined or NO_READING)
     try:
-        query = plan(reading.point)
-    except ShapeDeclined as exc:
-        # A decline the planner says by its cause (the answering loop puts
-        # the key the words ask on it, ShapeDeclined.under).
-        return Planned(declined=str(exc), shape=shape, cause=exc.cause)
+        return plan(reading.point)
     except Unsupported as exc:
-        return Planned(declined=str(exc), shape=shape)
+        # A decline, with its sentence - by its cause where the planner says
+        # one (ShapeDeclined: the answering loop puts the key the words ask
+        # on it, ShapeDeclined.under). Kept without the frames it was raised
+        # through, which a value outlives.
+        return exc.with_traceback(None)
     except Refused as exc:
-        return Planned(refusal=say(exc.result), shape=shape)
-    return Planned(query=query, shape=point_shape(reading.point, query))
+        return exc.result
+
+
+def planned_shape(reading: Reading, planned: Verdict) -> PointShape | None:
+    """What ``reading``'s point is read and said as (:func:`point_shape`),
+    under its planning (``planned``, :func:`plan_point`): the answer side's
+    one key and the coverage floor's (``coverage.SOURCES``) - wherever the
+    Reading holds a point the words named, a planned query, a decline or a
+    refusal alike, so the answering loop's declined path checks the floor of
+    that point; the planned query's where there is one (a season-line point
+    planned at the game level is on the player-games relation). None where
+    the words came to a refusal before any point, or to no point.
+
+    .. versionadded:: 6.0.0
+       ``Planned.shape``, carried beside the query on the planning until
+       Phase 4, step 4.
+    """
+    if reading.refused is not None or reading.point_refusal is not None or reading.point is None:
+        return None
+    return point_shape(reading.point, planned if isinstance(planned, Query) else None)

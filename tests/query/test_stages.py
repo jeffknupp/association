@@ -65,8 +65,8 @@ def test_the_query_stage_is_what_the_planner_built_not_the_point_again() -> None
 
     reading = _reading()
     planned = plan_point(reading)
-    assert isinstance(planned.query, Query) and planned.query.limit is None
-    moved = snapshot(reading, _answer(), planned=replace(planned, query=replace(planned.query, limit=5)))
+    assert isinstance(planned, Query) and planned.limit is None
+    moved = snapshot(reading, _answer(), planned=replace(planned, limit=5))
     assert moved["query"]["limit"] == 5 and moved["reading"]["point"]["limit"] is None
     assert [d.path for d in differences(_snapshot(), moved)] == ["limit"] and differences(_snapshot(), moved)[0].stage == "query"
 
@@ -242,7 +242,7 @@ def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next
     agent = _agent(tmp_path)
     answer = ask_routed(agent, "who scored the most points", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
     assert agent.reading is not None and agent.reading.asked == PLAYER_RANKING
-    record = snapshot(agent.reading, answer, planned=agent.planned)
+    record = snapshot(agent.reading, answer, planned=agent.query)
     with pytest.raises(ValueError, match="needs its planning"):
         snapshot(agent.reading, answer)
     assert record["reading"]["measure"]["as_typed"] == "points" and record["result"] == {"value": 1}

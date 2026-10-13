@@ -4362,8 +4362,8 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
         ),
     )
     planned = plan_point(reading)
-    assert isinstance(planned.query, Query)
-    read = read_player_log(pg_ctx.con, planned.query)
+    assert isinstance(planned, Query)
+    read = read_player_log(pg_ctx.con, planned)
     assert isinstance(read, Result)
     assert read.subject == "Brandin Podziemski" and read.relation == "player" and read.narrowing.opponent == "Detroit Pistons"
     body = read.rows

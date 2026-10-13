@@ -10,6 +10,7 @@ import pytest
 from routed import Routed, ask_routed
 
 from association.query.agent import Agent
+from association.query.compose.plan import planned_shape
 from association.query.reading import (
     GAMES_COUNTED,
     LINE_RECORD,
@@ -506,7 +507,7 @@ def test_the_fast_path_carries_out_the_shape_and_data_it_used_to_discard(monkeyp
 def test_an_answer_carries_the_shape_the_answer_side_chose_its_reader_by(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The page renders an answer's data by the planned point's shape
     (Phase 4, step 1): the one the answer side chose its reader by
-    (``Agent.planned``), carried out beside the data and named in the trace's
+    (``planned_shape`` over ``Agent.query``), carried out beside the data and named in the trace's
     (compose) line - never re-derived from the label."""
     from association.query.answer import Reply
 
@@ -517,8 +518,8 @@ def test_an_answer_carries_the_shape_the_answer_side_chose_its_reader_by(monkeyp
     agent.verbose = True
     answer = ask_routed(agent, "who leads the league in scoring?", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
 
-    assert agent.planned is not None and agent.planned.shape is not None
-    assert answer.shape == agent.planned.shape == PointShape("player_seasons", "ranking", "player")
+    assert agent.reading is not None and agent.query is not None
+    assert answer.shape == planned_shape(agent.reading, agent.query) == PointShape("player_seasons", "ranking", "player")
     assert any("-> (compose)" in line and "shape=player_seasons/ranking/player" in line for line in seen), seen
 
 

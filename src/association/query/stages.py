@@ -20,10 +20,11 @@ The record is what the stages hold today:
     slot-era projection it was recorded through.
 ``query``
     What the planner built from that point
-    (:func:`~association.query.compose.plan.plan_point`): the
-    :class:`~association.query.compose.core.Query` or
+    (:func:`~association.query.compose.plan.plan_point`, the Query-or-Cause):
+    the :class:`~association.query.compose.core.Query` or
     :class:`~association.query.compose.team.TeamQuery` the compiler runs,
-    or why there is none.
+    or why there is none - the refusal, as the sayer words it, or the
+    decline's sentence.
 ``result``
     The answer's structured values (:attr:`Answer.data <association.query.answer.Answer.data>`).
 ``answer``
@@ -45,9 +46,12 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from association.query.reading import Unsupported
+from association.query.result import Clarify, Refusal
+
 if TYPE_CHECKING:
     from association.query.answer import Answer
-    from association.query.compose.plan import Planned
+    from association.query.compose.plan import Verdict
     from association.query.reading import Filtered, Reading
 
 STAGES: tuple[str, ...] = ("reading", "query", "result", "answer")
@@ -218,10 +222,11 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     }
 
 
-def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | None) -> dict[str, Any]:
+def _query_record(reading: Reading, planned: Verdict, mask: Mapping[str, str] | None) -> dict[str, Any]:
     """What the planner built, or why there is none: a refusal the reading
-    or the planner came to, or the reason one of them declined. ``planned``
-    is the caller's planning of the question
+    or the planner came to - recorded as the sayer words it, its page's
+    values and its sentence - or the reason one of them declined.
+    ``planned`` is the caller's planning of the question, the Query-or-Cause
     (:func:`~association.query.compose.plan.plan_point`); nothing here
     plans. Until 5.0.0's last change this was the Reading's point again,
     so a planner that built something else from it went unseen; the point
@@ -230,25 +235,36 @@ def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | 
     reader does not read as the game-level one, where ``games_reading``
     re-planned it in ``compose.answer`` (3 of the 628 recorded questions),
     and the record took the re-planned query from the answering loop
-    (``Agent.ran``) from 2026-10-03 until step 4 retired it."""
-    verdict = planned
-    if verdict.refusal is not None:
-        return {"refused": plain(verdict.refusal.data, mask=mask), "said": _masked(verdict.refusal.answer, mask)}
-    query = verdict.query
-    if query is None or reading.point is None:
-        return {"declined": verdict.declined}
+    (``Agent.ran``) from 2026-10-03 until step 4 retired it. Until Phase 4,
+    step 4 the planning was a ``Planned`` record holding the refusal worded;
+    it is worded here now, by the sayer that words it in the answer, and
+    the record is the same."""
+    if isinstance(planned, (Refusal, Clarify)):
+        # Worded at call time: the sayer is the answer side's, which this
+        # module otherwise stays clear of.
+        from association.query.compose.say import say
+
+        said = say(planned)
+        return {"refused": plain(said.data, mask=mask), "said": _masked(said.answer, mask)}
+    if isinstance(planned, Unsupported) or reading.point is None:
+        return {"declined": str(planned) if isinstance(planned, Unsupported) else None}
     # A TeamQuery has no ``subject``: the team IS the relation. Read by
     # shape rather than imported, so this module stays clear of the compiler.
-    return {"relation": getattr(query, "subject", "team"), **plain(query, mask=mask)}
+    return {"relation": getattr(planned, "subject", "team"), **plain(planned, mask=mask)}
 
 
-def read_stages(reading: Reading, *, planned: Planned, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
+def read_stages(reading: Reading, *, planned: Verdict, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
     """The two records a Reading holds - ``reading`` and ``query`` - as
     :func:`snapshot` writes them, for a caller that stops before the answer
     (``scripts/claims_ledger.py``, which asks which of a question's words
     the reading depends on), with its own planning of the Reading.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``planned`` is the Query-or-Cause
+       (:data:`~association.query.compose.plan.Verdict`), where it was the
+       ``Planned`` record (Phase 4, step 4).
     """
     return {"reading": _reading_record(reading, mask), "query": _query_record(reading, planned, mask)}
 
@@ -257,7 +273,7 @@ def snapshot(
     reading: Reading | None,
     answer: Answer,
     *,
-    planned: Planned | None = None,
+    planned: Verdict | None = None,
     unanswered: str | None = None,
     unsaid: list[str] | None = None,
     mask: Mapping[str, str] | None = None,
@@ -267,14 +283,19 @@ def snapshot(
     normalizer that could not be reached); ``unanswered`` is the reason a
     question nothing reads was given up with
     (:attr:`Agent.unanswered <association.query.agent.Agent.unanswered>`);
-    ``planned`` the answering loop's planning of the question
-    (:attr:`Agent.planned <association.query.agent.Agent.planned>`), whose
-    query is the one the compiler runs; ``unsaid`` the kinds of the remarks written and not said
+    ``planned`` the answering loop's planning of the question, the
+    Query-or-Cause (:attr:`Agent.query <association.query.agent.Agent.query>`),
+    whose query is the one the compiler runs; ``unsaid`` the kinds of the remarks written and not said
     (:attr:`Agent.unsaid <association.query.agent.Agent.unsaid>`); ``mask``
     is :func:`plain`'s. The record also holds ``remarks``: the answer's
     notes and the decisions it states.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``planned`` is the Query-or-Cause
+       (:data:`~association.query.compose.plan.Verdict`), where it was the
+       ``Planned`` record (Phase 4, step 4).
     """
     stated = [decision for decision in answer.decisions if decision.kind]
     return {
@@ -300,12 +321,12 @@ def snapshot(
     }
 
 
-def _planned_for(reading: Reading, planned: Planned | None) -> Planned:
+def _planned_for(reading: Reading, planned: Verdict | None) -> Verdict:
     """``planned``, which a snapshot of a question that was read must be
     handed: planning it here instead was a second planner path, taken by
     whoever forgot."""
     if planned is None:
-        raise ValueError("a snapshot of a Reading needs its planning (Agent.planned, or compose.plan.plan_point(reading))")
+        raise ValueError("a snapshot of a Reading needs its planning (Agent.query, or compose.plan.plan_point(reading))")
     return planned
 
 

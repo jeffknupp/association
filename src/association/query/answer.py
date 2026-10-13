@@ -218,7 +218,7 @@ class Answer:
     #: the relation it reads, the shape - ``scalar``, ``rows``, ``ranking``,
     #: ``comparison``, ``split``, ``runs`` or ``chart`` - and what it is
     #: ``by``), the one the answer side chose its reader by
-    #: (:attr:`Agent.planned <association.query.agent.Agent.planned>`). What
+    #: (:func:`~association.query.compose.plan.planned_shape`). What
     #: the page renders the answer's ``data`` by (where it read the label,
     #: ``intent``, until Phase 4, step 1).
     #:

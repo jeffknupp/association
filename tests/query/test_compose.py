@@ -2218,8 +2218,8 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
 def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx: AnswerContext) -> None:
     """The compiler's verdict, read at parse time, is what ``compose.answer``
     gives: a decline's reason (a league count with no line to count), and a
-    refusal as the answer - a copy, since the agent appends its notes to the
-    answer it is handed."""
+    refusal as the answer - the planning's own refusal, unworded
+    (a :class:`~association.query.result.Refusal`), worded by the sayer."""
 
     declined = reading_of(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", Routed(PLAYER_LOG)))
     assert declined.point is None and declined.point_declined == "no player subject and no ranking or position-group reading of the question"
@@ -2231,10 +2231,8 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     assert refused.point is None and refused.point_refusal == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
     planned = plan_point(refused)
     answered = compose.answer(cx_ctx, refused, planned=planned)
-    assert planned.refusal is not None and answered is not None
-    assert answered.answer == planned.refusal.answer
+    assert planned == Refusal(kind="no_ranking_measure", facts={"stat": "gizmos"}, shown={"stat": "gizmos"}) and answered is not None
     assert answered.answer == "No ranking reads 'gizmos' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
-    assert answered is not planned.refusal
 
 
 def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: AnswerContext) -> None:
@@ -2316,10 +2314,9 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     )
     assert reading.point is not None and reading.point_declined is None and reading.point_refusal is None
     planned = plan_point(reading)
-    assert planned.query is None and planned.refusal is None
-    assert planned.declined is not None and planned.declined.startswith("a rate per 36 cannot be read here")
+    assert isinstance(planned, Unsupported) and str(planned).startswith("a rate per 36 cannot be read here")
     why: list[str] = []
-    assert compose.answer(cx_ctx, reading, declined=why.append, planned=planned) is None and why == [planned.declined]
+    assert compose.answer(cx_ctx, reading, declined=why.append, planned=planned) is None and why == [str(planned)]
 
     answerable = reading_of(
         cx_ctx.con,
@@ -2338,7 +2335,7 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
         ),
     )
     handed = plan_point(answerable)
-    assert isinstance(handed.query, Query)
+    assert isinstance(handed, Query)
     calls: list[Reading] = []
     original = plan_module.plan
     try:

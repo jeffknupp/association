@@ -33,7 +33,7 @@ from routed import planned_answer as compose_answer
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext, Reply
-from association.query.compose.plan import plan_point
+from association.query.compose.plan import plan_point, planned_shape
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.entities import names_of
 from association.query.parse import with_point
@@ -383,7 +383,7 @@ def _read(ctx: AnswerContext, case: str) -> tuple[PointShape | None, Reply]:
     reading = with_point("", replace(scope, asked=asked, subject=read_subject(names_of(ctx.con), "", asked, scope)))
     result = compose_answer(ctx, reading)
     assert result is not None, f"the compiler has no reading of {case}'s case"
-    return plan_point(reading).shape, result
+    return planned_shape(reading, plan_point(reading)), result
 
 
 def test_each_case_is_planned_as_the_shape_whose_renderer_draws_it(ctx: AnswerContext, subtests: Any) -> None:
