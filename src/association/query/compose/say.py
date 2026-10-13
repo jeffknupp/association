@@ -55,6 +55,7 @@ from association.query.reading import (
     SHOT_CHART,
     SHOT_DISTANCE,
     TEAM_COACH,
+    TEAM_GAME_HIGHS,
     TEAM_LINE,
     TEAM_MEETINGS,
     TEAM_OUTLOOK,
@@ -2130,6 +2131,92 @@ def say_single_game_high(result: Result) -> Answer:
         "notes": [redirect.strip()] if redirect else [],
     }
     return Answer(data=data, text=headline + redirect)
+
+
+#: What a team's best game is the most (or the best) of, by catalog key -
+#: each figure a team's games carry (``compose.team.TEAM_GAME_FIGURES``)
+#: and the score.
+_TEAM_HIGH_WORDS: dict[str, str] = {
+    "points": "most points",
+    "rebounds": "most rebounds",
+    "offensiveRebounds": "most offensive rebounds",
+    "defensiveRebounds": "most defensive rebounds",
+    "assists": "most assists",
+    "steals": "most steals",
+    "blocks": "most blocks",
+    "turnovers": "most turnovers",
+    "fouls": "most fouls",
+    "fieldGoalsMade": "most field goals made",
+    "fieldGoalsAttempted": "most field goal attempts",
+    "threePointFieldGoalsMade": "most 3-pointers made",
+    "threePointFieldGoalsAttempted": "most 3-point attempts",
+    "freeThrowsMade": "most free throws made",
+    "freeThrowsAttempted": "most free throw attempts",
+    "fieldGoalPct": "best field goal percentage",
+    "threePointFieldGoalPct": "best 3-point percentage",
+    "freeThrowPct": "best free throw percentage",
+    "points_in_paint": "most points in the paint",
+    "fast_break_points": "most fast-break points",
+}
+
+
+def say_team_game_high(result: Result) -> Answer:
+    """A team's best single game by one figure - or every team's - worded
+    as a player's high is: the top game in one sentence with its date and
+    opponent ("The Philadelphia 76ers' most 3-pointers made in a single game
+    in the 2026 regular season was 25, on 2026-01-07 vs WSH."), the league's
+    naming the team, and the games after it ("Next: ..."). A percentage
+    names its makes and attempts beside it.
+
+    .. versionadded:: 6.0.0
+    """
+    body = result.rows
+    assert body is not None
+    games = [dict(g) for g in body.rows]
+    stat = _facts(result, CountFacts).stat
+    label = _TEAM_HIGH_WORDS.get(stat or "", f"most {stat}")
+    when = _team_high_when(result)
+    narrowed = result.narrowing.phrase
+    league = result.subject == "every team"
+    if not games:
+        whose = "No team has" if league else f"The {result.subject} have"
+        text = f"{whose} no game{narrowed} {when} with a box score to rank by its {label.split(' ', 1)[1]}."
+        return Answer(data={"question_shape": f"{label} in a single game, {result.subject}", "games": [], "headline": text}, text=text)
+
+    def value(game: dict[str, Any]) -> str:
+        """The game's figure, a percentage with its makes and attempts."""
+        return f"{game['value']}%" + f" ({game['made']}-{game['attempts']})" if game["attempts"] is not None else f"{game['value']}"
+
+    def where(game: dict[str, Any]) -> str:
+        """When and against whom the game was played."""
+        return f"on {game['date']}" + (f" vs {game['opponent']}" if game["opponent"] else "")
+
+    top = games[0]
+    # A tie at the top is said as one: every game that reached the figure.
+    tied = [g for g in games if g["value"] == top["value"]]
+    if league:
+        by = " and ".join(f"the {g['team']} {where(g)}" for g in tied)
+        headline = f"The {label} in a single game by a team{narrowed} {when}: {value(top)}, by {by}."
+        rest = [f"the {g['team']} ({value(g)}, {g['date']})" for g in games[len(tied) :]]
+    else:
+        on = " and ".join(where(g) for g in tied)
+        headline = f"The {possessive(result.subject)} {label} in a single game{narrowed} {when} was {value(top)}, {on}."
+        rest = [f"{value(g)} ({where(g)})" for g in games[len(tied) :]]
+    text = headline + (f" Next: {', '.join(rest)}." if rest else "")
+    data = {"question_shape": f"{label} in a single game, {result.subject}{narrowed}, {when}", "season": result.span.season, "stat": stat, "games": games, "headline": text}
+    return Answer(data=data, text=text)
+
+
+def _team_high_when(result: Result) -> str:
+    """The span a team's best game was read over: one season, or every
+    season on record of the team box scores ("in the regular season since
+    1993-94")."""
+    span = result.span
+    season_type = 2 if span.season_type is None else span.season_type
+    if span.season is not None:
+        return f"in the {season_phrase(span.season, season_type)}"
+    kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
+    return f"in the {kind} since {season_label(_facts(result, CountFacts).box_scores_from)}"
 
 
 # --- runs ------------------------------------------------------------------------------
@@ -4594,9 +4681,6 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
     "fact_not_read": _say_fact_not_read,
-    "team_game_high": lambda facts: (
-        f"A team's own best single game is not read yet - nothing ranks the {facts['team']}' games by a stat. Its players' best game is: ask for the most points in a game by a {facts['team']} player."
-    ),
     "playoff_round": lambda facts: (
         f"The games are not labeled by playoff round, so '{facts['round']}' cannot pick them out yet. "
         "Name the two teams and the season instead - a series is their postseason meetings, and those are read."
@@ -4656,6 +4740,7 @@ _ASKED_AS: dict[PointShape, str] = {
     TEAM_PERIOD_TOTAL: "a team's quarter or half",
     PERIOD_RANKING: "a ranking by a quarter or half",
     TEAM_RECORD: "a team's record",
+    TEAM_GAME_HIGHS: "a team's best single game",
     NETPOINTS_RATINGS: "a player's NetPoints",
     NETPOINTS_FINGERPRINT: "a NetPoints fingerprint",
     SHOT_CHART: "a shot chart",
@@ -4966,5 +5051,9 @@ def _sayer(result: Result) -> Callable[[Result], Answer]:
     if isinstance(body, Runs):
         return say_streak
     if isinstance(body, Rows):
-        return _say_rows if body.by == "date" else say_single_game_high
+        if body.by == "date":
+            return _say_rows
+        # A team's best single game, or every team's: the high's rows, said
+        # of the team (D4 lifted for it, Jeff 2026-10-13).
+        return say_team_game_high if result.relation == "team" else say_single_game_high
     raise ValueError(f"no sayer for a {type(body).__name__} body")

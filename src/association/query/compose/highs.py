@@ -32,17 +32,20 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date
-from association.query.entities import Entity
+from association.query.entities import Entity, resolved_team, slot_season
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS, THRESHOLD_STAT_COLUMNS
-from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
-from association.query.result import CountFacts, Decided, Narrowing, Part, Result, Rows, Unanswered
+from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope, span_of
+from association.query.reading import Cuts
+from association.query.result import CountFacts, Decided, Narrowing, Part, Result, Rows, Span, Unanswered
 from association.query.season_line import season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES
+from association.query.team_relation import team_games
 
 from .core import Query, compile_query, rows_of
 from .counts import box_score_span
+from .team import TeamQuery, compile_team_high
 
 
 def _single_game_high_column(q: Query) -> str | None:
@@ -150,3 +153,79 @@ def _single_game_high_redirect(con: duckdb.DuckDBPyConnection, defaulted: bool, 
     first, last = on_record
     kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
     return Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": first, "last": last, "what": kind})
+
+
+#: How many of a team's (or every team's) best games a read lists: the top
+#: game, said, and the two after it, as the league's player high lists them.
+TEAM_HIGH_GAMES = 3
+"""The games a team's best-single-game read keeps.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def read_team_game_high(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered:
+    """A team's best single games by one figure - or every team's, where the
+    question names none ("most 3s made in a single game by a team") - read
+    over the team-games relation and the team box row the figure is on
+    (:func:`~association.query.compose.team.compile_team_high`) into a
+    Result of :class:`~association.query.result.Rows` by the measure, each
+    game's team, date, opponent and figure. A refusal back is the
+    relation's own (no such team, a coverage floor); a measure no game of a
+    team carries is refused by name (``Unsupported``). D4 lifted for it
+    (Jeff, 2026-10-13; ISSUES.md #364): a team's own best game was refused
+    ``team_game_high``, and the league's form read the teams' season
+    ranking.
+
+    .. versionadded:: 6.0.0
+    """
+    from association.query.coverage import coverage_refusal
+    from association.query.reading import TEAM_GAME_HIGHS
+
+    refused = coverage_refusal(TEAM_GAME_HIGHS, q)
+    if refused is not None:
+        return refused
+    team: Entity | None = None
+    if q.who.team is not None:
+        found = resolved_team(con, q.who.team, season=slot_season(q))
+        if isinstance(found, Unanswered):
+            return found
+        team = found
+    season_type = q.span.season_type or 2
+    seasons = span_of(q.span, "games", season_type=season_type)
+    narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=q.cuts.venue, game_n=q.cuts.game_n, situation=q.cuts.situation)), opponent=q.cuts.opponent, date=q.cuts.date)
+    if isinstance(narrowed, Unanswered):
+        return narrowed
+    measure = q.measure
+    assert measure is not None
+    rows = rows_of(con, compile_team_high(narrowed, team, seasons, measure, limit=TEAM_HIGH_GAMES))
+    key = measure.key or "points"
+    games = tuple(
+        {
+            "team": r["team"],
+            "value": r["figure"] if r["attempts"] is None else round(100.0 * r["figure"] / r["attempts"], 1),
+            "made": r["figure"],
+            "attempts": r["attempts"],
+            "date": eastern_date(r["day"]),
+            "opponent": r["opponent"],
+            "won": r["won"],
+            "season": r["season"],
+        }
+        for r in rows
+    )
+    years = [g["season"] for g in games]
+    about = Span(
+        season=seasons.season,
+        season_type=seasons.season_type,
+        career=seasons.season is None,
+        first=min(years) if years and seasons.season is None else None,
+        last=max(years) if years and seasons.season is None else None,
+    )
+    return Result(
+        subject=team.name if team is not None else "every team",
+        relation="team",
+        span=about,
+        narrowing=Narrowing(phrase=narrowed.filters(), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue),
+        parts=(Part(body=Rows(columns=(key,), rows=games, by=key)),),
+        facts=CountFacts(stat=key, box_scores_from=COVERAGE["team_box_stats"].first_season, empty_box_scores=0),
+    )

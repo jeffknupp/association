@@ -691,6 +691,39 @@ def _compile_team_rows(narrowed: TeamNarrowed, team: Entity | None, span: Resolv
     return TeamCompiled(sql, params, team, span, narrowed)
 
 
+def compile_team_high(narrowed: TeamNarrowed, team: Entity | None, span: ResolvedSpan, measure: Measure, *, limit: int) -> TeamCompiled:
+    """A team's games - or every team's, where ``team`` is None - ranked by
+    one figure, top first: the score for points (the relation's own column),
+    the team box row's figure for a box-score measure (:func:`team_figure`;
+    a percentage ranked by made over attempted, its attempts beside it), a
+    game with no figure left out. ``limit`` of them. Each row carries the
+    game's team (``team``, its name in that season) beside the opponent, the
+    date and the result. The reader of a team's best single game
+    (``compose.highs.read_team_game_high``; D4 lifted for it, Jeff
+    2026-10-13, ISSUES.md #364).
+
+    .. versionadded:: 6.0.0
+    """
+    narrowed.window = None
+    columns = [*TEAM_ROW_COLUMNS, f"{season_name_sql('tg.team_id', 'tg.season', 'm.display_name')} AS team"]
+    join = _TEAM_ROWS_JOIN + " JOIN teams m ON m.team_id = tg.team_id"
+    box = team_figure(measure)
+    if box is None:
+        if measure.key != "points" or measure.whose == "opponent":
+            raise Unsupported(f"a team's games are not ranked by {measure.key!r}")
+        figure, attempts = "tg.team_score", None
+    else:
+        box_join, figure, attempts = box
+        join += box_join
+    columns += [f"({figure}) AS figure", f"({attempts if attempts is not None else 'NULL'}) AS attempts"]
+    sql, params = team_rows_sql(narrowed, ", ".join(columns), order="tg.eastern_date DESC", join=join)
+    # A game with no figure (no box row, or no attempts) ranks nothing; a
+    # percentage ranks by made over attempted, the newer game first on a tie.
+    kept, rank = ("figure IS NOT NULL AND attempts > 0", "figure * 1.0 / attempts") if attempts is not None else ("figure IS NOT NULL", "figure")
+    sql = f"SELECT * FROM ({sql}) ranked WHERE {kept} ORDER BY {rank} DESC, day DESC LIMIT {int(limit)}"
+    return TeamCompiled(sql, params, team, span, narrowed)
+
+
 def _compile_team_grouped(q: TeamQuery, narrowed: TeamNarrowed, team: Entity | None, span: ResolvedSpan) -> TeamCompiled:
     """A ``grouped`` read: the team's games divided by one of
     :data:`TEAM_GROUPS`, each group's record and per-game line

@@ -78,6 +78,7 @@ from association.query.reading import (
     SHOT_CHART,
     SHOT_DISTANCE,
     TEAM_COACH,
+    TEAM_GAME_HIGHS,
     TEAM_LINE,
     TEAM_MEETINGS,
     TEAM_ONLY_ASKS,
@@ -1130,6 +1131,30 @@ def _default_period_leaderboard(scope: Filtered) -> Reading:
     )
 
 
+def _default_team_game_high(scope: Filtered) -> Reading:
+    """A team's best single game's default point: one team's games, or
+    every team's where none is named, ranked by the figure the words name
+    (points where they name none) - the team relation's rows by measure
+    (``compose.highs.read_team_game_high``, over the team box row the
+    figure is on). D4 lifted for it (Jeff, 2026-10-13; ISSUES.md #364).
+
+    .. versionadded:: 6.0.0
+    """
+    measure = scope.measure if scope.measure is not None and scope.measure.key is not None else measured("points")
+    return Reading(
+        **scope.filters(),
+        shape="rows",
+        by="measure",
+        on="team_games",
+        measures=(measure,),
+        aggregate=Aggregate.NONE,
+        group="none",
+        predicates=[],
+        order="measure",
+        relation="team",
+    )
+
+
 def _default_team_record(scope: Filtered) -> Reading:
     """``team_record``'s default point: a team's games won and lost - a
     record on the team relation (``compose.team_records``, which reads the
@@ -1199,6 +1224,7 @@ DEFAULT_POINTS: dict[PointShape, Callable[[Filtered], Reading]] = {
     TEAM_PERIOD_TOTAL: _default_team_quarter_points,
     PERIOD_RANKING: _default_period_leaderboard,
     TEAM_RECORD: _default_team_record,
+    TEAM_GAME_HIGHS: _default_team_game_high,
     NETPOINTS_RATINGS: _default_player_netpoints,
     NETPOINTS_FINGERPRINT: _default_fingerprint,
     SHOT_CHART: _default_shot_chart,
@@ -1638,7 +1664,7 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
             return team_splits
     if asked == PLAYER_COMPARISON:
         return _compare_point(scope)
-    if asked in (LINE_RUNS, PLAYER_MEETINGS, PRESENCE_SPLIT, TEAM_MEETINGS, TEAM_PERIOD_TOTAL, PERIOD_RANKING, TEAM_RECORD):
+    if asked in (LINE_RUNS, PLAYER_MEETINGS, PRESENCE_SPLIT, TEAM_MEETINGS, TEAM_PERIOD_TOTAL, PERIOD_RANKING, TEAM_RECORD, TEAM_GAME_HIGHS):
         # The retired templates read their slots alone, so no word moves the
         # point: a player's, a team's or the league's longest run
         # (_default_streak), two players' meetings

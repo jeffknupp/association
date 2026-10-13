@@ -53,6 +53,7 @@ from association.query.reading import (
     PLAYER_SPLITS,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
+    TEAM_GAME_HIGHS,
     TEAM_LINE,
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
@@ -2420,6 +2421,8 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         TEAM_PERIOD_TOTAL,
         PERIOD_RANKING,
         TEAM_RECORD,
+        # D4 lifted (Jeff, 2026-10-13): a team's best single game, its point's only answer.
+        TEAM_GAME_HIGHS,
     }
     # And the team-season readers' (compose.team_stats, Phase 2, step 4).
     team_seasons = {TEAM_LINE, TEAM_RANKING, TEAM_OUTLOOK}
@@ -2461,7 +2464,6 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "championship": {"shape": TEAM_RANKING},
     "no_player_reading": {"player": "Alperen Sengun", "shape": TEAM_RANKING},
     "fact_not_read": {"fact": "draft", "words": "3rd nba overall draft picks"},
-    "team_game_high": {"team": "Philadelphia 76ers", "shape": TEAM_LINE},
     "playoff_round": {"shape": PLAYER_LOG, "round": "finals"},
     "non_calendar_situation": {"shape": PLAYER_LINE, "situation": "18 year old", "reads_as": "age"},
     "period_stat": {"shape": PERIOD_RANKING, "stat": "minutes", "period": 4, "half": None},
@@ -2478,7 +2480,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence
 #: (``refused`` and ``intent``) - not a fact the sentence names.
 _PAGE_INTENT_KINDS = frozenset(
-    {"championship", "no_player_reading", "team_game_high", "playoff_round", "non_calendar_situation", "period_stat", "period_as_condition", "team_period_stat", "bench_points", "team_boolean_count"}
+    {"championship", "no_player_reading", "playoff_round", "non_calendar_situation", "period_stat", "period_as_condition", "team_period_stat", "bench_points", "team_boolean_count"}
 )
 
 

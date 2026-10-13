@@ -76,9 +76,10 @@ this tree:
   `tests/query/test_frozen_shapes.py` holds the 26 shapes the grammar can
   name (the grammar's keys, `reading.PointShape` as relation, shape and
   `by`, since Phase 3, step 4 - the 25 intents' names until then, a freeze
-  retired with the intent; the 26th, `reading.PLAYERS_COUNTED`, how many
-  players a season line holds, by Jeff's lifting of D4 for the season
-  ranking's shapes on 2026-10-13, ISSUES.md #390), the page's 7 renderers (one per
+  retired with the intent; the 26th and 27th, `reading.PLAYERS_COUNTED`, how many
+  players a season line holds, and a team's best single game,
+  `team_games/rows/measure`, both by Jeff's lifting of D4 on 2026-10-13,
+  ISSUES.md #390 and #364), the page's 7 renderers (one per
   `reading.Shape`, since Phase 4, step 1 - 22 keyed by the label until
   then) and the 4 scoping
   declarations left in `src` (by module and name, read from the source),

@@ -74,6 +74,9 @@ FROZEN = frozenset(
         # 30 ppg in 2026", ISSUES.md #390): the 26th, D4 lifted for it by Jeff
         # on 2026-10-13 - the season ranking kept past the line, counted.
         ("player_seasons", "scalar", "count"),
+        # The 27th: D4 lifted (Jeff, 2026-10-13) for #364's remainder: a team's own
+        # games, or every team's, ranked by one figure.
+        ("team_games", "rows", "measure"),
     }
 )
 

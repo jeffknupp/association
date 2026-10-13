@@ -51,7 +51,7 @@ from association.query.result import Result, Unanswered
 
 from .core import Query, Refused, Unsupported, run
 from .counts import read_threshold_count
-from .highs import read_single_game_high
+from .highs import read_single_game_high, read_team_game_high
 from .logs import read_player_log, read_team_log
 from .meetings import read_head_to_head
 from .netpoints import NetPointsQuery, draw_fingerprint, read_fingerprint, read_player_netpoints
@@ -294,6 +294,7 @@ _ROUTES: dict[PointShape, _Route] = {
     PointShape("team_games", "comparison", "opponent"): _Route(read_head_to_head, only=True),
     PointShape("team_periods", "scalar", "total"): _Route(read_team_quarter_points, only=True),
     PointShape("team_games", "scalar", "record"): _Route(read_team_record, only=True),
+    PointShape("team_games", "rows", "measure"): _Route(read_team_game_high, only=True),
     PointShape("team_seasons", "scalar", "line"): _Route(read_team_stat, only=True),
     PointShape("team_seasons", "ranking", "team"): _Route(read_team_leaderboard, only=True),
     PointShape("team_snapshots", "scalar", "projection"): _Route(read_team_outlook, only=True),
