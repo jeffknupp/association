@@ -78,8 +78,9 @@ def phrase_line(phrase: str, *, below: bool) -> Line:
     relation refuses by the words: :func:`measure_filters`), and which way
     the line faces: ``below`` reads "at most"/"no more than"/"or less" as at
     or under, anything else as under; a phrase kept over is at or above,
-    or over where its lead says so (:data:`~association.query.lexicon.OVER_LEADS`:
-    "over 26 minutes", "more than 26 minutes").
+    over where its lead says so (:data:`~association.query.lexicon.OVER_LEADS`:
+    "over 26 minutes", "more than 40 points"), or at the number where it
+    says "exactly" (:data:`~association.query.lexicon.EXACT_LEADS`).
 
     .. versionadded:: 6.0.0
     """
@@ -88,7 +89,7 @@ def phrase_line(phrase: str, *, below: bool) -> Line:
     if match is None:
         return Line(measure=None, op="<" if below else ">=", value=0, as_typed=text, narrows=True)
     lead, words = match.group("lead").strip(), match.group("words")
-    op: LineOp = ">" if not below and lead.endswith(lexicon.OVER_LEADS) else ">="
+    op: LineOp = ">" if not below and lead.endswith(lexicon.OVER_LEADS) else "=" if not below and lead.endswith(lexicon.EXACT_LEADS) else ">="
     if below:
         op = "<=" if lead.startswith(lexicon.AT_MOST_LEADS) or " or less" in words else "<"
     return Line(measure=measure_column(words), op=op, value=int(match.group("n")), as_typed=text, narrows=True)
@@ -131,7 +132,10 @@ def measure_filters(scope: Filtered) -> list[MeasureFilter]:
     filters: list[MeasureFilter] = []
     for line in relation_lines(scope):
         if line.measure is None:
-            side = "under" if line.below else "over"
+            side = "under" if line.below else "over" if line.op != "=" else "at"
+            if lexicon.PERCENTAGE_WORDS.search(line.as_typed):
+                # "more than 40 field goal percentage": the words name a stat, a rate no game's row holds.
+                raise PointRefused(Cause(kind="line_on_a_percentage", facts={"phrase": line.as_typed, "side": side}), f"{line.as_typed!r} keeps games {side} a percentage no box score holds")
             raise PointRefused(Cause(kind="line_names_no_stat", facts={"phrase": line.as_typed, "side": side}), f"{line.as_typed!r} names no box-score stat a game can be kept {side}")
         how = {"<": "under", "<=": "at most", ">=": "at least", ">": "over", "=": "exactly"}[line.op]
         value = int(line.value)
