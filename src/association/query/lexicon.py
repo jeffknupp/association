@@ -2534,7 +2534,7 @@ CONDITION_STAT_WORDS: dict[str, str] = {
 # and the answer asked whether Bo or Travis Outlaw was meant ("hurt" is not
 # one: it is Matt Hurt's name).
 NAME_STOPWORDS: frozenset[str] = frozenset(
-    "this last in on since during for vs vs. versus against at when while game games season seasons record stats stat playing played plays from over the a an any his her their "
+    "this last in on since during for vs vs. versus against at when while game games single season seasons record stats stat playing played plays from over the a an any his her their "
     "how what who whose why many much did does do is are was were has have had than to of by not no "
     "out injured sidelined resting rested rests sitting sits sat missing misses missed absent inactive dnp "
     "doesn't didn't don't isn't wasn't aren't weren't doesnt didnt dont isnt wasnt arent werent".split()  # codespell:ignore doesnt,didnt,isnt,wasnt,arent,werent - typed without the apostrophe
@@ -4508,9 +4508,19 @@ POSITION_LOG_ROW = row(r"\b(log|game ?log)\b")
 .. versionadded:: 6.0.0
 """
 LEAGUE_TEAMS_RANKED_ROW = row(
-    r"(?=.*\b(team|teams|franchise|nba)\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)"
+    r"(?=.*\b(team|teams|franchise)\b|.*\bnba\b.*\b(wins?|loss(?:es)?)\b|.*\b(wins?|loss(?:es)?)\b.*\bnba\b)(?!.*\bplayers?\b)"
+    r"(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)"
 )
 """The league's teams ranked.
+
+.. versionadded:: 6.0.0
+"""
+LEAGUE_NBA_RANKED_ROW = row(r"(?=.*\bnba\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)")
+"""The league's teams ranked, named by "nba" alone - which the parser reads
+as the teams' only where the words name no measure the players' ranking
+reads (``parse.parent_asked``): "most steals in nba in 2025" is the players'
+ranking, "nba best shooting percentages 2023", whose measure nothing reads,
+stays the teams' refusal it was rather than the players' points per game.
 
 .. versionadded:: 6.0.0
 """
