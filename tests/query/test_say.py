@@ -5,6 +5,8 @@ held to them with no warehouse behind it."""
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from routed import said as as_said
 
 from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_player_log, say_team_log
@@ -97,6 +99,22 @@ def test_a_teams_log_is_said_with_its_record_and_the_total_asked_for() -> None:
     assert lines[1] == "  2026-04-10  W 110-100  vs Boston Celtics" and lines[3] == "  2026-04-06  ? 101-101  vs Miami Heat"
     assert lines[4] == "  Point differential: +6 (+2.00 per game)."
     assert said.data["wins"] == 1 and said.data["losses"] == 1 and said.data["differential"] == 6 and said.data["differential_per_game"] == 2.0
+
+
+def test_a_teams_log_names_the_games_its_window_cut_from() -> None:
+    """ISSUES.md #402: the newest three of a season's 82 say so in the heading."""
+    games = ({"date": "2026-04-10", "home_away": "home", "opponent": "Boston Celtics", "team_score": 110, "opponent_score": 100, "won": True, "season": 2026},)
+    result = Result(
+        subject="New York Knicks",
+        relation="team",
+        span=Span(season=2026, season_type=2, first=2026, last=2026),
+        window=Window(limit=1, ascending=False),
+        parts=(Part(body=Rows(rows=games, total_before_window=82, summary={"wins": 1, "losses": 0, "unknown": 0})),),
+        facts=LogFacts(stat=None),
+    )
+    assert as_said(say_team_log(result)).text.split("\n")[0] == "New York Knicks, most recent of 82 games of the 2026 regular season (1-0):"
+    three = replace(result, window=Window(limit=3, ascending=True), parts=(Part(body=Rows(rows=games * 3, total_before_window=82, summary={"wins": 3, "losses": 0, "unknown": 0})),))
+    assert as_said(say_team_log(three)).text.split("\n")[0] == "New York Knicks, first 3 of 82 games of the 2026 regular season (3-0):"
 
 
 def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:

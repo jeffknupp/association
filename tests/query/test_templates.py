@@ -1489,6 +1489,21 @@ def test_a_teams_last_n_games_naming_its_season_type_is_unchanged(gl_con: Answer
     assert "of the 2026 regular season" in (regular.text or "")
 
 
+def test_a_teams_log_says_how_many_games_its_window_cut_from(gl_con: AnswerContext) -> None:
+    """ISSUES.md #402: "show the 76ers pace for each game last season" listed
+    the newest ten under "last 10 games of the 2025 regular season", nothing
+    saying the season held 82. The heading says how many the window cut the
+    listing from, as a player's log does ("last 10 of 49 games", F149) - and
+    nothing more where the listing is every game the span holds."""
+    s = current_season()
+    newest = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season_type=2), window=Window(order="recent", count=1)))
+    assert (newest.text or "").startswith(f"New York Knicks, most recent of 2 games of the {s} regular season (0-1):")
+    first = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season_type=2), window=Window(order="first", count=1)))
+    assert (first.text or "").startswith(f"New York Knicks, first of 2 games of the {s} regular season (1-0):")
+    every = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season_type=2), window=Window(order="recent", count=5)))
+    assert (every.text or "").startswith(f"New York Knicks, last 2 games of the {s} regular season (1-1):")
+
+
 def test_a_teams_last_n_games_all_one_type_reads_exactly_as_before(gl_con: AnswerContext) -> None:
     """When the last N happen to be all one type - most teams and players
     never reach the postseason at all - the header reads exactly as it always

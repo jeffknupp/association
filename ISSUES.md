@@ -524,8 +524,8 @@ those were found.
 ### "for each game" and "every game" are read as the log's default window of the newest 10: "show the 76ers pace for each game last season" lists the last 10 games' scores
 - **Found:** 2026-10-13, Jeff's queries on `a5a4e68` (`--verbose`), reported after the Phase 4 live run.
 - **Evidence:** "show the 76ers pace for each game last season" and "show the 76ers 3pt% for each game last season" both read `asked=player_games/rows/date` with `window=date/desc/10` and answer "Philadelphia 76ers, last 10 games of the 2025 regular season (1-9)"; "each" and "game" are read by no window rule, so the log's rule for a bare log (the newest N, `DEFAULT` 10) stands. The same wording on a player ("show luka's points for each game last season") is the same window.
-- **User sees:** ten games where the season's every game was asked, the count stated in the heading and nothing saying the rest were cut.
-- **Next step:** "for each game", "every game", "game by game", "per game" (on a log) read as the whole span - a window of no count, or the log's window set to the span's games - with the heading saying the count; a test per wording; the 2,710 readings and the feed measured for the wordings' reach before the rule lands.
+- **User sees:** ten games where the season's every game was asked. Since the P1 sweep's lane T (2026-10-13) a team's log says the count it cut from - "last 10 of 82 games of the 2025 regular season" - as a player's had (F149), so the narrowing is stated; the window is still the newest 10.
+- **Next step:** (the window tagger's, lane S) "for each game", "every game", "game by game", "per game" (on a log) read as the whole span - a window of no count, or the log's window set to the span's games; a test per wording; the 2,710 readings and the feed measured for the wordings' reach before the rule lands.
 - **Source:** ours.
 - **Priority:** P2 - a narrower answer than asked, the narrowing stated only as "last 10".
 - **GitHub:** #402

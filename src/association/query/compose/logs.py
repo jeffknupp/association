@@ -41,7 +41,7 @@ from association.query.team_games import TeamNarrowed, unnarrowed_games
 from association.query.team_relation import team_games
 
 from .core import LINE, Compiled, Query, compile_over, compile_query, rows_of
-from .team import TeamQuery, compile_team_over
+from .team import TeamQuery, compile_team_count, compile_team_over
 
 # A player's log columns, by header -> player_game_log column. The four in
 # _LOG_BASE are always shown, and a named stat adds its own: "luka ft log" and
@@ -398,7 +398,13 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
     games = _team_log_games(rows)
     seasons = [g["season"] for g in games]
     about = Span(season=span.season, season_type=span.season_type, career=span.season is None, date=narrowed.date, first=min(seasons), last=max(seasons), years=span.years(min(seasons), max(seasons)))
-    body = Rows(rows=tuple(games), summary=_team_log_summary(games))
+    # How many games the window cut these from, so the heading can say "last
+    # 10 of 82 games" where the read kept fewer than the span holds - the
+    # player log's rule (F149), and ISSUES.md #402: ten games listed where a
+    # season's were asked, with nothing saying the rest were cut. The rows
+    # read applies its own limit, so the narrowed games carry no window.
+    (counted,) = rows_of(con, compile_team_count(narrowed, team, span))
+    body = Rows(rows=tuple(games), total_before_window=int(counted["games"]), summary=_team_log_summary(games))
     return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=LogFacts(stat=stat))
 
 

@@ -1076,6 +1076,18 @@ def _team_total_data(games: list[dict[str, Any]], stat: Any) -> dict[str, Any]:
     return {"differential": diff, "differential_per_game": round(diff / len(games), 2)}
 
 
+def _team_log_scope(count: int, ascending: bool, date: str | None, total: int | None) -> str:
+    """How many games a team's log lists, and of how many where the window
+    cut them from more - "last 10 of 82 games", "most recent of 41 games" -
+    the player log's rule (F149, :func:`_player_log_header`), so a log of
+    the newest ten never reads as the season's every game (ISSUES.md #402)."""
+    if date or total is None or total <= count:
+        return _scope_words(count, ascending, date)
+    if count == 1:
+        return f"{'first' if ascending else 'most recent'} of {total:,} games"
+    return f"{'first' if ascending else 'last'} {count} of {total:,} games"
+
+
 def say_team_log(result: Result) -> Answer:
     """A team's log, worded: the heading with its record, one line per game,
     the total the question asked for beneath them.
@@ -1095,7 +1107,7 @@ def say_team_log(result: Result) -> Answer:
         scope_text = _scope_words(len(games), False, None)
     else:
         where = f" of the {season_phrase(span.season, span.season_type or 2)}" if span.season is not None else (f" ({span.years})" if span.date else f" (all-time, {span.years})")
-        scope_text = _scope_words(len(games), window.ascending, span.date)
+        scope_text = _team_log_scope(len(games), window.ascending, span.date, body.total_before_window)
     header = f"{result.subject}{result.narrowing.phrase}, {scope_text}{where} ({record}):"
     mark = {True: "W", False: "L", None: "?"}
     lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
