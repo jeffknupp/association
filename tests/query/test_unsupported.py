@@ -326,3 +326,51 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
     )
     assert result is not None and result.data["refused"] == "team_boolean_count" and "team's total" in result.text
     assert unanswerable(con, PLAYER_RANKING, Reading(measure=Measure(key="triple_double", as_typed="triple_double")), "who has the most triple doubles this season") is None
+
+
+@pytest.mark.parametrize(
+    ("question", "fact", "words"),
+    [
+        ("3rd nba overall draft picks", "draft", "3rd nba overall draft picks"),
+        ("most points scored by a player drafted 58th in the nba draft", "draft", "drafted"),
+        ("what pick was wlt chamberlain", "draft", "what pick"),
+        ("NBA players born on August 1", "birth", "born"),
+        ("NBA players with birth date 8/1", "birth", "birth date"),
+        ("6 ft 6 inches nba players", "height", "6 ft 6 inches"),
+        ("6'10 chicago bulls forwards 2010-2019", "height", "6'10"),
+        ("How tall is Yao Ming?", "height", "How tall"),
+        ("players that wear number 5 jersey active", "jersey", "wear number 5"),
+        ("players with 78 jersey", "jersey", "jersey"),
+        ("How many 10+ point leads did the Sacramento Kings have last season", "lead", "10+ point leads"),
+        ("nba most 4 point plays", "four-point play", "4 point plays"),
+        ("highest scoring 2nd options in the nba this year", "role", "2nd options"),
+        ("luka doncic stats against 50 win teams in the 2026 season", "wins", "50 win teams"),
+    ],
+)
+def test_a_fact_no_table_holds_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, fact: str, words: str) -> None:
+    """ISSUES.md #389: each of these fell to the parent grammar's default
+    reading - the 2026 points leaders, a player's season line, a team's
+    points per game - or, for a birth date, was refused as a game on that
+    day; the fact is refused by name before any reader runs."""
+    refusal = by_question(question, PLAYER_RANKING, con)
+    assert refusal is not None and refusal.data == {"fact": fact, "words": words, "message": refusal.text}, refusal
+    assert repr(words) in refusal.text
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "who leads the league in assists?",
+        "tatum stats in the lead up to the playoffs",
+        "knicks record in playoff games when Mitchell Robinson shoots 4 ft",
+        "lebron 4 point games",
+        "most points by a third year player",
+        "who picks up the most fouls",
+        "free throw percentage last 10 games",
+    ],
+)
+def test_words_beside_an_absent_fact_are_not_refused(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """The words each absent fact is read by are taken only where they name
+    it: "leads the league" is no lead, "4 ft" a shot's distance, "ft" a free
+    throw, a pick only after "what", "which" or "overall"."""
+    assert by_question(question, PLAYER_RANKING, con) is None

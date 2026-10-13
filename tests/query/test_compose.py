@@ -2447,6 +2447,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "too_short": {"asked": "Tatum rec"},
     "championship": {"shape": TEAM_RANKING},
     "no_player_reading": {"player": "Alperen Sengun", "shape": TEAM_RANKING},
+    "fact_not_read": {"fact": "draft", "words": "3rd nba overall draft picks"},
     "playoff_round": {"shape": PLAYER_LOG, "round": "finals"},
     "non_calendar_situation": {"shape": PLAYER_LINE, "situation": "18 year old", "reads_as": "age"},
     "period_stat": {"shape": PERIOD_RANKING, "stat": "minutes", "period": 4, "half": None},

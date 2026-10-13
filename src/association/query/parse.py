@@ -1082,16 +1082,26 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       and "5" unread (ISSUES.md #378) - no end is right over the other, so
       the refusal names both
       (:func:`~association.query.window.contradicting_ends`).
+    - a fact about a player or a game no table holds, or nothing reads
+      (``fact_not_read``, :data:`~association.query.lexicon.ABSENT_FACTS`):
+      "3rd nba overall draft picks", "players that wear number 5 jersey
+      active" and "6 ft 6 inches nba players" each answered the 2026 points
+      leaders, and "NBA players born on August 1" was refused as a game on
+      August 1 (ISSUES.md #389) - the words fell to the parent grammar's
+      default reading, the fact unread.
     - a window of games taken in each season (``window_per_season``):
       "warriors first 10 game record every season" answered the first 10
       games of 2026, "every season" unread (ISSUES.md #379) - nothing reads
       a window per season yet
       (:func:`~association.query.window.per_season_window`).
 
-    The championship first, as the answering loop asked them, then the
-    window's ends, then a window per season."""
+    The championship first, as the answering loop asked them, then a fact
+    nothing reads, then the window's ends, then a window per season."""
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
+    fact = _refused_fact_not_read(question)
+    if fact is not None:
+        return fact
     ends = contradicting_ends(question)
     if ends:
         return Cause(kind="window_ends_contradict", facts={"ends": [question[claim.start : claim.end] for claim in ends]})
@@ -1102,6 +1112,17 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)
     return Cause(kind="no_player_reading", facts={"player": player, "shape": reading.asked}) if player is not None else None
+
+
+def _refused_fact_not_read(question: str) -> Cause | None:
+    """The first fact :data:`~association.query.lexicon.ABSENT_FACTS` names
+    in ``question``, as the ``fact_not_read`` cause with the words that
+    name it - or None."""
+    for fact, pattern in lexicon.ABSENT_FACTS:
+        match = pattern.search(question)
+        if match is not None:
+            return Cause(kind="fact_not_read", facts={"fact": fact, "words": match.group(0)})
+    return None
 
 
 def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Cause, ...]:

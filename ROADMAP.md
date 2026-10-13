@@ -772,7 +772,7 @@ steps, the subject's words in `lexicon.py`, `grammar.py`): #373, #364,
 `compose/team_records.py`, `compose/meetings.py`, `compose/presence.py`,
 `compose/logs.py`'s team half, `conditions.py`): #326, #325, #167's
 sentence half, #364's reader half, and the two P2s of 2026-10-13 that
-share the team-games relation's missing box-score join (#403, #404).
+share the team-games relation's missing box-score join (#402, #403).
 Each lane measures first - every entry's wording probed on both
 populations and the feed searched for its class, the lane's own order by
 reach - fixes what it can one entry at a time, closes each entry's
