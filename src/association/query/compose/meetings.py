@@ -16,7 +16,7 @@ sentences to the sayer (:func:`association.query.compose.say.say_head_to_head`).
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Literal
+from typing import Any, Literal
 
 import duckdb
 
@@ -24,14 +24,15 @@ from association.nba.season import current_season
 from association.query import reading
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
+from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
 from association.query.reading import Cuts, Filtered, PointShape, Unsupported
-from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Result, Span, Unanswered
+from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import team_games
 
 from .core import rows_of
-from .team import TeamQuery, compile_team_over
+from .team import TeamQuery, compile_team_over, team_figure
 
 
 def _head_to_head_names(teams: tuple[str, ...], opponent_slot: str | None) -> list[str]:
@@ -113,10 +114,68 @@ def _head_to_head_narrowed(
     return team_games(con, a, span, TeamQuery(cuts=Cuts(venue=venue)), opponent=b), season
 
 
-def _head_to_head_wins(a: Entity, b: Entity, won: list[bool | None]) -> Grouped:
+def _head_to_head_wins(a: Entity, b: Entity, won: list[bool | None], figures: tuple[dict[str, int], dict[str, int]] = ({}, {})) -> Grouped:
     """The meetings as one row per team: each team's wins (a NULL result is
-    neither's)."""
-    return Grouped(by="team", rows=({"key": a.name, "wins": sum(1 for w in won if w)}, {"key": b.name, "wins": sum(1 for w in won if w is False)}))
+    neither's), and its figure over them where one was asked."""
+    return Grouped(by="team", rows=({"key": a.name, "wins": sum(1 for w in won if w), **figures[0]}, {"key": b.name, "wins": sum(1 for w in won if w is False), **figures[1]}))
+
+
+#: What two teams' meetings say with no figure beside the wins: the series
+#: itself, its record.
+_MEETINGS_OWN: frozenset[str] = frozenset({"wins", "losses", "record", "games_played"})
+
+
+def _head_to_head_figure_of(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """One team's box-score figure over the meetings it has one for: the
+    total, a percentage's attempts, and how many games it covers."""
+    counted = [row for row in rows if row["figure"] is not None]
+    figure = {"figure": sum(int(row["figure"]) for row in counted), "figure_games": len(counted)}
+    if any(row["attempts"] is not None for row in rows):
+        figure["attempts"] = sum(int(row["attempts"] or 0) for row in counted)
+    return figure
+
+
+def _head_to_head_figures(
+    con: duckdb.DuckDBPyConnection, q: TeamQuery, a: Entity, span: ResolvedSpan, narrowed: TeamNarrowed, rows: list[dict[str, Any]]
+) -> tuple[str | None, tuple[dict[str, int], dict[str, int]]]:
+    """The figure the question named beside the meetings (ISSUES.md #326:
+    "knicks vs celtics total points" answered the series record alone) -
+    the catalog key and each team's total over the games: points from the
+    meetings' own scores, a box-score figure from each side's box row
+    (:func:`~association.query.compose.team.team_figure`, the team's row and
+    then the opponent's). ``(None, ...)`` where the measure is the series
+    itself or none was named; a figure no game carries raises
+    :class:`~association.query.reading.Unsupported` for the caller's
+    refusal."""
+    measure = q.measure
+    if measure is None or measure.key is None or measure.key in _MEETINGS_OWN:
+        return None, ({}, {})
+    if measure.key in ("points", "point_differential", "plusMinus"):
+        games = len(rows)
+        return "points", (
+            {"figure": sum(int(row["team_score"]) for row in rows), "figure_games": games},
+            {"figure": sum(int(row["opponent_score"]) for row in rows), "figure_games": games},
+        )
+    if team_figure(measure) is None:
+        return None, ({}, {})
+    sides = []
+    for whose in ("own", "opponent"):
+        figured = rows_of(con, compile_team_over(replace(q, shape="rows"), a, span, narrowed, ascending=True, figure=replace(measure, whose=whose)))
+        sides.append(_head_to_head_figure_of(figured))
+    return measure.key, (sides[0], sides[1])
+
+
+def _head_to_head_unread(q: TeamQuery, a: Entity) -> Refusal | None:
+    """A figure no game of a team carries, asked beside two teams' meetings,
+    refused by name rather than answered as the series alone."""
+    measure = q.measure
+    if measure is None or measure.key is None or measure.key in _MEETINGS_OWN:
+        return None
+    try:
+        team_figure(measure)
+    except Unsupported:
+        return Refusal(kind="team_figure_unread", facts={"team": a.name, "stat": measure.key, "what": "meetings"}, shown={"team": a.name}, under=())
+    return None
 
 
 def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
@@ -144,6 +203,9 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
     if isinstance(teams, Unanswered):
         return teams
     a, b = teams
+    unread = _head_to_head_unread(q, a)
+    if unread is not None:
+        return unread
     season_type = scope.span.season_type or 2
     date, venue = scope.cuts.date, scope.cuts.venue
     since, until, career = _head_to_head_span_slots(scope, date)
@@ -152,15 +214,28 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
     narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, scope.span.season, season_type)
     if isinstance(narrowed, Unanswered):
         return narrowed
-    won = [row["won"] for row in rows_of(con, compile_team_over(replace(q, shape="rows"), a, ResolvedSpan(season, season_type), narrowed, ascending=True))]
+    span = ResolvedSpan(season, season_type)
+    rows = rows_of(con, compile_team_over(replace(q, shape="rows"), a, span, narrowed, ascending=True))
+    won = [row["won"] for row in rows]
+    key, figures = _head_to_head_figures(con, q, a, span, narrowed, rows)
     return Result(
         subject=a.name,
         relation="team",
         span=Span(season=season, season_type=season_type, date=date),
         narrowing=Narrowing(opponent=b.name, venue=venue),
-        parts=(Part(body=_head_to_head_wins(a, b, won)),),
-        facts=MeetingsFacts(games=len(won)),
+        parts=(Part(body=_head_to_head_wins(a, b, won, figures)),),
+        facts=MeetingsFacts(games=len(won), figure=key),
+        notes=_head_to_head_notes(key, figures, len(won)),
     )
+
+
+def _head_to_head_notes(key: str | None, figures: tuple[dict[str, int], dict[str, int]], games: int) -> tuple[Note, ...]:
+    """The meetings a box-score figure could not be read in - either side's
+    box row missing - said beside the totals, which are over the rest."""
+    if key is None or key == "points":
+        return ()
+    blank = games - min(side.get("figure_games", games) for side in figures)
+    return (Note("stat_blank", {"games": blank, "stat": key, "whose": "team_log"}),) if 0 < blank < games else ()
 
 
 def _head_to_head_over_span(
@@ -177,7 +252,9 @@ def _head_to_head_over_span(
         return narrowed
     # The team compiler's rows read: each meeting's result and the season it
     # was played in (a postseason's by its calendar year), oldest first.
-    rows = [(row["won"], row["season"]) for row in rows_of(con, compile_team_over(q, a, span, narrowed, ascending=True))]
+    read = rows_of(con, compile_team_over(q, a, span, narrowed, ascending=True))
+    rows = [(row["won"], row["season"]) for row in read]
+    key, figures = _head_to_head_figures(con, q, a, span, narrowed, read)
     years = [int(yr) for _, yr in rows]
     first, last = (min(years), max(years)) if years else (None, None)
     return Result(
@@ -185,6 +262,7 @@ def _head_to_head_over_span(
         relation="team",
         span=Span(season_type=season_type, career=True, first=first, last=last, phrase=span.during(first, last, whose="the seasons on record"), since=since, until=until),
         narrowing=Narrowing(opponent=b.name, venue=venue),
-        parts=(Part(body=_head_to_head_wins(a, b, [won for won, _ in rows])),),
-        facts=MeetingsFacts(games=len(rows), span="career" if career else None),
+        parts=(Part(body=_head_to_head_wins(a, b, [won for won, _ in rows], figures)),),
+        facts=MeetingsFacts(games=len(rows), span="career" if career else None, figure=key),
+        notes=_head_to_head_notes(key, figures, len(rows)),
     )
