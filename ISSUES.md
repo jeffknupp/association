@@ -2317,6 +2317,16 @@ those were found.
 - **Priority:** P2 - a different figure than asked, with the unit said.
 - **GitHub:** #376
 
+### A "compare A to B" whose A is words nothing resolves answers B alone, with no sentence saying a side was dropped: "compare Karl anything town to khris middleton" is Middleton's line
+- **Found:** 2026-10-13, Jeff reading lane N's held disagreement for #346 (relayed by the lead).
+- **Evidence:** on `8c84100` (sweep-N), the feed's no-names reading of "compare Karl anything town to khris middleton" holds `who.players == ['Khris Middleton']`, unread `['compare', 'karl', 'anything', 'town']`, `misread` empty, `left_out` None, and answers "Khris Middleton averaged 10.2 points, 3.7 rebounds and 2.8 assists per game in 63 games in the 2026 regular season." The one note that says a compared side was dropped, `subject.compared_but_unmatched` (`Reading.left_out`, said as the `name_left_out` decision), takes "vs" and not "compare" by design ("compare Jokic's fingerprint to last season" compares seasons), and is read for a fingerprint alone (`parse._reading_from_route_left_out`, `agent._unmatched_fingerprint`). Measured: of the 2,082 feed questions, 4 hold "compare" and 1 is this class (a compare word, name-shaped unread words on one side of "to"/"and"/"with", one player read); of the 2,710 readings and the 628, no other ("compare khris middleton" compares nothing; "compare curry vs the celtics this season" is a player against a team).
+- **User sees:** a comparison asked, one side silently dropped - a narrower answer with nothing saying so.
+- **Next step:** read the dropped side on the Reading where a compare word joins two sides by "to"/"and"/"with" and one side is name-shaped words no claim covers (`Reading.left_out` beyond the fingerprint), and say it on every shape the answer side answers (`agent._unmatched_fingerprint`'s note generalized, `say.say_left_out`) - or refuse by a cause naming the words (`reading.CAUSES`, `say.refusal_phrase`). The reading half is lane N's (subject/parse); the saying half is the answer side's (`agent.py`, `compose/say.py`). Reach 1 of the 2,082.
+- **Priority:** P2 - a narrower answer than asked, with no caveat.
+- **Source:** ours.
+
+
+
 ## P3: refusal or gap
 
 ### A team's own best single game has no reader: "most points in a game by the 76ers" is refused `team_game_high`
