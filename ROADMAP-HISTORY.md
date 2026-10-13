@@ -1468,7 +1468,11 @@ agents' reports named here are in `~/association-research/stages/`.
     into the shared `.git/config` - reverted by the lead after checking
     each claim, the worktree rebuilt from its branch ref, one other
     agent's commit re-authored, and the tests now strip `GIT_*` from
-    their environment (that agent's successor's commit). Open for Jeff from
+    their environment (that agent's successor's commit). Lane C4 landed
+    last (`edbc46e`): the SQL ratchet reads 74 statements in 12 modules,
+    every one a relation's, and no `compose` module runs a statement -
+    step 5 closed, with the ratchet's door rule widened on the lead's
+    call (#397), for Jeff to confirm or revert. Open for Jeff from
     lane A: the aggregate is not a function of the shape alone (27
     readings in three keys move under either design), and the typed
     `Query.measures` follows step 5. What it taught: merging each lane
@@ -1477,7 +1481,7 @@ agents' reports named here are in `~/association-research/stages/`.
     runs) at the price of a redo had a proof failed - none did; and an
     `AGENTS.md` that documents the conflict markers trips a resolver that
     greps for them anywhere, so the check is anchored to a line start.
-    Cost: the six agents' 5.6 hours (2.18M tokens) and the lead's seven
+    Cost: the eight agents' 6.4 hours (2.61M tokens) and the lead's eight
     re-verifications of about ten minutes each. Filed: #396 (P1), #397
     (P4). Rewritten: #110.
 
