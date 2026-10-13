@@ -105,9 +105,7 @@
    "which player averaged the most ppg in the playoffs from may 10th 2019 to april 30th 2023 including record and ts% and efg% and turnover percentage",
    "which player averaged the most ppg in the playoffs from may 10th 2019 to april 30th 2023 including record and ts% and efg% and turnover percentage with atleast 20 games played"
   ],
-  "joins": {
-   "situation+date": 4
-  },
+  "joins": {},
   "unread_numbers": [
    "11/29/24 Al Horford",
    "1st Overall draft picks for the past 25 seasons",

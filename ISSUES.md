@@ -3014,15 +3014,6 @@ those were found.
 - **Priority:** P4 - no wording reaches it.
 - **GitHub:** #360
 
-### A month is read from the words of a day in it: "in march 24 2018" narrows by the month and the day, and the answer says both
-- **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (the cuts tagger's claims: the situation's "in march" and the day's "march 24 2018" overlap on one word).
-- **Evidence:** `lexicon.SITUATION`'s month alternative (`in (the month of )?<month>`) matches "in march" inside "in march 24 2018", and `CALENDAR_DATE` matches "march 24 2018", so the reading carries `situation="in march"` beside `date="2018-03-24"`; the relation applies both (the month redundantly: the day is in it) and `Narrowed.filters` says both ("on 2018-03-24 in March"). 4 of the 2,710 readings ("nba Anthony Davis most offensive rebound in march 24 2018", "nba Clint capela double double in march 24 2018" <!-- codespell:ignore capela - a surname, as the feed typed it -->, "nba jerry stcokhouse mkst 3pm in march 14 2001", "nba rip hamilton mkst 3pm in march 14 2001"), all the feed's, none of the 628. The two claims are joined into one (`span.claimed`, "situation+date"), so the ledger counts "in" and "march" as read; dropping the month where a day inside it is named would reword those 4 answers (the redundant "in March" gone from the heading).
-- **User sees:** a correct answer whose heading names the month beside the day, redundantly.
-- **Next step:** the situation's month alternative stops at a month followed by a day number (a lookahead for `\s+\d{1,2}\b`), with the 4 feed answers enumerated before and after - a rewording commit.
-- **Priority:** P4 - the numbers are right; one redundant phrase.
-- **Source:** ours.
-- **GitHub:** #354
-
 ### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
 - **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).
 - **Evidence:** `allow_indirect_imports = false` on "The compiler's sentence reads no warehouse" breaks it: `compose.say` imports `compose.logs` (`LOG_PERCENTAGES`, `log_key`), `conditions` (the split tables and labels), `player_games` (`PERIOD_LOG_COLUMNS`, `PERIOD_RATES`, `period_columns`) and `season_line` (`NETPOINTS_COMPARE_ROWS`, the season line's column tables), each of which imports duckdb for its statements.

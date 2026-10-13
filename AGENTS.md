@@ -287,7 +287,7 @@ this tree:
   `scripts/ledger_held.json`, as the ratchets are: the unread words by
   count and the questions holding an unread number by question, each
   population's, and the feed's disagreements by question and its joins by
-  kind (`situation+date` 4, #354). `run` writes which population it read
+  kind (none since Phase 4, step 6 fixed #354's `situation+date` 4). `run` writes which population it read
   on its first line, and `report` exits 1 on a grown count or a question
   new to a list, and - on a run of the whole population - on one that fell
   or left it, until `report --shrink` lowers the file with the change (it
@@ -1064,8 +1064,10 @@ a shape:
   on a run of every recorded question - on one that fell or vanished until
   the table is lowered with the change.
   None is held since step 4's slice (c): the 628 have no join, and the
-  2,710 only #354's four (`situation+date`, one tagger reading a day's
-  month again - a word two RULES of one tagger read is still a bug). The
+  2,710 had only #354's four (`situation+date`, one tagger reading a day's
+  month again - a word two RULES of one tagger read is still a bug) until
+  Phase 4, step 6 fixed them: no join on either population since, and any
+  new one fails the report. The
   joins that were held - a child grammar's words over a tagger's
   (`intent+line` 12, `intent+opponent` 4, ...) went with slice (b)'s
   marks, the companions', the windows' and a dated range's with slice

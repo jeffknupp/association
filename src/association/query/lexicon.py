@@ -1295,7 +1295,10 @@ SITUATION = re.compile(
     r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
     # "in the month of march" as well as "in march" (F096) - the calendar
     # reader (SITUATION_MONTH) already takes both.
-    rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b|"
+    # Not a month with a day after it: "in march 24 2018" is one day, the
+    # calendar date's (CALENDAR_DATE), and the month in it no cut of its own
+    # (ISSUES.md #354: the answer named the month beside the day).
+    rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b(?!\s+\d{{1,2}}\b)|"
     # A conference or division, kept WITH its name and its "vs"/"against"/"in"
     # so `calendar.parse_alignment` reads it whole: "vs southeast division"
     # used to be captured as the word "division" alone (#213), and the
