@@ -2185,6 +2185,22 @@ VERSUS_PHRASE = re.compile(rf"\b(vs\.?|versus|against|v\.?)\s+((?:(?!\b(?:{COMPA
 # absence (the absence words, and "hurt", which the name reader cannot end
 # a name at - it is Matt Hurt's - and a role reader, which never cuts a
 # name, can take).
+# "when mitchell robinson has 4 fta": a companion's line stated by "has",
+# "had" or "got" and a box-score word the threshold spellings do not hold
+# (an abbreviation: "fta", "3pm", "oreb") - read as his line, where no line
+# was read and the team's record fell back to the with/without split
+# (ISSUES.md #340). The column is MEASURE_WORDS', the one definition of what
+# a question calls a box-score column.
+CONDITION_HAS_LINE = re.compile(
+    r"\b(?:has|had|have|gets?|got|records?|recorded|posts?|posted)\s+(\d{1,3})(?:\s*\+|[\s-]*plus\b|\s+or\s+more\b)?\s*("
+    + "|".join(sorted((re.escape(w) for w in MEASURE_WORDS), key=len, reverse=True))
+    + r")\b",
+    re.IGNORECASE,
+)
+"""A companion's line after "has N", on any box-score word.
+
+.. versionadded:: 6.0.0
+"""
 CONDITION_STARTED = re.compile(r"\bstart(?:s|ed|ing)?\b|\bin the starting lineup\b", re.IGNORECASE)
 """A start, by its words.
 
