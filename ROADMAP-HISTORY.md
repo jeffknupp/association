@@ -1457,7 +1457,18 @@ agents' reports named here are in `~/association-research/stages/`.
     relation's reads, 75 in 14) and lane A's measures slice on top of it
     (`93016f3`: `Reading.measures` a `tuple[Measure, ...]`, proved by
     naming each typed list back through the catalog), the same way; the
-    four follow-ups the C agents named went to one more agent. Open for Jeff from
+    four follow-ups the C agents named went to one more agent; and lane
+    B's step 2 (`ed737bd`: the label gone from the Reading, the Answer and
+    the API, the decline sentence saying the shape in words - 11 of the
+    628 and 219 of the 2,082 moved, each checked by the lead as the label
+    swapped for its phrase and nothing else), with step 4 dispatched
+    behind it. One incident: the follow-up agent gated a rebase with
+    `--exec` running the suite, the exec's `GIT_DIR` reached the tests
+    that run git, and they wrote `core.bare=true` and a test identity
+    into the shared `.git/config` - reverted by the lead after checking
+    each claim, the worktree rebuilt from its branch ref, one other
+    agent's commit re-authored, and the tests now strip `GIT_*` from
+    their environment (that agent's successor's commit). Open for Jeff from
     lane A: the aggregate is not a function of the shape alone (27
     readings in three keys move under either design), and the typed
     `Query.measures` follows step 5. What it taught: merging each lane
@@ -1466,7 +1477,7 @@ agents' reports named here are in `~/association-research/stages/`.
     runs) at the price of a redo had a proof failed - none did; and an
     `AGENTS.md` that documents the conflict markers trips a resolver that
     greps for them anywhere, so the check is anchored to a line start.
-    Cost: the five agents' 4.7 hours (1.72M tokens) and the lead's six
+    Cost: the six agents' 5.6 hours (2.18M tokens) and the lead's seven
     re-verifications of about ten minutes each. Filed: #396 (P1), #397
     (P4). Rewritten: #110.
 
