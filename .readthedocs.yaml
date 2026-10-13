@@ -15,10 +15,14 @@ build:
   # the published docs drift away from what CI verified.
   #
   # `uv sync` creates .venv in the checkout, which is exactly where
-  # build_docs.sh looks for sphinx-build.
+  # build_docs.sh looks for sphinx-build. The `web` extra is synced too, as
+  # CI syncs it: `docs/api/index.rst` runs autosummary over the whole
+  # package, `association.web.app` imports FastAPI, and a module autosummary
+  # cannot import is a warning that -W turns into a failed build (2026-10-13,
+  # build 35107430).
   commands:
     - pip install uv
-    - uv sync --frozen --extra docs
+    - uv sync --frozen --extra docs --extra web
     # The same script pre-commit and CI run, so the published build is gated
     # by the same -W --keep-going. A warning fails the build here too, rather
     # than shipping a broken cross-reference to readthedocs.io.
