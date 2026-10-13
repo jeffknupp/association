@@ -2434,6 +2434,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "needs_stat": {"shape": GAME_HIGHS},
     "unknown_stat": {"shape": LINE_RUNS, "stat": "double_double"},
     "needs_threshold": {"shape": LINE_RECORD, "stat": "points"},
+    "line_is_a_companions": {"shape": LINE_RECORD, "player": "Tyrese Maxey", "companion": "Joel Embiid", "line": "20+ points"},
     "threshold_needs_stat": {"shape": PLAYER_LOG, "threshold": 15},
     "threshold_counts_every_game": {"shape": GAMES_COUNTED, "threshold": 0},
     "line_names_no_stat": {"phrase": "under 30 gizmos", "side": "under"},

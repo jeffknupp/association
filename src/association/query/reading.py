@@ -1359,6 +1359,7 @@ CAUSES: frozenset[str] = frozenset(
         "needs_stat",
         "unknown_stat",
         "needs_threshold",
+        "line_is_a_companions",
         "threshold_needs_stat",
         "threshold_counts_every_game",
         "line_names_no_stat",
@@ -1402,7 +1403,9 @@ missing thing, never only the slot"):
   of games over a line, a streak, a log kept past a number - with no stat
   read (``needs_stat``: ``shape``), a stat with no per-game column
   (``unknown_stat``: ``shape``, ``stat``), a stat with no number
-  (``needs_threshold``: ``shape``, ``stat``), a number with no stat
+  (``needs_threshold``: ``shape``, ``stat``), a record whose one line is
+  a companion's, not the subject's (``line_is_a_companions``: ``shape``,
+  ``player``, ``companion``, ``line``; ISSUES.md #359), a number with no stat
   (``threshold_needs_stat``: ``shape``, ``threshold``), a number every
   game clears (``threshold_counts_every_game``: ``shape``,
   ``threshold``), or a below/above phrase naming no stat

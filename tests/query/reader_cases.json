@@ -102958,5 +102958,191 @@
    "point_declined": null,
    "point_refusal": null
   }
+ },
+ {
+  "name": "test_a_companions_line_is_never_the_subjects#359",
+  "why": "ISSUES.md #359: the one line is Embiid's (the reached companion's), so the record has none of its own and refuses by a cause naming his line and the wordings that reach each reading.",
+  "question": "maxey record when embiid scores 20+ points",
+  "names": [
+   "Tyrese Maxey",
+   "Joel Embiid"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Maxey"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Joel Embiid",
+     "side": "own",
+     "predicate": "reached",
+     "line": {
+      "measure": "points",
+      "op": ">=",
+      "value": 20,
+      "period": null,
+      "as_typed": "20+ points",
+      "keyed": false,
+      "narrows": false
+     }
+    }
+   ],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Maxey"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "asked_reason": "the words 'record when embiid scores 20+' name player_games/split/line",
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "reached",
+      "line": {
+       "measure": "points",
+       "op": ">=",
+       "value": 20,
+       "period": null,
+       "as_typed": "20+ points",
+       "keyed": false,
+       "narrows": false
+      }
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['Maxey', 'Joel Embiid']; the words 'record when embiid scores 20+' name player_games/split/line"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Maxey"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_games/split/presence",
+     "after": "player_games/split/line",
+     "reason": "the words 'record when embiid scores 20+' name player_games/split/line"
+    },
+    {
+     "stage": "subject",
+     "field": "conditions",
+     "before": null,
+     "after": [
+      {
+       "player": "Joel Embiid",
+       "side": "own",
+       "predicate": "reached",
+       "stat": "points",
+       "threshold": 20
+      }
+     ],
+     "reason": "the role the question gives each player named beside the subject"
+    }
+   ],
+   "point": null,
+   "point_declined": null,
+   "point_refusal": {
+    "kind": "line_is_a_companions",
+    "facts": {
+     "shape": {
+      "relation": "player_games",
+      "shape": "split",
+      "by": "line"
+     },
+     "player": "Maxey",
+     "companion": "Joel Embiid",
+     "line": "20+ points"
+    }
+   }
+  }
  }
 ]

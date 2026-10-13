@@ -517,6 +517,19 @@ def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
 # grammar's rules so its words are blanked out of the question they read.
 
 
+def _reached_spans(settled: Asked, companions: tuple[Companion, ...], phrases: tuple[tuple[int, int, str], ...]) -> tuple[tuple[int, int], ...]:
+    """The spans of the phrases whose companion REACHED a line, where such a
+    companion stands beside the subject on the reading: a "N stat" pair
+    inside one is his line, never the subject's (ISSUES.md #359, "maxey
+    record when embiid scores 20+ points"). A companion the rules restored
+    as the subject himself ("how many games with 40+ points did Lebron James
+    have") hands no span: the line is his own."""
+    own = settled.subject.player
+    if not any(c.line is not None and c.predicate == "reached" and not (own and question_supports(c.player, own)) for c in companions):
+        return ()
+    return tuple((start, end) for start, end, predicate in phrases if predicate == "reached")
+
+
 def _read_route_beside(subject: Subject, question: str) -> bool:
     """Whether a companion stands beside the subject for the ``<kind>+companions``
     rows of :data:`PARENT_GRAMMAR` - the with/without split. Not a player's
@@ -693,7 +706,9 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent, lines=named_lines, reached_when=reached_when)
     final = settled_ask.asked
     scope, tagger_claims = (
-        _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None, minimum=(stated_minimum, unblanked)) if not settled_ask.coach else (Reading(), ())
+        _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None, minimum=(stated_minimum, unblanked), phrases=read.companion_phrases)
+        if not settled_ask.coach
+        else (Reading(), ())
     )
     # The one reading, settled under the key the words end with: what the
     # parser's last step and everything after it answer from.
@@ -826,6 +841,7 @@ def _tagged(
     shot_value: int | None = None,
     fields: tuple[str, ...] = (),
     minimum: tuple[MinimumRead, str] | None = None,
+    phrases: tuple[tuple[int, int, str], ...] = (),
 ) -> tuple[Reading, tuple[Claim, ...]]:
     """The taggers, each the one reader of its family, over the key and the
     names the grammar's rules settled (``settled``), in the order each reads
@@ -835,7 +851,10 @@ def _tagged(
     cuts (the span tagger reads a date, a series game, an ordinal season and
     a dated range's year), the window (the span tagger reads it), the span
     last. ``companions`` are who the subject reading found beside the
-    subject (an absent teammate is no opponent; a companion's line is his);
+    subject (an absent teammate is no opponent; a companion's line is his -
+    ``phrases``, the subject reading's companion phrases with their spans,
+    keep a pair inside a reached companion's phrase off the subject's
+    lines, :func:`_reached_spans`);
     ``lines`` the lines read before the rules (a line in a quarter, whose
     words the parser blanks), which join the tagger's; ``model_stat`` the
     model's stat key (the measure tagger's claims are cut against it, the
@@ -864,7 +883,8 @@ def _tagged(
     # the parser writes the Reading, never a tagger's own.
     split = read_split(question, companions)
     beside_line = any(c.line is not None for c in companions)
-    read = lines_under(asked, read_lines(question), beside_line=beside_line)
+    reached = _reached_spans(settled, companions, phrases)
+    read = lines_under(asked, read_lines(question), beside_line=beside_line, reached=reached)
     measure_context = _tagged_measure_context(settled, question, read, side=side, shot_value=shot_value, fields=fields)
     measure = measure_under(asked, read_measure(question), measure_context)
     period = period_under(asked, read_period(question))
@@ -890,7 +910,7 @@ def _tagged(
         *needed(question, window.claims, lambda q: window_under(asked, read_window(q, window_context)).window, outside="window", gives_up=True),
         # The qualifier's over the question as typed, its words blanked in the rest.
         *needed(typed, kept.claims, lambda q: minimum_under(asked, read_minimum(q)).minimum, outside="minimum", gives_up=True),
-        *needed(question, read.claims, lambda q: _tagged_lines(lines_under(asked, read_lines(q), beside_line=beside_line)), outside="line", gives_up=True),
+        *needed(question, read.claims, lambda q: _tagged_lines(lines_under(asked, read_lines(q), beside_line=beside_line, reached=reached)), outside="line", gives_up=True),
         *needed(
             question,
             measure.claims,

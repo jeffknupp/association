@@ -848,6 +848,12 @@ def _default_record_when(scope: Filtered) -> Reading:
             Cause(kind="threshold_needs_stat", facts={"shape": LINE_RECORD, "threshold": threshold}) if threshold is not None else Cause(kind="needs_stat", facts={"shape": LINE_RECORD})
         )
     if threshold is None:
+        # The one line in the question is a companion's ("maxey record when
+        # embiid scores 20+ points"): the record cannot be keyed on it, and
+        # the wordings that reach each reading are named (ISSUES.md #359).
+        reached = [c for c in scope.companions if c.predicate == "reached" and c.line is not None]
+        if reached and reached[0].line is not None:
+            raise PointRefused(Cause(kind="line_is_a_companions", facts={"shape": LINE_RECORD, "player": scope.who.player or "", "companion": reached[0].player, "line": reached[0].line.as_typed}))
         raise PointRefused(Cause(kind="needs_threshold", facts={"shape": LINE_RECORD, "stat": col}))
     if threshold < 1:
         raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"shape": LINE_RECORD, "threshold": threshold}))
@@ -1770,7 +1776,7 @@ def cuts_under(asked: PointShape | None, read: CutsRead, *, split: str | None) -
     return CutsRead(cuts, claimed([*kept, *read.claims]), read.dated_since)
 
 
-def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: bool = False) -> LinesRead:
+def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: bool = False, reached: tuple[tuple[int, int], ...] = ()) -> LinesRead:
     """The subject's lines under the key, in the question's order, with
     their claims: fouling out on a count; under a shape that is a line
     (:data:`THRESHOLD_ASKS`) every "N stat" pair, the first the shape's own
@@ -1789,7 +1795,9 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
         # Fouling out is the count's own line (fouls at six), whatever else
         # the words number - the grammar's rules chose the count by it.
         found.extend((candidate.start, candidate.line, candidate.claim) for candidate in read.of("fouled"))
-    pairs = read.of("plus", "at_least", "bare")
+    # A pair inside a reached companion's phrase (``reached``, the phrases'
+    # spans) is his line, never the subject's, on every key (#359).
+    pairs = [candidate for candidate in read.of("plus", "at_least", "bare") if not any(start <= candidate.start < end for start, end in reached)]
     found.extend(_lines_pairs(asked, pairs, beside_line=beside_line))
     stat: str | None = None
     scored = read.of("scored")
@@ -1841,7 +1849,13 @@ def _lines_pairs(asked: PointShape | None, pairs: list[LineCandidate], *, beside
     nothing there - or ONE stated outright ("N+ stat", "at least N stat")
     on a player's log or splits (:data:`_LINES_ONE_NARROWS`), never a line a
     companion beside him reached ("splits when tatum scores 30+ points" is
-    Tatum's line)."""
+    Tatum's line). A pair standing inside the phrase of a companion who
+    REACHED it is his line on every key, the record's and the count's too
+    (``reached``, the phrases' spans): "maxey record when embiid scores 20+
+    points" keyed the record on Maxey's 20+ as well as Embiid's (ISSUES.md
+    #359); a phrase whose companion the rules restored as the subject
+    himself hands no span, so "how many games with 40+ points did Lebron
+    James have" keeps its count."""
     lined = asked in THRESHOLD_ASKS
     plus = [candidate for candidate in pairs if candidate.how == "plus"]
     stated = [candidate for candidate in pairs if candidate.how in ("plus", "at_least")]

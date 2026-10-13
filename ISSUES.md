@@ -127,14 +127,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - 6 of the 2,710 readings.
 - **GitHub:** #358
 
-### A companion's line is read as the subject's too: "maxey record when embiid scores 20+ points" keys the record on Maxey's 20+ points as well
-- **Found:** 2026-10-09, Phase 3 step 2's line slice, choosing whether the lines tagger reads inside a companion's phrase
-- **Evidence:** answered on this tree AND on `7be1ff9` with the names stubbed (`/tmp/s2e/ask_stub.py`, names `["Tyrese Maxey", "Joel Embiid"]`, stat `points`): "Philadelphia 76ers record when Tyrese Maxey had 20+ points in games Joel Embiid had 20+ points, 2026 regular season: 20+ points 26 18-8 ... under 20 points 4 1-3 ...". The stages read the record's threshold from the whole question's first "N+ stat" (and the tagger keeps that: measured, skipping the companion's phrase moved "In his 18th season, how many games with 40+ points did Lebron James have?" from a count to a ranking, because that phrase reads as a companion's and the subject is LeBron himself), so the one line in the question is both Embiid's (`Companion.line`) and the subject's (`Scope.lines`, keyed). On the 2,710 readings every companion with a line is a team's record (23, `_apply_team_record_when` moves the line onto the team and the companion goes), so no population answer carries this.
-- **User sees:** a record table split by the wrong player's line - the question asked for the 76ers' record in Embiid's 20+ games, with Maxey beside him.
-- **Next step:** when the subject reading's companion claim holds the line's claim (the two fold into one, `Reading.claims`), the subject has no line of its own: `router._settle` can read that from the claims once the subject's claims reach the stages (they are on the Route today), and a `record_when` with a companion's line and none of the subject's is the team's record (the team form already answers it) or a refusal naming the missing line. Watch the LeBron wording when it changes.
-- **Priority:** P1 - a wrong table fluently; 0 of the 2,710 readings.
-- **GitHub:** #359
-
 ### "warriors' record last season when committing 10 or fewer turnovers" answers the whole season
 - **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
 - **Evidence:** the "or fewer" line on a team's own stat is not read; the answer is the Warriors' 48-34 2025 standings line with no mention of turnovers, while "... when they had 18+ turnovers" reads the line and answers a record table. Same on `4bb026a` (before Phase 2) and `93db30c`; also 11 and 12 or fewer. Review data: `data/feed-93db30c.jsonl.gz`, names `["warriors"]`, stat `turnovers`.
