@@ -2277,6 +2277,39 @@ PERCENTAGE_WORDS = re.compile(r"%|\bper\s*cent|\bpct\b|\bpercentage\b", re.IGNOR
 
 .. versionadded:: 6.0.0
 """
+# A line on a player's SEASON figure - an average, a career total - rather
+# than a game's (ISSUES.md #390): "averaged 30 ppg", "average 25+", "18
+# points per game", "> 5 apg", "10000 points ... in career". The season
+# ranking orders every qualified player and keeps none over a line, so a
+# question stating one is refused by name rather than answered with the
+# whole ranking. Not "average 3rd quarter points" (an ordinal), "average
+# 3-point distance" (a shot), a number glued to a word, or a year ("since
+# 2019 assists per game" is a season and a stat); a bare "N ppg" only after
+# a comparison or "with" ("> 5 apg"), since "August 1 ppg" is a day.
+SEASON_LINE = re.compile(
+    r"\baverag\w*\s+(?:a\s+)?(?:(?:over|more\s+than|at\s+least|above|under|less\s+than|fewer\s+than|a\s+minimum\s+of)\s+)?\d{1,3}(?:\.\d+)?\+?(?![\w.-])(?:\s*(?:ppg|rpg|apg|spg|bpg|mpg|points?|pts|rebounds?|assists?|steals?|blocks?|threes)\b(?:\s+(?:per|a)\s+game\b)?)?"
+    r"|(?:\b(?:with|over|under|above|below|at\s+least)|[<>]=?)\s*(?:a\s+)?\d{1,3}(?:\.\d+)?\+?\s*(?:ppg|rpg|apg|spg|bpg|mpg)\b"
+    r"|\b\d{1,3}(?:\.\d+)?\+?\s*(?:points?|pts|rebounds?|assists?|steals?|blocks?|threes|3-pointers)\s+(?:per|a)\s+game\b"
+    r"|\b(?!(?:19|20)\d\d\b)\d{4,}\s+(?:points|rebounds|assists|steals|blocks)\b",
+    re.IGNORECASE,
+)
+"""A line on a player's season average or career total, as worded.
+
+.. versionadded:: 6.0.0
+"""
+# A count of a player's SEASONS over a line (ISSUES.md #391): "most seasons
+# averaging 30 ppg", "most 25 point seasons", "most seasons with 2000
+# points", "most seasons with a per of 30", "most 60 win seasons". A count
+# reads games; nothing counts season lines yet.
+SEASONS_COUNTED = re.compile(
+    r"\bmost\s+(?:\w+\s+){0,2}seasons?\b.{0,40}?(?:\b\d+(?:\.\d+)?\+?\s*(?:or\s+more\s+)?(?:ppg|rpg|apg|spg|bpg|points?|pts|rebounds?|assists?|steals?|blocks?|wins?)\b|\bof\s+\d+)"
+    r"|\bmost\s+(?:\w+\s+){0,2}\d+\+?[\s-]*(?:points?|pts?|rebounds?|assists?|wins?)\s+seasons?\b",
+    re.IGNORECASE,
+)
+"""A count of a player's seasons over a line, as worded.
+
+.. versionadded:: 6.0.0
+"""
 # The number and the words after it in a below/above phrase; the leading
 # words ("under", "at most", "with") say which way the line faces, and an
 # "or more" between the number and its words ("20 or more minutes") is the

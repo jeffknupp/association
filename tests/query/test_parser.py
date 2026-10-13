@@ -976,3 +976,35 @@ def test_a_line_on_a_percentage_is_the_points_cause_on_every_key(con: duckdb.Duc
     on every key now."""
     reading = _read(con, question, names)
     assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts["phrase"] == phrase
+
+
+@pytest.mark.parametrize(
+    ("question", "kind", "words"),
+    [
+        ("How many players averaged 30 ppg in 2026", "season_line_unread", "averaged 30 ppg"),
+        ("how many players average 25+ in 2006 nba", "season_line_unread", "average 25+"),
+        ("players to average 16 points 10 rebounds", "season_line_unread", "average 16 points"),
+        ("least amount of fga per game to score 18 points per game by a guard", "season_line_unread", "18 points per game"),
+        ("nba all-time ast/to leaders with > 5 apg", "season_line_unread", "> 5 apg"),
+        ("nba player with 10000 points and 4000 assists in career", "season_line_unread", "10000 points"),
+        ("most seasons averaging 30 ppg", "seasons_counted", "most seasons averaging 30 ppg"),
+        ("Players with most 25 point season", "seasons_counted", "most 25 point season"),
+        ("nba players with the most seasons with 2000 points", "seasons_counted", "most seasons with 2000 points"),
+        ("most 60 win seasons nba players", "seasons_counted", "most 60 win seasons"),
+    ],
+)
+def test_a_line_on_a_season_or_a_count_of_seasons_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, kind: str, words: str) -> None:
+    """ISSUES.md #390, #391: a ranking of players' seasons stating a line
+    on the season's figure, or counting a player's seasons over one,
+    answered the unfiltered ranking, the line unread; refused by a cause
+    naming the words until a season line's filter and a count of seasons
+    exist."""
+    reading = _read(con, question)
+    assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts == {"words": words}
+
+
+@pytest.mark.parametrize("question", ["who averaged the most points in 2024", "who has the highest average 1st quarter points this season?", "who was leading the league in average 3-point distance?"])
+def test_an_average_with_no_line_is_not_refused_as_a_season_line(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """The words of a season's line need a number beside the average."""
+    reading = _read(con, question)
+    assert reading.point_refusal is None or reading.point_refusal.kind not in ("season_line_unread", "seasons_counted")

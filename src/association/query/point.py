@@ -1517,6 +1517,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     # last step wrote them there (subject.apply_subject), and a Reading
     # built by hand with a subject of its own gets the same here.
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
+    _season_lines_refused(reading.asked, question)
     try:
         point = _read_point(reading.asked, scope, question, subject)
     except Unsupported:
@@ -1890,6 +1891,25 @@ def minimum_under(asked: PointShape | None, read: MinimumRead) -> MinimumRead:
     .. versionadded:: 6.0.0
     """
     return read if asked == PLAYER_RANKING else MinimumRead(None)
+
+
+def _season_lines_refused(asked: PointShape | None, question: str) -> None:
+    """Refuse a ranking of players' seasons whose words state a line on the
+    season's figure - "how many players averaged 30 ppg in 2026", "players
+    to average 16 points 10 rebounds" (ISSUES.md #390) - or count a
+    player's seasons over one - "most seasons averaging 30 ppg" (ISSUES.md
+    #391): the ranking orders every qualified player and keeps none over a
+    line, and nothing counts seasons, so each answered the unfiltered
+    ranking. A cause naming the words, until a season line's filter and a
+    count of seasons exist."""
+    if asked != PLAYER_RANKING:
+        return
+    counted = lexicon.SEASONS_COUNTED.search(question)
+    if counted is not None:
+        raise PointRefused(Cause(kind="seasons_counted", facts={"words": counted.group(0)}), f"{counted.group(0)!r} counts seasons over a line")
+    line = lexicon.SEASON_LINE.search(question)
+    if line is not None:
+        raise PointRefused(Cause(kind="season_line_unread", facts={"words": line.group(0)}), f"{line.group(0)!r} is a line on a season's figure")
 
 
 def _lines_name_a_stat(scope: Filtered) -> None:
