@@ -1398,6 +1398,7 @@ CAUSES: frozenset[str] = frozenset(
         "needs_stat",
         "unknown_stat",
         "needs_threshold",
+        "line_is_a_companions",
         "threshold_needs_stat",
         "threshold_counts_every_game",
         "line_names_no_stat",
@@ -1419,6 +1420,7 @@ CAUSES: frozenset[str] = frozenset(
         "own_seasons_window",
         "own_alignment",
         "no_player_reading",
+        "denied_role",
         "playoff_round",
         "non_calendar_situation",
         "period_stat",
@@ -1446,7 +1448,9 @@ missing thing, never only the slot"):
   of games over a line, a streak, a log kept past a number - with no stat
   read (``needs_stat``: ``shape``), a stat with no per-game column
   (``unknown_stat``: ``shape``, ``stat``), a stat with no number
-  (``needs_threshold``: ``shape``, ``stat``), a number with no stat
+  (``needs_threshold``: ``shape``, ``stat``), a record whose one line is
+  a companion's, not the subject's (``line_is_a_companions``: ``shape``,
+  ``player``, ``companion``, ``line``; ISSUES.md #359), a number with no stat
   (``threshold_needs_stat``: ``shape``, ``threshold``), a number every
   game clears (``threshold_counts_every_game``: ``shape``,
   ``threshold``), a below/above phrase naming no stat
@@ -1483,7 +1487,9 @@ missing thing, never only the slot"):
   seasons by their place, which the reader does not hold
   (``own_seasons_window``: ``seasons``, the words of each), a conference
   or division a ranking's subject belongs to, which nothing ranks
-  (``own_alignment``: ``shape``, ``alignment``), or a player named on a question whose
+  (``own_alignment``: ``shape``, ``alignment``), a teammate's start or bench role the words deny ("when
+  embiid doesn't start"), which nothing narrows by (``denied_role``:
+  ``player``, ``words``, ``role``, ``shape``; ISSUES.md #248), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
   ``shape``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,

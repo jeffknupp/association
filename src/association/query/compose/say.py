@@ -694,6 +694,11 @@ def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
         "needs_stat": lambda: f"{shape.capitalize()} needs a stat {_STAT_FOR.get(asked, 'to read') if asked is not None else 'to read'}, and none was read.",
         "unknown_stat": lambda: _unknown_stat(asked, facts["stat"], shape),
         "needs_threshold": lambda: f"{shape.capitalize()} needs the number of {_stat_words(facts['stat'])} each game has to reach, and none was read.",
+        "line_is_a_companions": lambda: (
+            f"The {facts['line']} line is {facts['companion']}'s, not {facts['player'] or 'the subject'}'s, so a record keyed on it is not his: "
+            f"ask for {facts['player'] or 'his'} record when he reaches it himself ('{facts['player'] or 'his'} record when he scores {facts['line']}'), "
+            f"or for his team's record when {facts['companion']} does ('<team> record when {facts['companion']} scores {facts['line']}')."
+        ),
         "threshold_needs_stat": lambda: f"{reaching.format(facts['threshold'])} needs the stat they reach it in, and none was read.",
         "threshold_counts_every_game": lambda: f"A threshold of {facts['threshold']} counts every game - there is no line there to keep games past.",
         "line_names_no_stat": lambda: f"{facts['phrase']!r} names no box-score stat a game can be kept {facts['side']}.",
@@ -4681,6 +4686,12 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
     "fact_not_read": _say_fact_not_read,
+    "denied_role": lambda facts: (
+        f"'{facts['words']}' asks for the games {facts['player']} did not "
+        f"{'start' if facts['role'] == 'start' else 'come off the bench'}, which nothing here narrows by - "
+        "a teammate's start or bench role is read only as it is stated. "
+        f"Ask for the games {facts['player']} {'came off the bench' if facts['role'] == 'start' else 'started'}, or for the line with and without him."
+    ),
     "playoff_round": lambda facts: (
         f"The games are not labeled by playoff round, so '{facts['round']}' cannot pick them out yet. "
         "Name the two teams and the season instead - a series is their postseason meetings, and those are read."

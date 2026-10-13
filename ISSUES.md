@@ -129,13 +129,13 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P2 - (2) answers a broader question on 6 of the 2,082; (1) and (3) are refusals or #390's.
 - **GitHub:** #371
 
-### A companion's line is read as the subject's too: "maxey record when embiid scores 20+ points" keys the record on Maxey's 20+ points as well
-- **Found:** 2026-10-09, Phase 3 step 2's line slice, choosing whether the lines tagger reads inside a companion's phrase
-- **Evidence:** answered on this tree AND on `7be1ff9` with the names stubbed (`/tmp/s2e/ask_stub.py`, names `["Tyrese Maxey", "Joel Embiid"]`, stat `points`): "Philadelphia 76ers record when Tyrese Maxey had 20+ points in games Joel Embiid had 20+ points, 2026 regular season: 20+ points 26 18-8 ... under 20 points 4 1-3 ...". The stages read the record's threshold from the whole question's first "N+ stat" (and the tagger keeps that: measured, skipping the companion's phrase moved "In his 18th season, how many games with 40+ points did Lebron James have?" from a count to a ranking, because that phrase reads as a companion's and the subject is LeBron himself), so the one line in the question is both Embiid's (`Companion.line`) and the subject's (`Scope.lines`, keyed). On the 2,710 readings every companion with a line is a team's record (23, `_apply_team_record_when` moves the line onto the team and the companion goes), so no population answer carries this.
-- **User sees:** a record table split by the wrong player's line - the question asked for the 76ers' record in Embiid's 20+ games, with Maxey beside him.
-- **Next step:** when the subject reading's companion claim holds the line's claim (the two fold into one, `Reading.claims`), the subject has no line of its own: `router._settle` can read that from the claims once the subject's claims reach the stages (they are on the Route today), and a `record_when` with a companion's line and none of the subject's is the team's record (the team form already answers it) or a refusal naming the missing line. Watch the LeBron wording when it changes.
-- **Priority:** P1 - a wrong table fluently; 0 of the 2,710 readings.
-- **GitHub:** #359
+### A count's second and later bare lines are dropped: "most games with 20 pts, 10 reb, 5 ast last season" answers the most 20+ point games
+- **Found:** 2026-10-09, Phase 3 step 2's line slice (`line_family.py`: the multi-line questions)
+- **Evidence:** 6 of the 2,710 readings (`/tmp/s2e/read-after.jsonl`): "most games with 20 pt,s 10 reb, 5 ast", "most games with 20 pts, 10 reb, 5 ast last season", and "most playoff games with 46/47/48/49 points N assists N rebounds". The tagger reads all three lines (`Scope.lines`: `20 pts` keyed, `10 reb` and `5 ast` neither keyed nor narrowing), but the league count with a ranking word (`point._everyone_threshold_count`, through `_everyone_threshold_predicates`) takes the keyed line alone: the planned query's predicates are `[["points", ">=", 20]]`, and the feed answer is "Shai Gilgeous-Alexander had the most games with 20+ points in the 2025 regular season, with 76." The listing without a ranking word applies every line ("players with 20 point 20 rebound games": two predicates, `_numbered_lines`). Tried in this slice and reverted: handing the count every bare line as a predicate moved the answer to the compiler's own sentence, "every player, 2025 regular season with 10+ rebounds and 5+ assists, by player: Nikola Jokic 51 G ..." - the count's reader (`compose/counts.py`) steps aside for more than one predicate and the sentence then names the lines it did not rank by, so the fix is the count shape's, not the tagger's.
+- **User sees:** a fluent leader for a one-line question where a three-line one was asked.
+- **Next step:** `compose/counts.py`'s ranking takes every predicate (the games clearing all of them, counted per player) and says them all ("the most games with 20+ points, 10+ rebounds and 5+ assists"); `_everyone_threshold_predicates` then reads every bare whole-game line of `Scope.lines`. Enumerate the 6 before and after.
+- **Priority:** P1 - 6 of the 2,710 readings.
+- **GitHub:** #358
 
 ### "warriors' record last season when committing 10 or fewer turnovers" answers the whole season
 - **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`); the answer half fixed 2026-10-13 (the P1 sweep's lane T).
@@ -294,14 +294,6 @@ those were found.
 - **Next step:** a word after a versus word that is near nothing on record and is no ordinary word refuses by name (a reading cause naming the word) rather than vanishing; a word near a team and a player asks which. A test per wording.
 - **Source:** ours.
 - **GitHub:** #247
-
-### A start the question denies reads as a start: "maxey game log when embiid doesn't start" lists his games WITH Embiid starting
-- **Found:** 2026-09-27, plan item 6 step (d) follow-ups, probing negated roles beside the teammate-role fix.
-- **Evidence:** `subject._condition_role` finds "start" in "embiid doesn't start" and returns `started`; it has no negation, and the relation has no "did not start" predicate (`player_games.CONDITION_PREDICATES`: played, absent, started, bench, reached). On a relation template the condition narrows to the opposite games: the agent (parser reader, normalizer stubbed, main warehouse), identical on `0a7140a` and this branch, answers "maxey game log when embiid doesn't start" with "Tyrese Maxey with Joel Embiid starting, last 10 of 35 games of the 2026 regular season" - the 35 games Embiid started, where the question asked for the 35 he did not (38 started of the 76ers' 82 per `with_without`'s own split, of which Maxey played 35). The parser keeps a denied start on `with_without` for a stat question ("maxey points when embiid doesn't start" shows both halves), but the log row, the chart row and a record's `player_splits` row come first.
-- **User sees:** the inverse of the question, labeled with the condition it inverted ("with Joel Embiid starting").
-- **Next step:** read a denied start or bench in `_condition_role` (the parser's `parse._DENIED_ROLE` is the pattern) and either refuse it on a filter or add a `not_started` predicate to the relation (NOT EXISTS over the started clause, bounded by the tenure an absence already carries); a test per wording.
-- **Source:** ours.
-- **GitHub:** #248
 
 ### "nba most fga with 0 fgm single game" ranks the league's FGA highs with "0 fgm" unread, and "without fgm" is read as a teammate
 - **Found:** 2026-09-27, checking the answers the #168 fix moved. Rewritten 2026-10-13 (lane N of the P1 sweep), which made "nba" alone no team word where a measure is named (`parse._parent_asked_nba_unmeasured`), so both wordings are the players' now and "single game" is the high (`CHANGES.md`).

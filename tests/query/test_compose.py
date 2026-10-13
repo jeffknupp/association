@@ -2447,6 +2447,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "needs_stat": {"shape": GAME_HIGHS},
     "unknown_stat": {"shape": LINE_RUNS, "stat": "double_double"},
     "needs_threshold": {"shape": LINE_RECORD, "stat": "points"},
+    "line_is_a_companions": {"shape": LINE_RECORD, "player": "Tyrese Maxey", "companion": "Joel Embiid", "line": "20+ points"},
     "threshold_needs_stat": {"shape": PLAYER_LOG, "threshold": 15},
     "threshold_counts_every_game": {"shape": GAMES_COUNTED, "threshold": 0},
     "line_names_no_stat": {"phrase": "under 30 gizmos", "side": "under"},
@@ -2464,6 +2465,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "championship": {"shape": TEAM_RANKING},
     "no_player_reading": {"player": "Alperen Sengun", "shape": TEAM_RANKING},
     "fact_not_read": {"fact": "draft", "words": "3rd nba overall draft picks"},
+    "denied_role": {"player": "Joel Embiid", "words": "when embiid doesn't start", "role": "start", "shape": PLAYER_LOG},
     "playoff_round": {"shape": PLAYER_LOG, "round": "finals"},
     "non_calendar_situation": {"shape": PLAYER_LINE, "situation": "18 year old", "reads_as": "age"},
     "period_stat": {"shape": PERIOD_RANKING, "stat": "minutes", "period": 4, "half": None},
@@ -2480,7 +2482,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence
 #: (``refused`` and ``intent``) - not a fact the sentence names.
 _PAGE_INTENT_KINDS = frozenset(
-    {"championship", "no_player_reading", "playoff_round", "non_calendar_situation", "period_stat", "period_as_condition", "team_period_stat", "bench_points", "team_boolean_count"}
+    {"championship", "no_player_reading", "denied_role", "playoff_round", "non_calendar_situation", "period_stat", "period_as_condition", "team_period_stat", "bench_points", "team_boolean_count"}
 )
 
 

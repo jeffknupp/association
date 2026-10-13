@@ -389,6 +389,25 @@ def test_an_invented_name_never_changes_the_kind_or_the_key(con: duckdb.DuckDBPy
     assert nobody.misread == ("Jayson Tatum",) and "Jayson Tatum" not in nobody.who.players[1:]
 
 
+def test_a_companions_line_is_never_the_subjects(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #359: the one line in "maxey record when embiid scores 20+
+    points" is Embiid's, so the record has no line of its own and refuses by
+    a cause naming his line and the wordings that reach each reading; the
+    count whose "companion" the rules restored as the subject himself keeps
+    its line; a team's record keyed on its player's line is unchanged."""
+    from association.query.reading import GAMES_COUNTED, LINE_RECORD
+
+    record = _route(con, "maxey record when embiid scores 20+ points", ["Tyrese Maxey", "Joel Embiid"], "points")
+    assert (record.asked, record.lines) == (LINE_RECORD, ()) and record.who.player in ("Maxey", "Tyrese Maxey")
+    assert [(c.player, c.predicate, c.line.as_typed if c.line else None) for c in record.companions] == [("Joel Embiid", "reached", "20+ points")]
+    assert record.point_refusal is not None and record.point_refusal.kind == "line_is_a_companions"
+    assert record.point_refusal.facts["companion"] == "Joel Embiid" and record.point_refusal.facts["line"] == "20+ points"
+    count = _route(con, "In his 18th season, how many games with 40+ points did Lebron James have?", ["Lebron James"], "points")
+    assert (count.asked, [line.value for line in count.lines], count.companions) == (GAMES_COUNTED, [40], ())
+    team = _route(con, "sixers record when maxey scored 20+ points", ["Tyrese Maxey"], "points")
+    assert (team.asked, team.who.kind, [line.value for line in team.lines]) == (LINE_RECORD, "team", [20])
+
+
 def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> None:
     """One number table, every count pattern built from it: "last twelve
     games" read as a season line while "last 12 games" read the log (the
