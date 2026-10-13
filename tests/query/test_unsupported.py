@@ -311,7 +311,7 @@ def test_a_championship_question_is_refused_before_a_ranking_answers_it(con: duc
     left alone."""
     refusal = by_question("show which team won the nba championship for the past 10 years", TEAM_RANKING, con)
     assert refusal is not None and "not on record as such" in refusal.answer
-    assert refusal.data == {"refused": "championship", "intent": "team_leaderboard", "message": refusal.answer}
+    assert refusal.data == {"refused": "championship", "message": refusal.answer}
     assert by_question("what are the sixers title odds?", TEAM_OUTLOOK, con) is None
     assert by_question("best record from 2010-11 to 2018-19", TEAM_RANKING, con) is None
 

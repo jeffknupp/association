@@ -4,8 +4,9 @@
 stderr, the chart's file path formatted into the middle of a sentence. That is
 enough for a terminal and nothing else. These are the shapes any other caller
 (the web API in 2.0, a notebook, a test) needs: the text that was already
-being returned, plus the intent and structured data the fast path had already
-computed and thrown away, plus the files that were written.
+being returned, plus the shape it was read as and the structured data the
+fast path had already computed and thrown away, plus the files that were
+written.
 
 Nothing here imports the rest of the query package but the planned shape's
 type (:class:`~association.query.reading.PointShape`, from a module that
@@ -32,7 +33,7 @@ AnsweredBy = Literal["fast", "refused"]
 """Whether the question was answered, or refused with no reading of it.
 
 ``"fast"`` means parser -> template or compiler: deterministic, typically
-1-2s, and the only value that populates :attr:`Answer.intent` and
+1-2s, and the only value that populates :attr:`Answer.shape` and
 :attr:`Answer.data`. It covers a template's or the compiler's own refusal
 too - a clarification, a "no match", a shape nothing here reads named by its
 cause - since looking at the question and having something to say about it
@@ -162,27 +163,32 @@ class Answer:
 
     ``text`` is exactly what the CLI prints, unchanged. Everything else is what
     the CLI never had a way to show: which path answered, and - on the fast
-    path only - the intent it was classified as and the structured data the
-    template built its sentence from.
+    path only - the shape it was read and said as and the structured data
+    the reader built its sentence from.
 
-    ``intent``, ``shape`` and ``data`` are None when ``answered_by`` is
-    ``"refused"``, since only a reader or the compiler produces them; ``shape``
-    is None on an answer too where the words came to no point (a refusal the
-    reading said, a name the question never held). Callers must handle that
-    rather than assume a shape.
+    ``shape`` and ``data`` are None when ``answered_by`` is ``"refused"``,
+    since only a reader or the compiler produces them; ``shape`` is None on
+    an answer too where the words came to no point (a refusal the reading
+    said, a name the question never held). Callers must handle that rather
+    than assume a shape.
 
     .. versionadded:: 2.0.0
 
     .. versionchanged:: 5.0.0
        ``answered_by`` is ``"refused"``, never ``"agent"``, for a question
        nothing here reads.
+
+    .. versionchanged:: 6.0.0
+       Breaking: ``intent`` is gone - the retired intent's name, the page's
+       label until Phase 4, step 1 keyed the page on :attr:`shape`. The
+       key the words asked is the Reading's (``Reading.asked``), the shape
+       the answer was read as is :attr:`shape`.
     """
 
     question: str
     text: str
     answered_by: AnsweredBy
     timing: Timing
-    intent: str | None = None
     data: dict[str, Any] | None = None
     artifacts: list[Artifact] = field(default_factory=list)
     #: The basename of the ``.history/`` file this answer was recorded to -
@@ -213,7 +219,8 @@ class Answer:
     #: ``comparison``, ``split``, ``runs`` or ``chart`` - and what it is
     #: ``by``), the one the answer side chose its reader by
     #: (:attr:`Agent.planned <association.query.agent.Agent.planned>`). What
-    #: the page renders the answer's ``data`` by, where it read ``intent``.
+    #: the page renders the answer's ``data`` by (where it read the label,
+    #: ``intent``, until Phase 4, step 1).
     #:
     #: .. versionadded:: 6.0.0
     shape: PointShape | None = None

@@ -24,7 +24,7 @@ from routed import Routed, ask_routed
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.agent import Agent
-from association.query.reading import LINE_RECORD, Line, Measure, Reading, Span
+from association.query.reading import LINE_RECORD, Line, Measure, PointShape, Reading, Span
 from association.query.reading import Subject as Who
 
 S = current_season()
@@ -101,10 +101,10 @@ def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tm
         ),
     )
     assert answer.answered_by == "fast"
-    assert answer.intent == "record_when"
+    assert answer.shape == PointShape("team_games", "split", "line")
     assert answer.text.startswith("Boston Celtics record when they had 120+ points")
     assert "120+ points" in answer.text and "under 120 points" in answer.text
     assert answer.data is not None
     assert answer.data["reached"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(5.0)}
     assert answer.data["fell_short"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(0.0)}
-    assert any("-> (compose) intent='record_when'" in line for line in lines), lines
+    assert any("-> (compose) asked=player_games/split/line shape=team_games/split/line" in line for line in lines), lines

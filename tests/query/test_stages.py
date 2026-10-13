@@ -38,7 +38,7 @@ def _reading() -> Reading:
 def _answer(**changes: Any) -> Answer:
     games = [{"date": "2026-01-02", "points": 31, "rate": 0.5}, {"date": "2026-03-04", "points": 22, "rate": 0.25}]
     data = {"player": "Nikola Jokic", "games": games, "value": 53, "headline": "Jokic scored 53", "notes": ["a caveat"]}
-    return Answer(**{"question": QUESTION, "text": "Jokic scored 53 points. a caveat", "answered_by": "fast", "timing": _TIMING, "intent": "player_stat", "data": data, **changes})
+    return Answer(**{"question": QUESTION, "text": "Jokic scored 53 points. a caveat", "answered_by": "fast", "timing": _TIMING, "data": data, **changes})
 
 
 def _snapshot(**changes: Any) -> dict[str, Any]:
@@ -89,7 +89,7 @@ def test_the_reading_and_query_records_can_be_taken_without_an_answer() -> None:
 
 
 def test_a_question_nothing_read_has_no_reading_or_query() -> None:
-    record = snapshot(None, _answer(text="refused", answered_by="refused", intent=None, data=None), unanswered="fewer than 3 words")
+    record = snapshot(None, _answer(text="refused", answered_by="refused", data=None), unanswered="fewer than 3 words")
     assert record["reading"] is None and record["query"] is None and record["result"] is None
     assert record["answer"]["unanswered"] == "fewer than 3 words"
 

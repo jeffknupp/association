@@ -36,7 +36,7 @@ class StubAnswerer:
         # history file at all passes history_file=None.
         self.history_file = history_file
         self.asked: list[tuple[str, str]] = []
-        self.trace_lines: list[str] = ["  -> (router) intent='leaderboard' slots={}", "  [timing] model inference #1: 1.30s"]
+        self.trace_lines: list[str] = ["  -> (parser) asked=player_seasons/ranking/player kind='everyone' filters={}", "  [timing] model inference #1: 1.30s"]
         self.busy = False
         # Never probed for real: the API layer asks the engine, so nothing here
         # reaches ollama and the offline guarantee holds by construction.
@@ -55,7 +55,6 @@ def _answer(text: str, **kwargs: Any) -> Answer:
         "text": text,
         "answered_by": "fast",
         "timing": Timing(1.4, 1.3, 1, 0.1, 1),
-        "intent": "leaderboard",
         "data": {"leaders": ["Jokic"]},
     }
     fields.update(kwargs)
@@ -68,14 +67,15 @@ def _client(answerer: Any, tmp_path: Path) -> TestClient:
 
 
 def test_ask_returns_the_whole_answer_not_just_the_text(tmp_path: Path) -> None:
-    """The reason Phase 0 existed: a client needs the intent and the data, not
-    a sentence it would have to parse."""
+    """The reason Phase 0 existed: a client needs the shape and the data, not
+    a sentence it would have to parse - and no label: the retired intent's
+    name went with Phase 4, step 2."""
     client = _client(StubAnswerer(), tmp_path)
     body = client.post("/api/ask", json={"question": "who leads the league in assists?"}).json()
 
     assert body["text"] == "the answer"
     assert body["answered_by"] == "fast"
-    assert body["intent"] == "leaderboard"
+    assert "intent" not in body
     assert body["data"] == {"leaders": ["Jokic"]}
     assert body["timing"]["total_seconds"] == 1.4
 
@@ -89,9 +89,9 @@ def test_the_answer_carries_the_planned_shape_the_page_renders_by(tmp_path: Path
     shaped = _answer("the answer", shape=PointShape("player_seasons", "ranking", "player"))
     body = _client(StubAnswerer(shaped), tmp_path).post("/api/ask", json={"question": "who leads the league in assists?"}).json()
     assert body["shape"] == {"relation": "player_seasons", "shape": "ranking", "by": "player"}
-    assert body["intent"] == "leaderboard" and body["data"] == {"leaders": ["Jokic"]}
+    assert body["data"] == {"leaders": ["Jokic"]}
 
-    unshaped = _client(StubAnswerer(_answer("refused", answered_by="refused", intent=None, data=None)), tmp_path).post("/api/ask", json={"question": "something odd"}).json()
+    unshaped = _client(StubAnswerer(_answer("refused", answered_by="refused", data=None)), tmp_path).post("/api/ask", json={"question": "something odd"}).json()
     assert unshaped["shape"] is None
 
 
@@ -157,14 +157,14 @@ def test_a_missing_history_file_is_reported_as_null_not_omitted(tmp_path: Path) 
     assert body["history_file"] is None
 
 
-def test_a_refused_answer_reports_no_intent_rather_than_an_empty_one(tmp_path: Path) -> None:
+def test_a_refused_answer_reports_no_shape_rather_than_an_empty_one(tmp_path: Path) -> None:
     """A question nothing reads is an ordinary answer whose text names why
     (5.0.0: what --disable-fallthrough made a 501 is the only answer now)."""
-    client = _client(StubAnswerer(_answer("Nothing here answers this question: what its words ask has no reader.", answered_by="refused", intent=None, data=None)), tmp_path)
+    client = _client(StubAnswerer(_answer("Nothing here answers this question: what its words ask has no reader.", answered_by="refused", data=None)), tmp_path)
     body = client.post("/api/ask", json={"question": "something odd"}).json()
 
     assert body["answered_by"] == "refused"
-    assert body["intent"] is None
+    assert body["shape"] is None
     assert body["data"] is None
     assert "has no reader" in body["text"]
 
@@ -199,7 +199,7 @@ def test_the_stream_reports_progress_and_then_the_answer(tmp_path: Path) -> None
         events = _events(response.iter_lines())
 
     assert [name for name, _ in events] == ["progress", "progress", "answer"]
-    assert events[0][1]["line"].startswith("-> (router)")
+    assert events[0][1]["line"].startswith("-> (parser)")
     assert events[-1][1]["text"] == "the answer"
     assert events[-1][1]["answered_by"] == "fast"
     # The stream is where every real question is asked from - the page's own
@@ -592,7 +592,7 @@ def test_agent_runner_reads_the_history_file_off_the_answer(tmp_path: Path) -> N
         trace: Any = None
 
         def ask(self, question: str, label: str = "") -> Answer:
-            self.trace("  -> (router) intent='leaderboard' slots={}")
+            self.trace("  -> (parser) asked=player_seasons/ranking/player kind='everyone' filters={}")
             self.trace("[history] .history/4.3.0-abc1234deadbeef01.log  [timing] total 1.23s - model 1.00s (1 call), tools 0.10s (1 call)")
             return replace(_answer("done"), history_file="4.3.0-abc1234deadbeef01.log")
 

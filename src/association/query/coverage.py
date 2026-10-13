@@ -323,10 +323,9 @@ def coverage_refusal(shape: PointShape | None, scope: Filtered) -> Refusal | Non
     return floor_refusal(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=shape.shape == "ranking")
 
 
-def coverage_caveat(shape: PointShape | None, scope: Filtered, *, intent: str = "") -> str | None:
-    """A note for a season this question can reach but only partly, or None.
-    ``intent`` is the page's label, recorded on the note beside the season
-    (``Answer.intent`` stays for the page until Phase 4).
+def coverage_caveat(shape: PointShape | None, scope: Filtered) -> str | None:
+    """A note for a season this question can reach but only partly, or None,
+    recorded with the season it is about.
 
     .. versionadded:: 2.1.0
 
@@ -337,10 +336,11 @@ def coverage_caveat(shape: PointShape | None, scope: Filtered, *, intent: str = 
        step 0).
 
     .. versionchanged:: 6.0.0
-       Keyed by the planned point's :class:`~association.query.reading.PointShape`;
-       the intent is the note's label only.
+       Keyed by the planned point's :class:`~association.query.reading.PointShape`.
+       Breaking: ``intent=``, the page's label recorded on the note as a
+       fact, is gone (Phase 4, step 2) - the answer carries its shape.
     """
     if scope.span.season is None or shape is None:
         return None
     said = caveat(sources_for(shape, scope), scope.span.season, scope.span.season_type or REGULAR_SEASON, ranking=shape.shape == "ranking")
-    return note("partial_season", said, season=scope.span.season, season_type=scope.span.season_type or REGULAR_SEASON, intent=intent) if said else None
+    return note("partial_season", said, season=scope.span.season, season_type=scope.span.season_type or REGULAR_SEASON) if said else None

@@ -1581,15 +1581,18 @@ a shape:
     reader since Phase 3, step 4: the grammar names what the words ask as
     a `PointShape` (`Reading.asked`, below, "An intent comes from the
     question's own words"), the point reader and the taggers key on it,
-    and `Reading.intent` is a label alone (`Answer.intent`, written from
-    `SHAPE_NAMES`, Phase 4, step 2's to delete; the page renders by
-    `Answer.shape` since step 1). A cause carries the
+    and `Reading.intent` is a label alone (written from `SHAPE_NAMES`,
+    Phase 4, step 2's to delete; the page renders by `Answer.shape` since
+    step 1, and the step deleted `Answer.intent`, the API's `intent` and
+    the `partial_season` note's `intent` fact first). A cause carries the
     key, never the label (its `shape` fact, since the Phase 3 review's
     cleanup (b)2): the sayer's phrase tables are keyed by the `PointShape`
-    (`say._LINE_SHAPES`, `_STAT_FOR`, `_REACHING`), and a sentence or a
-    page that prints the retired name reads it off the key through
-    `asked_label` (a decline's "Nothing here answers this question:
-    <label>: ...", `compose.plan._page_facts`). Proved on the four populations: 628 of 628, 2,082 of 2,082
+    (`say._LINE_SHAPES`, `_STAT_FOR`, `_REACHING`, `_ASKED_AS`), and no
+    sentence or page prints the retired name since Phase 4, step 2 (a
+    decline's "Nothing here answers this question: <label>: ..." until its
+    decline commit, `say.asked_as` since; the page's `intent` beside a
+    cause's sentence, `compose.plan._page_facts`, until the commit after
+    it, which shows a cause's plain facts and no shape). Proved on the four populations: 628 of 628, 2,082 of 2,082
     and the 2,710 readings identical with the point's `by`, `on`, `shape`
     and `source` left out (`compare --ignore`, `reader_cmp.py --ignore`:
     each lists the field's values by count), 2,608 of 2,608 unit-test
@@ -2010,9 +2013,10 @@ a shape:
   `None` for no shape, the retired `other`), one key per retired intent
   (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`),
   each the label table's (`reading.SHAPE_NAMES`, which names it back as
-  the page's `Answer.intent`: `Reading.intent` is that label, filled from
-  the key and held to it, read for the API's `intent`, the trace and the
-  records (the page reads `Answer.shape` since Phase 4, step 1) -
+  the page's `Answer.intent` until Phase 4, step 2: `Reading.intent` is
+  that label, filled from the key and held to it, read for the records
+  alone since `Answer.intent` and the API's `intent` went (the page reads
+  `Answer.shape` since Phase 4, step 1, the trace the key) -
   and, until Phase 4 keys them on the `PointShape`, as a cause fact four of
   the sayer's refusal phrase tables choose their words by, the Phase 3
   review's finding, 2026-10-11). The kind is no part of the key: it is the subject reading's,

@@ -291,7 +291,6 @@ def snapshot(
         "answer": {
             "text": _masked(answer.text, mask),
             "answered_by": answer.answered_by,
-            "intent": answer.intent,
             # The planned point's shape, which the page renders by (Phase 4, step 1).
             "shape": plain(answer.shape, mask=mask),
             "artifacts": [artifact.kind for artifact in answer.artifacts],

@@ -157,9 +157,9 @@ class ShapeResponse(BaseModel):
 class AnswerResponse(BaseModel):
     """An answered question.
 
-    ``intent``, ``shape`` and ``data`` are null when ``answered_by`` is
-    ``"refused"``: only a reader or the compiler produces them. A client must
-    handle that rather than assume a shape.
+    ``shape`` and ``data`` are null when ``answered_by`` is ``"refused"``:
+    only a reader or the compiler produces them. A client must handle that
+    rather than assume a shape.
 
     .. versionadded:: 2.0.0
 
@@ -169,6 +169,8 @@ class AnswerResponse(BaseModel):
 
     .. versionchanged:: 6.0.0
        Adds ``shape``, the planned point's shape, which the page renders by.
+       Breaking: ``intent``, the retired intent's name the page rendered by
+       until then, is gone.
 
     .. versionchanged:: 4.4.0
        Adds ``history_file``, the basename of the run this answer was recorded
@@ -182,7 +184,6 @@ class AnswerResponse(BaseModel):
     question: str
     text: str
     answered_by: str
-    intent: str | None
     data: dict[str, Any] | None
     artifacts: list[ArtifactResponse]
     timing: TimingResponse
@@ -201,7 +202,7 @@ class AnswerResponse(BaseModel):
     """
     shape: ShapeResponse | None = None
     """The planned point's shape, which the page renders ``data`` by; null
-    where ``intent`` is, and where the words came to no point.
+    on a refusal, and where the words came to no point.
 
     .. versionadded:: 6.0.0
     """
@@ -317,7 +318,6 @@ def as_response(answer: Answer, history_file: str | None = None) -> AnswerRespon
         question=answer.question,
         text=answer.text,
         answered_by=answer.answered_by,
-        intent=answer.intent,
         data=answer.data,
         artifacts=[ArtifactResponse(kind=a.kind, name=a.name) for a in answer.artifacts],
         timing=TimingResponse(
@@ -689,7 +689,7 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, router_model: st
         `routed`/`tool` event. The engine's trace lines are prose, and turning
         prose back into structure is the exact move this codebase removed from
         the chart renderers; the structured facts a client acts on - which path
-        answered, the intent, the timing, which history file to attach a note
+        answered, the shape, the timing, which history file to attach a note
         to - are all on the final `answer` event.
         """
         return StreamingResponse(
