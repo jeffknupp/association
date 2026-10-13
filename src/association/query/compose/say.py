@@ -49,6 +49,7 @@ from association.query.reading import (
     PLAYER_MEETINGS,
     PLAYER_RANKING,
     PLAYER_SPLITS,
+    PLAYERS_COUNTED,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
     SHOT_CHART,
@@ -2467,6 +2468,21 @@ def _say_season_lines_ranking(rows: list[dict[str, Any]], facts: RankingFacts, l
     return f"{count}, by {label}: {named}."
 
 
+def say_players_counted(result: Result) -> Answer:
+    """How many players a season line holds (ISSUES.md #390): said as the
+    ranking kept past the line says it - "2 players averaged 30+ points per
+    game in the 2026 regular season (minimum 20 games), by points per game:
+    ..." - the count first, the players after it, with the count on the
+    answer's data.
+
+    .. versionadded:: 6.0.0
+    """
+    head = result.parts[0].body
+    assert isinstance(head, Scalar)
+    said = say_leaderboard(replace(result, parts=result.parts[1:]))
+    return replace(said, data={**(said.data or {}), "count": head.values.get("players", 0)})
+
+
 def say_leaderboard(result: Result) -> Answer:
     """A ranking over the season line, worded as the retired template
     worded it (``templates.players._leaderboard_ranking``): the leader and
@@ -4599,6 +4615,7 @@ _ASKED_AS: dict[PointShape, str] = {
     SHOT_CHART: "a shot chart",
     SHOT_DISTANCE: "an average shot distance",
     PLAYER_RANKING: "a ranking of players",
+    PLAYERS_COUNTED: "a count of players",
     PLAYER_COMPARISON: "a comparison of players",
     SEASON_HISTORY: "a season-by-season history",
     TEAM_LINE: "a team's season line",
@@ -4860,6 +4877,7 @@ _SCALAR_SAYERS: dict[str, Callable[[Result], Answer]] = {
     "total": say_player_netpoints,
     "projection": say_team_outlook,
     "ranked": say_team_stat,
+    "players": say_players_counted,
 }
 
 #: A Grouped body's sayer, by what one row is (:attr:`Grouped.by <association.query.result.Grouped.by>`).

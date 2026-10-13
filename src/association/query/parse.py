@@ -49,6 +49,7 @@ from association.query.reading import (
     PLAYER_MEETINGS,
     PLAYER_RANKING,
     PLAYER_SPLITS,
+    PLAYERS_COUNTED,
     PRESENCE_SPLIT,
     SHOT_CHART,
     TEAM_COACH,
@@ -195,6 +196,9 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     (frozenset({"everyone"}), lexicon.STREAK_ROW, TEAM_RECORD),
     # "game log", or a log after a window of games as the window tagger typed it ("last game log").
     (frozenset({"everyone"}), lexicon.AnyOf((lexicon.LEAGUE_LOG_ROW, lexicon.StandsBefore(frozenset({"window"}), lexicon.LOG_AFTER_A_VALUE))), PLAYER_LOG),
+    # How many players a season line holds (ISSUES.md #390; D4 lifted for it
+    # by Jeff, 2026-10-13): the ranking, counted.
+    (frozenset({"everyone"}), lexicon.PLAYERS_COUNTED_ROW, PLAYERS_COUNTED),
     (frozenset({"everyone"}), lexicon.ANY_WORDS_ROW, PLAYER_RANKING),
 )
 """The parent grammar: the first row whose kinds hold the subject's kind

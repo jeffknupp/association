@@ -59,7 +59,7 @@ from .pairs import read_player_matchup
 from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
 from .plan import NO_READING, PlannedQuery, Verdict, beyond_words, cells_unhonored, planned_shape, shape_cells
 from .presence import read_with_without
-from .rankings import read_leaderboard
+from .rankings import read_leaderboard, read_players_counted
 from .records import read_record_when, read_team_record_when
 from .runs import read_streak, read_team_streak
 from .say import asked_as, say
@@ -281,6 +281,7 @@ _ROUTES: dict[PointShape, _Route] = {
     PointShape("player_periods", "split", "period"): _Route(read_period_split),
     PointShape("player_periods", "ranking", "player"): _Route(read_period_leaderboard, only=True),
     PointShape("player_seasons", "ranking", "player"): _Route(read_leaderboard),
+    PointShape("player_seasons", "scalar", "count"): _Route(read_players_counted),
     PointShape("player_seasons", "scalar", "line"): _Route(read_player_line),
     PointShape("player_seasons", "split", "season"): _Route(read_player_history),
     PointShape("player_seasons", "comparison", "subject"): _Route(read_player_compare),

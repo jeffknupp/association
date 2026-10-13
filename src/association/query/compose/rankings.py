@@ -41,7 +41,7 @@ from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, qualifies_by
 from association.query.notes import Note
 from association.query.reading import MAX_LIMIT, Filtered, Unsupported, _clamp_limit
-from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Span, Unanswered
+from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Scalar, Span, Unanswered
 from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, LeaderboardResult, rank_season_line
 
 from .core import Query
@@ -95,6 +95,43 @@ def leaderboard_reads(q: Query) -> bool:
     if unit is not None and unit != "total":
         return True
     return q.position is None
+
+
+def players_counted_reads(q: Query) -> bool:
+    """Whether :func:`read_players_counted` reads ``q``: how many of the
+    league's players a season line holds (ISSUES.md #390), the season
+    ranking's own point counted - read wherever the ranking would read it.
+
+    .. versionadded:: 6.0.0
+    """
+    if not (q.skeleton == "scalar" and q.subject == "everyone" and q.source == "seasons" and any(line.per != "game" for line in q.lines)):
+        return False
+    return leaderboard_reads(_as_ranking(q))
+
+
+def _as_ranking(q: Query) -> Query:
+    """The count's point as the ranking it counts."""
+    return replace(q, skeleton="grouped", group="player")
+
+
+def read_players_counted(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
+    """How many players a season line holds - "how many players averaged 30
+    ppg in 2026" (ISSUES.md #390, the 26th key, D4 lifted for it by Jeff on
+    2026-10-13) - read as the season ranking kept past the line
+    (:func:`read_leaderboard`) and counted: a
+    :class:`~association.query.result.Scalar` body ``how="players"`` with
+    the count, and the ranking's players as the next part. ``None`` where
+    the ranking would not read the point.
+
+    .. versionadded:: 6.0.0
+    """
+    if not players_counted_reads(q):
+        return None
+    ranked = read_leaderboard(con, _as_ranking(q))
+    if not isinstance(ranked, Result):
+        return ranked
+    pool = ranked.facts.pool if isinstance(ranked.facts, RankingFacts) else None
+    return replace(ranked, parts=(Part(body=Scalar(games=0, values={"players": pool or 0}, how="players")), *ranked.parts))
 
 
 def _leaderboard_career(scope: Filtered) -> bool:

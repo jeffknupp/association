@@ -20,13 +20,13 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CELL_ORDER, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_facts, cell_set
+from association.query.reading import CELL_ORDER, PLAYERS_COUNTED, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_facts, cell_set
 from association.query.result import Refusal, Unanswered
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping, measure_names
 from .netpoints import NetPointsQuery
-from .rankings import leaderboard_reads
+from .rankings import leaderboard_reads, players_counted_reads
 from .say import decline_body, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
@@ -362,6 +362,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
 #: ``compose.seasons``), from the point alone.
 _SEASON_LINE_READS = {
     PointShape("player_seasons", "ranking", "player"): leaderboard_reads,
+    PointShape("player_seasons", "scalar", "count"): players_counted_reads,
     PointShape("player_seasons", "scalar", "line"): player_line_reads,
     PointShape("player_seasons", "split", "season"): player_history_reads,
     PointShape("player_seasons", "comparison", "subject"): player_compare_reads,
@@ -396,6 +397,10 @@ def _game_level(key: PointShape, q: Query) -> Query:
         raise Refused(refusal)
     if q.group == "season":
         return replace(q, **(_career_scope(q)).filters(), source="games")
+    if key == PLAYERS_COUNTED:
+        # How many players a season line holds has no game-level reading:
+        # the line is a season's, declined by name (ISSUES.md #390).
+        raise Unsupported(decline_body({"cells": [cell_facts(q, "season_line")], "why": _BEYOND_WORDS}))
     if q.group == "player" and q.subject == "everyone":
         stat = spelled(q.measure)
         if stat is not None and stat.strip() and stat_measure(q.measure) is None:

@@ -2381,6 +2381,7 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         PLAYER_MEETINGS,
         PLAYER_RANKING,
         PLAYER_SPLITS,
+        PLAYERS_COUNTED,
         PRESENCE_SPLIT,
         SEASON_HISTORY,
         SHOT_CHART,
@@ -2408,6 +2409,8 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         LINE_RUNS,
         PLAYER_MEETINGS,
         PLAYER_RANKING,
+        # How many players a season line holds (ISSUES.md #390, the 26th key, D4 lifted by Jeff on 2026-10-13).
+        PLAYERS_COUNTED,
         PLAYER_LINE,
         SEASON_HISTORY,
         PLAYER_COMPARISON,

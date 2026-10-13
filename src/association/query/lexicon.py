@@ -99,6 +99,7 @@ TypedKind = Literal[
     "companion",
     "window",
     "date",
+    "line_season",
 ]
 """What a tagger typed where it stands in the grammar's text: a line's
 number by how the words state it (``line_plus`` "20+", "20 or more";
@@ -110,8 +111,10 @@ word, by that word (``opponent_against`` "against", "vs"; ``opponent_versus``
 "versus"; ``opponent`` any other) - the subject reading's; a companion's
 phrase, by whether it holds a presence word (``companion_with``: "with",
 "without", "when", "while"; ``companion`` otherwise) - the subject
-reading's; a window of games (``window``) - the window tagger's; and a range
-opened on a dated day (``date``) - the cuts tagger's.
+reading's; a window of games (``window``) - the window tagger's; a range
+opened on a dated day (``date``) - the cuts tagger's; and a line on a
+player's season figure, whole (``line_season``: "averaged 30 ppg", ISSUES.md
+#390) - the lines tagger's.
 
 .. versionadded:: 6.0.0
 """
@@ -239,6 +242,7 @@ _SPELLING: dict[TypedKind, str] = {
     "companion": "\ue109",
     "window": "\ue10a",
     "date": "\ue10b",
+    "line_season": "\ue10c",
 }
 _UNSPELLED: dict[str, str] = dict.fromkeys(_SPELLING.values(), TYPED)
 _UNSPELLED_TABLE: dict[int, str] = {ord(char): TYPED for char in _SPELLING.values()}
@@ -4504,6 +4508,14 @@ his games by a companion.
 """
 POSITION_LOG_ROW = row(r"\b(log|game ?log)\b")
 """A log asked of a position.
+
+.. versionadded:: 6.0.0
+"""
+# How many players a season line holds (ISSUES.md #390): "how many players
+# averaged 30 ppg in 2026", "how many players average 25+ in 2005" - "how
+# many" before players, and a season line as the lines tagger typed it.
+PLAYERS_COUNTED_ROW = AllOf((row(r"\bhow\s+many\s+(?:\w+\s+){0,2}players?\b"), stands("line_season")))
+"""How many players a season line holds, asked.
 
 .. versionadded:: 6.0.0
 """

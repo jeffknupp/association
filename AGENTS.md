@@ -73,10 +73,12 @@ this tree:
 
 - **New shapes are frozen** (decision D4). No new shape the words can ask,
   template, presenter, scoping table or renderer.
-  `tests/query/test_frozen_shapes.py` holds the 25 shapes the grammar can
+  `tests/query/test_frozen_shapes.py` holds the 26 shapes the grammar can
   name (the grammar's keys, `reading.PointShape` as relation, shape and
   `by`, since Phase 3, step 4 - the 25 intents' names until then, a freeze
-  retired with the intent), the page's 7 renderers (one per
+  retired with the intent; the 26th, `reading.PLAYERS_COUNTED`, how many
+  players a season line holds, by Jeff's lifting of D4 for the season
+  ranking's shapes on 2026-10-13, ISSUES.md #390), the page's 7 renderers (one per
   `reading.Shape`, since Phase 4, step 1 - 22 keyed by the label until
   then) and the 4 scoping
   declarations left in `src` (by module and name, read from the source),
@@ -1845,7 +1847,8 @@ a shape:
   a relation does not declare, or apply, scoping of its own" above). Every
   key the grammar names is the compiler's (`Reading.asked` set; "no
   shape", `None`, is refused with the reason "what its words ask has no
-  reader"): the 25 keys the retired intents were, whose names `ISSUES.md`,
+  reader"): the 25 keys the retired intents were and the count of players
+  a season line holds (`reading.PLAYERS_COUNTED`, 2026-10-13), whose names `ISSUES.md`,
   `CHANGES.md` and the history still use (`threshold_count`, `single_game_high`, `record_when`, `player_history`,
   `game_log`, `player_stat`, `player_splits`, `leaderboard`,
   `period_split`, `player_compare`, `streak`, `player_matchup`,

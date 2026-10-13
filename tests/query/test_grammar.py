@@ -46,13 +46,14 @@ def test_every_intent_is_reachable_from_the_reader() -> None:
 
 def _asked_keys() -> set[PointShape]:
     """Every key the words can ask, as the reading module names them
-    (``reading.PLAYER_LOG``, ...): the grammar's 25 (``test_frozen_shapes``
-    freezes them). Until Phase 4, step 0 the tests' label table
+    (``reading.PLAYER_LOG``, ...): the grammar's 26 (``test_frozen_shapes``
+    freezes them; the 26th, ``PLAYERS_COUNTED``, by Jeff's lifting of D4 on
+    2026-10-13). Until Phase 4, step 0 the tests' label table
     (``tests/shapes.ASKED``) listed them by the retired intents' names."""
     from association.query import reading
 
     keys = {value for name, value in vars(reading).items() if name.isupper() and isinstance(value, PointShape)}
-    assert len(keys) == 25, sorted(map(str, keys))
+    assert len(keys) == 26, sorted(map(str, keys))
     return keys
 
 

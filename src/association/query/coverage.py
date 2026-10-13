@@ -73,6 +73,14 @@ def _player_games_line_tables(scope: Filtered) -> tuple[str, ...]:
     return ("player_season_advanced_stats",) if keyed(scope.measure) in _ADVANCED_STAT_NAMES else _PLAYER_BOX_SOURCES
 
 
+def _pools_players(shape: PointShape) -> bool:
+    """Whether ``shape`` pools the league's players - a ranking, or how many
+    players a season line holds (ISSUES.md #390) - and so has the ranking's
+    floor (``first_ranking_season``): a count over a survivor sample is as
+    unrepresentative as a ranking of one."""
+    return shape.shape == "ranking" or shape == PointShape("player_seasons", "scalar", "count")
+
+
 def _metric_tables(scope: Filtered) -> tuple[str, ...]:
     """The table the asked-for leaderboard metric is ranked from; nothing
     for a metric the ranking's reader refuses with a better message than a
@@ -163,6 +171,7 @@ SOURCES: dict[PointShape, Tables] = {
     # averaged 30 ppg in 1986" answered "No games for every player in the
     # 1986 regular season", the wrong cause.
     PointShape("player_seasons", "ranking", "player"): _metric_tables,
+    PointShape("player_seasons", "scalar", "count"): _metric_tables,
     PointShape("netpoints", "scalar", "ratings"): ("net_points_player", "net_points_player_fingerprint"),
     PointShape("netpoints", "chart", "fingerprint"): ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
     PointShape("team_games", "scalar", "record"): _team_record_tables,
@@ -287,7 +296,7 @@ def check_coverage(shape: PointShape | None, scope: Filtered) -> str | None:
         # No season means the current one, which every table covers; no
         # point means nothing was read.
         return None
-    return unavailable(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=shape.shape == "ranking")
+    return unavailable(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=_pools_players(shape))
 
 
 def floor_refusal(tables: tuple[str, ...], season: int, season_type: int, *, ranking: bool = False, shown: Mapping[str, Any] | None = None, under: tuple[str, ...] = ("message",)) -> Refusal | None:
@@ -320,7 +329,7 @@ def coverage_refusal(shape: PointShape | None, scope: Filtered) -> Refusal | Non
     """
     if scope.span.season is None or shape is None:
         return None
-    return floor_refusal(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=shape.shape == "ranking")
+    return floor_refusal(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=_pools_players(shape))
 
 
 def coverage_caveat(shape: PointShape | None, scope: Filtered) -> str | None:
@@ -342,5 +351,5 @@ def coverage_caveat(shape: PointShape | None, scope: Filtered) -> str | None:
     """
     if scope.span.season is None or shape is None:
         return None
-    said = caveat(sources_for(shape, scope), scope.span.season, scope.span.season_type or REGULAR_SEASON, ranking=shape.shape == "ranking")
+    said = caveat(sources_for(shape, scope), scope.span.season, scope.span.season_type or REGULAR_SEASON, ranking=_pools_players(shape))
     return note("partial_season", said, season=scope.span.season, season_type=scope.span.season_type or REGULAR_SEASON) if said else None
