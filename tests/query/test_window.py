@@ -401,3 +401,16 @@ def test_a_window_taken_in_each_season_is_found_by_its_words(question: str, expe
 )
 def test_a_careers_own_seasons_by_their_place(question: str, words: list[str]) -> None:
     assert [question[c.start : c.end] for c in own_seasons_window(question)] == words
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["show the 76ers pace for each game last season", "draymond each game", "Jarrett Allen every game vs the lakers last season", "Kyrie Irving vs uta game by game", "all of his games tatum"],
+)
+def test_every_game_on_a_log_is_the_whole_span_from_the_newest(question: str) -> None:
+    # ISSUES.md #402: an end with no count, never the log's default ten.
+    assert _read(question, PLAYER_LOG) == Window(order="recent")
+
+
+def test_every_game_off_a_log_is_no_window() -> None:
+    assert _read("jayson tatum points per game each game", PLAYER_LINE) == Window()

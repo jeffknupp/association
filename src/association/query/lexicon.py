@@ -966,6 +966,17 @@ winning; a ``limit`` of 0 is the count the words hold.
    In the lexicon, compiled (``parse.WINDOW_GRAMMAR`` until Phase 3, step 2).
 """
 
+EVERY_GAME = re.compile(
+    r"\b(?:for\s+)?(?:each|every)\s+(?:single\s+)?game\b|\bgame[\s-]+by[\s-]+game\b|\ball\s+(?:of\s+)?(?:his|her|their|the)?\s*games\b",
+    re.IGNORECASE,
+)
+"""Every game of the span asked for one by one: "for each game", "every
+game", "game by game", "all his games" - on a log, the whole span from the
+newest, never its default ten (ISSUES.md #402).
+
+.. versionadded:: 6.0.0
+"""
+
 # Which end of the span a window reads from, said with "games": the two
 # forms the router's model emitted (``recent``, ``first``). Tighter than the
 # grammar's rows (no venue or season type between the count and "games": "his

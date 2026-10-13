@@ -459,15 +459,6 @@ those were found.
 - **Priority:** P2 - a different figure than asked, visibly.
 - **GitHub:** #401
 
-### "for each game" and "every game" are read as the log's default window of the newest 10: "show the 76ers pace for each game last season" lists the last 10 games' scores
-- **Found:** 2026-10-13, Jeff's queries on `a5a4e68` (`--verbose`), reported after the Phase 4 live run.
-- **Evidence:** "show the 76ers pace for each game last season" and "show the 76ers 3pt% for each game last season" both read `asked=player_games/rows/date` with `window=date/desc/10` and answer "Philadelphia 76ers, last 10 games of the 2025 regular season (1-9)"; "each" and "game" are read by no window rule, so the log's rule for a bare log (the newest N, `DEFAULT` 10) stands. The same wording on a player ("show luka's points for each game last season") is the same window.
-- **User sees:** ten games where the season's every game was asked, the count stated in the heading and nothing saying the rest were cut.
-- **Next step:** "for each game", "every game", "game by game", "per game" (on a log) read as the whole span - a window of no count, or the log's window set to the span's games - with the heading saying the count; a test per wording; the 2,710 readings and the feed measured for the wordings' reach before the rule lands.
-- **Source:** ours.
-- **Priority:** P2 - a narrower answer than asked, the narrowing stated only as "last 10".
-- **GitHub:** #402
-
 ### The team log drops the stat it was asked for and shows the score: "show the 76ers 3pt% for each game last season" lists W/L and the score, no 3pt%
 - **Found:** 2026-10-13, Jeff's queries on `a5a4e68`.
 - **Evidence:** the reading carries `measure={'key': 'threePointFieldGoalPct'}` and the compiled team log executes `measures=['points']` - the team-games relation has no box-score join (`AGENTS.md`, "A team can be the subject"), so a team log can show the score and the result and nothing else, and nothing says the asked stat was dropped. The same question with "pace" reads the model's `points` over the words' "pace" (`measures=['points']`, `measure.key` `points`), where the season-line form of the question ("the 76ers game with the highest pace") reads `pace` from the words: the log row's measure on a team keeps the model's key. The team compiler's TOTAL refuses a box-score count narrowed to a window for the same want of a join; the log does not.
