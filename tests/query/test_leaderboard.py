@@ -13,7 +13,9 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.query.compose.say import season_lines_phrase
 from association.query.connection import connect_read_only
+from association.query.reading import Line, LineOp
 from association.query.season_line import LeaderboardError, run_leaderboard
 
 
@@ -310,3 +312,44 @@ def test_the_season_lines_door_ranks_with_ties_sharing_a_place(db_path: str) -> 
         ("Klay Thompson", 3, 13.8),
     ]
     assert not ranking.traded
+
+
+# ---------------- a ranking kept past season lines (ISSUES.md #390) ----------------
+
+
+def _season_line(measure: str, op: LineOp, value: float, typed: str) -> Line:
+    return Line(measure=measure, op=op, value=value, as_typed=typed, per="season")
+
+
+def test_a_season_line_keeps_the_players_past_it_and_counts_them(con: duckdb.DuckDBPyConnection) -> None:
+    """ "players who averaged 20 ppg" answered the unfiltered ranking; the
+    ranking keeps the players over the season's average, and says how many
+    there were before the cut (``pool``)."""
+    result = run_leaderboard(con, "avg_points", season=2026, min_sample=1, lines=(_season_line("points", ">=", 20, "averaged 20 ppg"),))
+    assert [row["display_name"] for row in result.rows] == ["Stephen Curry"] and result.pool == 1
+    under = run_leaderboard(con, "avg_points", season=2026, min_sample=1, lines=(_season_line("points", "<", 20, "averaged under 20 ppg"),))
+    assert [row["display_name"] for row in under.rows] == ["Klay Thompson"] and under.pool == 1
+    assert run_leaderboard(con, "avg_points", season=2026, min_sample=1).pool is None
+
+
+def test_a_season_line_reads_a_traded_players_combined_row(con: duckdb.DuckDBPyConnection) -> None:
+    """Klay's two stints average 15.0 and 12.0 and his season 13.8: the line
+    is kept on the season's combined row, so "over 14 ppg" leaves him out
+    though one stint clears it, and "over 13" keeps him once."""
+    over_14 = run_leaderboard(con, "avg_points", season=2026, min_sample=1, lines=(_season_line("points", ">", 14, "averaged over 14 ppg"),))
+    assert [row["display_name"] for row in over_14.rows] == ["Stephen Curry"]
+    over_13 = run_leaderboard(con, "avg_points", season=2026, min_sample=1, lines=(_season_line("points", ">", 13, "averaged over 13 ppg"),))
+    assert [row["display_name"] for row in over_13.rows] == ["Stephen Curry", "Klay Thompson"] and over_13.pool == 2
+
+
+def test_a_season_line_on_another_table_than_the_ranked_one(con: duckdb.DuckDBPyConnection) -> None:
+    """A ranking by an advanced metric kept past a box-score average ("usage
+    rate among players averaging 20 ppg") joins the season's box row."""
+    result = run_leaderboard(con, "usage_pct", season=2026, min_sample=1, lines=(_season_line("assists", ">=", 2, "averaging 2 apg"),))
+    assert [row["display_name"] for row in result.rows] == ["Stephen Curry"] and result.pool == 1
+
+
+def test_season_lines_are_said_as_what_the_players_did() -> None:
+    assert season_lines_phrase([("points", ">=", 30, "season")]) == "averaged 30+ points per game"
+    assert season_lines_phrase([("points", ">=", 16, "season"), ("rebounds", "<", 3.5, "season")]) == "averaged 16+ points per game and under 3.5 rebounds per game"
+    assert season_lines_phrase([("points", ">=", 10000, "total")], career=True) == "had 10,000+ points in their careers"

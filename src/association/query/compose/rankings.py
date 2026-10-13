@@ -40,9 +40,9 @@ from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, qualifies_by
 from association.query.notes import Note
-from association.query.reading import Filtered, Unsupported, _clamp_limit
+from association.query.reading import MAX_LIMIT, Filtered, Unsupported, _clamp_limit
 from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Span, Unanswered
-from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, rank_season_line
+from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, LeaderboardResult, rank_season_line
 
 from .core import Query
 
@@ -196,6 +196,11 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     fields = _leaderboard_fields(scope, metric)
     if career:
         _leaderboard_career_refusals(scope, fields)
+    # The season lines its players are kept past (ISSUES.md #390): every
+    # player over them is the answer, so the list runs to the cap where no
+    # count was asked, and how many there were is said beside it.
+    lines = tuple(line for line in scope.lines if line.per != "game")
+    limit = _clamp_limit(scope.window.count, default=MAX_LIMIT if lines else DEFAULT_LEADERBOARD_LIMIT)
     try:
         ranking = rank_season_line(
             con,
@@ -205,8 +210,9 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
             season_type=scope.span.season_type or 2,
             team=scope.who.team,
             fields=fields,
-            limit=_clamp_limit(scope.window.count, default=DEFAULT_LEADERBOARD_LIMIT),
+            limit=limit,
             min_sample=q.minimum.count if q.minimum is not None else None,
+            lines=lines,
         )
     except LeaderboardError as exc:
         # An ambiguous team, an unknown metric, a team column with no season
@@ -214,19 +220,16 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
         # reasons to decline, never to guess.
         raise Unsupported(str(exc)) from exc
     found = ranking.result
-    minimum = found.min_sample_applied
-    decisions: tuple[Decided, ...] = ()
-    stated: tuple[int, str] | None = None
-    if minimum is not None:
-        unit = MIN_SAMPLE_LABELS.get(found.min_sample_column or "", found.min_sample_column or "")
-        if q.minimum is not None:
-            # The words asked for this floor: said as the default is, and no
-            # decision - the question stated it (ISSUES.md #377).
-            stated = (minimum, unit)
-        else:
-            decisions = (Decided(kind="minimum", field="minimum", chose=minimum, facts={"of": unit, "column": found.min_sample_column}),)
+    decisions, stated = _leaderboard_minimum(q, found)
     ratio = LEADERBOARD_METRICS[metric].ratio
-    facts = RankingFacts(label=found.label, ratio=tuple(ratio) if ratio else None, fields=tuple(fields), stated_minimum=stated)
+    facts = RankingFacts(
+        label=found.label,
+        ratio=tuple(ratio) if ratio else None,
+        fields=tuple(fields),
+        stated_minimum=stated,
+        lines=tuple((str(line.measure), line.op, line.value, line.per) for line in lines),
+        pool=found.pool,
+    )
     if isinstance(found, CareerLeaderboardResult):
         pool = found.pool_first_season
         span = Span(season=None, season_type=found.season_type, career=True, first=pool, source="seasons")
@@ -244,6 +247,19 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
             # visible there and a season named reaches the alternative).
             decisions = (*decisions, Decided(kind="season_default", field="season", chose=found.season, why="latest_on_record", facts={"season_type": found.season_type or 2}))
     return Result(subject="every player", relation="everyone", span=span, parts=(Part(body=ranking.body),), notes=notes, decisions=decisions, facts=facts)
+
+
+def _leaderboard_minimum(q: Query, found: LeaderboardResult | CareerLeaderboardResult) -> tuple[tuple[Decided, ...], tuple[int, str] | None]:
+    """The qualifier the ranking applied: the ``minimum`` decision where it
+    was the default, or the floor the question stated - said as the
+    default is, and no decision (ISSUES.md #377)."""
+    minimum = found.min_sample_applied
+    if minimum is None:
+        return (), None
+    unit = MIN_SAMPLE_LABELS.get(found.min_sample_column or "", found.min_sample_column or "")
+    if q.minimum is not None:
+        return (), (minimum, unit)
+    return (Decided(kind="minimum", field="minimum", chose=minimum, facts={"of": unit, "column": found.min_sample_column}),), None
 
 
 def _leaderboard_career_refusals(scope: Filtered, fields: list[str]) -> None:

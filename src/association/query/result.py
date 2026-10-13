@@ -580,7 +580,7 @@ class RankingFacts:
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 6.0.0
-       ``stated_minimum`` (ISSUES.md #377).
+       ``stated_minimum`` (ISSUES.md #377); ``lines`` and ``pool`` (ISSUES.md #390).
     """
 
     label: str
@@ -592,6 +592,13 @@ class RankingFacts:
     #: beside the ranking as the default's decision is said; None where
     #: the default applied (the ``minimum`` decision, ISSUES.md #377).
     stated_minimum: tuple[int, str] | None = None
+    #: The season lines the players were kept past - each line's measure,
+    #: comparison, number and whether it is an average or a total
+    #: (``reading.Line.per``) - and how many players cleared them, shown or
+    #: not (ISSUES.md #390); empty and None where the ranking kept every
+    #: qualified player.
+    lines: tuple[tuple[str, str, int | float, str], ...] = ()
+    pool: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

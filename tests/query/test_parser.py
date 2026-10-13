@@ -957,26 +957,46 @@ def test_a_line_on_a_percentage_is_the_points_cause_on_every_key(con: duckdb.Duc
 
 
 @pytest.mark.parametrize(
+    ("question", "lines"),
+    [
+        ("How many players averaged 30 ppg in 2026", [("points", ">=", 30, "season")]),
+        ("how many players average 25+ in 2006 nba", [("points", ">=", 25, "season")]),
+        ("players to average 16 points 10 rebounds", [("points", ">=", 16, "season"), ("rebounds", ">=", 10, "season")]),
+        ("players who averaged under 10 points in 2024", [("points", "<", 10, "season")]),
+        ("nba all-time ast/to leaders with > 5 apg", [("assists", ">", 5, "season")]),
+        ("nba player with 10000 points and 4000 assists in career", [("points", ">=", 10000, "total"), ("assists", ">=", 4000, "total")]),
+        (
+            "nba players who averaged a minimum of 20 points per game and less than 4 rebounds per game and less than 3 assists per game on a season",
+            [("points", ">=", 20, "season"), ("rebounds", "<", 4, "season"), ("assists", "<", 3, "season")],
+        ),
+    ],
+)
+def test_a_line_on_a_season_is_read_by_the_season_ranking(con: duckdb.DuckDBPyConnection, question: str, lines: list[tuple[str, str, float, str]]) -> None:
+    """ISSUES.md #390: a ranking of players' seasons stating a line on the
+    season's figure answered the unfiltered ranking, the line unread (and
+    "averaged under 10 points" read as a GAME line, the games under 10
+    points averaged); the season ranking keeps its players past the season
+    lines, a line naming no stat on the ranking's own measure."""
+    reading = _read(con, question)
+    assert reading.point is not None and (reading.point.on, reading.point.shape, reading.point.by) == ("player_seasons", "ranking", "player")
+    assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
+
+
+@pytest.mark.parametrize(
     ("question", "kind", "words"),
     [
-        ("How many players averaged 30 ppg in 2026", "season_line_unread", "averaged 30 ppg"),
-        ("how many players average 25+ in 2006 nba", "season_line_unread", "average 25+"),
-        ("players to average 16 points 10 rebounds", "season_line_unread", "average 16 points"),
-        ("least amount of fga per game to score 18 points per game by a guard", "season_line_unread", "18 points per game"),
-        ("nba all-time ast/to leaders with > 5 apg", "season_line_unread", "> 5 apg"),
-        ("nba player with 10000 points and 4000 assists in career", "season_line_unread", "10000 points"),
         ("most seasons averaging 30 ppg", "seasons_counted", "most seasons averaging 30 ppg"),
         ("Players with most 25 point season", "seasons_counted", "most 25 point season"),
         ("nba players with the most seasons with 2000 points", "seasons_counted", "most seasons with 2000 points"),
+        ("most seasons averaging 10 rebounds per game", "seasons_counted", "most seasons averaging 10 rebounds per game"),
         ("most 60 win seasons nba players", "seasons_counted", "most 60 win seasons"),
+        ("nba players who average 18 ppg 3.5 assists and shot 54% or better 2026 season", "season_line_unread", "shot 54% or better"),
     ],
 )
-def test_a_line_on_a_season_or_a_count_of_seasons_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, kind: str, words: str) -> None:
-    """ISSUES.md #390, #391: a ranking of players' seasons stating a line
-    on the season's figure, or counting a player's seasons over one,
-    answered the unfiltered ranking, the line unread; refused by a cause
-    naming the words until a season line's filter and a count of seasons
-    exist."""
+def test_a_count_of_seasons_or_a_season_line_the_ranking_cannot_hold_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, kind: str, words: str) -> None:
+    """ISSUES.md #390, #391: a count of a player's seasons over a line, and a
+    percentage beside a season line, answered the unfiltered ranking; each
+    is refused by a cause naming the words."""
     reading = _read(con, question)
     assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts == {"words": words}
 

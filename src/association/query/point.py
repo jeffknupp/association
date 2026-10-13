@@ -50,7 +50,7 @@ from association.query.measures import (
     stat_measure,
     streak_column,
 )
-from association.query.metrics import PER_GAME_MIN_GAMES, qualifies_by
+from association.query.metrics import PER_GAME_MIN_GAMES, SEASON_FIGURES, qualifies_by
 from association.query.period import PeriodRead
 from association.query.reading import (
     DEFAULT_GAME_LOG_LIMIT,
@@ -321,7 +321,7 @@ def _numbered_lines(scope: Filtered) -> list[tuple[str, str, Any]]:
     predicates: list[tuple[str, str, Any]] = []
     seen: set[str] = set()
     for line in scope.lines:
-        if line.period is not None or line.op != ">=" or line.measure is None or int(line.value) < 1 or line.measure in seen:
+        if line.per != "game" or line.period is not None or line.op != ">=" or line.measure is None or int(line.value) < 1 or line.measure in seen:
             continue
         seen.add(line.measure)
         predicates.append(line.as_predicate())
@@ -1517,7 +1517,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     # last step wrote them there (subject.apply_subject), and a Reading
     # built by hand with a subject of its own gets the same here.
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
-    _season_lines_refused(reading.asked, question)
+    scope = _season_lines_refused(reading.asked, question, scope)
     try:
         point = _read_point(reading.asked, scope, question, subject)
     except Unsupported:
@@ -1788,6 +1788,8 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
        ``line.read_lines``' choice until Phase 3, step 4, slice (b).
     """
     found: list[tuple[int, Line, Claim]] = []
+    if asked == PLAYER_RANKING:
+        read, found = _lines_season(read)
     if asked == GAMES_COUNTED:
         # Fouling out is the count's own line (fouls at six), whatever else
         # the words number - the grammar's rules chose the count by it.
@@ -1804,6 +1806,21 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
     stat = _lines_stat(asked, pairs, has_phrase=bool(read.of("phrase", "stated")), stat=stat)
     found.sort(key=lambda each: each[0])
     return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
+
+
+def _lines_season(read: LineCandidates) -> tuple[LineCandidates, list[tuple[int, Line, Claim]]]:
+    """On a ranking of players' seasons, the lines on the season's figure
+    ("averaged 30 ppg", "> 5 apg": ISSUES.md #390) with where each stands
+    and its claim - and the candidates left once the game lines read inside
+    them are set aside ("30 points" of "averaged 30 points", "under 10
+    points" of "averaged under 10 points": the season's line, not a game's,
+    which the ranking read before averaging until 2026-10-13)."""
+    season = read.of("season")
+    if not season:
+        return read, []
+    inside = [(each.claim.start, each.claim.end) for each in season]
+    rest = tuple(each for each in read.found if each.how == "season" or not any(start <= each.claim.start and each.claim.end <= end for start, end in inside))
+    return LineCandidates(rest), [(each.start, each.line, each.claim) for each in season]
 
 
 def _lines_phrases(asked: PointShape | None, read: LineCandidates, *, has_pair: bool) -> list[LineCandidate]:
@@ -1893,23 +1910,55 @@ def minimum_under(asked: PointShape | None, read: MinimumRead) -> MinimumRead:
     return read if asked == PLAYER_RANKING else MinimumRead(None)
 
 
-def _season_lines_refused(asked: PointShape | None, question: str) -> None:
-    """Refuse a ranking of players' seasons whose words state a line on the
-    season's figure - "how many players averaged 30 ppg in 2026", "players
-    to average 16 points 10 rebounds" (ISSUES.md #390) - or count a
-    player's seasons over one - "most seasons averaging 30 ppg" (ISSUES.md
-    #391): the ranking orders every qualified player and keeps none over a
-    line, and nothing counts seasons, so each answered the unfiltered
-    ranking. A cause naming the words, until a season line's filter and a
-    count of seasons exist."""
+def _season_lines_refused(asked: PointShape | None, question: str, scope: Reading) -> Reading:
+    """A ranking of players' seasons kept past a line on the season's figure
+    ("how many players averaged 30 ppg in 2026", "players to average 16
+    points 10 rebounds": ISSUES.md #390) reads its season lines - a line
+    whose words name no stat ("average 25+") on the ranking's own measure -
+    and refuses what it cannot hold by a cause naming the words: a line on
+    a figure the season line holds no column of (``season_line_unread``,
+    ``metrics.SEASON_FIGURES``), a percentage beside one ("shot 54% or
+    better"), the words of a season line no line was read from, and a
+    count of a player's seasons over one ("most seasons averaging 30 ppg":
+    ``seasons_counted``, ISSUES.md #391). Each answered the unfiltered
+    ranking until 2026-10-13."""
     if asked != PLAYER_RANKING:
-        return
+        return scope
     counted = lexicon.SEASONS_COUNTED.search(question)
     if counted is not None:
         raise PointRefused(Cause(kind="seasons_counted", facts={"words": counted.group(0)}), f"{counted.group(0)!r} counts seasons over a line")
-    line = lexicon.SEASON_LINE.search(question)
-    if line is not None:
-        raise PointRefused(Cause(kind="season_line_unread", facts={"words": line.group(0)}), f"{line.group(0)!r} is a line on a season's figure")
+    season = [line for line in scope.lines if line.per != "game"]
+    if not season:
+        return scope
+    scope = _season_lines_measured(scope, season)
+    _season_lines_unheld(question, [line for line in scope.lines if line.per != "game"])
+    return scope
+
+
+def _season_lines_measured(scope: Reading, season: list[Line]) -> Reading:
+    """The season lines on the ranking's own measure where their words name
+    none, and the ranking's measure - where the words name none beside the
+    line ("how many players averaged 30 ppg") - the first line's stat, or
+    points ("average 25+"), as a ranking with no stat ranks."""
+    named = next((line.measure for line in season if line.measure is not None), None)
+    own = scope.measure.key if scope.measure is not None and scope.measure.key is not None else named or "points"
+    if scope.measure is None:
+        scope = replace(scope, measure=measured(own))
+    return replace(scope, lines=tuple(replace(line, measure=own) if line.per != "game" and line.measure is None else line for line in scope.lines))
+
+
+def _season_lines_unheld(question: str, season: list[Line]) -> None:
+    """Refuse a season line on a figure the season line holds no column of,
+    a percentage beside one, and the words of a season line no line was
+    read from (``season_line_unread``)."""
+    for line in season:
+        if line.measure not in SEASON_FIGURES or SEASON_FIGURES[line.measure][0 if line.per == "season" else 1] is None:
+            raise PointRefused(Cause(kind="season_line_unread", facts={"words": line.as_typed}), f"{line.as_typed!r} is a line on a figure the season line holds no column of")
+    read = " ".join(line.as_typed for line in season)
+    unread = next((m for m in lexicon.SEASON_LINE.finditer(question) if " ".join(m.group(0).casefold().split()) not in read), None)
+    for found in (unread, lexicon.SEASON_LINE_PERCENT.search(question)):
+        if found is not None:
+            raise PointRefused(Cause(kind="season_line_unread", facts={"words": found.group(0)}), f"{found.group(0)!r} is a line on a season's figure")
 
 
 def _lines_name_a_stat(scope: Filtered) -> None:

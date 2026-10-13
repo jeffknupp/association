@@ -484,6 +484,15 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### A count of the players over a season line, and a count of seasons over one, have no reader: "most seasons averaging 30 ppg" is refused
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** since 2026-10-13 (the P1 sweep's lane L, D4 lifted for the season ranking's shapes by Jeff) the season ranking keeps its players past a line on the season's average or total, a career's on a career ranking (`reading.Line.per`, the `season_line` cell; `season_line.ranking_statement`, `career_ranking_statement`), and says how many cleared it: "How many players averaged 30 ppg in 2026" answers "2 players averaged 30+ points per game in the 2026 regular season (minimum 20 games), by points per game: Luka Doncic (33.5), Shai Gilgeous-Alexander (31.1)." What is left: (1) "how many" is answered by that list, not as a count of its own (`player_seasons/scalar/count`, the next commit); (2) a count of a player's seasons over a line ("most seasons averaging 30 ppg", 7 of the 2,082) is refused by `seasons_counted`; (3) a percentage beside a season line ("and shot 54% or better") is refused by `season_line_unread`; (4) a season line on a ranking the game level reads - a position group ("least amount of fga per game to score 18 points per game by a guard", 2) or a qualifier in a unit the metric does not qualify by ("highest true shooting percentage in a playoff run minimum 10 games and average 10 ppg") - is declined ("players who averaged 18+ points per game cannot be read here"); (5) "nba all-time ast/to leaders with > 5 apg" ranks career assists, "ast/to" (`assistTurnoverRatio`) read by no measure word; (6) "How many players averaged 30 ppg in the 80s" answers 2026, the decade unread (the span's, #393).
+- **User sees:** for (2)-(4) a refusal or decline naming the line; for (5) a ranking by the wrong figure under the right line; for (6) the current season, named in the answer.
+- **Next step:** (1) and (2) are this lane's next two commits; then a percentage season line (`fieldGoalPct` and kin over the season's makes and attempts), the season line on the game-level ranking, and "ast/to" as a measure word.
+- **Priority:** P2 - (5) and (6) answer a narrower or different question on 2 of the 2,082, the rest are refusals.
+- **Source:** ours.
+- **GitHub:** #390 (#391, the count of seasons, folded into it)
+
 ### A team's stat asked under a companion's line answers the team's record: "how many fgm did the celtics make when tatum scored 30" answers the Celtics' record when Tatum had 30+ points
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 2).
 - **Evidence:** probe on `fe806a6` and `d4f04b9` (the review's `data/adhoc.txt`): `asked` `player_games/split/line`, unread `fgm`, `make`; the answer is the W-L split ("Boston Celtics record when Jayson Tatum had 30+ points").
@@ -2325,15 +2334,6 @@ those were found.
 - **GitHub:** #376
 
 ## P3: refusal or gap
-
-### A season average stated as a line on the league, and a count of seasons over one, are refused: "How many players averaged 30 ppg in 2026" has no reader
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
-- **Evidence:** since the P1 sweep's lane L (2026-10-13) a ranking of players' seasons whose words state a line on the season's average or a career total (`lexicon.SEASON_LINE`: "averaged 30 ppg", "average 25+", "18 points per game", "> 5 apg", "10000 points") is refused by the `season_line_unread` cause, and one counting a player's seasons over a line (`lexicon.SEASONS_COUNTED`: "most seasons averaging 30 ppg", "most 25 point season", "most seasons with 2000 points", "most 60 win seasons") by `seasons_counted` - 24 of the 2,082 feed questions, each of which answered the unfiltered ranking until then. A line stated over or at a number ("players who made exactly 129 three pointers in the NBA in 2025-26") is left unread on that ranking for the same reason (`point.lines_under`), and still answers the ranking; a line under a number there ("players who averaged under 10 points") is still read as a GAME line and narrows the games before averaging (a different question, said in the heading: "every player with under 10 points"). "who has the most seasons since 2000" (no line) answers the career points ranking.
-- **User sees:** a refusal naming the line or the count, where the players over a season line, how many there are, or who has the most such seasons were asked.
-- **Next step:** two readers, which are D4's occasion (Jeff's call): (1) a season line kept past a line - the typed `Line` with a season facet, honored by the season-line ranking as a HAVING on the season's figure (`season_line.run_leaderboard`), with a count of the players over it where "how many" stands (a `player_seasons/scalar/count` point); (2) a count of a player's seasons over a line (`player_seasons/ranking/player` ranked by the count of seasons over it, over `player_season_stats_deduped`). Then read a line under a number on that ranking as the season's, not the games'.
-- **Priority:** P3 - a refusal naming the gap; 24 of the 2,082.
-- **Source:** ours.
-- **GitHub:** #390 (#391, the count of seasons, folded into it)
 
 ### "most ppg without free throws" is refused as if "free throws" were a teammate: "games without free throws cannot be read here"
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 3).

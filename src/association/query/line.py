@@ -66,7 +66,9 @@ class LineCandidate:
     line on points), ``phrase`` (a floor of minutes or a line under a
     number, :func:`~association.query.lines.phrase_line`), ``stated`` (a
     line over or at a number on a stat, stated by its lead: "more than 40
-    points", "exactly 25 fga", "fga = 25").
+    points", "exactly 25 fga", "fga = 25"), ``season`` (a line on a player's
+    season figure - "averaged 30 ppg", "> 5 apg", "10000 points" - which only
+    a ranking of players' seasons reads, ISSUES.md #390).
 
     .. versionadded:: 6.0.0
     """
@@ -74,7 +76,7 @@ class LineCandidate:
     line: Line
     start: int
     claim: Claim
-    how: Literal["fouled", "plus", "at_least", "bare", "scored", "phrase", "stated"]
+    how: Literal["fouled", "plus", "at_least", "bare", "scored", "phrase", "stated", "season"]
     #: Where the line's number stands, with its plus where the words state
     #: one ("20+", "20 or more"), and how the number is stated (``plus``,
     #: ``at_least`` or ``bare``) - what the choosers read in place of the
@@ -262,7 +264,71 @@ def read_lines(question: str) -> LineCandidates:
                 LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase", phrase_number, _phrase_stat(question, phrase_number, m.end()), lead)
             )
     found.extend(stated)
+    found.extend(_read_season_lines(question))
     return LineCandidates(tuple(found))
+
+
+#: Which way a season line's lead keeps the players (ISSUES.md #390).
+_SEASON_LEAD_OPS: dict[str, LineOp] = {
+    "over": ">",
+    "more than": ">",
+    "above": ">",
+    "at least": ">=",
+    "a minimum of": ">=",
+    "with": ">=",
+    "under": "<",
+    "less than": "<",
+    "fewer than": "<",
+    "below": "<",
+}
+
+
+def _read_season_lines(question: str) -> list[LineCandidate]:
+    """The lines on a player's season figure the words state
+    (:data:`~association.query.lexicon.SEASON_LINE_AVERAGE`,
+    :data:`~association.query.lexicon.SEASON_LINE_PER_GAME`,
+    :data:`~association.query.lexicon.SEASON_LINE_TOTAL`, each continued by
+    :data:`~association.query.lexicon.SEASON_LINE_NEXT`), as ``season``
+    candidates: a line kept on the season's average (``per="season"``) or
+    on a total over the span (``per="total"``), its measure None where the
+    words name no stat ("average 25+" - the ranking's own). A ranking of
+    players' seasons reads them (:func:`~association.query.point.lines_under`);
+    no other key does."""
+    found: list[LineCandidate] = []
+    spans: list[tuple[int, int]] = []
+    season: Literal["season", "total"] = "season"
+    total: Literal["season", "total"] = "total"
+    matches = [(m, season) for m in lexicon.SEASON_LINE_AVERAGE.finditer(question)]
+    matches += [(m, season) for m in lexicon.SEASON_LINE_PER_GAME.finditer(question)]
+    matches += [(m, total) for m in lexicon.SEASON_LINE_TOTAL.finditer(question)]
+    for m, per in sorted(matches, key=lambda each: (each[0].start(), -each[0].end())):
+        if any((start <= m.start() and m.end() <= end) or m.start() <= start < m.end() for start, end in spans):
+            continue  # the same words read by a longer reading
+        groups = {key: value for key, value in m.groupdict().items() if value is not None}
+        line = _season_line(question[m.start() : m.end()], groups, per)
+        found.append(LineCandidate(line, m.start(), Claim(m.start(), m.end(), "line"), "season"))
+        end = m.end()
+        while (more := lexicon.SEASON_LINE_NEXT.match(question, end)) is not None:
+            start = more.start("n")
+            found.append(LineCandidate(_season_line(question[start : more.end()], more.groupdict(), per), start, Claim(start, more.end(), "line"), "season"))
+            end = more.end()
+        spans.append((m.start(), end))
+    return found
+
+
+def _season_line(typed: str, groups: dict[str, str | None], per: Literal["season", "total"]) -> Line:
+    """One season line from its match's groups: the number (a decimal kept
+    as one), the way its lead or sign faces (at or over by default), and the
+    stat its words name, or None."""
+    number = groups.get("n") or groups.get("n2") or "0"
+    value: int | float = float(number) if "." in number else int(number)
+    sign = groups.get("sign")
+    lead = " ".join((groups.get("lead") or groups.get("lead2") or "").casefold().split())
+    signs: dict[str, LineOp] = {">": ">", ">=": ">=", "<": "<", "<=": "<="}
+    op: LineOp = signs[sign] if sign else _SEASON_LEAD_OPS.get(lead, ">=")
+    word = (groups.get("stat") or groups.get("stat2") or "").casefold()
+    measure = lexicon.SEASON_LINE_PER_GAME_WORDS.get(word) or lexicon.MEASURE_WORDS.get(word) or lexicon.MEASURE_WORDS.get(word.rstrip("s")) or None
+    return Line(measure=measure, op=op, value=value, as_typed=" ".join(typed.casefold().split()), per=per)
 
 
 def _read_lines_stated(question: str) -> list[LineCandidate]:

@@ -45,6 +45,31 @@ EXTRA_FIELD_COLUMNS = {
 }
 
 
+SEASON_FIGURES: dict[str, tuple[str | None, str | None]] = {
+    "points": ("avgPoints", "points"),
+    "rebounds": ("avgRebounds", "totalRebounds"),
+    "assists": ("avgAssists", "assists"),
+    "steals": ("avgSteals", "steals"),
+    "blocks": ("avgBlocks", "blocks"),
+    "turnovers": ("avgTurnovers", "turnovers"),
+    "minutes": ("avgMinutes", None),
+    "threePointFieldGoalsMade": ("avgThreePointFieldGoalsMade", "threePointFieldGoalsMade"),
+    "fieldGoalsMade": ("avgFieldGoalsMade", "fieldGoalsMade"),
+    "fieldGoalsAttempted": ("avgFieldGoalsAttempted", "fieldGoalsAttempted"),
+    "freeThrowsMade": ("avgFreeThrowsMade", "freeThrowsMade"),
+    "freeThrowsAttempted": ("avgFreeThrowsAttempted", "freeThrowsAttempted"),
+}
+"""The season line's columns a line on a season figure is kept by
+(``reading.Line.per``, ISSUES.md #390), by the line's measure: the
+per-game average and the season total in ``player_season_stats``. A
+career's per-game figure is the total's sum over the games', and its total
+the total's sum; a measure with no total column (minutes) has no total
+line.
+
+.. versionadded:: 6.0.0
+"""
+
+
 @dataclass(frozen=True)
 class CareerAggregate:
     """How one metric adds up over a whole career rather than one season.
