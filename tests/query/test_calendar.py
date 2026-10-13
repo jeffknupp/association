@@ -240,6 +240,8 @@ def test_a_range_of_days_that_names_no_range_is_none(text: str) -> None:
         ("since january 31st, 2015", "since_date", "2015-01-31"),
         ("after dec 11 2023", "since_date", "2023-12-11"),
         ("after dec 11", "since_day", (12, 11)),
+        # ISSUES.md #323: a "since" written as an ISO date.
+        ("since 2020-01-26", "since_date", "2020-01-26"),
     ],
 )
 def test_parse_situation_reads_a_worded_since_with_its_year_across_seasons(text: str, kind: str, value: object) -> None:

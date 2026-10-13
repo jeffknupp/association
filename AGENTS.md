@@ -2080,9 +2080,9 @@ a shape:
   `window.WindowCandidates.of_games`, the grammar's end and count and the
   looser end words - not a ranking's "top 5", a count of seasons or one
   game named as the subject's own, whose stretch reaches over words other
-  rows read); and a range opened on a dated day (`date`:
-  `cuts.CutsRead.dated`, "since 1/26/20"; a calendar day and a month stay
-  words). The child grammars read the text with each line typed whole
+  rows read); and a day written in numbers, or a range opened on one
+  (`date`: `cuts.CutsRead.dated`, "since 1/26/20", "on 2026-01-02"; a
+  worded calendar day and a month stay words). The child grammars read the text with each line typed whole
   (`LinesNamed.marked`); the parent grammar and the grammar's rules with
   each line's NUMBER typed (`numbered`: they read a stat word as a
   measure's, "most 10 points games" is no team ranking) and the rules the

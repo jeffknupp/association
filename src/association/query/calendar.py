@@ -171,7 +171,8 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
 
     .. versionchanged:: 6.0.0
        Reads a "since" worded with its year ("since january 31st 2020", a
-       ``since_date``) and a month written short ("after dec 11"), ISSUES.md #353.
+       ``since_date``) and a month written short ("after dec 11"), ISSUES.md #353;
+       and a "since" written as an ISO date ("since 2020-01-26"), ISSUES.md #323.
     """
     if not isinstance(text, str) or not text.strip():
         return None
@@ -254,12 +255,12 @@ def _day_label(day: date) -> str:
 
 
 def _since_numeric(text: str) -> CalendarNarrowing | None:
-    """ "1/26/20" or "1/26/2020" as every game from that calendar date on
+    """ "1/26/20", "1/26/2020" or "2020-01-26" as every game from that calendar date on
     (``"since_date"``), and "1/26" with no year as ``"since_day"`` - the same
     day-of-the-season reading "since January 26" gets. US month-first order,
     parsed by :func:`time.strptime`; a day no calendar has
     ("2/30/20") names nothing, and is refused by value by the caller."""
-    for fmt in ("%m/%d/%y", "%m/%d/%Y"):
+    for fmt in ("%m/%d/%y", "%m/%d/%Y", "%Y-%m-%d"):
         try:
             day = _calendar_day(text, fmt)
         except ValueError:

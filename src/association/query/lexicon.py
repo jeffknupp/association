@@ -1180,7 +1180,7 @@ def month_number(word: str) -> int:
 # opened on a date WITH a year is also where the span's range starts (the
 # cuts tagger hands the year to the span's).
 CALENDAR_DATE = re.compile(
-    r"(?P<range>\b(?:since|after|before|from|through|until)\s+(?:the\s+)?)?"
+    r"(?P<range>\b(?:since|after|before|from|through|until|prior\s+to)\s+(?:the\s+)?)?"
     + r"\b"
     + _MONTH_WORD
     + r"\.?\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(?P<year>(?:19|20)\d\d))?\b",  # codespell:ignore nd - an ordinal suffix
@@ -1228,10 +1228,39 @@ SITUATION_DATE_RANGE = re.compile(r"^" + _DATE_RANGE + r"$", re.IGNORECASE)
 # (`calendar.parse_situation`) or refuses by value - never a narrowing dropped.
 # yardstick-v2 F110, "towns home rec including playoffs since 1/26/20 vs spurs",
 # read without it answered his whole career at home against San Antonio.
-NUMERIC_DATE_RANGE = re.compile(r"\b(?:since|after|from)\s+(?:the\s+)?(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\d|3[01])(?:/(?P<year>(?:19|20)?\d\d))?\b", re.IGNORECASE)
-"""A range opened on a date written in numbers.
+NUMERIC_DATE_RANGE = re.compile(
+    r"\b(?:since|after|from)\s+(?:the\s+)?(?:(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\d|3[01])(?:/(?P<year>(?:19|20)?\d\d))?|(?P<iso_year>(?:19|20)\d\d)-(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12]\d|3[01]))(?![\d/-])",
+    re.IGNORECASE,
+)
+"""A range opened on a date written in numbers: "since 1/26/20", "from
+2024-12-25" (ISSUES.md #323).
 
 .. versionadded:: 6.0.0
+"""
+# One calendar day written in numbers WITH its year: "on 2026-01-02",
+# "11/29/24", "11/28/2025" (ISSUES.md #323). Until it nothing read them, and
+# "sga game log on 2026-01-02" listed his last 10 games. The year is what
+# makes it a day: a slashed pair with none ("7/14") is a shooting line, and
+# "50/40/90" names no month. A range word before it ("before 02/03/2024",
+# "prior to ...") makes it a range, as :data:`CALENDAR_DATE`'s does.
+NUMERIC_DAY = re.compile(
+    r"(?P<range>\b(?:since|after|before|from|through|until|prior\s+to)\s+(?:the\s+)?)?"
+    r"(?<![\w/-])(?:(?P<iso_year>(?:19|20)\d\d)-(?P<iso_month>0?[1-9]|1[0-2])-(?P<iso_day>0?[1-9]|[12]\d|3[01])"
+    r"|(?P<month>0?[1-9]|1[0-2])/(?P<day>0?[1-9]|[12]\d|3[01])/(?P<year>(?:19|20)?\d\d))(?![\w/-])",
+    re.IGNORECASE,
+)
+"""A calendar day written in numbers with its year, or a range opened on one.
+
+.. versionadded:: 6.0.0
+"""
+NUMERIC_DAY_TEXT = re.compile(r"\d+/\d+|\b(?:19|20)\d\d-\d{1,2}-\d{1,2}\b")
+"""A day written in numbers, slashed or ISO: what makes a day or a range
+opened on one dated, which the parent grammar asks for as the cuts tagger
+typed it (:meth:`~association.query.cuts.CutsRead.dated`).
+
+.. versionadded:: 6.0.0
+   ``SLASHED_DAY`` (``parse._SLASHED_DAY`` until Phase 4, step 6), slashes
+   alone, until ISSUES.md #323.
 """
 
 # Where a game was played. "Far away" and "fade away" are shot descriptions,
@@ -1490,7 +1519,7 @@ SITUATION_SINCE_DATED = re.compile(
 
 .. versionadded:: 6.0.0
 """
-SITUATION_SINCE_NUMERIC = re.compile(r"^(?:since|from|after)\s+(?:the\s+)?(?P<date>\d{1,2}/\d{1,2}(?:/\d{2}(?:\d{2})?)?)$", re.IGNORECASE)
+SITUATION_SINCE_NUMERIC = re.compile(r"^(?:since|from|after)\s+(?:the\s+)?(?P<date>\d{1,2}/\d{1,2}(?:/\d{2}(?:\d{2})?)?|\d{4}-\d{1,2}-\d{1,2})$", re.IGNORECASE)
 """A situation value opening a range on a date written in numbers.
 
 .. versionadded:: 6.0.0
@@ -4164,11 +4193,4 @@ LOG_AFTER_A_VALUE = re.compile(r" log\b", re.IGNORECASE | re.DOTALL)
 """"log" right after a value - a window of games, in "last game log".
 
 .. versionadded:: 6.0.0
-"""
-SLASHED_DAY = re.compile(r"\d+/\d+")
-"""A day written with slashes ("1/26/20"): a range opened on one is a dated
-range, which the parent grammar asks for as the cuts tagger typed it.
-
-.. versionadded:: 6.0.0
-   ``parse._SLASHED_DAY`` until Phase 4, step 6.
 """
