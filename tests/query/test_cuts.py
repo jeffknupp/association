@@ -165,6 +165,51 @@ def test_a_worded_since_beside_another_circumstance_keeps_that_one() -> None:
     assert read.cuts.situation is not None and read.cuts.situation.text == "vs eastern conference" and read.dated_since is None
 
 
+@pytest.mark.parametrize(
+    ("question", "day", "words"),
+    [
+        # ISSUES.md #323: a day written in numbers with its year is that
+        # day, ISO or slashed, a two-digit year in the 2000s.
+        ("sga game log on 2026-01-02", "2026-01-02", "2026-01-02"),
+        ("sga fingerprint on 2026-01-02", "2026-01-02", "2026-01-02"),
+        ("11/29/24 Jrue Holiday", "2024-11-29", "11/29/24"),
+        ("What was Josh Harts stats on 11/28/2025", "2025-11-28", "11/28/2025"),
+    ],
+)
+def test_a_day_written_in_numbers_with_its_year_is_that_day(question: str, day: str, words: str) -> None:
+    read = read_cuts(question, CutsContext())
+    assert read.cuts.date == day and read.cuts.situation is None
+    assert [question[c.start : c.end] for c in read.claims if c.what == "date"] == [words]
+
+
+@pytest.mark.parametrize(
+    ("question", "text"),
+    [
+        # A range word before it makes it a range, refused by value as the
+        # worded "before february 3 2024" is; a day no calendar has is the
+        # same, never nothing; no year is no day ("7/14" is a shooting line).
+        ("steph curry vs hawks prior to 02/03/2024", "prior to 02/03/2024"),
+        ("steph curry vs hawks before 2024-02-03", "before 2024-02-03"),
+        ("sga points on 2/30/2024", "2/30/2024"),
+    ],
+)
+def test_a_numeric_day_opened_by_a_range_word_or_on_no_calendar_is_a_situation(question: str, text: str) -> None:
+    read = read_cuts(question, CutsContext())
+    assert read.cuts.date is None and read.cuts.situation is not None and read.cuts.situation.text == text and read.cuts.situation.calendar is None
+
+
+@pytest.mark.parametrize("question", ["curry shot 7/14 from three", "embiid 50/40/90 seasons", "harden 2024-25 stats"])
+def test_numbers_that_are_no_day_name_no_day(question: str) -> None:
+    read = read_cuts(question, CutsContext())
+    assert read.cuts.date is None and read.cuts.situation is None
+
+
+def test_a_since_written_as_an_iso_date_is_every_game_from_it() -> None:
+    read = cuts_under(PLAYER_LOG, read_cuts("sga game log since 2026-01-02", CutsContext()), split=None)
+    situation = read.cuts.situation
+    assert situation is not None and situation.calendar == CalendarNarrowing("since_date", "2026-01-02", "since January 2, 2026") and read.dated_since == 2026
+
+
 def test_a_dated_range_hands_its_year_to_the_span_and_a_worded_one_without_a_year_hands_none() -> None:
     read = cuts_under(PLAYER_LINE, read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
     assert isinstance(read, CutsRead) and read.dated_since == 2020 and read.cuts.situation is not None and read.cuts.situation.calendar is not None

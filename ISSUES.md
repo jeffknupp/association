@@ -353,14 +353,6 @@ those were found.
 - **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 3 - "Gabe Vincent 3’s as a laker", "Jarred 3’s as a laker" (a team's line), "steph curry 3's per season" (his points line).
 - **GitHub:** #270
 
-### A date written as numbers is not read: "sga game log on 2026-01-02" lists his last 10 games, "sga fingerprint on 2026-01-02" draws his season
-- **Found:** 2026-10-05, Phase 2 step 5 (the NetPoints charts), measuring synthetic fingerprint wordings.
-- **Evidence:** through the whole agent on the main warehouse, normalizer stubbed to names `["sga"]`, `ASSOCIATION_TODAY=2026-09-30`, at `70eba2b`: "sga game log on 2026-01-02" reads `game_log {'player': 'sga', 'season_type': 2}` (no `date`, no season) and answers "Shai Gilgeous-Alexander, last 10 of 68 games of the 2026 regular season: ..."; "sga points on 2026-01-02" answers his 2026 season average (31.1 in 68 games); "sga fingerprint on 2026-01-02" draws his 2026 season fingerprint - where "sga fingerprint on january 2, 2026" reads `date: '2026-01-02'` and is refused in the fingerprint's own words, and "sga points on january 2, 2026" reads the date. `router._validate_date` reads only a month name (`_CALENDAR_DATE`); an ISO date, and a bare "1/2/2026" outside a range word (`_NUMERIC_DATE_RANGE` needs "since"/"after"/"from"), are read as nothing.
-- **User sees:** a wrong answer - a window, a season line or a season's chart where one dated game was asked, the heading naming the span it did read.
-- **Next step:** read `YYYY-MM-DD` (and `M/D/YYYY` outside a range word, which a shooting line like "7/14" never has a year for) as a day in `router._validate_date`; a case per form in `tests/query/test_parser.py`; the readings population will move for every question holding one (none of the 628 recorded questions does).
-- **Source:** ours.
-- **GitHub:** #323
-
 ### A conference or division the players or teams belong to is answered as the whole league, or as games against it
 - **Found:** 2026-10-09, Phase 3 step 0, probing which questions reach `calendar.conference_named` (none of the 2,710 readings does)
 - **Evidence:** through the whole agent on `4b9c254`, replies as `run --feed` gives them (no names; the stat where named): "who leads the east in scoring" answers "Luka Doncic led the league in points per game in the 2026 regular season ... at 33.5" - the league, and a Western player; "who leads the east" answers every player by points per game; "top scorers in the western conference this season" answers "every player against Western Conference teams" - `situation` "in the western conference" read as the OPPONENT's alignment (`calendar.parse_alignment` takes "in the west" as a narrowing to games against it), where the question asks for players IN the West. "best record in the east" is refused ("team_leaderboard cannot honor ['situation']"), the one wording probed that does not answer. #25's "What remains" said "a refusal for 'who leads the East'": no longer true.
@@ -2999,6 +2991,14 @@ those were found.
 - **Next step:** read the 91 as step 3 read the 628's: each a subject-reading claim declared and never probed (`ROADMAP-TYPES.md`, Still open 16), or a rule reading a word it does not claim - fix the second kind, and give each held one its reason as `HELD_DISAGREEMENTS` does.
 - **Priority:** P3 - a check whose population is too small to see the shapes it is for.
 - **GitHub:** #382
+
+### A range closed by a date ("before", "until", "prior to" a day) is refused by value: "steph curry vs hawks prior to 02/03/2024"
+- **Found:** 2026-10-13, the P1 sweep (lane S), fixing #323 (days written in numbers).
+- **Evidence:** the cuts tagger reads "before|until|through|prior to <day>" (`lexicon.CALENDAR_DATE`'s and `NUMERIC_DAY`'s range group) as a situation, and `calendar.parse_situation` reads no kind for it, so the relation refuses it by value: "steph curry vs hawks prior to 02/03/2024" (the feed) -> "'prior to 02/03/2024' is not something the games are read by - ...", as "steph curry vs hawks before february 3 2024" is. A "since" is read (`since_date`, every game from the day on); its mirror is not. 1 of the 2,082 feed questions; until #323 it answered the 2024 season's 2 meetings ("prior" unread), the worded form the one game on February 3.
+- **User sees:** an honest refusal of a question the warehouse can answer.
+- **Next step:** an `until_date` calendar kind (`eastern_date < day`, `calendar_clause`) with the span closed at the season the day falls in and opened at the career's first season - which the span cannot state today (an `until` with no `since` is no range `Span` reads) - a test per wording.
+- **Priority:** P3 - a refusal.
+- **Source:** ours.
 
 ## P4: tooling, docs, low impact
 

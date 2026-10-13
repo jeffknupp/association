@@ -87,16 +87,21 @@ class CutsRead:
     venue_claim: Claim | None = None
 
     def dated(self, question: str) -> tuple[Claim, ...]:
-        """Where a range opened on a dated day was read from ("since
-        1/26/20", a situation with the day in it), which the parent grammar
-        asks for where it stands (``parse.grammar_text``). A calendar day,
-        a month and a weekday stay words: the log row reads a month's name
-        and a slashed day itself, as it did.
+        """Where a day written in numbers was read from - a range opened on
+        one ("since 1/26/20", a situation with the day in it) or one day
+        ("on 2026-01-02", "11/29/24") - which the parent grammar asks for
+        where it stands (``parse.grammar_text``). A worded calendar day, a
+        month and a weekday stay words: the log row reads a month's name
+        itself, as it did.
 
         .. versionadded:: 6.0.0
            ``parse._date_spans`` until Phase 4, step 6.
+
+        .. versionchanged:: 6.0.0
+           A day written in numbers, ISO included, as well as a range opened
+           on one (ISSUES.md #323).
         """
-        return tuple(c for c in self.claims if c.what == "situation" and lexicon.SLASHED_DAY.search(question[c.start : c.end]) is not None)
+        return tuple(c for c in self.claims if c.what in ("situation", "date") and lexicon.NUMERIC_DAY_TEXT.search(question[c.start : c.end]) is not None)
 
 
 def read_cuts(question: str, context: CutsContext) -> CutsRead:
@@ -216,7 +221,9 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
        ``router._validate_date`` was this, without the claim.
     """
     match = lexicon.CALENDAR_DATE.search(question)
-    if match is None or match.group("range"):
+    if match is None:
+        return _numeric_day(question)
+    if match.group("range"):
         return None, None
     month, day = lexicon.month_number(match.group("month")), int(match.group("day"))
     stated = match.group("year")
@@ -231,6 +238,27 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
         return date(year, month, day).isoformat(), Claim(match.start(), match.end(), "date")
     except ValueError:
         return None, None  # "february 31"
+
+
+def _numeric_day(question: str) -> tuple[str | None, Claim | None]:
+    """One calendar day written in numbers with its year
+    (:data:`~association.query.lexicon.NUMERIC_DAY`: "on 2026-01-02",
+    "11/29/24", "11/28/2025") as ``YYYY-MM-DD``, with the characters that
+    named it - the year written, so no season fixes it (ISSUES.md #323).
+    None where the words name none, where a range word opens it ("prior to
+    02/03/2024" is a range, a situation), or where no calendar has the day
+    ("2/30/2024")."""
+    match = lexicon.NUMERIC_DAY.search(question)
+    if match is None or match.group("range"):
+        return None, None
+    if match.group("iso_year") is not None:
+        year, month, day = int(match.group("iso_year")), int(match.group("iso_month")), int(match.group("iso_day"))
+    else:
+        year, month, day = _dated_since(match.group("year")) or 0, int(match.group("month")), int(match.group("day"))
+    try:
+        return date(year, month, day).isoformat(), Claim(match.start(), match.end(), "date")
+    except ValueError:
+        return None, None  # "2/30/2024"
 
 
 def _dated_day(question: str, situation: Claim | None) -> tuple[str, int, Claim] | None:
@@ -282,8 +310,17 @@ def _dated_situation(question: str) -> tuple[str | None, int | None, Claim | Non
     starts the seasons at where it wrote one, and the characters read."""
     named = lexicon.CALENDAR_DATE.search(question) or lexicon.NUMERIC_DATE_RANGE.search(question)
     if named is None:
-        return None, None, None
-    return named.group(0).casefold(), _dated_since(named.groupdict().get("year")), Claim(named.start(), named.end(), "situation")
+        # A range opened on a day written in numbers by a word the range
+        # pattern does not read ("before 02/03/2024", "prior to
+        # 2024-02-03"), or a day no calendar has ("2/30/2024"), is a
+        # situation the relation refuses by value, as the worded "before
+        # february 3 2024" and "february 31" are - never the one day, and
+        # never nothing (ISSUES.md #323).
+        named = lexicon.NUMERIC_DAY.search(question)
+        if named is None:
+            return None, None, None
+    groups = named.groupdict()
+    return named.group(0).casefold(), _dated_since(groups.get("year") or groups.get("iso_year")), Claim(named.start(), named.end(), "situation")
 
 
 def _dated_since(year: str | None) -> int | None:
