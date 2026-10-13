@@ -334,13 +334,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #269
 
-### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
-- **Found:** 2026-09-28, fixing #259.
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Gabe Vincent", "laker"]`, stat `threePointFieldGoalsMade`): routes `player_stat` with no stat and answers "Gabe Vincent averaged 4.4 points, 1 rebounds and 1.4 assists per game in 53 games in the 2026 regular season". `parse.MEASURE_GRAMMAR` reads "3s", "threes" and "3 pointers", and "3's" is none of them; the model's key is not kept for a line the words do not name. "Jarred 3’s as a laker" is the corpus's other one. Both also carry "as a laker", which the answer does not honor (Vincent's 2026 line is not a Laker's).
-- **User sees:** a wrong answer - his scoring line where his threes were asked.
-- **Next step:** read "3's" (and "3’s", folded since #259) as threes made in `MEASURE_GRAMMAR`; a case in `tests/query/test_parser.py`.
+### "as a laker" with no opponent beside it, and "per season", are read by nothing: "Gabe Vincent 3’s as a laker" answers his 2026 line as a Heat player
+- **Found:** 2026-09-28, fixing #259; "3's" itself read since 2026-10-13 (the P1 sweep's lane L, #270).
+- **Evidence:** on sweep-L, "Gabe Vincent 3’s as a laker" answers "Gabe Vincent averaged 1.1 3-pointers per game in 53 games in the 2026 regular season" (`Cuts.tenure` None: "as a laker" unread; his 2026 season is not a Laker's), "Jarred 3’s as a laker" answers the Lakers' team line (no player read from "Jarred"), and "steph curry 3's per season" answers his 2026 line where a season-by-season history was asked ("per season" unread). The tenure is the subject reading's (`subject._apply_own_team`, lane N; #339 is its neighbor beside an opponent), "per season" the grammar's history row.
+- **User sees:** a fluent line for the wrong span or the wrong team.
+- **Next step:** read "as a <team singular>" as the tenure with no opponent beside it; "per season"/"by season" as the history (`SEASON_HISTORY`); a case per wording.
+- **Priority:** P1 - a narrower or different question answered; 3 of the 2,082.
 - **Source:** ours.
-- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 3 - "Gabe Vincent 3’s as a laker", "Jarred 3’s as a laker" (a team's line), "steph curry 3's per season" (his points line).
 - **GitHub:** #270
 
 ### A date written as numbers is not read: "sga game log on 2026-01-02" lists his last 10 games, "sga fingerprint on 2026-01-02" draws his season

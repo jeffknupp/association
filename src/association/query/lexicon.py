@@ -2472,7 +2472,10 @@ MEASURE_GRAMMAR: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"\b(points?|pts)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(points?|pts)\b|\bopponents?'? (points|ppg)\b", "points allowed"),
         (r"\b(rebounds?|boards)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(rebounds?|boards)\b", "rebounds allowed"),
         (r"\bassists?\b.{0,12}\b(allowed|given up|conceded)\b", "assists allowed"),
-        (r"\b(threes|3s|(3|three)[ -]?(pt|point|pointer)s?)\b.{0,12}\b(allowed|given up|conceded)\b", "threes allowed"),
+        (r"\b(threes|3'?s|(3|three)[ -]?(pt|point|pointer)s?)\b.{0,12}\b(allowed|given up|conceded)\b", "threes allowed"),
+        # "3's" (and the curly apostrophe, folded before the grammar reads) is "3s": threes
+        # made (ISSUES.md #270, where it was unread and the points line answered).
+        (r"\b3's\b", "threePointFieldGoalsMade"),
         # A three is its own column: "3 point stats", "three points made" and
         # "3-point average" are threes made (a percentage is read above), never
         # the "point" in them read as points.

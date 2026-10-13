@@ -1076,3 +1076,11 @@ def test_worst_ranks_from_the_worse_end_of_a_stat_the_words_name(con: duckdb.Duc
     a ranking whose stat the words do not name keeps its order."""
     reading = _read(con, question)
     assert reading.point is not None and reading.point.direction == direction
+
+
+@pytest.mark.parametrize("question", ["Gabe Vincent 3\u2019s as a laker", "steph curry 3's per season", "jokic 3's this season"])
+def test_three_apostrophe_s_is_threes_made(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ISSUES.md #270: "3's" (and its curly spelling) was read by no measure word, and the
+    player's points line answered where his threes were asked."""
+    reading = _read(con, question)
+    assert reading.measure is not None and reading.measure.key == "threePointFieldGoalsMade"
