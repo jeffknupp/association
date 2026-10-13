@@ -20,17 +20,17 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CELL_ORDER, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, asked_label, cell_facts, cell_set
+from association.query.reading import CELL_ORDER, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_facts, cell_set
 from association.query.result import Refusal
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
-from .core import Query, Refused, Unsupported, _check_relation_scoping
+from .core import Query, Refused, Unsupported, _check_relation_scoping, measure_names
 from .netpoints import NetPointsQuery
 from .rankings import leaderboard_reads
 from .say import decline_body, say, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
-from .team import TeamQuery
+from .team import TeamQuery, team_metric
 from .team_stats import TeamSeasonQuery
 
 
@@ -329,7 +329,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         # Every team shape, the sums included, against the TEAM relation's
         # own cells and what this shape takes beside them.
         _check_relation_scoping(reading, "team", _cells_taken(key, team=True))
-        return TeamQuery(**reading.filters(), metric=reading.measures[0], aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
+        return TeamQuery(**reading.filters(), metric=team_metric(reading.measures[0]), aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
     subject = "everyone" if reading.relation == "everyone" else "player"
     # The season line's ranking (leaderboard's retired reader) takes `rate`
     # - a season total, or a unit refused by name - which no game-level read
@@ -338,7 +338,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     planned = Query(
         **reading.filters(),
         skeleton=skeleton_of(reading),
-        measures=list(reading.measures),
+        measures=measure_names(reading.measures),
         aggregate=reading.aggregate,
         group=reading.group,
         predicates=list(reading.predicates),
@@ -443,9 +443,10 @@ class Planned:
     cause: Cause | None = None
 
 
-#: The reading's causes whose page names the shape refused (``refused``)
-#: beside the intent, as the answering loop's own refusals did until Phase 3,
-#: step 0: the championship and what the words name that nothing reads
+#: The reading's causes whose page names the cause refused by (``refused``),
+#: as the answering loop's own refusals did until Phase 3, step 0 (with the
+#: page's label beside it, ``intent``, until Phase 4, step 2): the
+#: championship and what the words name that nothing reads
 #: (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`).
 _REFUSED_BY_NAME: frozenset[str] = frozenset(
     {"championship", "playoff_round", "non_calendar_situation", "period_stat", "period_as_condition", "team_period_stat", "bench_points", "team_boolean_count"}
@@ -467,19 +468,20 @@ def refusal_of(cause: Cause) -> Refusal:
         return Refusal(kind=cause.kind, facts=cause.facts, shown={"floor": {"unit": cause.facts["unit"], "count": cause.facts["count"]}})
     if cause.kind in _REFUSED_BY_NAME:
         # What the page showed beside these sentences when the answering
-        # loop said them itself: the shape refused, by name, and the intent.
-        return Refusal(kind=cause.kind, facts=cause.facts, shown={"refused": cause.kind, "intent": asked_label(cause.facts["shape"])})
+        # loop said them itself: the cause refused by, by name.
+        return Refusal(kind=cause.kind, facts=cause.facts, shown={"refused": cause.kind})
     if cause.kind == "no_player_reading":
         return Refusal(kind=cause.kind, facts=cause.facts, shown={"named_player": cause.facts["player"]})
     return Refusal(kind=cause.kind, facts=cause.facts, shown=_page_facts(cause.facts))
 
 
 def _page_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
-    """A cause's facts as the page shows them beside its sentence: the key
-    the words ask (``shape``) under the page's label, as ``intent`` - what
-    the page showed while the facts carried the label (Phase 4 deletes the
-    label with :data:`~association.query.reading.SHAPE_NAMES`)."""
-    return {("intent" if key == "shape" else key): (asked_label(value) if key == "shape" else value) for key, value in facts.items()}
+    """A cause's facts as the page shows them beside its sentence: every
+    plain fact, and none of the shapes it names (``shape``, the key the
+    words ask; ``planned``) - the answer carries the shape it was read as
+    (``Answer.shape``). Until Phase 4, step 2 a shape was shown by the
+    page's label, as ``intent`` (and ``name``)."""
+    return {key: value for key, value in facts.items() if key not in ("shape", "planned")}
 
 
 def refusal_result(cause: Cause) -> Reply:

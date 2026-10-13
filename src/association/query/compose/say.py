@@ -30,7 +30,36 @@ from association.query.measures import PERIOD_COLUMNS
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STAT_LABELS, _joined, period_columns
-from association.query.reading import GAME_HIGHS, GAMES_COUNTED, LINE_RECORD, LINE_RUNS, PLAYER_LOG, LeftOut, PointShape, asked_label, ordinal_word
+from association.query.reading import (
+    GAME_HIGHS,
+    GAMES_COUNTED,
+    LINE_RECORD,
+    LINE_RUNS,
+    NETPOINTS_FINGERPRINT,
+    NETPOINTS_RATINGS,
+    PERIOD_LOG,
+    PERIOD_RANKING,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_MEETINGS,
+    PLAYER_RANKING,
+    PLAYER_SPLITS,
+    PRESENCE_SPLIT,
+    SEASON_HISTORY,
+    SHOT_CHART,
+    SHOT_DISTANCE,
+    TEAM_COACH,
+    TEAM_LINE,
+    TEAM_MEETINGS,
+    TEAM_OUTLOOK,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    LeftOut,
+    PointShape,
+    ordinal_word,
+)
 from association.query.result import (
     Calendar,
     Chart,
@@ -4183,8 +4212,9 @@ def _say_no_player_reading(facts: Mapping[str, Any]) -> str:
     ("alperen şengün alltime record" read as a team ranking): names the
     player it read rather than answering the league's or a team's own
     numbers, the wrong subject. Was ``entities.team_only_question_names_a_player``."""
-    # The shape by the page's label (Phase 4 deletes it with SHAPE_NAMES).
-    player, shape = facts["player"], asked_label(facts["shape"]).replace("_", " ")
+    # The shape by its words (the retired intent's name, its underscores
+    # spaced, until Phase 4, step 2).
+    player, shape = facts["player"], asked_as(facts["shape"])
     return (
         f"This was read as a question about {player}, a player, but {shape} has no reading for one - "
         f"it would have answered the league's or a team's own numbers instead. Ask about {player}'s own stats, "
@@ -4251,19 +4281,80 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     ),
     "team_boolean_count": _say_team_boolean_count,
     "cannot_honor": lambda facts: _shape_declined(facts, decline_body(facts)),
-    "no_reading_of_point": lambda facts: _shape_declined(facts, f"{facts['name']} has no reading of this point"),
+    "no_reading_of_point": lambda facts: _shape_declined(facts, f"{asked_as(facts['planned'])} has no reading of this point"),
 }
 
 
 def _shape_declined(facts: Mapping[str, Any], decline: str) -> str:
-    """A shape's decline as the user has always read it - the answering
-    loop's sentence for a question nothing answered
-    (``agent.refusal_text``), under the page's label, word for word: Phase
-    3, step 4 made each a cause the planner says (``cannot_honor``,
-    ``no_reading_of_point``), and the sentence did not move. The label is
-    read off the key the words ask (the cause's ``shape``, :func:`asked_label`), which
-    Phase 4 deletes with the page's labels."""
-    return f"Nothing here answers this question: {asked_label(facts['shape'])}: {decline}."
+    """A shape's decline as the user reads it - the answering loop's
+    sentence for a question nothing answered (:func:`nothing_answers`),
+    said as what the words ask (the cause's ``shape``): Phase 3, step 4 made
+    each a cause the planner says (``cannot_honor``,
+    ``no_reading_of_point``), and the sentence did not move. Until Phase 4,
+    step 2 it named the shape by the page's label ("Nothing here answers
+    this question: team_leaderboard: ..."), the retired intent's name."""
+    return nothing_answers(decline, facts["shape"])
+
+
+#: What the words ask (the grammar's key, :class:`~association.query.reading.PointShape`),
+#: in the words a sentence names it by - "as a ranking of teams", "a game
+#: log has no reading of this point". Since Phase 4, step 2, where a
+#: decline printed the retired intent's name, the page's label
+#: (``reading.SHAPE_NAMES``: "team_leaderboard", "game_log"). Every key the
+#: grammar names, whatever the subject's kind: a team's log is asked as a
+#: player's (:data:`~association.query.reading.PLAYER_LOG`), so each phrase
+#: reads for either.
+_ASKED_AS: dict[PointShape, str] = {
+    PLAYER_LOG: "a game log",
+    PLAYER_LINE: "a player's line",
+    PLAYER_SPLITS: "a set of splits",
+    LINE_RECORD: "a record over a line",
+    PERIOD_LOG: "a quarter or half",
+    GAMES_COUNTED: "a count of games over a line",
+    GAME_HIGHS: "a single-game high",
+    LINE_RUNS: "a streak",
+    PLAYER_MEETINGS: "two players' meetings",
+    PRESENCE_SPLIT: "a record with and without named players",
+    TEAM_MEETINGS: "two teams' meetings",
+    TEAM_PERIOD_TOTAL: "a team's quarter or half",
+    PERIOD_RANKING: "a ranking by a quarter or half",
+    TEAM_RECORD: "a team's record",
+    NETPOINTS_RATINGS: "a player's NetPoints",
+    NETPOINTS_FINGERPRINT: "a NetPoints fingerprint",
+    SHOT_CHART: "a shot chart",
+    SHOT_DISTANCE: "an average shot distance",
+    PLAYER_RANKING: "a ranking of players",
+    PLAYER_COMPARISON: "a comparison of players",
+    SEASON_HISTORY: "a season-by-season history",
+    TEAM_LINE: "a team's season line",
+    TEAM_RANKING: "a ranking of teams",
+    TEAM_OUTLOOK: "a team's outlook",
+    TEAM_COACH: "a coach's record",
+}
+
+
+def asked_as(asked: PointShape) -> str:
+    """What the words ask, in the words a sentence names it by ("a ranking
+    of teams"): every key the grammar names, and nothing else - a key no
+    grammar names has no phrase, and raises.
+
+    .. versionadded:: 6.0.0
+    """
+    return _ASKED_AS[asked]
+
+
+def nothing_answers(why: str, asked: PointShape | None = None) -> str:
+    """The sentence a question nothing here answers is refused with: the
+    reason, as the parser, the planner or the compiler stated it, and what
+    the words were read as asking where they asked something ("Nothing here
+    answers this question as a ranking of teams: ...").
+
+    .. versionadded:: 6.0.0
+       The frame of ``agent.refusal_text``, which calls it; until Phase 4,
+       step 2 the shape was the page's label, written into ``why``.
+    """
+    read_as = "" if asked is None else f" as {asked_as(asked)}"
+    return f"Nothing here answers this question{read_as}: {why}."
 
 
 def decline_body(facts: Mapping[str, Any]) -> str:

@@ -2979,6 +2979,15 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### Six readers still name a retired intent in their "needs a player name" sentence: "Plot Curry's threes from last season" is refused "... as a shot chart: shot_chart needs a player name."
+- **Found:** 2026-10-12, Phase 4, step 2 (lane B), deleting the label: the decline frame says the shape in words since then, and the reason a reader hands it still carries the retired name as a literal.
+- **Evidence:** the reason strings, hard-coded in the readers, read no table: `compose/shots.py:529` ("shot_chart needs a player name") and `:253` ("shot_distance ..."), `compose/netpoints.py:366` ("fingerprint ...") and `:159` ("player_netpoints ..."), `season_line.py:181` ("player_stat ...") and `:206` ("player_history ..."). Measured on `12925ed`'s runs: 2 of the 628 and 5 of the 2,082 answers print one, all the shot chart's ("Plot Curry's threes from last season", "Last season's threes by Plot Curry", "Strphon Castle shot chart", ...), as "Nothing here answers this question as a shot chart: shot_chart needs a player name."
+- **User sees:** a refusal whose cause is right (no player was read) and whose wording names an identifier no user asked about, twice over the shape's own words.
+- **Next step:** each reason says what is missing without the shape ("needs a player name", or "a shot chart needs a player name" where the frame does not already say the shape) - one enumerated commit under the decline rule, in the readers' own files (lane C's: `season_line.py` was lane C1's while step 2 ran, `compose/` beyond the planner and the sayer was outside lane B).
+- **Source:** ours.
+- **Priority:** P4 - a refusal's wording, the cause right; 7 answers over the two populations.
+- **GitHub:** #398
+
 ### A measure tagger's claim holds the team's name: "how many 3 pointers have the magic made" is claimed whole as the measure
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, adding the subject reading's claims.
 - **Evidence:** on the 2,710 readings 4 settled team names claim no characters of their own: their words sit inside a `measure` claim the measure tagger made over the whole team-total phrase (`lexicon.TEAM_TOTAL`: "how many 3 pointers have the magic made", "so far this season, how many three-pointers have the magic made?", "How many 10+ point leads did the Sacramento Kings have", "How many games in the 23-24 NBA season did the Los Angeles lakers have"), so the team's claim folds into it (`span.claimed`). Every reading is right; the claims say "measure" for the team's words.

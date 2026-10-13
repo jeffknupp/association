@@ -20,7 +20,7 @@ from association.query.agent import Agent
 from association.query.answer import Reply
 from association.query.entities import names_of
 from association.query.normalizer import Normalized
-from association.query.reading import Reading, asked_label
+from association.query.reading import NETPOINTS_FINGERPRINT, PLAYER_COMPARISON, PLAYER_LINE, PLAYER_LOG, PLAYER_MEETINGS, PointShape, Reading
 
 _PLAYERS = (
     "Joel Embiid",
@@ -41,7 +41,7 @@ _PLAYERS = (
 
 @pytest.fixture
 def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
-    """``ask(question, names)``: the players and intent each template saw, with
+    """``ask(question, names)``: the players and the key each reader saw, with
     the normalizer's reply stubbed as ``names``."""
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
@@ -49,18 +49,18 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.executemany("INSERT INTO players VALUES (?, ?)", [(str(i), name) for i, name in enumerate(_PLAYERS)])
     con.close()
-    seen: list[tuple[str, str | None, tuple[str, ...]]] = []
+    seen: list[tuple[PointShape | None, str | None, tuple[str, ...]]] = []
 
     def record(ctx: Any, reading: Reading) -> Reply:
         del ctx
-        seen.append((reading.intent, reading.who.player, reading.who.players if len(reading.who.players) > 1 else ()))
+        seen.append((reading.asked, reading.who.player, reading.who.players if len(reading.who.players) > 1 else ()))
         return Reply(data={}, answer="answered")
 
     # Every intent is the compiler's (compose.COMPILED_INTENTS): the
     # Reading reaches compose.answer, through agent._run_compiled.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: record(ctx, reading))
 
-    def run(question: str, names: list[str], stat: str = "") -> list[tuple[str, str | None, tuple[str, ...]]]:
+    def run(question: str, names: list[str], stat: str = "") -> list[tuple[PointShape | None, str | None, tuple[str, ...]]]:
         monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(names, stat))
         seen.clear()
         Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history").ask(question)
@@ -74,8 +74,8 @@ def test_a_surname_the_model_completed_is_asked_about(ask: Any) -> None:
     prominence tiebreak this project rejected: the template sees the
     question's own word and asks. Was ``undo_name_completion``, run after
     the router; now the parser cuts the model's completion back itself."""
-    assert ask("how many points does brown average?", ["Jaylen Brown"], "points") == [("player_stat", "Brown", ())]
-    assert ask("who is better, tatum or brown", ["Jayson Tatum", "Jaylen Brown"]) == [("player_compare", None, ("Jayson Tatum", "Brown"))]
+    assert ask("how many points does brown average?", ["Jaylen Brown"], "points") == [(PLAYER_LINE, "Brown", ())]
+    assert ask("who is better, tatum or brown", ["Jayson Tatum", "Jaylen Brown"]) == [(PLAYER_COMPARISON, None, ("Jayson Tatum", "Brown"))]
 
 
 def test_a_completion_that_names_nobody_still_reaches_the_player(ask: Any) -> None:
@@ -84,15 +84,15 @@ def test_a_completion_that_names_nobody_still_reaches_the_player(ask: Any) -> No
     parser's cut takes it there, and so does the reading, which replaces a
     name the question never held with the one it does: an outcome check,
     which holds with either step alone."""
-    assert ask("derozan career points", ["Derozan Valenčić"], "points") == [("player_stat", "DeMar DeRozan", ())]
+    assert ask("derozan career points", ["Derozan Valenčić"], "points") == [(PLAYER_LINE, "DeMar DeRozan", ())]
 
 
 def test_a_completion_that_changes_no_answer_is_kept(ask: Any) -> None:
     """Completing "embiid" reaches the one player it can be; a nickname the
     question used ("steph curry") is the curated table's reading, not a
     guess."""
-    assert ask("how many points does embiid average", ["Joel Embiid"], "points") == [("player_stat", "Joel Embiid", ())]
-    assert ask("what was steph curry's 3pt percentage", ["Stephen Curry"]) == [("player_stat", "Stephen Curry", ())]
+    assert ask("how many points does embiid average", ["Joel Embiid"], "points") == [(PLAYER_LINE, "Joel Embiid", ())]
+    assert ask("what was steph curry's 3pt percentage", ["Stephen Curry"]) == [(PLAYER_LINE, "Stephen Curry", ())]
 
 
 def test_a_typod_surname_is_read_not_cut_back(ask: Any) -> None:
@@ -101,7 +101,7 @@ def test_a_typod_surname_is_read_not_cut_back(ask: Any) -> None:
     corrected "Adebayo" as a word the question lacks - so it cut the name to
     the ambiguous "Bam" and asked (the day10 paraphrase "Jan 19 Bam
     Adeyebu"). The parser's cut runs on the model's own spelling instead."""
-    assert ask("Jan 19 Bam Adeyebu", ["Bam Adeyebu"]) == [("player_stat", "Bam Adebayo", ())]
+    assert ask("Jan 19 Bam Adeyebu", ["Bam Adeyebu"]) == [(PLAYER_LINE, "Bam Adebayo", ())]
 
 
 def test_a_fingerprint_keeps_every_player_the_question_named(ask: Any) -> None:
@@ -109,19 +109,19 @@ def test_a_fingerprint_keeps_every_player_the_question_named(ask: Any) -> None:
     the second name still draws both, because the reading takes the names
     from the question. Was ``restore_dropped_players``, for a router that
     returned one."""
-    both = [("fingerprint", None, ("Joel Embiid", "Nikola Jokic"))]
+    both = [(NETPOINTS_FINGERPRINT, None, ("Joel Embiid", "Nikola Jokic"))]
     assert ask("compare fingerprints for embiid vs jokic in 2026", ["embiid", "jokic"]) == both
     assert ask("compare fingerprints for embiid vs jokic in 2026", ["embiid"]) == both
     # Said without a comparison word, which the router-era restoration was
     # gated on, and so lost the second name.
-    assert ask("plot jokic and embiid fingerprints", ["jokic"]) == [("fingerprint", None, ("Nikola Jokic", "Joel Embiid"))]
+    assert ask("plot jokic and embiid fingerprints", ["jokic"]) == [(NETPOINTS_FINGERPRINT, None, ("Nikola Jokic", "Joel Embiid"))]
 
 
 def test_an_ordinary_word_is_no_second_fingerprint(ask: Any) -> None:
     """ "best" is Travis Best's whole surname and an ordinary word here: the
     fingerprint is Jokic's alone - the reason the router-era restoration
     needed a comparison word before it added anybody."""
-    assert ask("plot jokic's fingerprint from his best season", ["jokic"]) == [("fingerprint", "Nikola Jokic", ())]
+    assert ask("plot jokic's fingerprint from his best season", ["jokic"]) == [(NETPOINTS_FINGERPRINT, "Nikola Jokic", ())]
 
 
 def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -211,32 +211,32 @@ def _sides_of(reading: Reading) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("question", "names", "intent", "sides"),
+    ("question", "names", "asked", "sides"),
     [
         # A team the question plays against, never a second player to compare:
         # "boston" alone is Brandon Boston Jr.'s whole surname.
-        ("how did curry do against the celtics this year", ["curry", "celtics"], "player_stat", {"player": "curry", "opponent": "Boston Celtics"}),
+        ("how did curry do against the celtics this year", ["curry", "celtics"], PLAYER_LINE, {"player": "curry", "opponent": "Boston Celtics"}),
         # Nobody named: two teams, and "magic" is the Magic, not Magic Johnson.
-        ("magic vs nets last 10", ["magic", "nets"], "game_log", {"team": "Orlando Magic", "opponent": "Brooklyn Nets"}),
+        ("magic vs nets last 10", ["magic", "nets"], PLAYER_LOG, {"team": "Orlando Magic", "opponent": "Brooklyn Nets"}),
         # A city written as one word still reaches its team.
-        ("jaylen brown last 10 games vs goldenstate", ["jaylen brown", "goldenstate"], "game_log", {"player": "Jaylen Brown", "opponent": "Golden State Warriors"}),
+        ("jaylen brown last 10 games vs goldenstate", ["jaylen brown", "goldenstate"], PLAYER_LOG, {"player": "Jaylen Brown", "opponent": "Golden State Warriors"}),
         # An accented name reaches the plain-letter spelling the warehouse holds.
-        ("luka dončić last 15 games vs. magic", ["luka dončić", "magic"], "game_log", {"player": "Luka Doncic", "opponent": "Orlando Magic"}),
-        ("steve adam's vs kings last 10 games", ["steve adam's", "kings"], "game_log", {"player": "Steven Adams", "opponent": "Sacramento Kings"}),
-        ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], "game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
+        ("luka dončić last 15 games vs. magic", ["luka dončić", "magic"], PLAYER_LOG, {"player": "Luka Doncic", "opponent": "Orlando Magic"}),
+        ("steve adam's vs kings last 10 games", ["steve adam's", "kings"], PLAYER_LOG, {"player": "Steven Adams", "opponent": "Sacramento Kings"}),
+        ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], PLAYER_LOG, {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
         # A log against a player is his own games with the other on the far side (ROADMAP step 3); the bare pair is the matchup.
-        ("jay huff game log vs Embiid", ["jay huff", "Embiid"], "game_log", {"player": "Jay Huff"}),
-        ("jay huff vs Embiid", ["jay huff", "Embiid"], "player_matchup", {"players": ("Jay Huff", "Joel Embiid")}),
+        ("jay huff game log vs Embiid", ["jay huff", "Embiid"], PLAYER_LOG, {"player": "Jay Huff"}),
+        ("jay huff vs Embiid", ["jay huff", "Embiid"], PLAYER_MEETINGS, {"players": ("Jay Huff", "Joel Embiid")}),
         # A teammate named with "without" narrows; the team is the opponent.
         (
             "de'aaron fox vs magic last five games without wembyanama",
             ["de'aaron fox", "magic", "wembyanama"],
-            "game_log",
+            PLAYER_LOG,
             {"player": "De'Aaron Fox", "opponent": "Orlando Magic", "without": ("wembyanama",)},
         ),
     ],
 )
-def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb.DuckDBPyConnection, question: str, names: list[str], intent: str, sides: dict[str, Any]) -> None:
+def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb.DuckDBPyConnection, question: str, names: list[str], asked: PointShape, sides: dict[str, Any]) -> None:
     """The team-and-opponent shapes the router got wrong - a team in
     ``players``, the two sides swapped, a player in ``team``, a player
     displaced by his own team - each once had a repair after the router
@@ -248,4 +248,4 @@ def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb
 
     reading = read_route(names_of(league), question, names, "")
     got = _sides_of(reading)
-    assert (asked_label(reading.asked), got, list(reading.misread)) == (intent, sides, [])
+    assert (reading.asked, got, list(reading.misread)) == (asked, sides, [])

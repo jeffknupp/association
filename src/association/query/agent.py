@@ -13,9 +13,9 @@ along. So it is gone, with its prompt, its tools and its budget. Where it
 would have been asked, :meth:`Agent.ask` answers a refusal that names what the
 fast path could not read (``answered_by="refused"``), in seconds. That is the
 same answer ``--disable-fallthrough`` gave as an error, now the only answer,
-and every recorded reason stands: an intent nothing reads, a narrowing the
+and every recorded reason stands: words that ask for nothing a reader reads, a narrowing the
 relation cannot honor, a reply the normalizer could not use. The templates
-went in Phase 2 (``ROADMAP.md``): every intent is the compiler's, read by a
+went in Phase 2 (``ROADMAP.md``): every shape the words ask is the compiler's, read by a
 reader into a Result and worded by the sayer (``compose``).
 """
 
@@ -34,11 +34,11 @@ import duckdb
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
-from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined
+from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined, key_path
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose.plan import Planned, plan_point, refusal_result
-from .compose.say import say_left_out
+from .compose.say import nothing_answers, say_left_out
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -67,17 +67,25 @@ def _note(result: Reply, note: str) -> None:
         notes.append(note)
 
 
-def refusal_text(why: str) -> str:
+def refusal_text(why: str, asked: PointShape | None = None) -> str:
     """The sentence a question nothing here reads is answered with: the
     reason the fast path gave it up, as the parser or the compiler stated
-    it - an intent nothing reads, a narrowing the relation cannot
-    honor, a reply the normalizer could not use. Naming the cause is the
-    whole point: the reader learns which part of the question has no answer
-    here, where the agent this replaced spent minutes and then guessed.
+    it - words that ask for nothing a reader reads, a narrowing the
+    relation cannot honor, a reply the normalizer could not use - and what
+    the words were read as asking (``asked``), where they asked something.
+    Naming the cause is the whole point: the reader learns which part of
+    the question has no answer here, where the agent this replaced spent
+    minutes and then guessed. The sayer's frame
+    (:func:`~association.query.compose.say.nothing_answers`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes ``asked``, said in the shape's words ("Nothing here answers
+       this question as a ranking of teams: ..."), where the reason began
+       with the retired intent's name ("team_leaderboard: ...").
     """
-    return f"Nothing here answers this question: {why}."
+    return nothing_answers(why, asked)
 
 
 class Agent:
@@ -126,6 +134,13 @@ class Agent:
         #: own refusal (a clarification, a "no match", a shape nothing reads)
         #: is an answer: it looked at the question and had something to say.
         self.unanswered: str | None = None
+        #: What the words were read as asking where the last question was
+        #: refused with no reading after they asked something - the key the
+        #: refusal names in the shape's words (:func:`refusal_text`) - or
+        #: None.
+        #:
+        #: .. versionadded:: 6.0.0
+        self.unanswered_as: PointShape | None = None
         #: The Reading the last question settled into, or None where it was
         #: refused before anything read it - what a stage snapshot records
         #: beside the answer (:func:`association.query.stages.snapshot`).
@@ -230,7 +245,6 @@ class Agent:
         history: RunHistory,
         text: str,
         answered_by: AnsweredBy,
-        intent: str | None = None,
         data: dict[str, Any] | None = None,
         artifacts: list[Artifact] | None = None,
         shape: PointShape | None = None,
@@ -249,26 +263,26 @@ class Agent:
                 tool_seconds=history.tool_seconds,
                 tool_calls=history.tool_calls,
             ),
-            intent=intent,
             data=data,
             artifacts=list(artifacts or []),
             decisions=tuple(history.decisions),
             shape=shape,
         )
 
-    def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, Reply] | None:
-        """Reading -> plan -> reader and sayer -> answer, returning
-        the intent alongside the whole :class:`~association.query.answer.Reply`.
-        Returns None, with :attr:`unanswered` naming why, where nothing here
-        reads the question: an intent nothing reads, slots that fail
+    def _try_fast_path(self, question: str, history: RunHistory) -> Reply | None:
+        """Reading -> plan -> reader and sayer -> answer, returning the
+        whole :class:`~association.query.answer.Reply`. Returns None, with
+        :attr:`unanswered` naming why, where nothing here reads the
+        question: words that ask for nothing a reader reads, slots that fail
         validation, or a point the compiler and the named refusals could not
         take.
 
-        The intent and the Reply are returned, rather than just its
-        `answer` text, because that text is only one of the things the reader
-        produced - see Reply.data, which nothing could reach before
-        2.0."""
+        The Reply is returned, rather than just its `answer` text, because
+        that text is only one of the things the reader produced - see
+        Reply.data, which nothing could reach before 2.0. (The label, the
+        retired intent's name, was returned beside it until Phase 4, step 2.)"""
         self.unanswered = None
+        self.unanswered_as = None
         read = self._read_or_refuse(question, history)
         if read is None:
             return None
@@ -286,7 +300,7 @@ class Agent:
         if reading.misread and reading.asked in PLAYER_ASKS:
             misread = misread_players(list(reading.misread))
             history.log(f"  -> (player) {misread}")
-            return reading.intent, Reply(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
+            return Reply(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
         settled = self._settled_before_reading(reading, history)
         if settled is not None:
             return settled
@@ -305,7 +319,7 @@ class Agent:
         # intent stood: the key the words ask is the Reading's own.
         path = "the compiler" if reading.asked is not None else "no reader: refused unless a named refusal has its cause"
         kind = reading.subject.kind if reading.subject is not None else None
-        history.log(f"  -> (parser) asked={reading.intent!r} kind={kind!r} filters={reading.stated()} - {path}")
+        history.log(f"  -> (parser) asked={key_path(reading.asked)} kind={kind!r} filters={reading.stated()} - {path}")
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
         # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
@@ -362,15 +376,15 @@ class Agent:
         history.log(f"  -> (normalizer) names={normalized.names} stat={normalized.stat!r}")
         return read_route(names_of(self.con), question, normalized.names, normalized.stat)
 
-    def _settled_before_reading(self, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
+    def _settled_before_reading(self, reading: Reading, history: RunHistory) -> Reply | None:
         """What is decided before any reader runs, from the Reading alone:
         the refusal the words come to that no point answers past
         (:attr:`Reading.refused <association.query.reading.Reading.refused>`
         - a championship question a team ranking would answer fluently and
         wrongly; a player named on a question whose shape has no reading for
         one, "alperen şengün alltime record" read as the league's standings),
-        which the planner said when it planned the Reading; and, where no
-        reader exists for the intent, the first thing the words name that
+        which the planner said when it planned the Reading; and, where the
+        words ask for no shape a reader reads, the first thing they name that
         nothing reads (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`
         - "most opponent bench points allowed ..."), said by the planner.
         With no reader and no named refusal, records why and returns None.
@@ -382,17 +396,17 @@ class Agent:
             assert self.planned is not None and self.planned.refusal is not None
             said = copy.deepcopy(self.planned.refusal)
             history.log(f"  -> (refusal) {reading.refused.kind}: {said.answer}")
-            return reading.intent, said
+            return said
         if reading.asked is not None:
             return None
         if reading.unsupported:
             refusal = refusal_result(reading.unsupported[0])
             history.log(f"  -> (refusal) {reading.unsupported[0].kind}: nothing here reads that shape")
-            return reading.intent, refusal
-        self.unanswered = f"intent {reading.intent!r} has no reader"
+            return refusal
+        self.unanswered = "what its words ask has no reader"
         return None
 
-    def _run_compiled(self, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
+    def _run_compiled(self, reading: Reading, history: RunHistory) -> Reply | None:
         """A shape the words ask, which the compiler alone answers (every
         one since Phase 2 retired the templates; ``compose.COMPILED_INTENTS``
         listed their names until Phase 3, step 4). Where the
@@ -409,13 +423,13 @@ class Agent:
         ``no_reading_of_point``), at the decline's place in this order,
         answered: a refusal that names why is an answer (Phase 3, step 4)."""
         t0 = time.monotonic()
-        intent, scope = reading.intent, reading
+        scope = reading
         declined: list[str] = []
         causes: list[Cause] = []
         composed = self._try_compose(reading, history, declined=declined.append, declined_by=causes.append)
         if composed is not None:
-            history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
-            return intent, composed
+            history.record_tool_call(f"compose {key_path(reading.asked)}", time.monotonic() - t0)
+            return composed
         why = declined[0] if declined else "the compiler has no reading of this point"
         # The floor of the point the words named (Planned.shape, declared on
         # every verdict), over the point's own scope; no point, no floor.
@@ -423,26 +437,26 @@ class Agent:
         refused = check_coverage(self.planned.shape, reading.point if reading.point is not None else scope)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
-            return intent, Reply(data={"message": refused, "season": scope.span.season}, answer=refused)
+            return Reply(data={"message": refused, "season": scope.span.season}, answer=refused)
         if reading.unsupported:
             # What the words name that nothing reads, said in place of the
             # plain decline - only here, where the answer side declined, so
             # a question the compiler answers is answered.
             refusal = refusal_result(reading.unsupported[0])
             history.log(f"  -> (compose) {why} - refused ({reading.unsupported[0].kind}): nothing here reads that shape")
-            return intent, refusal
+            return refusal
         if causes:
             # The shape's decline, by its cause, said by the planner where
             # the plain decline was - the same sentence.
             history.log(f"  -> (compose) {why} - refused ({causes[0].kind})")
-            return intent, refusal_result(ShapeDeclined.under(causes[0], reading.asked))
+            return refusal_result(ShapeDeclined.under(causes[0], reading.asked))
         history.log(f"  -> (compose) {why}: refused")
-        self.unanswered = f"{intent}: {why}"
+        self.unanswered, self.unanswered_as = why, reading.asked
         return None
 
     def _try_compose(self, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None, declined_by: Callable[[Cause], None] | None = None) -> Reply | None:
         """The compiler's answer to the point the parser read
-        (``association.query.compose.answer``): the compiled intents' only
+        (``association.query.compose.answer``): every shape's only
         answer. The name readings the reader noted and the coverage caveat
         are attached here, and the trace line names the point on the
         relation it composed, since that IS the interesting fact about a
@@ -473,15 +487,13 @@ class Agent:
             _note(composed, name_reading)
         if readings:
             composed.data["name_readings"] = list(readings)
-        note = coverage_caveat(self.planned.shape, reading.point if reading.point is not None else reading, intent=reading.intent)
+        note = coverage_caveat(self.planned.shape, reading.point if reading.point is not None else reading)
         if note:
             composed.answer = f"{composed.answer} {note}"
             _note(composed, note)
         self._unmatched_fingerprint(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
-        shape = self.planned.shape
-        shaped = f"{shape.relation}/{shape.shape}/{shape.by}" if shape is not None else None
-        history.log(f"  -> (compose) intent={reading.intent!r} shape={shaped} point={point}")
+        history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(self.planned.shape)} point={point}")
         return composed
 
     def _unmatched_fingerprint(self, reading: Reading, composed: Reply) -> None:
@@ -506,19 +518,18 @@ class Agent:
         # the planner: no model call, no guess at "Tatum rec".
         short = too_short(question)
         if short is not None:
-            self.unanswered = f"fewer than {MIN_QUESTION_WORDS} words"
+            self.unanswered, self.unanswered_as = f"fewer than {MIN_QUESTION_WORDS} words", None
             history.log(f"  -> (refused) {self.unanswered}")
             return self._answer(question, history, refusal_result(short).answer, "refused")
         fast = self._try_fast_path(question, history)
         if fast is not None:
-            intent, templated = fast
             # The planned point's shape, which the page renders the data by
             # (Phase 4, step 1): the one the answer side chose its reader by.
             shape = self.planned.shape if self.planned is not None else None
-            return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts, shape=shape)
+            return self._answer(question, history, fast.answer, "fast", data=fast.data, artifacts=fast.artifacts, shape=shape)
         # Nothing read the question: the refusal names why, in the words the
         # parser or the compiler gave it up with (#129 - the
         # agent this replaced answered one such question in 23).
         why = self.unanswered or "no reading of the question"
         history.log(f"  -> (refused) {why}")
-        return self._answer(question, history, refusal_text(why), "refused")
+        return self._answer(question, history, refusal_text(why, self.unanswered_as), "refused")

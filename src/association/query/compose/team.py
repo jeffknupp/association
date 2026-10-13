@@ -198,6 +198,28 @@ compiler reads it - and FG%).
 """
 
 
+def team_metric(measure: Measure) -> str:
+    """The team compiler's name for a point's typed measure (:attr:`TeamQuery.metric`):
+    what a team gave up of its points is ``points_allowed``, its margin
+    ``differential``, a game won ``won``; every other measure its catalog
+    key (``points``, ``record``, the box-score columns of
+    :data:`SEASON_MEASURES`). Built here, once, as the planner hands the
+    team compiler its point: the point reader states the measure typed
+    (``Reading.measures``, Phase 4, step 3).
+
+    .. versionadded:: 6.0.0
+    """
+    if measure.key == "points" and measure.whose == "opponent":
+        return "points_allowed"
+    if measure.key == "point_differential":
+        return "differential"
+    if measure.key == "wins":
+        return "won"
+    if measure.key is None:
+        raise Unsupported("a team point names no measure")
+    return measure.key
+
+
 @dataclass(frozen=True, kw_only=True)
 class TeamQuery(Filtered):
     """A point over the team-games relation, for a team as the subject - the

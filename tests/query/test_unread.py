@@ -152,14 +152,14 @@ def test_a_grammar_over_the_whole_question_claims_the_words_its_decision_turned_
     the words that rule it out anywhere in the question - "compare" keeps a
     pair off the matchup row, and is read."""
     from association.query.parse import parent_asked
-    from association.query.reading import asked_label
+    from association.query.reading import PLAYER_COMPARISON
     from association.query.span import read_by
 
     question = "compare curry and lebron vs the celtics"
-    assert asked_label(parent_asked(question, "pair")) == "player_compare"
-    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: asked_label(parent_asked(q, "pair")))] == ["compare"]
+    assert parent_asked(question, "pair") == PLAYER_COMPARISON
+    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: parent_asked(q, "pair"))] == ["compare"]
     question = "show sga fingerprint for this season"
-    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: asked_label(parent_asked(q, "player")))] == ["fingerprint"]
+    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: parent_asked(q, "player"))] == ["fingerprint"]
 
 
 def test_the_reading_claims_what_the_grammar_the_stages_and_the_point_read(con: duckdb.DuckDBPyConnection) -> None:

@@ -448,18 +448,41 @@ def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
 
     from association.query.coverage import SOURCES
     from association.query.player_relation import RELATION_SCOPING_EXCLUDED
-    from association.query.reading import SHAPE_NAMES, TEAM_COACH
+    from association.query.reading import TEAM_COACH
     from association.query.result import Scalar
     from association.query.team_relation import TEAM_RELATION_SCOPING_EXCLUDED
 
     compose = importlib.import_module("association.query.compose")
     sayer = importlib.import_module("association.query.compose.say")
-    # One key: the routes, the shapes' rows of the two cell tables, the label table (but the coach's, which
-    # names a shape no reader takes) and the floor's tables.
-    assert set(compose._ROUTES) == set(SHAPE_NAMES) - {TEAM_COACH} == set(RELATION_SCOPING_EXCLUDED) | set(TEAM_RELATION_SCOPING_EXCLUDED) == set(SOURCES)
+    # One key: the routes, the shapes' rows of the two cell tables and the floor's tables; and every
+    # key the words ask has a route but the coach's, which names a shape no reader takes (the label
+    # table, reading.SHAPE_NAMES, held the routes and the asked keys together until Phase 4, step 2).
+    assert set(compose._ROUTES) == set(RELATION_SCOPING_EXCLUDED) | set(TEAM_RELATION_SCOPING_EXCLUDED) == set(SOURCES)
+    assert set(sayer._ASKED_AS) - {TEAM_COACH} <= set(compose._ROUTES)
     assert set(sayer._SCALAR_SAYERS) == set(typing.get_args(typing.get_type_hints(Scalar)["how"]))
     for module in (compose, sayer):
         tree = ast.parse(Path(module.__file__ or "").read_text())
         named = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)} | {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
         arguments = {arg.arg for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) for arg in node.args.args}
         assert "intent" not in named and "intent" not in arguments, module.__name__
+
+
+def test_every_key_the_grammar_names_is_said_in_words() -> None:
+    """A decline says what the words were read as asking in the shape's
+    words ("Nothing here answers this question as a ranking of teams: ...";
+    the retired intent's name until Phase 4, step 2): every key the grammar
+    can name has its phrase, and so does every shape whose reader is the
+    point's only answer, which a ``no_reading_of_point`` decline names."""
+    from association.query.compose import _ROUTES
+    from association.query.compose.say import asked_as, nothing_answers
+    from association.query.grammar import CODE_ASSIGNED_ASKS
+    from association.query.parse import PARENT_GRAMMAR
+    from association.query.reading import TEAM_RANKING
+    from association.query.subject import KIND_ASSIGNED_ASKS
+
+    asked = set(CODE_ASSIGNED_ASKS) | set(KIND_ASSIGNED_ASKS) | {row[-1] for row in PARENT_GRAMMAR} | {shape for shape, route in _ROUTES.items() if route.only}
+    phrases = {shape: asked_as(shape) for shape in asked}
+    assert len(set(phrases.values())) == len(phrases), "two keys said in the same words"
+    assert all(phrase.startswith(("a ", "an ", "two ")) for phrase in phrases.values()), phrases
+    assert nothing_answers("no team metric for stat 'rebounds allowed'", TEAM_RANKING) == "Nothing here answers this question as a ranking of teams: no team metric for stat 'rebounds allowed'."
+    assert nothing_answers("the normalizer returned no usable reply") == "Nothing here answers this question: the normalizer returned no usable reply."

@@ -65,7 +65,7 @@ from association.query.season_line import (
 )
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 
-from .core import Query
+from .core import Query, measure_names
 
 # --- a player's line -----------------------------------------------------------
 
@@ -97,7 +97,7 @@ def player_line_reads(q: Query) -> bool:
     except Unsupported:
         return False
     named = stat_measure(q.measure)
-    return own.on == "player_seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
+    return own.on == "player_seasons" and (q.measures == measure_names(own.measures) or (named is not None and q.measures == [named]))
 
 
 def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:

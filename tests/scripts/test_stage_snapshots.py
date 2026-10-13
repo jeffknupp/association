@@ -34,7 +34,7 @@ META = {"meta": {"build": "abc", "code": "/x", "db": "/w.duckdb", "today": "2026
 def _record(question: str, **changes: Any) -> dict[str, Any]:
     record: dict[str, Any] = {
         "question": question,
-        "reading": {"intent": "player_stat", "scope": {"season": 2026}},
+        "reading": {"key": "player_seasons/scalar/line", "scope": {"season": 2026}},
         "query": {"shape": "scalar"},
         "result": {"value": 53, "headline": "Jokic scored 53"},
         "answer": {"text": "Jokic scored 53 points.", "answered_by": "fast"},
@@ -82,10 +82,10 @@ def test_two_identical_runs_compare_clean(monkeypatch: pytest.MonkeyPatch, tmp_p
 
 def test_a_moved_value_fails_the_comparison_and_names_the_first_stage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     before = _write(tmp_path / "a.jsonl", _record("q one"), _record("q two"))
-    after = _write(tmp_path / "b.jsonl", _record("q one"), _record("q two", reading__intent="game_log", result__value=54))
+    after = _write(tmp_path / "b.jsonl", _record("q one"), _record("q two", reading__key="player_games/rows/date", result__value=54))
     assert _compare(monkeypatch, before, after) == 1
     out = capsys.readouterr().out
-    assert "q two\n    reading: intent changed: 'player_stat' -> 'game_log'\n    result: value changed: 53 -> 54" in out
+    assert "q two\n    reading: key changed: 'player_seasons/scalar/line' -> 'player_games/rows/date'\n    result: value changed: 53 -> 54" in out
     assert "1 identical, 1 differ" in out and "first stage that differs: reading 1" in out
 
 
@@ -155,7 +155,7 @@ def test_a_run_answers_each_recorded_question_with_no_model_and_pins_what_moves(
     # The versions a result can move with, and the model the recorded replies stand in for.
     assert meta["python"] and meta["duckdb"] and set(meta["ollama"]) == {"version", "model", "digest"}
     coach = records["what did the lakers coach say last night"]
-    assert coach["reading"]["intent"] == "coach" and coach["answer"]["answered_by"] == "fast"
+    assert coach["reading"]["asked"] == {"relation": "team_seasons", "shape": "scalar", "by": "coach"} and coach["answer"]["answered_by"] == "fast"
     # Refused unread: no reading, no query, no result - and the reason kept.
     short = records["Tatum rec"]
     assert short["reading"] is None and short["answer"]["answered_by"] == "refused" and short["answer"]["unanswered"] == "fewer than 3 words"

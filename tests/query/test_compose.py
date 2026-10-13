@@ -1012,14 +1012,14 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
 
     def team_point(shape: str, **cells: Any) -> Reading:
         by, skeleton = {"rows": ("date", "rows"), "scalar": ("", "scalar"), "runs": ("won", "runs"), "split": ("splits", "split")}[shape]
-        aggregate = "none" if shape in ("rows", "runs") else ("record" if shape == "split" else "total")
+        aggregate = Aggregate.NONE if shape in ("rows", "runs") else (Aggregate.RECORD if shape == "split" else Aggregate.TOTAL)
         return Reading(
             relation="team",
             shape=skeleton,  # type: ignore[arg-type]
             by=by,
             on="team_games",
-            measures=["points"],
-            aggregate=aggregate,  # type: ignore[arg-type]
+            measures=(Measure(key="points"),),
+            aggregate=aggregate,
             group="venue" if shape == "split" else "none",
             who=Who(kind="team", teams=("Orlando Magic",)),
             **cells,
@@ -2360,37 +2360,65 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     from dataclasses import replace
 
     from association.query import compose
-    from association.query.reading import SHAPE_NAMES
+    from association.query.compose.say import _ASKED_AS
+    from association.query.reading import (
+        GAME_HIGHS,
+        GAMES_COUNTED,
+        LINE_RECORD,
+        LINE_RUNS,
+        NETPOINTS_FINGERPRINT,
+        NETPOINTS_RATINGS,
+        PERIOD_LOG,
+        PERIOD_RANKING,
+        PLAYER_COMPARISON,
+        PLAYER_LINE,
+        PLAYER_LOG,
+        PLAYER_MEETINGS,
+        PLAYER_RANKING,
+        PLAYER_SPLITS,
+        PRESENCE_SPLIT,
+        SEASON_HISTORY,
+        SHOT_CHART,
+        SHOT_DISTANCE,
+        TEAM_COACH,
+        TEAM_LINE,
+        TEAM_MEETINGS,
+        TEAM_OUTLOOK,
+        TEAM_PERIOD_TOTAL,
+        TEAM_RANKING,
+        TEAM_RECORD,
+    )
 
     # Every shape's words are the sayer's (compose.say) since slice (iv); the
-    # name a decline gives each shape (SHAPE_NAMES) still names every one,
-    # and the coach's, which no reader takes (the page's label alone).
+    # words a decline names each shape the words ask by (say.asked_as; the
+    # retired intent's name, reading.SHAPE_NAMES, until Phase 4, step 2)
+    # still name every one, and the coach's, which no reader takes.
     ported = {
-        "game_log",
-        "record_when",
-        "player_splits",
-        "period_split",
-        "threshold_count",
-        "single_game_high",
-        "streak",
-        "player_matchup",
-        "leaderboard",
-        "player_stat",
-        "player_history",
-        "player_compare",
-        "with_without",
+        PLAYER_LOG,
+        LINE_RECORD,
+        PLAYER_SPLITS,
+        PERIOD_LOG,
+        GAMES_COUNTED,
+        GAME_HIGHS,
+        LINE_RUNS,
+        PLAYER_MEETINGS,
+        PLAYER_RANKING,
+        PLAYER_LINE,
+        SEASON_HISTORY,
+        PLAYER_COMPARISON,
+        PRESENCE_SPLIT,
         # The team shapes slice (iv) ported, each its point's only answer (their rows' declined="plan").
-        "head_to_head",
-        "team_quarter_points",
-        "period_leaderboard",
-        "team_record",
+        TEAM_MEETINGS,
+        TEAM_PERIOD_TOTAL,
+        PERIOD_RANKING,
+        TEAM_RECORD,
     }
     # And the team-season readers' (compose.team_stats, Phase 2, step 4).
-    team_seasons = {"team_stat", "team_leaderboard", "team_outlook"}
+    team_seasons = {TEAM_LINE, TEAM_RANKING, TEAM_OUTLOOK}
     # And the NetPoints relation's (compose.netpoints, Phase 2, step 5), and the shot relation's (compose.shots).
-    netpoints = {"player_netpoints", "fingerprint"}
-    shots = {"shot_chart", "shot_distance"}
-    assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots | {"coach"}
+    netpoints = {NETPOINTS_RATINGS, NETPOINTS_FINGERPRINT}
+    shots = {SHOT_CHART, SHOT_DISTANCE}
+    assert set(_ASKED_AS) == ported | team_seasons | netpoints | shots | {TEAM_COACH}
     narrowed = planned_query(GAME_HIGHS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics"), measure=Measure(key="points", as_typed="points")))
     assert compose._read(cx_ctx.con, GAME_HIGHS, narrowed) is None
     assert compose._read(cx_ctx.con, GAME_HIGHS, replace(narrowed, **(replace(narrowed, cuts=replace(narrowed.cuts, opponent=None))).filters())) is not None
@@ -2429,7 +2457,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "bench_points": {"shape": TEAM_RANKING},
     "team_boolean_count": {"shape": PLAYER_RANKING, "stat": "triple_double"},
     "cannot_honor": {"shape": PRESENCE_SPLIT, "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "why": "it would answer for a different span than was asked"},
-    "no_reading_of_point": {"shape": TEAM_RECORD, "name": "team_record"},
+    "no_reading_of_point": {"shape": TEAM_RECORD, "planned": TEAM_RECORD},
 }
 
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence
@@ -2461,7 +2489,7 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
     assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).answer == "A matchup needs two players, and none was read."
     # A shape's decline, said word for word as the decline it was (Phase 3, step 4).
     assert refusal_result(Cause(kind="cannot_honor", facts=_CAUSE_EXAMPLES["cannot_honor"])).answer == (
-        "Nothing here answers this question: with_without: the seasons 2019-20 through 2023-24 cannot be read here - it would answer for a different span than was asked."
+        "Nothing here answers this question as a record with and without named players: the seasons 2019-20 through 2023-24 cannot be read here - it would answer for a different span than was asked."
     )
     assert refusal_result(
         Cause(
@@ -2473,7 +2501,7 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
                 "why": "the league-wide streak has no single subject to narrow",
             },
         )
-    ).answer == ("Nothing here answers this question: streak: the games 'on tuesdays' cannot be read here with no named team or player - the league-wide streak has no single subject to narrow.")
+    ).answer == ("Nothing here answers this question as a streak: the games 'on tuesdays' cannot be read here with no named team or player - the league-wide streak has no single subject to narrow.")
     assert refusal_result(Cause(kind="needs_threshold", facts={"shape": LINE_RUNS, "stat": "threePointFieldGoalsMade"})).answer == (
         "A streak needs the number of 3-pointers each game has to reach, and none was read."
     )

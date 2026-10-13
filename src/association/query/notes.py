@@ -83,7 +83,7 @@ DECISION_KINDS: dict[str, str] = {
 
 FACTS: dict[str, frozenset[str]] = {
     # notes
-    "partial_season": frozenset({"season", "season_type", "intent"}),
+    "partial_season": frozenset({"season", "season_type"}),
     "floor": frozenset({"table", "first", "what", "earliest", "last", "whose", "season_type"}),
     "games_unseen": frozenset({"games", "why", "whose", "what", "of", "first", "last"}),
     "lines_rebuilt": frozenset({"games", "what", "total", "whose", "columns"}),

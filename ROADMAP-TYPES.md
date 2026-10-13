@@ -868,6 +868,36 @@ otherwise.
     with its versus word. The keys move nowhere: 2,710 of 2,710 readings
     identical; `intent+line` 17 -> 0 and `intent+opponent` 5 -> 0 joined
     claims (Still open 17).
+- **Declared in code by Phase 4, step 3, the point's measures and
+  aggregate** (2026-10-12; Still open 13):
+  - The aggregate is a closed enum, `reading.Aggregate` (`NONE`,
+    `PER_GAME`, `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`),
+    on the point, the `Query` and the `TeamQuery`; a record writes a member
+    as its value.
+  - The point's measures are typed: `Reading.measures` is a
+    `tuple[Measure, ...]`, each the catalog's key (`Measure(key=...)`, with
+    `whose` for what a team gave up), stated by the point reader through
+    `measure.measured` (the inverse of `measure_name`) from the names its
+    words and lines read a measure by. The compilers' names are built ONCE,
+    where the planner hands a point over: `compose.core.measure_names` for
+    the player compiler (`fieldGoalPct` is `fg_pct`, `wins` is `won`),
+    `compose.team.team_metric` for the team compiler (`points_allowed`,
+    `differential`, `won`, `record`, else the key).
+  - NOT yet: the `Query`'s own `measures` are still the compiler's names
+    (the planner's translation of the typed point), because the answer
+    side's readers test and replace them by name (`compose.logs`,
+    `periods`, `splits`, `seasons`, `stats`, `records`, `highs`,
+    `sentence`) and add names no question asks about (`margin`,
+    `opponent_name`, a log's columns) - which needs the catalog or the
+    compiler to hold those first; and the aggregate stays a field of the
+    point, not derived from the shape: measured on the 2,710 readings, it
+    is a function of (`on`, `shape`, `by`, `relation`) on every key but
+    three - `(player_games, scalar, line)` per game 240 and COUNT 24 (a
+    boolean counted under a line's words, `point._COUNT_SHAPES`),
+    `(player_games, split, line)` RECORD 26 and COUNT 2 (the same under a
+    record's), `(player_games, ranking, player)` per game 336 and TOTAL 1
+    (the word "total") - so deriving it needs a `by` or a `Measure.how`
+    the point does not carry yet.
 
 ## What must be decided before which phase
 
@@ -1358,14 +1388,16 @@ moves into `data` before the slice that rewords its answer:
     run's result, read from the words beside whatever stat is named);
     `Met` stays the shape's `by`.
 13. **The point's `measures` and `aggregate` are the compiler's names.**
-    `Reading.measures` is a list of the compiler's column and derived
-    names and `aggregate` one of five, derived from `Scope.measure` through
-    the catalog at 54 construction sites in `point.py`; the draft's
-    `Query.measures: tuple[Measure, ...]` with `how` as the aggregate is
-    RUN's input, and retyping it means the compiler (`compose.core`,
-    `compose.team`, 1,345 and 846 lines) reads `Measure` values. Proposed:
-    with step 4, when the point reader is re-keyed on the grammar and the
-    `by` tables go.
+    Half settled by Phase 4, step 3 (2026-10-12, "Declared in code" above):
+    the aggregate is a closed enum and the point's measures are typed,
+    named for the compilers once where the planner hands the point over.
+    Open: the `Query`'s `measures` as `tuple[Measure, ...]` (the draft's,
+    RUN's input), which the answer side's readers test and replace by name
+    - the step after the statements move (Phase 4, step 5), with the names
+    no question asks about (`margin`, `opponent_name`) given a home - and
+    the aggregate derived from the shape, which three keys do not determine
+    (measured above): the draft's `Measure.how` on each measure, or a `by`
+    of their own, is the choice, and either moves those 27 readings.
 14. **A position group beside a named player is read and then dropped.**
     "centers vs gobert gamelog with 34 minutes 2024" reads a `player`
     subject (Gobert) carrying the position group C, and the point reader
