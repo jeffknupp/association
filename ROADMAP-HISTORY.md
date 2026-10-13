@@ -1485,6 +1485,34 @@ agents' reports named here are in `~/association-research/stages/`.
     re-verifications of about ten minutes each. Filed: #396 (P1), #397
     (P4). Rewritten: #110.
 
+40. **Phase 4, steps 4 and 6 (2026-10-12, late).** The last two lane
+    steps, each one Opus agent, each merged by the lead after its own
+    re-verification on the merged tree. Step 6 (`feb3c4a`, lane A): the
+    grammar reads typed values, not marks - `lexicon.GrammarText` carries
+    what each tagger typed at each character, the parent rows are
+    predicates over it and the positional child grammars regexes over a
+    spelling of the typed values alone; every mark, the #383 intake and
+    the reader's last 15 `re` calls gone, the regex ratchet 17 -> 0 and
+    folded into one held-empty rule for the whole query package; the
+    2,710 readings held identical with their claims (a new harness,
+    `claims_pop.py`, since the readings' record never held a Claim) and
+    two enumerated fixes beside it (#354, #396: five feed readings, two
+    answers). Step 4 (`abbfb74`, lane B): the ten records between the
+    question and the answer measured by a census of every construction
+    and read on the 628, then four - `Planned` folded into the plan's one
+    value (`compose.plan.Verdict`) and `Reply` into `Answer` - with every
+    population identical and 4,710 of 4,710 calls identical across the
+    fold. What it taught: a merge with no conflicts still needs the gate
+    and the reader cases checked (two lanes had regenerated
+    `reader_cases.json` in different fields, and git joined them; both
+    times the check read 0 moved); and a proof the harnesses cannot see
+    (claims, record constructions) is written as a harness first, not
+    asserted. Cost: the two agents' 2.5 hours (1.0M tokens), the lead's
+    two re-verifications. Closed: #354, #396 (P1), #397. Open for Jeff:
+    the ask's spelling alphabet (a mark under another name, or not), the
+    `PointShape` as a field of the query family. Next: step 7 - the
+    documents, `live_parser30` against parser29, the review.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

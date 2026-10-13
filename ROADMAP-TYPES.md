@@ -88,7 +88,7 @@ otherwise.
     answer says (a quarter, a pair's `Met`) read inside it.
   - `PointShape(relation, shape, by)` is the planned point's shape - the
     draft's `Query.relation`/`shape`/`by` triple, carried beside today's
-    `Query` on the plan (`compose.plan.Planned.shape`); the answer side
+    `Query` on the plan (`compose.plan.Planned.shape` until Phase 4, step 4; `compose.plan.planned_shape` since, the plan being one value, `compose.plan.Verdict`); the answer side
     reads only it. Settled by the planner from the reading's intent where
     the query alone could not tell two retired templates' words apart
     (`plan.shape_of`) until Phase 3, step 1, which the point reader names
