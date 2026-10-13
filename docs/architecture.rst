@@ -93,7 +93,8 @@ and each the only place its kind of work is done:
 .. code-block:: text
 
    question, the model's names and stat
-      │  READ   the only code that sees the question's text; runs no statement
+      │  READ   the only code that sees the question's text; no statement
+      │         but the active players' read, for a typo near six names
       ▼
    Reading      who it is about, what the words ask, ten typed filters,
       │         the point, the words nothing read

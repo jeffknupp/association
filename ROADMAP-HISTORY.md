@@ -1492,7 +1492,8 @@ agents' reports named here are in `~/association-research/stages/`.
     what each tagger typed at each character, the parent rows are
     predicates over it and the positional child grammars regexes over a
     spelling of the typed values alone; every mark, the #383 intake and
-    the reader's last 15 `re` calls gone, the regex ratchet 17 -> 0 and
+    the reader's 17 `re` calls gone (15 moved to the lexicon by
+    the first slice, 2 with the marks), the regex ratchet 17 -> 0 and
     folded into one held-empty rule for the whole query package; the
     2,710 readings held identical with their claims (a new harness,
     `claims_pop.py`, since the readings' record never held a Claim) and
@@ -1519,6 +1520,31 @@ agents' reports named here are in `~/association-research/stages/`.
     itself needed the phase's two renames (`Answer.shape` for the label,
     `Agent.query` for `Agent.planned`) before it could record a run. The
     review was dispatched 2026-10-13.
+
+41. **Phase 4 closed (2026-10-13): the review.** One Opus agent, read-only
+    at `fe806a6` against `d4f04b9`, 64 minutes, every population re-run
+    itself and both answered populations at every one of the phase's 39
+    `src` commits and the nine merges three-way: every move the one a
+    commit names, the live run equal to the offline prediction 277 of 277
+    with the model's replies equal to the recorded ones, the deletions
+    done, the documents close. Findings transcribed: 1 P1, 1 P2, 1 P3, 4
+    P4 (one fixed on the spot), one for the research repo; with Jeff's
+    two P2s from his own queries the same evening (#400-#407). Positions on
+    the five calls: derive the aggregate (1 reading moves, not 27), keep
+    the door rule, the spelling alphabet is no mark, keep `conditions`
+    counted, keep the shape derived. What the phase cost end to end: nine
+    agents' 7.9 hours (3.1M tokens) on the lanes and the documents, the
+    reviewer's hour, and the lead's twelve re-verifications and one live
+    run; one incident (the rebase's exec), repaired and guarded. What it
+    taught beyond entry 40: a harness that reads a record field the phase
+    deletes fails on every row at once, which reads like a broken tree
+    until the traceback is read (`run_live.py` on `Answer.intent`), so a
+    phase that deletes a field lists the harnesses that read it with the
+    field; and a before-tree compare of a decline rewording needs the
+    label's paths ignored at every record they stood at (seven), or the
+    whole population reads as moved. Next: Jeff's call - the reviewer
+    recommends the P1 list under the standing proof rules, with the
+    aggregate's derivation and the worded declines folded in.
 
 ## The plan items, as written
 

@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
+- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
+- **Evidence:** `fe806a6` and `d4f04b9`, recorded-reply probes (the review's `data/adhoc.txt`): "luka stats vs top 3 teams this season" -> "Luka Doncic, last 3 of 64 games of the 2026 regular season: ...", `Reading.window.count` 3, unread `stats`, `teams`; "luka stats against top 5 defenses" -> his last 5 games, unread `stats`, `against`, `defenses`. #396's fix (`76c4e6a`, `lexicon.SITUATION`) reads only the seeding words ("seed", "seeds", "seeded"); "luka stats vs the top 4 seeds" is refused now but its Reading still carries `window.count` 4, its claim folded inside the situation's. No population question holds the class besides #396's own.
+- **User sees:** a fluent log of the last N games where games against the top N teams were asked.
+- **Next step:** read "vs|versus|against (the) top|best|bottom|worst N <teams|defenses|offenses|seeds>" whole as the situation refused by name, a test per wording, and drop a window whose characters lie inside a refused situation.
+- **Source:** ours.
+- **Priority:** P1 - a wrong answer delivered fluently.
+- **GitHub:** #400
+
 ### A player's "stats by season" or "every season" with no stat named answers one season's line: "james wiseman stats by season" answers his 2026 averages
 - **Found:** 2026-10-11, fixing #379 (the per-season window), probing "lebron stats every season".
 - **Evidence:** on `0c597b2`, feed run (no names, no stat): "james wiseman stats by season" -> "James Wiseman averaged 3.3 points, 2 rebounds and 0.8 assists per game in 4 games in the 2026 regular season." (unread: stats), "kevin love nba stats by year" -> his 2026 line, "ant games play each season" / "Jokic games play each season" / "lamelo games play each season" -> each one's 2026 line ("games", "play" unread); with the model's name, "lebron stats every season" -> "LeBron James averaged 20.9 points ... in 60 games in the 2026 regular season." The history child grammar names `player_history` from "by season"/"every season" (`lexicon.CHILD_PLAYER_HISTORY`), and the grammar's rule `grammar._line_and_record` turns a history with no stat named into the player's line ("Jokic career averages" is the whole line, not points by season) - the decision says "the words 'every season' name player_history, and the stages declined it", and the words are claimed by the child, so `Reading.unread` does not show them. 5 of the 2,082 feed questions, none of the 628.
@@ -502,6 +511,33 @@ those were found.
 - **GitHub:** #394
 
 ## P2: misleading or incomplete
+
+### A team's stat asked under a companion's line answers the team's record: "how many fgm did the celtics make when tatum scored 30" answers the Celtics' record when Tatum had 30+ points
+- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 2).
+- **Evidence:** probe on `fe806a6` and `d4f04b9` (the review's `data/adhoc.txt`): `asked` `player_games/split/line`, unread `fgm`, `make`; the answer is the W-L split ("Boston Celtics record when Jayson Tatum had 30+ points").
+- **User sees:** a record where a field-goal count was asked; the heading says "record", so the substitution is visible.
+- **Next step:** a team figure other than the record over a companion's line is refused by a cause naming the figure until the team relation sums it over those games.
+- **Source:** ours.
+- **Priority:** P2 - a different figure than asked, visibly.
+- **GitHub:** #401
+
+### "for each game" and "every game" are read as the log's default window of the newest 10: "show the 76ers pace for each game last season" lists the last 10 games' scores
+- **Found:** 2026-10-13, Jeff's queries on `a5a4e68` (`--verbose`), reported after the Phase 4 live run.
+- **Evidence:** "show the 76ers pace for each game last season" and "show the 76ers 3pt% for each game last season" both read `asked=player_games/rows/date` with `window=date/desc/10` and answer "Philadelphia 76ers, last 10 games of the 2025 regular season (1-9)"; "each" and "game" are read by no window rule, so the log's rule for a bare log (the newest N, `DEFAULT` 10) stands. The same wording on a player ("show luka's points for each game last season") is the same window.
+- **User sees:** ten games where the season's every game was asked, the count stated in the heading and nothing saying the rest were cut.
+- **Next step:** "for each game", "every game", "game by game", "per game" (on a log) read as the whole span - a window of no count, or the log's window set to the span's games - with the heading saying the count; a test per wording; the 2,710 readings and the feed measured for the wordings' reach before the rule lands.
+- **Source:** ours.
+- **Priority:** P2 - a narrower answer than asked, the narrowing stated only as "last 10".
+- **GitHub:** #402
+
+### The team log drops the stat it was asked for and shows the score: "show the 76ers 3pt% for each game last season" lists W/L and the score, no 3pt%
+- **Found:** 2026-10-13, Jeff's queries on `a5a4e68`.
+- **Evidence:** the reading carries `measure={'key': 'threePointFieldGoalPct'}` and the compiled team log executes `measures=['points']` - the team-games relation has no box-score join (`AGENTS.md`, "A team can be the subject"), so a team log can show the score and the result and nothing else, and nothing says the asked stat was dropped. The same question with "pace" reads the model's `points` over the words' "pace" (`measures=['points']`, `measure.key` `points`), where the season-line form of the question ("the 76ers game with the highest pace") reads `pace` from the words: the log row's measure on a team keeps the model's key. The team compiler's TOTAL refuses a box-score count narrowed to a window for the same want of a join; the log does not.
+- **User sees:** a log of scores where a per-game shooting figure was asked, with no sentence saying so.
+- **Next step:** a team log asked with a box-score stat refuses by a cause naming the stat (as the team total does) until the team-games relation joins `team_box_stats`, which would let it show the column; and the measure tagger reads the words over the key on the team log as it does on the season line.
+- **Source:** ours.
+- **Priority:** P2 - the asked figure silently missing.
+- **GitHub:** #403
 
 ### A matchup of two players who did not play this season answers "<player> has no games in the 2026 regular season"
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice: the "vs Tim Duncan" fix (`0f87652`) moved two refusals to this sentence.
@@ -2319,6 +2355,15 @@ those were found.
 ## P3: refusal or gap
 
 
+### "most ppg without free throws" is refused as if "free throws" were a teammate: "games without free throws cannot be read here"
+- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 3).
+- **Evidence:** `fe806a6` feed run, 2 questions ("most ppg without free throws", "most ppg excluding free throws"), the planner's decline.
+- **User sees:** a refusal naming the wrong thing (a player's absence).
+- **Next step:** "without|excluding <stat words>" is no companion; refuse "points excluding free throws" by a cause naming the derived stat, or read it as points minus free throws made.
+- **Source:** ours.
+- **Priority:** P3 - a refusal naming the wrong cause.
+- **GitHub:** #404
+
 ### A team total named by a metric's alias stays the per-game line: "how many fgm did the knicks make this season" answers field goals per game
 - **Found:** 2026-10-10, Phase 3 step 2's measure slice, holding the team compiler's total identical
 - **Evidence:** `point._team_measure` reads a team's game-level or season-total measure from the words (`lexicon.TEAM_WORD_MEASURES`) and then from the measure's key - but a measure written as a team metric's ALIAS text ("fgm", "ppg", "field goals", "scoring") never matched a column name before the slice (the alias text was the slot's value), so the team compiler's total never read it and the team-season reader answered the per-game line; the catalog would read "fgm" as `fieldGoalsMade` and the total, which moves 12 of the 2,710 readings (`team_stat` with an alias-spelled stat: "pippen ppg, rpg apg for the bulls", "most fgm + opp fgm in a game by Knicks; 1988-89", "How many 10+ point leads did the Sacramento Kings have last season", ...) - some to a better answer ("how many fgm" as a total), most to a worse one ("ppg" summed). `measure.named_by_a_team_metric` keeps the slot-era reading on purpose, and `tests/query/test_measure.py` pins it.
@@ -2969,6 +3014,33 @@ those were found.
 - **GitHub:** #382
 
 ## P4: tooling, docs, low impact
+
+### "1 of these game has no box score from ESPN": the plural sits on the wrong word
+- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 6).
+- **Evidence:** `compose/say.py:265`, `f"{shown} of these game{'s have' if shown != 1 else ' has'} ..."`; 1 of the 628 and 4 feed answers (8 occurrences), both trees.
+- **User sees:** "1 of these game has".
+- **Next step:** "1 of these games has" - the noun always plural, the verb by the count; an enumerated commit (5 answers move in wording).
+- **Source:** ours.
+- **Priority:** P4 - a sentence's grammar.
+- **GitHub:** #405
+
+### The trace and the decisions name a team question's key by the player relation: "lakers longest winning streak" says "the words 'streak' name player_games/runs/line"
+- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 8).
+- **Evidence:** 65 team-kind readings of the 2,710 (62 logs, 3 streaks) are asked as `player_games/rows/date` or `player_games/runs/line` and planned on `team_games`; since Phase 4, step 2 the decision reason prints the key path where the label said `streak` or `game_log`.
+- **User sees:** a misleading trace line (`--verbose`, the history file); no answer changes.
+- **Next step:** print the key without its relation where the grammar's key is kind-free, or say in AGENTS.md and the trace's docstring that the asked key's relation is the grammar's, not the subject's.
+- **Source:** ours.
+- **Priority:** P4 - a trace line.
+- **GitHub:** #406
+
+### The SQL ratchet is blind to an aliased or `getattr`'d execute
+- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 9), perturbing the ratchet.
+- **Evidence:** `compose/logs.py` given `run = con.execute; return run("SELECT 1")`, or `getattr(con, "execute")(q)`: `scripts/check_ratchets.py` reads 74 on `fe806a6` and 80 on `d4f04b9`, unchanged; a direct `con.execute`, `con.sql`, `values_of`, `_executed` or a home-made door is caught on `fe806a6`.
+- **User sees:** nothing; a gate with a hole.
+- **Next step:** count any `.execute`/`.sql`/`.query` attribute read on a connection-typed name, and `getattr` with those names, not only calls; a test watched to fail on each form.
+- **Source:** ours.
+- **Priority:** P4 - tooling.
+- **GitHub:** #407
 
 ### Six readers still name a retired intent in their "needs a player name" sentence: "Plot Curry's threes from last season" is refused "... as a shot chart: shot_chart needs a player name."
 - **Found:** 2026-10-12, Phase 4, step 2 (lane B), deleting the label: the decline frame says the shape in words since then, and the reason a reader hands it still carries the retired name as a literal.
