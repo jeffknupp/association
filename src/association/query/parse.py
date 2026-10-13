@@ -142,7 +142,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     # A log word, or a window of games as the window tagger typed it ("last
     # 10 games", "the season opener") - or the window words the row read
     # before the window was typed, for a form the tagger does not type
-    # ("last 10 match ups").
+    # ("last 5 season", ISSUES.md #372).
     (frozenset({"team"}), lexicon.AnyOf((lexicon.TEAM_LOG_ROW, lexicon.stands("window"))), PLAYER_LOG),
     (frozenset({"team"}), lexicon.STREAK_ROW, TEAM_RECORD),
     (frozenset({"team"}), lexicon.TEAM_RECORD_ROW, TEAM_RECORD),
