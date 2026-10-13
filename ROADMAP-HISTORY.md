@@ -1510,8 +1510,15 @@ agents' reports named here are in `~/association-research/stages/`.
     asserted. Cost: the two agents' 2.5 hours (1.0M tokens), the lead's
     two re-verifications. Closed: #354, #396 (P1), #397. Open for Jeff:
     the ask's spelling alphabet (a mark under another name, or not), the
-    `PointShape` as a field of the query family. Next: step 7 - the
-    documents, `live_parser30` against parser29, the review.
+    `PointShape` as a field of the query family. Then step 7's
+    documents (`6b38bb3`: the architecture page rewritten for the four
+    stages, AGENTS.md dated, the done table measured, #386's docstring
+    sweep) and the live run, the lead's own: `live_parser30` on
+    `fe806a6`, 167/175 and 156/166, parser29's score to the question,
+    four decline sentences reworded and nothing else moved - the harness
+    itself needed the phase's two renames (`Answer.shape` for the label,
+    `Agent.query` for `Agent.planned`) before it could record a run. The
+    review was dispatched 2026-10-13.
 
 ## The plan items, as written
 
