@@ -319,14 +319,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #267
 
-### A possessive on a name several players share drops the player: "Curry's stats by month 2016" answers the league's 2016 scorers
-- **Found:** 2026-09-28, fixing #259.
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Curry's"]`, and `["Curry’s"]`, which reads the same since #259): routes `leaderboard` with no player and answers "every player, 2016 regular season, by player (points per game, minimum 20 games): Stephen Curry ... James Harden ...". `parse.classify_span` strips the possessive for its team check but looks the player up as given: `find_players(con, "Curry's")` needs a player holding the word "s", and the near-spelling fallback takes only a single near spelling, which "Curry" (six players) is not - so the span is nobody's and dropped. "curry stats by month 2016" keeps the name, and the template asks which Curry.
-- **User sees:** a wrong answer - the league ranked where one player, a name several share, was asked about.
-- **Next step:** in `classify_span`, look the player up with the possessive stripped too (the `low` it already computes), so a shared surname stays a player's span for the template to ask about; a case in `tests/query/test_parser.py`.
-- **Source:** ours.
-- **GitHub:** #268
-
 ### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
 - **Found:** 2026-09-28, fixing #259.
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Gabe Vincent", "laker"]`, stat `threePointFieldGoalsMade`): routes `player_stat` with no stat and answers "Gabe Vincent averaged 4.4 points, 1 rebounds and 1.4 assists per game in 53 games in the 2026 regular season". `parse.MEASURE_GRAMMAR` reads "3s", "threes" and "3 pointers", and "3's" is none of them; the model's key is not kept for a line the words do not name. "Jarred 3’s as a laker" is the corpus's other one. Both also carry "as a laker", which the answer does not honor (Vincent's 2026 line is not a Laker's).
