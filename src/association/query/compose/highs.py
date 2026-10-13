@@ -37,7 +37,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS, THRESHOLD_STAT_COLUMNS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
-from association.query.result import CountFacts, Decided, Part, Result, Rows, Unanswered
+from association.query.result import CountFacts, Decided, Narrowing, Part, Result, Rows, Unanswered
 from association.query.season_line import season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES
 
@@ -95,10 +95,16 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Result | 
     # answered as though the season had been asked.
     defaulted = season is not None and not scope.span.season
     redirect = _single_game_high_redirect(con, defaulted, player, bool(games), empty[0], withheld, season_type)
+    # The league's high narrowed to one team's players says the team
+    # ("... in a single game for the Cleveland Cavaliers ..."): the games
+    # are theirs alone, and a sentence naming no team reads as the
+    # league's (ISSUES.md #167).
+    team = compiled.narrowed.team if player is None else None
     return Result(
         subject=name or "every player",
         relation="player" if player is not None else "everyone",
         span=span,
+        narrowing=Narrowing(phrase=f" for the {team.name}") if team is not None else Narrowing(),
         parts=(Part(body=Rows(columns=(column,), rows=tuple(games), by=column)),),
         notes=tuple(notes),
         decisions=(redirect,) if redirect is not None else (),
