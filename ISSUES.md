@@ -425,6 +425,7 @@ those were found.
 - **Next step:** a team word that names only a former franchise, with no season named, is that franchise over its era (`nba/franchises.py`'s `FranchiseEra`), the span its years - as a tenure "for Miami" with no season is a career; read in `subject._team_names` / `_team_named` with the season unset. A case per wording; measure on the 2,710.
 - **Priority:** P1 - a different question answered (1 feed question).
 - **Source:** ours.
+- **GitHub:** #420
 
 ### The players' ranking answers points per game where the words name a measure nothing reads, and a yes/no measure over a span of seasons ranks by points too
 - **Found:** 2026-10-13, lane N of the P1 sweep, measuring the "nba"-alone fix (the lead held these back from it: read as the players' ranking they would turn a refusal into a fluent wrong answer).
@@ -433,6 +434,7 @@ those were found.
 - **Next step:** lane L's measure (`measure.py`, `point.measure_under`) and the ranking (`compose/rankings.py`): a ranking whose words name no measure it reads refuses by a cause naming the words (`no_ranking_measure` exists), never the points default; the season-line ranking ranks a yes/no game measure over a span or refuses it. Then lift the gate in `parse._parent_asked_nba_unmeasured` and enumerate the 8.
 - **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
+- **GitHub:** #421
 
 ### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers). Rewritten 2026-10-13 (lane N of the P1 sweep) to what remains: the team-ranking row steps aside for games kept by a line with no team word (`lexicon.LINE_OF_GAMES_ROW`), so "most 40 point games in nba history" (and 50, 60) and "nba most playoff games with 2+ block and 2+ steals" are the players' count, and the count's child grammar is named under the with/without split, so "how many 30 point games did maxey have without embiid" is his count over the games Embiid missed (`CHANGES.md`).
@@ -2300,8 +2302,7 @@ those were found.
 - **Next step:** read the dropped side on the Reading where a compare word joins two sides by "to"/"and"/"with" and one side is name-shaped words no claim covers (`Reading.left_out` beyond the fingerprint), and say it on every shape the answer side answers (`agent._unmatched_fingerprint`'s note generalized, `say.say_left_out`) - or refuse by a cause naming the words (`reading.CAUSES`, `say.refusal_phrase`). The reading half is lane N's (subject/parse); the saying half is the answer side's (`agent.py`, `compose/say.py`). Reach 1 of the 2,082.
 - **Priority:** P2 - a narrower answer than asked, with no caveat.
 - **Source:** ours.
-
-
+- **GitHub:** #423
 
 ## P3: refusal or gap
 
