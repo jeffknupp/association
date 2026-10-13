@@ -40,7 +40,7 @@ from association.query.reading import (
     unhonored_cells,
 )
 from association.query.reading import Subject as Who
-from association.query.span import SpanContext, claimed, read_span
+from association.query.span import SpanContext, career_named, claimed, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import scoped_team, team_games
 
@@ -124,6 +124,27 @@ def test_a_range_of_calendar_days_is_the_seasons_its_days_fall_in() -> None:
     # A regular season named, short or in full, keeps the type.
     assert _read("curry from december 1st 2020 to november 28th 2021 in the reg season", dated_since=2021, dated_until=2022, dated_both=True) == Span(season_type=2, since=2021, until=2022)
     assert _read("kings record between october 10 2016 and february 19 2017", dated_since=2017, dated_until=2017) == Span(season=2017, season_type=2)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # ISSUES.md #167: a franchise's history is every season on record.
+        "most points in a game in cavs history",
+        "most points in a game in pistons history power forward",
+        "most points in the history of the philadelphia 76ers",
+        "most points in a game in knicks franchise history",
+        "knicks franchise leader in points",
+        "most points in nba history",
+    ],
+)
+def test_a_franchises_history_is_a_career(question: str) -> None:
+    assert career_named(question)[0]
+
+
+@pytest.mark.parametrize("question", ["knicks franchise player stats", "history of the lakers vs celtics rivalry games last season"])
+def test_franchise_or_history_alone_is_no_career(question: str) -> None:
+    assert not career_named(question)[0]
 
 
 def test_a_count_a_pair_and_a_log_imply_a_career_without_a_career_word() -> None:

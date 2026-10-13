@@ -281,11 +281,12 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-### A team's single-game high is answered for this season only, and does not name the team: "most points in a game in cavs history"
-- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`); re-measured 2026-09-27 on the compiler, which answers `single_game_high` alone (plan item 6, step (d), part 4).
-- **Evidence:** the router-era template ignored `team` and answered the league's high ("Bam Adebayo ... 83") for "most points in a game in cavs history", "most points in a game by a knicks playter" and "most points in a game in pistons history power forward". The compiler narrows to the team's players now - `compose.answer(ctx, "single_game_high", {"stat": "points", "team": "Cleveland Cavaliers", "season_type": 2}, "most points in a game in cavs history")` answers "Donovan Mitchell had the most points in a single game in the 2026 regular season: 48, on 2025-12-12 vs WSH. Next: Donovan Mitchell (46), Donovan Mitchell (45)." (the main warehouse) - but "history" is not read as a career, and the sentence never says the games are the Cavaliers'. 65 of 1,972 reasonable large-set questions (3.3%) say history/all-time/franchise.
-- **User sees:** the right team's players over the wrong span - this season, where the question asks the franchise's history - with nothing saying a team narrowed it.
-- **Next step:** read "history"/"all-time"/"franchise" beside a team as `span: career` (the parser's window table), and have the single-game sentence name the team it narrowed to (`Narrowed.filters()` already writes it); a test per wording on the relation.
+### A team's single-game high is answered as the team's season line: "most points in a game in cavs history"
+- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/`; the span half fixed in the P1 sweep (lane S, 2026-10-13).
+- **Evidence:** "in <team> history", "in <team> franchise history", "of the <team>'s history" and "franchise leader/record" are read as every season on record since the sweep (`lexicon.CAREER_WORDS`): "most points in a game in pistons history power forward" answers the Pistons power forwards' best games since 1994, naming the team ("every power forward with the Detroit Pistons, regular season career (1994 on) - top 3 by points"). But "most points in a game in cavs history", "... in pistons history" and "most points in the history of the philadelphia 76ers" are read under the team's season line (`team_seasons`/`scalar`/`line`, #364's shape) and are refused now ("every season of a career cannot be read here"), where they answered the 2026 points per game.
+- **User sees:** an honest refusal where the franchise's (or its players') best single game was asked.
+- **Next step:** #364's - the team named beside "in a game" read as its players' single-game high (`team_players`), which the career span now reaches over every season.
+- **Priority:** P3 - a refusal.
 - **GitHub:** #167
 
 ### A team's `record_when` misreads "they score N points when X starts" as X's own threshold, dropping the start

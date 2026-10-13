@@ -608,8 +608,13 @@ BOTH_SEASON_TYPES_WORDS = re.compile(
 # ("career high this season") it means that season's best, and it was a worked
 # example of single_game_high in the retired router's prompt - CAREER_HIGH is
 # blanked out before these are read where a season is named beside it.
-CAREER_WORDS = re.compile(r"\b(?:career|all[- ]?time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
-"""Every season on record, named.
+CAREER_WORDS = re.compile(
+    r"\b(?:career|all[- ]?time|ever|(?:in|of)\s+(?:the\s+)?(?:[\w.'-]+\s+){0,2}history|of\s+all\s+time|franchise\s+(?:history|records?|leaders?|best|high))\b",
+    re.IGNORECASE,
+)
+"""Every season on record, named: "career", "all-time", "in NBA history" -
+and a franchise's ("in cavs history", "in knicks franchise history",
+"franchise leader", ISSUES.md #167).
 
 .. versionadded:: 6.0.0
 """
