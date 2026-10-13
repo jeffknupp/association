@@ -4526,6 +4526,10 @@ def _say_no_player_reading(facts: Mapping[str, Any]) -> str:
 _FACT_NOT_READ: dict[str, str] = {
     "draft": ("No draft record is on file here - the player records hold no draft year, round or pick - so {words!r} cannot be read. Ask for a player's or the league's stats by season instead."),
     "award": "No award, All-Star or All-NBA selection is on file here, so {words!r} cannot be read. Ask for a player's stats in a season, or the league's leaders in one, instead.",
+    "clutch": (
+        "No figure over the last minutes of a game is read here - the plays are on file, but nothing narrows a game to its final minutes - "
+        "so {words!r} cannot be read. Ask for a player's or the league's fourth quarter instead."
+    ),
     "birth": "No birth date is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by season, team or position instead.",
     "height": "No height is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by position instead (centers, forwards or guards).",
     "jersey": (

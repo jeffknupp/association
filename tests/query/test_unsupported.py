@@ -353,6 +353,8 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
         ("nba most 4 point plays", "four-point play", "4 point plays"),
         ("highest scoring 2nd options in the nba this year", "role", "2nd options"),
         ("luka doncic stats against 50 win teams in the 2026 season", "wins", "50 win teams"),
+        ("field goal percentage last 5 minutes of a nba game", "clutch", "last 5 minutes"),
+        ("lebron clutch stats", "clutch", "clutch"),
     ],
 )
 def test_a_fact_no_table_holds_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, fact: str, words: str) -> None:

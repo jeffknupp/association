@@ -650,6 +650,7 @@ class MeasureWords:
     games_won: re.Match[str] | None
     sides: tuple[tuple[str, re.Match[str]], ...]
     per_90: re.Match[str] | None
+    per_minutes: re.Match[str] | None
     rate: re.Match[str] | None
     team_total: re.Match[str] | None
     per_game: bool
@@ -691,6 +692,7 @@ def read_measure(question: str) -> MeasureWords:
         games_won=lexicon.GAMES_WON.search(question),
         sides=tuple((name, found) for name, pattern in lexicon.SIDE_WORDS.items() if (found := pattern.search(question)) is not None),
         per_90=lexicon.PER_90.search(question),
+        per_minutes=lexicon.PER_MINUTES.search(question),
         rate=lexicon.RATE_WORDS.search(question),
         team_total=lexicon.TEAM_TOTAL.search(question),
         per_game=lexicon.PER_GAME_WORDS.search(question) is not None,
@@ -735,6 +737,10 @@ def how_of(unit: str) -> MeasureHow | None:
         return "total"
     if "90" in low:
         return "per_90"
+    if lexicon.PER_MINUTES.fullmatch(low):
+        # A rate per N minutes ("per 36"): a unit nothing here reads, which
+        # the cell still carries (ISSUES.md #388).
+        return None
     return "per_100"
 
 
