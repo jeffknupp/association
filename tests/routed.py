@@ -29,21 +29,24 @@ And one stage on: :func:`planned_answer` is the compiler's answer to a
 Reading a test built, PLANNED first as the answering loop plans it
 (``compose.plan.plan_point``) - ``compose.answer`` takes its planning and
 never plans (step 2 of the same order) - and :func:`planned_query` the
-query the default point of a key over a test's reading plans to.
+query the default point of a key over a test's reading plans to. What the
+answer side says is an :class:`~association.query.answer.Answer` the
+answering loop has not stamped yet, whose data is always there: a test
+reads it as :class:`Said` (:func:`said`).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Protocol, cast
 from unittest import mock
 
 import duckdb
 
 from association.query import compose, grammar, parse
 from association.query.agent import Agent
-from association.query.answer import Answer, AnswerContext, Reply
+from association.query.answer import Answer, AnswerContext, Artifact
 from association.query.compose.core import Query
 from association.query.compose.plan import plan, plan_point
 from association.query.decisions import Decision
@@ -125,10 +128,41 @@ def ask_routed(agent: Agent, question: str, route: Routed, *, label: str = "") -
         return agent.ask(question, label=label)
 
 
-def planned_answer(ctx: AnswerContext, reading: Reading, *, declined: Callable[[str], None] | None = None) -> Reply | None:
+class Said(Protocol):
+    """What the answer side said, as a test reads it: the sayer's (or the
+    compiler's own sentence's) :class:`~association.query.answer.Answer`,
+    before the answering loop stamps it, whose ``data`` is always there -
+    only a refused answer, which the answering loop alone builds, has none.
+    The sayer's ``Reply`` until Phase 4, step 4 folded it into the Answer."""
+
+    @property
+    def text(self) -> str:
+        """The sentence."""
+        ...
+
+    @property
+    def data(self) -> dict[str, Any]:
+        """The same answer as values."""
+        ...
+
+    @property
+    def artifacts(self) -> list[Artifact]:
+        """The files it wrote."""
+        ...
+
+
+def said(answer: Answer) -> Said:
+    """``answer``, which the answer side said, read as :class:`Said`: its
+    data asserted there."""
+    assert answer.data is not None, answer
+    return cast("Said", answer)
+
+
+def planned_answer(ctx: AnswerContext, reading: Reading, *, declined: Callable[[str], None] | None = None) -> Said | None:
     """``compose.answer`` for ``reading``, planned here as ``Agent.ask``
     plans a question's Reading: once, before the compiler is handed it."""
-    return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
+    answered = compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
+    return None if answered is None else said(answered)
 
 
 @dataclass(frozen=True)

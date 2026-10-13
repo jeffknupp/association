@@ -5,6 +5,8 @@ held to them with no warehouse behind it."""
 
 from __future__ import annotations
 
+from routed import said as as_said
+
 from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_player_log, say_team_log
 from association.query.notes import Note, collect
 from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
@@ -30,8 +32,8 @@ def _player_result(**changes: object) -> Result:
 def test_a_players_log_is_said_in_the_retired_templates_words() -> None:
     """The heading names the cut ("last 2 of 7 games"), the table is aligned
     with the per-game row last, and each note follows in its one phrase."""
-    said = say_player_log(_player_result())
-    lines = said.answer.split("\n")
+    said = as_said(say_player_log(_player_result()))
+    lines = said.text.split("\n")
     assert lines[0] == "Tyrese Maxey vs the Boston Celtics, last 2 of 7 games of the 2026 regular season:"
     assert lines[1].split() == ["date", "opp", "W/L", "MIN", "PTS", "REB", "AST"]
     assert lines[2].split() == ["2026-04-10", "vs", "BOS", "W", "34", "30", "5", "7"]
@@ -56,8 +58,8 @@ def test_saying_a_result_records_each_note_once_under_its_kind() -> None:
 
 def test_a_log_with_no_rows_says_why() -> None:
     empty = Refusal(kind="no_game_on_date", facts={"player": "Tyrese Maxey", "kind": "regular season", "date": "2026-04-11", "narrowing": ""})
-    said = say(_player_result(parts=(Part(body=Rows()),), notes=(), empty=empty))
-    assert said.answer == "No regular season game on 2026-04-11 found for Tyrese Maxey." and said.data["games"] == [] and said.data["message"] == said.answer
+    said = as_said(say(_player_result(parts=(Part(body=Rows()),), notes=(), empty=empty)))
+    assert said.text == "No regular season game on 2026-04-11 found for Tyrese Maxey." and said.data["games"] == [] and said.data["message"] == said.text
 
 
 def test_each_note_kind_has_one_phrase() -> None:
@@ -89,8 +91,8 @@ def test_a_teams_log_is_said_with_its_record_and_the_total_asked_for() -> None:
         parts=(Part(body=Rows(rows=games, summary={"wins": 1, "losses": 1, "unknown": 1})),),
         facts=LogFacts(stat="pointsDifference"),
     )
-    said = say_team_log(result)
-    lines = said.answer.split("\n")
+    said = as_said(say_team_log(result))
+    lines = said.text.split("\n")
     assert lines[0] == "New York Knicks, last 3 games of the 2026 regular season (1-1, 1 with no recorded result):"
     assert lines[1] == "  2026-04-10  W 110-100  vs Boston Celtics" and lines[3] == "  2026-04-06  ? 101-101  vs Miami Heat"
     assert lines[4] == "  Point differential: +6 (+2.00 per game)."
@@ -130,8 +132,8 @@ def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:
         facts=RecordFacts(teams=("Philadelphia 76ers",)),
     )
     with collect() as collected:
-        said = say(result)
-    lines = said.answer.split("\n")
+        said = as_said(say(result))
+    lines = said.text.split("\n")
     assert lines[0] == "Philadelphia 76ers record when Tyrese Maxey had 20+ points vs the Boston Celtics, since 2022 (2022-2026 regular seasons):"
     assert lines[2].split() == ["20+", "points", "4", "3-1", ".750", "+6.2"]
     assert lines[4].split() == ["all", "his", "games", "11", "5-6", ".455", "+0.0"]
@@ -164,8 +166,8 @@ def test_a_count_over_a_line_is_said_in_the_retired_templates_words() -> None:
         facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0),
     )
     with collect() as collected:
-        said = say(result)
-    assert said.answer == (
+        said = as_said(say(result))
+    assert said.text == (
         "Box scores here begin in 1993-94, and Michael Jordan's regular season career began in 1984-85, so his whole career is not in them. "
         "Michael Jordan had 2 games with 50+ points in the regular season since 1993-94. "
         "None of those 2 games has a box score from ESPN - those figures are rebuilt from play-by-play, so treat the count as close rather than exact."
@@ -173,7 +175,7 @@ def test_a_count_over_a_line_is_said_in_the_retired_templates_words() -> None:
     assert said.data["question_shape"] == "games with 50+ points, regular season since 1993-94"
     assert said.data["rebuilt_games"] == 2
     assert [each.kind for each in collected.notes] == ["floor", "lines_rebuilt"]
-    assert say_threshold_count(result).answer == said.answer
+    assert say_threshold_count(result).text == said.text
 
 
 def test_a_league_count_names_the_leaders_and_the_rest() -> None:
@@ -191,7 +193,7 @@ def test_a_league_count_names_the_leaders_and_the_rest() -> None:
         narrowing=Narrowing(cells=(Line(column="points", value=30), Line(column="turnovers", op="<", value=5, label="under 5 turnovers"))),
         facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0),
     )
-    assert say(result).answer == (
+    assert say(result).text == (
         "Luka Doncic had the most games with 30+ points and under 5 turnovers in the 2026 regular season, with 4. Next: Shai Gilgeous-Alexander (2). "
         "1 of Luka Doncic's 4 games has no box score from ESPN - that figure is rebuilt from play-by-play, so treat the count as close rather than exact."
     )
@@ -261,7 +263,7 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
         notes=(Note("floor", {"table": "box_scores", "first": 1994, "what": "league_record"}),),
         facts=CountFacts(stat="assists", box_scores_from=1994, empty_box_scores=0),
     )
-    assert say(league).answer == (
+    assert say(league).text == (
         "A Guard and B Guard tied for the most assists in a single game in the regular season since 1993-94, with 23 each."
         " Box scores begin in 1993-94, so this is not an all-time record: earlier games are not in this warehouse."
     )
@@ -279,7 +281,7 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
         parts=(Part(body=Rows(columns=("assists",), rows=twice, by="assists")),),
         facts=CountFacts(stat="assists", box_scores_from=1994, empty_box_scores=0),
     )
-    assert say(alone).answer == "A Guard had the most assists in a single game in the 2025 regular season: 12, twice - on 2025-02-27 vs ORL and on 2025-04-01 vs MEM. Next: B Guard (10)."
+    assert say(alone).text == "A Guard had the most assists in a single game in the 2025 regular season: 12, twice - on 2025-02-27 vs ORL and on 2025-04-01 vs MEM. Next: B Guard (10)."
     beside = Result(
         subject="every player",
         relation="everyone",
@@ -287,7 +289,7 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
         parts=(Part(body=Rows(columns=("assists",), rows=(*twice[:2], {"player": "B Guard", "value": 12, "date": "2025-03-01", "opponent": "", "reconstructed": False}), by="assists")),),
         facts=CountFacts(stat="assists", box_scores_from=1994, empty_box_scores=0),
     )
-    assert say(beside).answer == "A Guard (twice) and B Guard tied for the most assists in a single game in the 2025 regular season, with 12 each."
+    assert say(beside).text == "A Guard (twice) and B Guard tied for the most assists in a single game in the 2025 regular season, with 12 each."
     redirect = Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": 1990, "last": 1999, "what": "regular season"})
     retired = Result(
         subject="Old Timer",
@@ -298,8 +300,8 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
         facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0),
     )
     with collect() as collected:
-        said = say(retired)
-    assert said.answer == "Old Timer has no 2026 regular season games in the warehouse. He last appears in 1999. The warehouse holds his 1990-1999 regular seasons; name one, or ask for his career."
+        said = as_said(say(retired))
+    assert said.text == "Old Timer has no 2026 regular season games in the warehouse. He last appears in 1999. The warehouse holds his 1990-1999 regular seasons; name one, or ask for his career."
     assert said.data["notes"] == ["He last appears in 1999. The warehouse holds his 1990-1999 regular seasons; name one, or ask for his career."]
     assert said.data["question_shape"] == "most points in a single game, Old Timer, 2026 regular season"
     assert [each.kind for each in collected.decisions] == ["season_redirected"]
@@ -327,8 +329,8 @@ def test_a_stat_ranking_and_a_count_ranking_are_told_apart_by_the_body() -> None
         facts=RankingFacts(label="true shooting %", ratio=("points", "true_shooting_attempts"), fields=("team",)),
     )
     with collect() as remarks:
-        said = say(result)
-    lines = said.answer.split("\n")
+        said = as_said(say(result))
+    lines = said.text.split("\n")
     assert lines[0] == "true shooting %, the league, 2026 regular season (minimum 550 true-shooting attempts):"
     assert lines[2].split() == ["Nikola", "Jokic", "66.1%", "Denver", "Nuggets"]
     assert lines[-1] == "Team is each player's most recent team that season."
@@ -336,7 +338,7 @@ def test_a_stat_ranking_and_a_count_ranking_are_told_apart_by_the_body() -> None
     assert said.data["min_sample"] == 550 and said.data["notes"] == ["Team is each player's most recent team that season."]
     assert [n.kind for n in remarks.notes] == ["definition"] and [d.kind for d in remarks.decisions] == ["minimum"]
     # Without the team column, a sentence naming the leader, and its makes over attempts.
-    sentence = say(Result(**{**result.__dict__, "notes": (), "facts": RankingFacts(label="true shooting %", ratio=("points", "true_shooting_attempts"))})).answer
+    sentence = say(Result(**{**result.__dict__, "notes": (), "facts": RankingFacts(label="true shooting %", ratio=("points", "true_shooting_attempts"))})).text
     assert sentence == (
         "Nikola Jokic led the league in true shooting % in the 2026 regular season (minimum 550 true-shooting attempts), at 66.1% (2,071 of 1,566). Next: Shai Gilgeous-Alexander (64.2%)."
     )
@@ -357,12 +359,12 @@ def test_a_career_ranking_says_its_pool_every_time() -> None:
         notes=(Note("floor", {"table": "season_line", "first": 1994, "what": "career_pool"}),),
         facts=RankingFacts(label="total points"),
     )
-    assert say(result).answer == (
+    assert say(result).text == (
         "Among players active in 1993-94 or later, LeBron James leads in career points in the regular season: 43,440, over 1,622 games (2003-04 through 2025-26). "
         "Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
     )
-    empty = say(Result(**{**result.__dict__, "parts": (Part(body=Grouped(by="player", ranked_by="total_points")),)}))
-    assert empty.answer == "No player qualified for career points in the regular season. Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
+    empty = as_said(say(Result(**{**result.__dict__, "parts": (Part(body=Grouped(by="player", ranked_by="total_points")),)})))
+    assert empty.text == "No player qualified for career points in the regular season. Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
     assert empty.data["leaders"] == [] and empty.data["pool_first_season"] == 1994
 
 
@@ -396,14 +398,14 @@ def test_a_refusal_is_said_from_its_facts_beside_the_pages_values() -> None:
 
     shown = {"team": "Boston Celtics", "span": "2026 regular season", "games": 0}
     said = say(Refusal(kind="no_team_games", facts={"team": "Boston Celtics", "where": "in the 2026 regular season"}, shown=shown, under=()))
-    assert said.answer == "The warehouse has no games with a result for the Boston Celtics in the 2026 regular season." and said.data == shown
+    assert said.text == "The warehouse has no games with a result for the Boston Celtics in the 2026 regular season." and said.data == shown
     listed = say(Refusal(kind="listed_not_played", facts={"player": "Joel Embiid", "team": None, "where": "in the 2026 regular season", "games": 1}))
-    assert listed.answer == "Joel Embiid was listed in 1 box score in the 2026 regular season but did not play in it." and listed.data == {"message": listed.answer}
+    assert listed.text == "Joel Embiid was listed in 1 box score in the 2026 regular season but did not play in it." and listed.data == {"message": listed.text}
     asked = say(Clarify(asked="Curry", candidates=("Seth Curry", "Stephen Curry")))
-    assert asked.answer == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
+    assert asked.text == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
     assert asked.data == {"ambiguous": "Curry", "candidates": ["Seth Curry", "Stephen Curry"]}
     near = say(Clarify(asked="embid", candidates=("Joel Embiid",), why="near_spelling"))
-    assert near.answer == "No player found matching 'embid' - did you mean Joel Embiid?" and near.data == {"unmatched": "embid", "suggestions": ["Joel Embiid"]}
+    assert near.text == "No player found matching 'embid' - did you mean Joel Embiid?" and near.data == {"unmatched": "embid", "suggestions": ["Joel Embiid"]}
     # ISSUES.md #2003: a full name nothing matches names the one cause the warehouse cannot rule out; a lone word, initials or a team says nothing of the kind.
     assert refusal_phrase("name_unmatched", {"asked": "wilt chamberlain"}) == (
         "No player found matching 'wilt chamberlain'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record."

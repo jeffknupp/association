@@ -1191,8 +1191,8 @@ def test_a_team_only_question_naming_one_player_is_read_back(scope_con: duckdb.D
     from association.query.reading import Cause
 
     said = refusal_result(Cause(kind="no_player_reading", facts={"player": named, "shape": TEAM_RANKING}))
-    assert "Alperen Sengun" in said.answer and "a ranking of teams has no reading for one" in said.answer
-    assert said.data == {"named_player": "Alperen Sengun", "message": said.answer}
+    assert "Alperen Sengun" in said.text and "a ranking of teams has no reading for one" in said.text
+    assert said.data == {"named_player": "Alperen Sengun", "message": said.text}
 
 
 def test_a_team_named_wins_over_a_coincidental_player_word(scope_con: duckdb.DuckDBPyConnection) -> None:
@@ -1407,4 +1407,4 @@ def _no_match(con: duckdb.DuckDBPyConnection, text: str) -> str:
     from association.query.compose.say import say
     from association.query.entities import unmatched
 
-    return say(unmatched(names_of(con), text)).answer or ""
+    return say(unmatched(names_of(con), text)).text or ""

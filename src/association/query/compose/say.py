@@ -19,11 +19,12 @@ reproduced from the Result word for word.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from association.nba.coverage import unavailable
-from association.query.answer import Artifact, Reply
+from association.query.answer import Answer, Artifact
 from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.entities import MAX_CLARIFY_CANDIDATES
 from association.query.measures import PERIOD_COLUMNS
@@ -1004,7 +1005,7 @@ def _player_about(result: Result) -> dict[str, Any]:
     }
 
 
-def say_player_log(result: Result) -> Reply:
+def say_player_log(result: Result) -> Answer:
     """A player's log, worded: the heading, the aligned table with its
     per-game averages, the notes - and the plain values beneath them.
 
@@ -1014,7 +1015,7 @@ def say_player_log(result: Result) -> Reply:
     body = result.rows
     if body is None or not body.rows:
         empty = _empty_said(result)
-        return Reply(data={**about, "games": [], "message": empty}, answer=empty)
+        return Answer(data={**about, "games": [], "message": empty}, text=empty)
     headers = list(body.columns)
     games = [dict(g) for g in body.rows]
     averages = dict(body.summary)
@@ -1025,7 +1026,7 @@ def say_player_log(result: Result) -> Reply:
     if not body.by_season_type:
         data["qualifying_games"] = body.total_before_window
     data.update({"headline": header.rstrip(":"), "notes": notes})
-    return Reply(data=data, answer="\n".join([header, *table, *notes]))
+    return Answer(data=data, text="\n".join([header, *table, *notes]))
 
 
 # --- the team's log ----------------------------------------------------------------
@@ -1073,7 +1074,7 @@ def _team_total_data(games: list[dict[str, Any]], stat: Any) -> dict[str, Any]:
     return {"differential": diff, "differential_per_game": round(diff / len(games), 2)}
 
 
-def say_team_log(result: Result) -> Reply:
+def say_team_log(result: Result) -> Answer:
     """A team's log, worded: the heading with its record, one line per game,
     the total the question asked for beneath them.
 
@@ -1081,7 +1082,7 @@ def say_team_log(result: Result) -> Reply:
     """
     body = result.rows
     if body is None or not body.rows:
-        return Reply(data={"team": result.subject, "games": []}, answer=_empty_said(result))
+        return Answer(data={"team": result.subject, "games": []}, text=_empty_said(result))
     games = [dict(g) for g in body.rows]
     wins, losses, unknown = body.summary["wins"], body.summary["losses"], body.summary["unknown"]
     record = f"{wins}-{losses}" + (f", {unknown} with no recorded result" if unknown else "")
@@ -1098,10 +1099,10 @@ def say_team_log(result: Result) -> Reply:
     lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
     stat = _facts(result, LogFacts).stat
     data = {"team": result.subject, "wins": wins, "losses": losses, "games": games, "headline": header.rstrip(":"), **_team_total_data(games, stat)}
-    return Reply(data=data, answer="\n".join([header, *lines]) + _team_total_line(games, stat))
+    return Answer(data=data, text="\n".join([header, *lines]) + _team_total_line(games, stat))
 
 
-def _say_rows(result: Result) -> Reply:
+def _say_rows(result: Result) -> Answer:
     """Rows by date: a team's log, a player's quarter or half game by game
     (the read's :class:`~association.query.result.Period` cell), or his
     log."""
@@ -1110,12 +1111,12 @@ def _say_rows(result: Result) -> Reply:
     return say_period_split(result) if result.narrowing.period is not None else say_player_log(result)
 
 
-def _say_line(result: Result) -> Reply:
+def _say_line(result: Result) -> Answer:
     """A line over games, per game: a team's quarter or half, or a player's line."""
     return say_team_quarter_points(result) if result.relation == "team" else say_player_stat(result)
 
 
-def _say_ranking(result: Result) -> Reply:
+def _say_ranking(result: Result) -> Answer:
     """A ranking by player: of games over a line (``ranked_by="games"``), by
     a quarter or half (the read's :class:`~association.query.result.Period`
     cell, or a column per quarter), or by a season-line metric."""
@@ -1128,20 +1129,20 @@ def _say_ranking(result: Result) -> Reply:
     return say_leaderboard(result)
 
 
-def _say_comparison(result: Result) -> Reply:
+def _say_comparison(result: Result) -> Answer:
     """Named subjects side by side: in the games they met in (the read's
     :class:`~association.query.result.Met` cell), or their season lines."""
     return say_player_matchup(result) if result.narrowing.cell(Met) is not None else say_player_compare(result)
 
 
-def _say_teams(result: Result) -> Reply:
+def _say_teams(result: Result) -> Answer:
     """Teams side by side: ranked by a metric, or the two that met."""
     body = result.grouped
     assert body is not None
     return say_team_leaderboard(result) if body.ranked_by is not None else say_head_to_head(result)
 
 
-def say(result: Result | Refusal | Clarify) -> Reply:
+def say(result: Result | Refusal | Clarify) -> Answer:
     """``result`` worded by its shape (:func:`_sayer`): the headline part's
     body and what it is by - or a refusal by its cause, or a question
     back.
@@ -1167,7 +1168,7 @@ def say(result: Result | Refusal | Clarify) -> Reply:
 # --- a record over a line ----------------------------------------------------------
 
 
-def say_record_when(result: Result) -> Reply:
+def say_record_when(result: Result) -> Answer:
     """A player's team's record when he reached a line, worded: the three-row
     table (reached, fell short, all his games) under its heading, then the
     pool, the floor and the caveats in the retired template's order.
@@ -1203,10 +1204,10 @@ def say_record_when(result: Result) -> Reply:
         "headline": title.rstrip(":"),
         "notes": [trailer],
     }
-    return Reply(data=data, answer=f"{table}\n{trailer}")
+    return Answer(data=data, text=f"{table}\n{trailer}")
 
 
-def _say_team_record_when(result: Result, groups: Grouped) -> Reply:
+def _say_team_record_when(result: Result, groups: Grouped) -> Answer:
     """A team's record when its own figure reached a line, worded as the
     retired template's team branch said it: the three rows under the team's
     heading, then the pool, the floor and the games with no figure."""
@@ -1224,7 +1225,7 @@ def _say_team_record_when(result: Result, groups: Grouped) -> Reply:
     said = {each.kind: text for each, text in zip(result.notes, _said(result), strict=True)}
     trailer = said.get("definition", "") + said.get("floor", "") + said.get("stat_blank", "")
     data = {"team": result.subject, "stat": stat, "threshold": threshold, "span": result.span.phrase, "reached": reached, "fell_short": short, "headline": title.rstrip(":"), "notes": [trailer]}
-    return Reply(data=data, answer=f"{table}\n{trailer}")
+    return Answer(data=data, text=f"{table}\n{trailer}")
 
 
 # --- splits ----------------------------------------------------------------------------
@@ -1239,7 +1240,7 @@ def _splits_about(result: Result, facts: SplitsFacts) -> dict[str, Any]:
     return {"player": result.subject, "team": facts.team, **_narrowed_values(result)}
 
 
-def say_splits(result: Result) -> Reply:
+def say_splits(result: Result) -> Answer:
     """A player's or a team's splits, worded: the shared table over whichever
     subject was read - one or all four splits, each split's rows under its
     group label, a blank line between splits - and the notes that qualify
@@ -1274,7 +1275,7 @@ def say_splits(result: Result) -> Reply:
     )
     answer += "\n" + " ".join(notes)
     data = {**_splits_about(result, facts), "span": result.span.phrase, "games": facts.games, "splits": by_kind, "headline": headline.rstrip(":"), "notes": notes}
-    return Reply(data=data, answer=answer.strip())
+    return Answer(data=data, text=answer.strip())
 
 
 # --- a player's line ---------------------------------------------------------------
@@ -1317,7 +1318,7 @@ def stat_value_labels(wanted: list[str]) -> dict[str, str]:
     return labels
 
 
-def shooting_result(name: str, scope: dict[str, Any], values: dict[str, Any], shooting: Any, *, when: str, games_note: str = "") -> Reply:
+def shooting_result(name: str, scope: dict[str, Any], values: dict[str, Any], shooting: Any, *, when: str, games_note: str = "") -> Answer:
     """A percentage with the makes and attempts behind it - "out of how many?"
     is the first thing anybody asks of a percentage without them.
 
@@ -1353,7 +1354,7 @@ def shooting_result(name: str, scope: dict[str, Any], values: dict[str, Any], sh
     stats[shooting.attempted_key] = attempted
     stats["pct"] = pct
     labels = {shooting.made_key: shooting.made_label, shooting.attempted_key: shooting.attempted_label, "pct": shooting.pct_label}
-    return Reply(data={"player": name, **scope, "stats": stats, "labels": labels}, answer=answer)
+    return Answer(data={"player": name, **scope, "stats": stats, "labels": labels}, text=answer)
 
 
 def phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: list[str], *, games_note: str = "", when: str | None = None, attempted: Any = None) -> str:
@@ -1456,7 +1457,7 @@ def _player_stat_meetings(meetings: Rows) -> list[str]:
     ]
 
 
-def say_player_stat(result: Result) -> Reply:
+def say_player_stat(result: Result) -> Answer:
     """A player's line over the games a question narrowed to, worded: one
     sentence (a percentage with its makes and attempts, or each stat per
     game with the total of one stat alone), the remarks after it, and
@@ -1470,7 +1471,7 @@ def say_player_stat(result: Result) -> Reply:
     span, facts = result.span, _facts(result, LineFacts)
     about = {"season": span.season, "date": span.date, "span": "career" if span.career else None, **_narrowed_values(result)}
     if not line.games:
-        return Reply(data={"player": result.subject, **about, "games": 0, "stats": {}}, answer=_empty_said(result))
+        return Answer(data={"player": result.subject, **about, "games": 0, "stats": {}}, text=_empty_said(result))
     notes = _said(result)
     scope = {**about, "seasons": [span.first, span.last]}
     when, games_note = span.phrase or "", result.narrowing.phrase
@@ -1484,13 +1485,12 @@ def say_player_stat(result: Result) -> Reply:
         wanted = list(facts.wanted)
         values, attempted = _player_stat_values(result, line)
         answer = phrase_player_stat(result.subject, season_phrase(span.first or 0, span.season_type or 2), values, wanted, games_note=games_note, when=when, attempted=attempted)
-        said = Reply(data={"player": result.subject, **scope, "stats": values, "labels": stat_value_labels(wanted)}, answer=answer)
+        said = Answer(data={"player": result.subject, **scope, "stats": values, "labels": stat_value_labels(wanted)}, text=answer)
     if notes:
-        said.answer = " ".join([said.answer, *notes])
+        said = replace(said, text=" ".join([said.text, *notes]))
     if len(result.parts) > 1 and isinstance(result.parts[1].body, Rows):
         meetings = result.parts[1].body
-        said.data["recent"] = [dict(g) for g in meetings.rows]
-        said.answer = "\n".join([said.answer, *_player_stat_meetings(meetings)])
+        said = replace(said, text="\n".join([said.text, *_player_stat_meetings(meetings)]), data={**(said.data or {}), "recent": [dict(g) for g in meetings.rows]})
     return said
 
 
@@ -1715,7 +1715,7 @@ def _period_header(result: Result, games: list[dict[str, Any]], season_label: st
     return header
 
 
-def say_period_split(result: Result) -> Reply:
+def say_period_split(result: Result) -> Answer:
     """A player's figure in one quarter or half, worded: the heading over
     every game (one game said its own way), the log beneath where one was
     asked for, the season the games were found in when none were this
@@ -1732,7 +1732,7 @@ def say_period_split(result: Result) -> Reply:
     data: dict[str, Any] = {**_period_about(result), "games": games, "games_played": len(games)}
     if not games:
         message = _period_none_found(result, season_label, vs, at)
-        return Reply(data={**data, "message": message, "headline": message}, answer=message)
+        return Answer(data={**data, "message": message, "headline": message}, text=message)
     data |= dict(body.summary)
     header = _period_header(result, games, season_label, vs, at)
     extra = None
@@ -1741,7 +1741,7 @@ def say_period_split(result: Result) -> Reply:
     caveat = period_caveat(list(result.notes))
     data["headline"] = header.split("\n")[0]
     data["notes"] = [*([extra] if extra else []), *([caveat.strip()] if caveat else [])]
-    return Reply(data=data, answer=header + (f"\n{extra}" if extra else "") + caveat)
+    return Answer(data=data, text=header + (f"\n{extra}" if extra else "") + caveat)
 
 
 def _period_quarter_cells(values: list[str]) -> str:
@@ -1776,7 +1776,7 @@ def _period_quarter_table(result: Result, quarters: list[dict[str, Any]], season
     return header, [f"  {'':<10}{heads}", f"  {'per game':<10}{per_game}", f"  {'total':<10}{totals}"]
 
 
-def say_period_by_quarter(result: Result) -> Reply:
+def say_period_by_quarter(result: Result) -> Answer:
     """A player's four quarters side by side, worded: the header naming the
     games (the same in every quarter, said once), the per-game and total
     rows, that overtime is no quarter, and the season's measured agreement.
@@ -1798,13 +1798,13 @@ def say_period_by_quarter(result: Result) -> Reply:
     data: dict[str, Any] = {**_period_about(result), "games_played": facts.games, "quarters": quarters}
     if not facts.games:
         message = _period_none_found(result, season_label, vs, at)
-        return Reply(data={**data, "message": message, "headline": message}, answer=message)
+        return Answer(data={**data, "message": message, "headline": message}, text=message)
     header, table = _period_quarter_table(result, quarters, season_label, vs, at)
     overtime, *agreement = result.notes
     said = note(overtime.kind, note_phrase(overtime), **overtime.facts)
     caveat = period_caveat(agreement)
     data |= {"headline": header.rstrip(":"), "notes": [said, *([caveat.strip()] if caveat else [])]}
-    return Reply(data=data, answer="\n".join([header, *table, f"  {said}"]) + caveat)
+    return Answer(data=data, text="\n".join([header, *table, f"  {said}"]) + caveat)
 
 
 # --- a count of games over a line, and a single game's high ---------------------------
@@ -1868,7 +1868,7 @@ def _threshold_count_rows(result: Result) -> list[tuple[Any, int, int]]:
     return [(row["key"], int(row["games"]), int(row["rebuilt"])) for row in groups.rows]
 
 
-def say_threshold_count(result: Result) -> Reply:
+def say_threshold_count(result: Result) -> Answer:
     """How many games cleared a line, worded - a named player's count, or
     the league's leaders with "Next: ..." - with the floor said first where
     his career began before the box scores, and the notes after it in the
@@ -1904,7 +1904,7 @@ def say_threshold_count(result: Result) -> Reply:
         "headline": phrase.split(" Next: ")[0],
         "notes": notes,
     }
-    return Reply(data=data, answer=" ".join([phrase, *notes]))
+    return Answer(data=data, text=" ".join([phrase, *notes]))
 
 
 def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label: str, when: str, games_said: str, withheld: str) -> str:
@@ -1957,7 +1957,7 @@ def _times_phrase(count: int) -> str:
     return f" ({_count_times(count)})" if count > 1 else ""
 
 
-def say_single_game_high(result: Result) -> Reply:
+def say_single_game_high(result: Result) -> Answer:
     """A single game's high, worded - the retired ``single_game_high``
     template's sentence: the floor first where a career began before the
     box scores, the high, then a league career's floor, the empty box
@@ -1998,7 +1998,7 @@ def say_single_game_high(result: Result) -> Reply:
         "headline": headline,
         "notes": [redirect.strip()] if redirect else [],
     }
-    return Reply(data=data, answer=headline + redirect)
+    return Answer(data=data, text=headline + redirect)
 
 
 # --- runs ------------------------------------------------------------------------------
@@ -2012,7 +2012,7 @@ def streak_result(want_win: bool) -> str:
     return "winning streak" if want_win else "losing streak"
 
 
-def say_one_run(subject: str, label: str, runs: Sequence[Run], rule: str, *, season: int | None, still_open: bool, who: dict[str, Any]) -> Reply:
+def say_one_run(subject: str, label: str, runs: Sequence[Run], rule: str, *, season: int | None, still_open: bool, who: dict[str, Any]) -> Answer:
     """One named player's or team's longest run, with any run that ties it,
     under ``subject`` ("Nikola Jokic's longest run of consecutive games with
     20+ points") and ``label`` (the span): its length and days, the season
@@ -2034,10 +2034,10 @@ def say_one_run(subject: str, label: str, runs: Sequence[Run], rule: str, *, sea
         still = Note("still_open")
         answer += note(still.kind, note_phrase(still))
     streaks = [{"length": r.length, "from": str(r.first), "to": str(r.last), "open": r.still_open} for r in [top, *ties]]
-    return Reply(data={**who, "span": label, "streaks": streaks, "headline": answer, "notes": [rule.strip()]}, answer=f"{answer}\n{rule}")
+    return Answer(data={**who, "span": label, "streaks": streaks, "headline": answer, "notes": [rule.strip()]}, text=f"{answer}\n{rule}")
 
 
-def say_run_listing(runs: Sequence[Run], what: str, rule: str, label: str, where: str, *, by_stat: bool, stat: Any, threshold: Any, unit: str, want_win: bool) -> Reply:
+def say_run_listing(runs: Sequence[Run], what: str, rule: str, label: str, where: str, *, by_stat: bool, stat: Any, threshold: Any, unit: str, want_win: bool) -> Answer:
     """The league's longest runs with nobody named: one per player (a stat
     streak) or one per team-season (a win/loss streak, the team relation's,
     ``compose.runs.read_team_streak``), each under its ``owner``, a
@@ -2052,7 +2052,7 @@ def say_run_listing(runs: Sequence[Run], what: str, rule: str, label: str, where
     if not runs:
         nobody = f"No player had a game with {threshold}+ {unit}" if by_stat else "No team has a game with a result"
         message = f"{nobody} {where}."
-        return Reply(data={"span": label, "streaks": [], "headline": message}, answer=message)
+        return Answer(data={"span": label, "streaks": [], "headline": message}, text=message)
     streaks = [{"name": r.owner, "season": r.first_season if not by_stat else None, "length": r.length, "from": str(r.first), "to": str(r.last), "open": r.still_open} for r in runs]
     longest = runs[0].length
     top = [r for r in runs if r.length == longest]
@@ -2071,7 +2071,7 @@ def say_run_listing(runs: Sequence[Run], what: str, rule: str, label: str, where
         "headline": headline,
         "notes": [rule.strip(), *([footnote.strip()] if footnote else [])],
     }
-    return Reply(data=data, answer=answer)
+    return Answer(data=data, text=answer)
 
 
 def _where_in_span(span: Span) -> str:
@@ -2080,7 +2080,7 @@ def _where_in_span(span: Span) -> str:
     return f"in the {span.phrase}" if span.season is not None else f"in any {SEASON_TYPE_NAMES.get(span.season_type or 2, 'regular season')} on record ({span.floor} onward)"
 
 
-def say_streak(result: Result) -> Reply:
+def say_streak(result: Result) -> Answer:
     """A player's longest run, or the league's longest one per player,
     worded: the run (and any that tie it) under the player's name and the
     span, or the listing under its leader, then the rule beneath - only
@@ -2109,20 +2109,20 @@ def say_streak(result: Result) -> Reply:
     if not body.runs:
         never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
         message = f"{result.subject} {never}{filters} in the {label}."
-        return Reply(data={"player": result.subject, "span": label, "streaks": [], "headline": message}, answer=message)
+        return Answer(data={"player": result.subject, "span": label, "streaks": [], "headline": message}, text=message)
     what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{streak_result(want_win)} in games he played"
     subject = (f"{result.subject}'s longest run of {what}" if by_stat else f"{result.subject}'s longest {what}") + filters
     return say_one_run(subject, label, body.runs, rule, season=result.span.season, still_open=still_open, who={"player": result.subject})
 
 
-def _say_team_run(result: Result, body: Runs, rule: str, *, want_win: bool, still_open: bool) -> Reply:
+def _say_team_run(result: Result, body: Runs, rule: str, *, want_win: bool, still_open: bool) -> Answer:
     """A named team's longest run of wins or losses (and any that tie it),
     or that it never won (or lost) a game in the span narrowed so -
     ``streak``'s retired team branch, word for word."""
     team, label, filters = result.subject, result.span.phrase or "", result.narrowing.phrase
     if not body.runs:
         message = f"The {team} did not {'win' if want_win else 'lose'} a game{filters} in the {label}."
-        return Reply(data={"team": team, "span": label, "streaks": [], "headline": message}, answer=message)
+        return Answer(data={"team": team, "span": label, "streaks": [], "headline": message}, text=message)
     what = streak_result(want_win)
     subject = (f"The {team}' longest {what}" if team.endswith("s") else f"The {team}'s longest {what}") + filters
     return say_one_run(subject, label, body.runs, rule, season=result.span.season, still_open=still_open, who={"team": team})
@@ -2146,7 +2146,7 @@ def _matchup_absence_said(absence: Mapping[str, Any] | None) -> str:
     )
 
 
-def _matchup_none(result: Result, caveat: str) -> Reply:
+def _matchup_none(result: Result, caveat: str) -> Answer:
     """Two players who never met in scope, said by what the read narrowed:
     "never played against each other", or no meetings in the first
     player's games narrowed that way, and the games they shared as
@@ -2162,10 +2162,10 @@ def _matchup_none(result: Result, caveat: str) -> Reply:
     # two players who met whenever the narrowing was not in force.
     head = f"No meetings between {a} and {b} in {a}'s games{narrowing}" if narrowing else f"{a} and {b} never played against each other"
     message = f"{head} {where}{teammates}.{said}"
-    return Reply(data={"players": [a, b], "meetings": 0, "teammate_games": together, "headline": message}, answer=message)
+    return Answer(data={"players": [a, b], "meetings": 0, "teammate_games": together, "headline": message}, text=message)
 
 
-def say_player_matchup(result: Result) -> Reply:
+def say_player_matchup(result: Result) -> Answer:
     """Two players' meetings, worded: the head-to-head record and each
     one's averages side by side under a heading naming how many times they
     met and how often the first one's team won, then the newest meetings
@@ -2205,7 +2205,7 @@ def say_player_matchup(result: Result) -> Reply:
         "headline": title,
         "notes": [caveat.strip()] if caveat else [],
     }
-    return Reply(data=data, answer=answer)
+    return Answer(data=data, text=answer)
 
 
 # --- a ranking over the season line ------------------------------------------------
@@ -2295,7 +2295,7 @@ def _leaderboard_headline(answer: str) -> str:
     return answer.split("\n")[0].rstrip(":").split(" Next: ")[0]
 
 
-def say_leaderboard(result: Result) -> Reply:
+def say_leaderboard(result: Result) -> Answer:
     """A ranking over the season line, worded as the retired template
     worded it (``templates.players._leaderboard_ranking``): the leader and
     the next names in a sentence, or a table once "also" columns were asked
@@ -2335,10 +2335,10 @@ def say_leaderboard(result: Result) -> Reply:
         "headline": _leaderboard_headline(answer),
         "notes": [trade_note.strip()] if trade_note else [],
     }
-    return Reply(data=data, answer=answer + trade_note)
+    return Answer(data=data, text=answer + trade_note)
 
 
-def _say_career_leaderboard(result: Result, body: Grouped) -> Reply:
+def _say_career_leaderboard(result: Result, body: Grouped) -> Answer:
     """A career ranking. Says whose careers, every time: the pool is every
     player active in 1993-94 or later, counted over his whole career, and
     nobody whose career ended before it - Kareem Abdul-Jabbar is not in the
@@ -2364,7 +2364,7 @@ def _say_career_leaderboard(result: Result, body: Grouped) -> Reply:
         sentence = f"Among players active in {since} or later, {top['display_name']} leads in {label} in the {kind}{qualifier}: {_leader_value(top, ratio)}{detail}."
         rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
         answer = " ".join([sentence, *([f"Next: {', '.join(rest)}."] if rest else []), gap])
-    return Reply(
+    return Answer(
         data={
             "question_shape": f"{label}, {kind}, players active since {since}",
             "season": None,
@@ -2375,7 +2375,7 @@ def _say_career_leaderboard(result: Result, body: Grouped) -> Reply:
             "leaders": rows,
             "headline": _leaderboard_headline(answer),
         },
-        answer=answer,
+        text=answer,
     )
 
 
@@ -2407,7 +2407,7 @@ def _advanced_value(percentage: bool, value: Any) -> str:
     return f"{float(value):.1f}"
 
 
-def _say_player_line_advanced(result: Result, line: Scalar) -> Reply:
+def _say_player_line_advanced(result: Result, line: Scalar) -> Answer:
     """A computed advanced stat's line: the figure, its volume - a rate
     without it is the thing people ask "out of how many?" about - the
     games, and the seasons it could not see."""
@@ -2418,14 +2418,14 @@ def _say_player_line_advanced(result: Result, line: Scalar) -> Reply:
         # The read's own cause (``Result.empty``), and the seasons he IS on
         # record for where the season was defaulted.
         message = _empty_said(result) + "".join(decision_phrase(each) for each in result.decisions)
-        return Reply(data={"player": name, "stat": stat, "stats": {}}, answer=message)
+        return Answer(data={"player": name, "stat": stat, "stats": {}}, text=message)
     value, volume, games = line.values[stat], line.sums["volume"], line.games
     printed = _advanced_value(spec.percentage, value)
     behind = f" on {int(volume):,} {spec.volume}" if volume is not None and spec.volume else ""
     about: dict[str, Any] = {"span": "career", "seasons": [span.first, span.last], "season_count": facts.season_count} if span.career else {"season": span.first}
     sentence = f"{name} has a {printed} {spec.label} {span.phrase}{behind}, in {int(games):,} games." if games else f"{name} has a {printed} {spec.label} {span.phrase}{behind}."
     data = {"player": name, "stat": stat, **about, "stats": {spec.column: value, "games_played": int(games) if games is not None else None}, "seasons_missing": line.sums["seasons_missing"]}
-    return Reply(data=data, answer=sentence + "".join(_said(result)))
+    return Answer(data=data, text=sentence + "".join(_said(result)))
 
 
 def _player_line_values(result: Result, line: Scalar, wanted: list[str]) -> tuple[dict[str, Any], Any]:
@@ -2447,19 +2447,19 @@ def _player_line_values(result: Result, line: Scalar, wanted: list[str]) -> tupl
     return values, attempted
 
 
-def _player_line_empty(result: Result) -> Reply:
+def _player_line_empty(result: Result) -> Answer:
     """No line on record: the season's or the career's sentence, and where
     the season was defaulted, the seasons he IS on record for."""
     span, name = result.span, result.subject
     if span.career:
         kind = SEASON_TYPE_NAMES.get(span.season_type or 2, "regular season")
-        return Reply(data={"player": name, "span": "career", "stats": {}}, answer=f"{name} has no {kind} numbers in the warehouse.")
+        return Answer(data={"player": name, "span": "career", "stats": {}}, text=f"{name} has no {kind} numbers in the warehouse.")
     assert span.season is not None
     answer = f"{name} has no {season_phrase(span.season, span.season_type or 2)} numbers in the warehouse." + "".join(decision_phrase(each) for each in result.decisions)
-    return Reply(data={"player": name, "season": span.season, "stats": {}}, answer=answer)
+    return Answer(data={"player": name, "season": span.season, "stats": {}}, text=answer)
 
 
-def say_player_line(result: Result) -> Reply:
+def say_player_line(result: Result) -> Answer:
     """A player's unnarrowed line from the season line, worded - one
     season's ("averaged 27.7 points per game in 70 games in the 2026
     regular season"), a career's ("over his career (8 regular seasons,
@@ -2493,7 +2493,7 @@ def say_player_line(result: Result) -> Reply:
         return shooting_result(name, about, values, shooting, when=when)
     values, attempted = _player_line_values(result, line, wanted)
     answer = phrase_player_stat(name, period, values, wanted, when=when, attempted=attempted)
-    return Reply(data={"player": name, **about, "stats": values, "labels": stat_value_labels(wanted)}, answer=answer)
+    return Answer(data={"player": name, **about, "stats": values, "labels": stat_value_labels(wanted)}, text=answer)
 
 
 def _history_table(name: str, label: str, period: str, history: list[dict[str, Any]], columns: list[tuple[str, str, str]], *, career: bool) -> str:
@@ -2522,7 +2522,7 @@ def _history_career_line(name: str, label: str, summary: Scalar) -> str:
     return f"{name}'s career {label}: {100.0 * made / attempted:.1f}% ({int(made):,} of {int(attempted):,})."
 
 
-def say_player_history(result: Result) -> Reply:
+def say_player_history(result: Result) -> Answer:
     """A player's stat season by season, worded: the aligned table under its
     heading, and under a career the career line - the retired
     ``player_history`` template's words. ``data["seasons"]`` keys each row
@@ -2543,7 +2543,7 @@ def say_player_history(result: Result) -> Reply:
     if isinstance(summary, Scalar):
         answer += f"\n{_history_career_line(name, label, summary)}"
     labels = {k: h for _, h, k in columns}
-    return Reply(data={"player": name, "stat": stat, "span": "career" if span.career else None, "seasons": history, "labels": labels}, answer=answer)
+    return Answer(data={"player": name, "stat": stat, "span": "career" if span.career else None, "seasons": history, "labels": labels}, text=answer)
 
 
 def _signed_cell(value: Any) -> str:
@@ -2581,7 +2581,7 @@ def _compare_table(rows: dict[str, dict[str, Any]], wanted: list[str], period: s
     return "\n".join(lines)
 
 
-def say_player_compare(result: Result) -> Reply:
+def say_player_compare(result: Result) -> Answer:
     """Two or more players' season lines side by side, worded: a table of
     the games and each stat per game, the NetPoints summary beneath where
     anybody has a row, and which players have no line that season - the
@@ -2599,7 +2599,7 @@ def say_player_compare(result: Result) -> Reply:
     missing_note = "".join(_said(result))
     answer = _compare_table(rows, wanted, season_phrase(result.span.season, result.span.season_type or 2), netpoints, missing_note)
     data = {"season": result.span.season, "players": rows, "netpoints": netpoints, "headline": answer.split("\n")[0].rstrip(":"), "notes": [missing_note] if missing_note else []}
-    return Reply(data=data, answer=answer)
+    return Answer(data=data, text=answer)
 
 
 # --- a team's own season: the power index ------------------------------------------
@@ -2638,7 +2638,7 @@ def _team_outlook_noted(result: Result, *kinds_of: str) -> list[str]:
     return [note(each.kind, note_phrase(each), **each.facts) for each in result.notes if each.facts.get("what") in kinds_of]
 
 
-def _team_outlook_missing(result: Result) -> Reply:
+def _team_outlook_missing(result: Result) -> Answer:
     """No snapshot of the kind asked for holds the team: which snapshots the
     season has, and which the team is missing from - "no data" would send
     the reader to the wrong place - and, where one holds it, the hint."""
@@ -2648,7 +2648,7 @@ def _team_outlook_missing(result: Result) -> Reply:
     listing = [_snapshot_described(each) for each in snapshots]
     if not snapshots:
         message = f"ESPN's power index has no {season} snapshot in the warehouse."
-        return Reply(data={"team": team, "season": season, "message": message}, answer=message)
+        return Answer(data={"team": team, "season": season, "message": message}, text=message)
     if facts.postseason and not any(each["kind"] == "postseason" for each in snapshots):
         gap = "and no postseason snapshot"
     elif facts.postseason:
@@ -2656,7 +2656,7 @@ def _team_outlook_missing(result: Result) -> Reply:
     else:
         gap = f"and the {team} are {'not in it' if len(listing) == 1 else 'in neither' if len(listing) == 2 else 'in none of them'}"
     message = f"ESPN's power index for {season} has {_joined(listing)}, {gap}." + "".join(_team_outlook_noted(result, "regular_season"))
-    return Reply(data={"team": team, "season": season, "snapshots": listing, "message": message}, answer=message)
+    return Answer(data={"team": team, "season": season, "snapshots": listing, "message": message}, text=message)
 
 
 def _team_outlook_bpi_line(result: Result, line: Scalar) -> str:
@@ -2704,7 +2704,7 @@ def _team_outlook_lines(result: Result, line: Scalar, chances: Grouped) -> tuple
     return lines, bpi_line, sos_line, others_line
 
 
-def say_team_outlook(result: Result) -> Reply:
+def say_team_outlook(result: Result) -> Answer:
     """A team's ESPN power index, worded: the snapshot it was read from (its
     kind, date and size) and what is odd about it, the BPI line, the record
     and its projection, the chances, the strength of schedule and the
@@ -2754,7 +2754,7 @@ def say_team_outlook(result: Result) -> Reply:
     # keeps every line.
     data["headline"] = lines[0].rstrip(":")
     data["notes"] = [each.strip() for each in (bpi_line, sos_line, others_line) if each is not None]
-    return Reply(data=data, answer="\n".join(lines))
+    return Answer(data=data, text="\n".join(lines))
 
 
 # --- a team's own season: its line ---------------------------------------------------
@@ -2805,14 +2805,14 @@ def short_of_games_said(metric: TeamMetric, period: str, short: dict[str, Any]) 
     )
 
 
-def _team_stat_single(result: Result, period: str, stats: dict[str, dict[str, Any]], row: dict[str, Any]) -> Reply:
+def _team_stat_single(result: Result, period: str, stats: dict[str, dict[str, Any]], row: dict[str, Any]) -> Answer:
     """One named metric: its value and rank, or why points allowed leave it blank."""
     team, season, facts = result.subject, result.span.season, _facts(result, TeamStatFacts)
     metric = TEAM_METRICS[row["key"]]
     if row["value"] is None:
         assert facts.short is not None
         answer = short_of_games_said(metric, period, dict(facts.short))
-        return Reply(data={"team": team, "season": season, "stats": stats, "message": answer}, answer=answer)
+        return Answer(data={"team": team, "season": season, "stats": stats, "message": answer}, text=answer)
     where = ""
     if row["rank"] is not None:
         order = "best" if metric.lower_is_better is not None else "highest"
@@ -2828,10 +2828,10 @@ def _team_stat_single(result: Result, period: str, stats: dict[str, dict[str, An
     # note (measured on the rendered page, 2026-09-24). No separate `notes`
     # entry either, for the same reason - the note is already inside
     # `headline`, and `notes` has no way here to say it is the same text.
-    return Reply(data={"team": team, "season": season, "games": facts.games, "stats": stats, "headline": answer, "notes": []}, answer=answer)
+    return Answer(data={"team": team, "season": season, "games": facts.games, "stats": stats, "headline": answer, "notes": []}, text=answer)
 
 
-def _team_stat_table(result: Result, period: str, stats: dict[str, dict[str, Any]], rows: Sequence[dict[str, Any]]) -> Reply:
+def _team_stat_table(result: Result, period: str, stats: dict[str, dict[str, Any]], rows: Sequence[dict[str, Any]]) -> Answer:
     """The compact line: a table of value and rank, with the notes beneath."""
     games = _facts(result, TeamStatFacts).games
     label_width = max(len(label) for label in stats)
@@ -2842,13 +2842,13 @@ def _team_stat_table(result: Result, period: str, stats: dict[str, dict[str, Any
         rank_cell = f"{ordinal_word(entry['rank'])} of {entry['of']}" if entry["rank"] is not None else "-"
         lines.append(f"{label.ljust(label_width)}  {cells[label].rjust(value_width)}  {rank_cell}")
     notes = _said(result)
-    return Reply(
+    return Answer(
         data={"team": result.subject, "season": result.span.season, "games": games, "stats": stats, "headline": lines[0].rstrip(":"), "notes": notes},
-        answer="\n".join([*lines, *notes]),
+        text="\n".join([*lines, *notes]),
     )
 
 
-def say_team_stat(result: Result) -> Reply:
+def say_team_stat(result: Result) -> Answer:
     """One team's season numbers, worded: a record and its rank, one metric's
     value and rank (with the rating formula beneath a rating or the pace),
     or the compact line as a table with what a rank means and what was left
@@ -2863,7 +2863,7 @@ def say_team_stat(result: Result) -> Reply:
     if line is not None:
         values = line.values
         answer = f"The {result.subject} were {tally(values['wins'], values['losses'])} in the {period}, the {ordinal_word(values['rank'])}-best record of {values['of']} teams."
-        return Reply(data={"team": result.subject, "season": result.span.season, **values}, answer=answer)
+        return Answer(data={"team": result.subject, "season": result.span.season, **values}, text=answer)
     body = result.grouped
     assert body is not None
     stats = {TEAM_METRICS[row["key"]].label: {"value": row["value"], "rank": row["rank"], "of": row["of"]} for row in body.rows}
@@ -2903,7 +2903,7 @@ def _team_leaderboard_end(metric: TeamMetric, key: str, rank_word: str | None, d
     return end
 
 
-def say_team_leaderboard(result: Result) -> Reply:
+def say_team_leaderboard(result: Result) -> Answer:
     """Every team ranked by one metric, worded: the title (the metric, a venue,
     the span), which end comes first, how many teams were ranked, the rows
     shown (a named team's own past a "..."), and the rating formula beneath a
@@ -2923,7 +2923,7 @@ def say_team_leaderboard(result: Result) -> Reply:
     assert body is not None
     if not body.rows:
         answer = f"The warehouse has no {period} numbers to rank teams by {metric.label}."
-        return Reply(data={"question_shape": title, "season": season, "teams": [], "headline": answer}, answer=answer)
+        return Answer(data={"question_shape": title, "season": season, "teams": [], "headline": answer}, text=answer)
     end = _team_leaderboard_end(metric, key, facts.rank, facts.descending)
     display = {row["key"]: tally(row["wins"], row["losses"]) if metric.expression is None else metric_cell(metric, row["value"]) for row in body.rows}
     name_width = max(len(row["key"]) for row in body.rows)
@@ -2936,7 +2936,7 @@ def say_team_leaderboard(result: Result) -> Reply:
     headline = f"{title} - {end}, of {facts.of} teams:"
     notes = _said(result)
     teams = [{"rank": row["rank"], "team": row["key"], "value": row["value"], "display": display[row["key"]]} for row in body.rows]
-    return Reply(data={"question_shape": title, "season": season, "order": end, "teams": teams, "headline": headline.rstrip(":"), "notes": notes}, answer="\n".join([headline, *lines, *notes]))
+    return Answer(data={"question_shape": title, "season": season, "order": end, "teams": teams, "headline": headline.rstrip(":"), "notes": notes}, text="\n".join([headline, *lines, *notes]))
 
 
 # --- a team with and without named teammates ---------------------------------
@@ -2977,7 +2977,7 @@ def _with_without_heading(result: Result, named: list[str], all_of: str) -> tupl
     return f"{subject} with and without {all_of} ({counted_teams}){versus}, {label}:", [*headers, "Played", "MIN", "PTS", "REB", "AST", "FG%"], whose
 
 
-def say_with_without(result: Result) -> Reply:
+def say_with_without(result: Result) -> Answer:
     """A team's record with and without named teammates, worded as the
     retired ``with_without`` template said it: the two rows side by side
     per team (the question's own side first), with the subject's averages
@@ -3022,7 +3022,7 @@ def say_with_without(result: Result) -> Reply:
         "headline": title.rstrip(":"),
         "notes": notes,
     }
-    return Reply(data=data, answer=_table(title, headers, rows) + "\n" + " ".join(notes))
+    return Answer(data=data, text=_table(title, headers, rows) + "\n" + " ".join(notes))
 
 
 # --- two teams' meetings ------------------------------------------------------------
@@ -3086,7 +3086,7 @@ def _head_to_head_sentence(result: Result, a: str, b: str, a_wins: int, b_wins: 
     return _head_to_head_series(f"The {a} and the {b} met {times} in the {period}", a, b, a_wins, b_wins)
 
 
-def say_head_to_head(result: Result) -> Reply:
+def say_head_to_head(result: Result) -> Answer:
     """Two teams' meetings, worded: how many times they met in the span (one
     season, one date, a venue's games, a since-bounded or whole-career span)
     and who won them - the retired ``head_to_head`` template's words.
@@ -3104,7 +3104,7 @@ def say_head_to_head(result: Result) -> Reply:
     if result.span.career:
         data.update({"since": result.span.since, "until": result.span.until, "span": facts.span})
     data["headline"] = answer
-    return Reply(data=data, answer=answer)
+    return Answer(data=data, text=answer)
 
 
 # --- a team's quarter or half ---------------------------------------------------------
@@ -3155,7 +3155,7 @@ def _team_period_about(result: Result, games: Sequence[Mapping[str, Any]]) -> di
     return {"team": result.subject, "opponent": result.narrowing.opponent, "period": periods[0] if len(periods) == 1 else None, "period_label": period.label, "games": list(games)}
 
 
-def _team_period_rate(result: Result, played: list[Mapping[str, Any]], line: Scalar) -> Reply:
+def _team_period_rate(result: Result, played: list[Mapping[str, Any]], line: Scalar) -> Answer:
     """A team's shooting percentage in the period, over the games that
     reached it: one game said its own way, many listed beneath the figure as
     made-attempted. A "most"/"fewest" question is refused rather than
@@ -3169,23 +3169,23 @@ def _team_period_rate(result: Result, played: list[Mapping[str, Any]], line: Sca
             f"The {team}'s best or worst single {label} by {word} is not ranked: over a few attempts the extreme is whichever game went 2 for 2. "
             f"Ask for their {word} in the {label} over the span instead."
         )
-        return Reply(data={**data, "message": message, "headline": message}, answer=message)
+        return Answer(data={**data, "message": message, "headline": message}, text=message)
     vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
     did = period_rate_said(made, attempted, pct, measure)
     if len(played) == 1:
         g = played[0]
         paren = f" ({span_words})" if span_words else ""
         answer = f"The {team} {did} in the {label} against the {g['opponent']} on {g['date']}{_facts(result, TeamPeriodFacts).dateless}{paren}."
-        return Reply(data={**data, "headline": answer}, answer=answer)
+        return Answer(data={**data, "headline": answer}, text=answer)
     header = f"The {team} {did} in the {label} across {len(played)} {span_words} games{vs}{result.narrowing.phrase}"
     if len(played) > _QUARTER_BREAKDOWN_LIMIT:
-        return Reply(data={**data, "headline": header}, answer=header + ".")
+        return Answer(data={**data, "headline": header}, text=header + ".")
     made_column, attempted_column = PERIOD_RATES[measure]
     lines = [f"  {g['date']}  {g[made_column]}-{g[attempted_column]}  {'-' if g[measure] is None else f'{g[measure]:.1f}%'}  vs {g['opponent']}" for g in played]
-    return Reply(data={**data, "headline": header}, answer="\n".join([header + ":", *lines]))
+    return Answer(data={**data, "headline": header}, text="\n".join([header + ":", *lines]))
 
 
-def _team_period_extreme(result: Result, played: list[Mapping[str, Any]], data: dict[str, Any], line: Scalar) -> Reply:
+def _team_period_extreme(result: Result, played: list[Mapping[str, Any]], data: dict[str, Any], line: Scalar) -> Answer:
     """The single game a "most"/"fewest" question asks for - the team
     counterpart of a single game's high - ties named together rather than
     resolved by whichever row sorted first."""
@@ -3198,7 +3198,7 @@ def _team_period_extreme(result: Result, played: list[Mapping[str, Any]], data: 
     figure = f"scored {best}" if measure == "points" else f"had {best} {period_noun(measure, best)}"
     vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
     answer = f"The {result.subject} {figure} in the {_period_label(result)} {where}, their {rank} in the {result.span.phrase or ''}{vs}{_facts(result, TeamPeriodFacts).dateless}."
-    return Reply(data={**data, "rank": rank, "extreme": best, "extreme_games": tied, "headline": answer}, answer=answer)
+    return Answer(data={**data, "rank": rank, "extreme": best, "extreme_games": tied, "headline": answer}, text=answer)
 
 
 def _team_period_sentence(result: Result, played: list[Mapping[str, Any]], total: int) -> str:
@@ -3226,7 +3226,7 @@ def _team_period_sentence(result: Result, played: list[Mapping[str, Any]], total
     return "\n".join([header, *(f"  {g['date']}  {g[measure]}  vs {g['opponent']}" for g in played)])
 
 
-def _team_period_body(result: Result) -> Reply:
+def _team_period_body(result: Result) -> Answer:
     """The answer before its rebuilt-column notes: no games, none reaching
     the period, a rate, the extreme a "most"/"fewest" asks for, or the
     figure and the games beneath it."""
@@ -3237,12 +3237,12 @@ def _team_period_body(result: Result) -> Reply:
     vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
     if not games:
         answer = f"The warehouse has no {result.span.phrase or ''} games for the {team}{vs}{result.narrowing.phrase}."
-        return Reply(data={"team": team, "opponent": result.narrowing.opponent, "games": [], "headline": answer}, answer=answer)
+        return Answer(data={"team": team, "opponent": result.narrowing.opponent, "games": [], "headline": answer}, text=answer)
     played = [g for g in games if g["points"] is not None]
     if not played:
         plural = "game" if len(games) == 1 else "games"
         answer = f"None of the {team}'s {len(games)} {result.span.phrase or ''} {plural}{vs}{result.narrowing.phrase} went to the {label}."
-        return Reply(data={"team": team, "opponent": result.narrowing.opponent, "games": games, "headline": answer}, answer=answer)
+        return Answer(data={"team": team, "opponent": result.narrowing.opponent, "games": games, "headline": answer}, text=answer)
     if measure in PERIOD_RATES:
         return _team_period_rate(result, played, line)
     total = line.sums[measure]
@@ -3252,10 +3252,10 @@ def _team_period_body(result: Result) -> Reply:
     if _facts(result, TeamPeriodFacts).rank in ("most", "fewest"):
         return _team_period_extreme(result, played, data, line)
     answer = _team_period_sentence(result, played, total)
-    return Reply(data={**data, "average": round(total / len(played), 2), "headline": answer.split("\n")[0].rstrip(":")}, answer=answer)
+    return Answer(data={**data, "average": round(total / len(played), 2), "headline": answer.split("\n")[0].rstrip(":")}, text=answer)
 
 
-def say_team_quarter_points(result: Result) -> Reply:
+def say_team_quarter_points(result: Result) -> Answer:
     """A team's figure in one quarter or half, worded: the games' total or
     average and the games beneath it, one game, the extreme a "most" or
     "fewest" asks for, a shooting percentage, or why there is nothing to
@@ -3267,11 +3267,11 @@ def say_team_quarter_points(result: Result) -> Reply:
     """
     said = _team_period_body(result)
     notes = " ".join(f"({note(each.kind, note_phrase(each), **each.facts)})" for each in result.notes)
-    if not notes or not said.answer:
+    if not notes or not said.text:
         return said
-    data = dict(said.data)
+    data = dict(said.data or {})
     data["notes"] = [*data.get("notes", []), notes]
-    return Reply(data=data, answer=f"{said.answer}\n  {notes}")
+    return Answer(data=data, text=f"{said.text}\n  {notes}")
 
 
 # --- the league's ranking by a quarter or half -------------------------------------------
@@ -3302,7 +3302,7 @@ def _period_leaderboard_minimum(result: Result) -> str:
     return decision_phrase(result.decisions[0], qualifier=f", half of the {most} anyone played" if most is not None else "")
 
 
-def _say_period_by_quarter_league(result: Result, rows: list[dict[str, Any]]) -> Reply:
+def _say_period_by_quarter_league(result: Result, rows: list[dict[str, Any]]) -> Answer:
     """Points by quarter for every qualifying player, ranked by the four
     together, with what the table leaves out (overtime) and how many it
     shows."""
@@ -3312,7 +3312,7 @@ def _say_period_by_quarter_league(result: Result, rows: list[dict[str, Any]]) ->
     season_label = season_phrase(int(result.span.season or 0), result.span.season_type or 2)
     if not rows:
         message = f"No player{among} played the {_facts(result, PeriodRankingFacts).minimum} games needed to rank points by quarter in the {season_label}{where}."
-        return Reply(data={"season": result.span.season, "team": team, "narrowing": where.strip(), "leaders": [], "message": message}, answer=message)
+        return Answer(data={"season": result.span.season, "team": team, "narrowing": where.strip(), "leaders": [], "message": message}, text=message)
     headline = f"Points per game by quarter{among} in the {season_label}{where}{_period_leaderboard_minimum(result)}, ranked by the four quarters together:"
     table = [f"  {'player':<26} {'G':>3} {'Q1':>6} {'Q2':>6} {'Q3':>6} {'Q4':>6} {'total':>6}"]
     table += [f"  {row['player']:<26} {row['games']:>3} {row['q1']:>6.2f} {row['q2']:>6.2f} {row['q3']:>6.2f} {row['q4']:>6.2f} {row['total']:>6.2f}" for row in rows]
@@ -3329,10 +3329,10 @@ def _say_period_by_quarter_league(result: Result, rows: list[dict[str, Any]]) ->
         "headline": headline.rstrip(":"),
         "notes": [*notes, *([caveat.strip()] if caveat else [])],
     }
-    return Reply(data=data, answer="\n".join([headline, *table, *notes]) + caveat)
+    return Answer(data=data, text="\n".join([headline, *table, *notes]) + caveat)
 
 
-def say_period_leaderboard(result: Result) -> Reply:
+def say_period_leaderboard(result: Result) -> Answer:
     """The league's (or a team's) players ranked by a stat in one quarter or
     half, per game - the leader in a sentence, the next four after him, the
     qualifier it applied and the season's accuracy caveat - or, with no
@@ -3356,7 +3356,7 @@ def say_period_leaderboard(result: Result) -> Reply:
     if not rows:
         message = f"No player{among} played the {_facts(result, PeriodRankingFacts).minimum} games needed to rank {label} {'scoring' if measure == 'points' else noun} in the {scope}{where}."
         empty: dict[str, Any] = {"period": label, "season": result.span.season, "team": team, "narrowing": where.strip(), "leaders": [], "message": message}
-        return Reply(data=empty, answer=message)
+        return Answer(data=empty, text=message)
     top = rows[0]
     rest = ", ".join(f"{row['player']} ({row['average']})" for row in rows[1:])
     headline = f"{top['player']} led {led} in {label} {noun} per game in the {scope}{where}{_period_leaderboard_minimum(result)}, at {top['average']} over {top['games']} games."
@@ -3373,7 +3373,7 @@ def say_period_leaderboard(result: Result) -> Reply:
         "headline": headline,
         "notes": [caveat.strip()] if caveat else [],
     }
-    return Reply(data=data, answer=answer + caveat)
+    return Answer(data=data, text=answer + caveat)
 
 
 # --- a team's record --------------------------------------------------------------------
@@ -3396,11 +3396,11 @@ def _said_record_notes(result: Result, placed: str = "") -> dict[str, str]:
     return {each.kind: note(each.kind, note_phrase(each, placed=placed), **each.facts) for each in result.notes}
 
 
-def _say_standings_season(result: Result, line: Scalar) -> Reply:
+def _say_standings_season(result: Result, line: Scalar) -> Answer:
     """One season's standings line, or its home or road record."""
     team, season, venue = result.subject, result.span.season, result.narrowing.venue
     if not line.values:
-        return Reply(data={"team": team, "season": season}, answer=f"There are no {season} standings for the {team} in the warehouse.")
+        return Answer(data={"team": team, "season": season}, text=f"There are no {season} standings for the {team} in the warehouse.")
     said = _said_record_notes(result, "season")
     neutral_note, gap = said.get("definition", ""), said.get("standings_short")
     v = line.values
@@ -3413,7 +3413,7 @@ def _say_standings_season(result: Result, line: Scalar) -> Reply:
     return _say_standings_line(result, line, split, data, neutral_note, gap)
 
 
-def _say_standings_venue(result: Result, line: Scalar, split: Any, data: dict[str, Any], neutral_note: str, gap: str | None) -> Reply:
+def _say_standings_venue(result: Result, line: Scalar, split: Any, data: dict[str, Any], neutral_note: str, gap: str | None) -> Answer:
     """A season's home or road record from the standings' own split, beside
     the season's; the record card carries the record asked for."""
     team, season, venue, v = result.subject, result.span.season, result.narrowing.venue, line.values
@@ -3421,7 +3421,7 @@ def _say_standings_venue(result: Result, line: Scalar, split: Any, data: dict[st
     assert venue is not None
     if split is None:
         message = f"ESPN's {season} standings carry no home/road split for the {team} (it reads 0-0 before 1993-94), and the warehouse has no full game list for that season to tally one from."
-        return Reply(data={**data, "message": message}, answer=message)
+        return Answer(data={**data, "message": message}, text=message)
     vw, vl = split[0] if venue == "home" else split[1]
     headline = f"The {team} were {tally(vw, vl)} {_VENUE_WORDS[venue]} in the {season} regular season, {w}-{lost} overall{neutral_note}."
     data.update(
@@ -3440,10 +3440,10 @@ def _say_standings_venue(result: Result, line: Scalar, split: Any, data: dict[st
             "notes": [gap] if gap else [],
         }
     )
-    return Reply(data=data, answer=f"{headline} {gap}" if gap else headline)
+    return Answer(data=data, text=f"{headline} {gap}" if gap else headline)
 
 
-def _say_standings_line(result: Result, line: Scalar, split: Any, data: dict[str, Any], neutral_note: str, gap: str | None) -> Reply:
+def _say_standings_line(result: Result, line: Scalar, split: Any, data: dict[str, Any], neutral_note: str, gap: str | None) -> Answer:
     """A season's standings line: the record, seed and streak, then home and
     road, the last ten and games back, then points for and against."""
     team, season, v = result.subject, result.span.season, line.values
@@ -3478,7 +3478,7 @@ def _say_standings_line(result: Result, line: Scalar, split: Any, data: dict[str
             "notes": [gap] if gap else [],
         }
     )
-    return Reply(data=data, answer=f"{answer}\n  {gap}" if gap else answer)
+    return Answer(data=data, text=f"{answer}\n  {gap}" if gap else answer)
 
 
 def _standings_season_detail(split: tuple[tuple[int, int], tuple[int, int]] | None, neutral_note: str, last_ten: Any, behind: Any) -> str:
@@ -3493,14 +3493,14 @@ def _standings_season_detail(split: tuple[tuple[int, int], tuple[int, int]] | No
     return "\n  " + "; ".join(detail) + "." if detail else ""
 
 
-def _say_standings_career(result: Result, line: Scalar) -> Reply:
+def _say_standings_career(result: Result, line: Scalar) -> Answer:
     """Every season's standings added up, overall or at home or on the road."""
     team, venue = result.subject, result.narrowing.venue
     if not line.values:
-        return Reply(data={"team": team}, answer=f"The warehouse has no standings at all for the {team}.")
+        return Answer(data={"team": team}, text=f"The warehouse has no standings at all for the {team}.")
     if venue is not None and not line.values["seasons"]:
         message = f"ESPN's standings carry no home/road split for the {team} in any season the warehouse holds."
-        return Reply(data={"team": team, "message": message}, answer=message)
+        return Answer(data={"team": team, "message": message}, text=message)
     said = _said_record_notes(result, "career")
     gap = said.get("standings_short")
     wins, losses, seasons = line.values["wins"], line.values["losses"], line.values["seasons"]
@@ -3515,7 +3515,7 @@ def _say_standings_career(result: Result, line: Scalar) -> Reply:
     data: dict[str, Any] = {"team": team, **({"venue": venue} if venue is not None else {})}
     data.update({"wins": wins, "losses": losses, "win_pct": wins / (wins + losses) if wins + losses else 0.0, "first_season": first, "last_season": last, "seasons": seasons, "headline": headline})
     data["notes"] = [gap] if gap else []
-    return Reply(data=data, answer=f"{headline} {gap}" if gap else headline)
+    return Answer(data=data, text=f"{headline} {gap}" if gap else headline)
 
 
 def _record_span_words(result: Result, floor: str) -> str:
@@ -3571,7 +3571,7 @@ def _record_split(games: Sequence[Mapping[str, Any]]) -> str:
     return f"\n  {split}."
 
 
-def _say_games_record(result: Result, line: Scalar) -> Reply:
+def _say_games_record(result: Result, line: Scalar) -> Answer:
     """A record tallied from the game list, its home/away split, a season's
     meetings with one team, any NBA Cup final they met in, and the seasons
     the list and the team's own totals disagree on."""
@@ -3600,7 +3600,7 @@ def _say_games_record(result: Result, line: Scalar) -> Reply:
     }
     if not games:
         none_message = _record_none(result)
-        return Reply(data={**data, "games": [], "headline": none_message}, answer=none_message)
+        return Answer(data={**data, "games": [], "headline": none_message}, text=none_message)
     said = _said_record_notes(result, "tally")
     span_words = _record_span_words(result, said.get("floor", ""))
     against = f" against the {opponent}" if opponent else ""
@@ -3619,7 +3619,7 @@ def _say_games_record(result: Result, line: Scalar) -> Reply:
     data["games"] = shown
     data["headline"] = answer.split("\n")[0]
     data["notes"] = [gap] if gap else []
-    return Reply(data=data, answer=answer)
+    return Answer(data=data, text=answer)
 
 
 def _record_meetings(result: Result, shown: list[dict[str, Any]], data: dict[str, Any]) -> str:
@@ -3653,7 +3653,7 @@ def _combined_from(first_season: Any, *, playoff: bool) -> str:
     return f" from {first_season if playoff else season_label(first_season)}"
 
 
-def _say_combined_record(result: Result, line: Scalar) -> Reply:
+def _say_combined_record(result: Result, line: Scalar) -> Answer:
     """Both season types' records summed - the total, and each type's own
     record and first season beside it, with where each half's source starts
     said after it, and each half's "Note:" beneath."""
@@ -3699,10 +3699,10 @@ def _say_combined_record(result: Result, line: Scalar) -> Reply:
         "regular_season": {"wins": regular["wins"], "losses": regular["losses"], "first_season": regular["first_season"]},
         "postseason": {"wins": playoff["wins"], "losses": playoff["losses"], "first_season": playoff["first_season"]},
     }
-    return Reply(data=data, answer=answer)
+    return Answer(data=data, text=answer)
 
 
-def say_team_record(result: Result) -> Reply:
+def say_team_record(result: Result) -> Answer:
     """A team's record, worded by its parts: both season types summed (a
     detail by season type), a tally of its games (the games beneath), or a
     standings season or career - the retired
@@ -3721,7 +3721,7 @@ def say_team_record(result: Result) -> Reply:
     return _say_standings_career(result, line) if result.span.career else _say_standings_season(result, line)
 
 
-def say_team_record_by_month(result: Result) -> Reply:
+def say_team_record_by_month(result: Result) -> Answer:
     """A team's record broken out by calendar month, as one table, or one
     per season of a since-bounded span - the retired ``team_record``
     template's words.
@@ -3736,7 +3736,7 @@ def say_team_record_by_month(result: Result) -> Reply:
     if not months:
         message = _record_none(result)
         data: dict[str, Any] = {"team": team, "months": []} if since is not None else {"team": team, "season": span.season, "months": []}
-        return Reply(data=data, answer=message)
+        return Answer(data=data, text=message)
     against = f" against the {opponent}" if opponent else ""
     where_played = f" {_VENUE_WORDS[venue]}" if venue else ""
     season_type = span.season_type or 2
@@ -3757,7 +3757,7 @@ def say_team_record_by_month(result: Result) -> Reply:
         data = {"team": team, "opponent": opponent, "venue": venue, "months": months, "since": since, "until": result.span.until, "headline": tables[0].split("\n")[0].rstrip(":")}
     else:
         data = {"team": team, "season": span.season, "opponent": opponent, "venue": venue, "months": months, "headline": answer.split("\n")[0].rstrip(":")}
-    return Reply(data=data, answer=answer)
+    return Answer(data=data, text=answer)
 
 
 # --- a player's NetPoints ------------------------------------------------------------
@@ -3790,7 +3790,7 @@ def _netpoints_said(result: Result, kind: str, **match: Any) -> str:
     return note(each.kind, note_phrase(each), **each.facts)
 
 
-def say_player_netpoints(result: Result) -> Reply:
+def say_player_netpoints(result: Result) -> Answer:
     """One player's NetPoints worded: one game's (a windowed Result), a
     season's line and the table of its play-type split, or the refusal
     naming the season and the player that has nothing - with the seasons
@@ -3809,14 +3809,14 @@ def say_player_netpoints(result: Result) -> Reply:
         # No "or ask for his career" here: player_netpoints has no career
         # span to offer. A season the question named keeps this plain.
         answer += "".join(decision_phrase(each, career_hint=False) for each in result.decisions)
-        return Reply(data={"player": result.subject, "season": season, "headline": answer}, answer=answer)
+        return Answer(data={"player": result.subject, "season": season, "headline": answer}, text=answer)
     totals = dict(line.values) if line is not None else None
     breakdown = [{"category": row["key"], **{k: v for k, v in row.items() if k != "key"}} for row in split.rows] if split is not None else []
     per_100, possessions = facts.per_100, facts.possessions
     units = "per 100 possessions" if per_100 else "season totals"
     scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
     answer = _say_netpoints_season(result, totals, breakdown)
-    return Reply(
+    return Answer(
         data={
             "player": result.subject,
             "season": season,
@@ -3831,7 +3831,7 @@ def say_player_netpoints(result: Result) -> Reply:
             "headline": answer.split("\n")[0],
             "notes": _netpoints_page_notes(totals, breakdown, units, scope),
         },
-        answer=answer,
+        text=answer,
     )
 
 
@@ -3956,7 +3956,7 @@ def _say_netpoints_detail(result: Result, detail_rows: list[dict[str, Any]], wid
     return lines
 
 
-def _say_netpoints_game(result: Result) -> Reply:
+def _say_netpoints_game(result: Result) -> Answer:
     """One game's NetPoints: the line and its possessions and win probability
     added, and the fingerprint that holds its play-type split - or that he
     has no game on record at that end of the season."""
@@ -3965,7 +3965,7 @@ def _say_netpoints_game(result: Result) -> Reply:
     if not line.games:
         which = "earliest" if window.ascending else "most recent"
         answer = f"No per-game NetPoints on record for {result.subject}'s {which} {period} game."
-        return Reply(data={"player": result.subject, "season": result.span.season, "game": None, "headline": answer}, answer=answer)
+        return Answer(data={"player": result.subject, "season": result.span.season, "game": None, "headline": answer}, text=answer)
     which = "first" if window.ascending else "most recent"
     o, d, t = line.values["offense"], line.values["defense"], line.values["total"]
     o_poss, d_poss, wpa = line.sums["o_poss"], line.sums["d_poss"], line.sums["wpa"]
@@ -3980,10 +3980,10 @@ def _say_netpoints_game(result: Result) -> Reply:
     if detail:
         answer += "\n  " + ", ".join(detail) + "."
     answer += _netpoints_said(result, "hint", what="fingerprint_of_that_game")
-    return Reply(data={"player": result.subject, "game": game, "headline": headline, "notes": [", ".join(detail) + "."] if detail else []}, answer=answer)
+    return Answer(data={"player": result.subject, "game": game, "headline": headline, "notes": [", ".join(detail) + "."] if detail else []}, text=answer)
 
 
-def say_fingerprint(result: Result) -> Reply:
+def say_fingerprint(result: Result) -> Answer:
     """One or more players' fingerprints worded: the page drawn
     (``compose.netpoints.draw_fingerprint`` wrote it; ``path`` is where),
     whom for, the season or the games it covers and its scale - then the
@@ -4001,13 +4001,13 @@ def say_fingerprint(result: Result) -> Reply:
     message += "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
     message += "".join(decision_phrase(each) for each in result.decisions)
     data = {"players": list(facts.players), "season": result.span.season, "side": view, "scope": "game" if order else "season", "path": chart.path, "message": message}
-    return Reply(data=data, answer=message, artifacts=[Artifact("fingerprint", Path(chart.path))])
+    return Answer(data=data, text=message, artifacts=[Artifact("fingerprint", Path(chart.path))])
 
 
 # --- one player's shots ------------------------------------------------------------
 
 
-def say_shot_distance(result: Result) -> Reply:
+def say_shot_distance(result: Result) -> Answer:
     """One player's average shot distance worded, as ``shot_distance``'s
     retired template said it: the average and the attempts it is over, or
     that there were none, over the period or the games a narrowing or a
@@ -4036,13 +4036,13 @@ def say_shot_distance(result: Result) -> Reply:
         answer += f" Note: {said}." if each.kind == "shot_values_derived" else said
     # A defaulted season with no shots: the seasons he is on record for.
     answer += "".join(decision_phrase(each) for each in result.decisions)
-    return Reply(
+    return Answer(
         data={"player": name, "season": result.span.season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts, "headline": answer},
-        answer=answer,
+        text=answer,
     )
 
 
-def say_shot_chart(result: Result) -> Reply:
+def say_shot_chart(result: Result) -> Answer:
     """One player's shot chart worded, as ``shot_chart``'s retired template
     and its renderer said it: the file drawn, whom for (and which game or
     window, by the narrowing's phrase), made of attempted - or that nothing
@@ -4071,7 +4071,7 @@ def say_shot_chart(result: Result) -> Reply:
     message += floor
     message += "".join(decision_phrase(each, career_hint=False) for each in result.decisions if each.kind == "season_redirected")
     artifacts = [Artifact(chart.kind, Path(chart.path))] if chart.path is not None else []
-    return Reply(data={"message": message, "player": name, "path": chart.path}, answer=message, artifacts=artifacts)
+    return Answer(data={"message": message, "player": name, "path": chart.path}, text=message, artifacts=artifacts)
 
 
 def table_cell(value: Any) -> str:
@@ -4540,7 +4540,7 @@ def refusal_phrase(kind: str, facts: Mapping[str, Any]) -> str:
     return said
 
 
-def say_refusal(refusal: Refusal) -> Reply:
+def say_refusal(refusal: Refusal) -> Answer:
     """A :class:`~association.query.result.Refusal` worded: its cause's one
     sentence (:func:`refusal_phrase`), under the keys the page reads it by,
     beside the page's values.
@@ -4548,10 +4548,10 @@ def say_refusal(refusal: Refusal) -> Reply:
     .. versionadded:: 5.0.0
     """
     message = refusal_phrase(refusal.kind, refusal.facts)
-    return Reply(data={**refusal.shown, **dict.fromkeys(refusal.under, message)}, answer=message)
+    return Answer(data={**refusal.shown, **dict.fromkeys(refusal.under, message)}, text=message)
 
 
-def say_clarify(asked: Clarify) -> Reply:
+def say_clarify(asked: Clarify) -> Answer:
     """A :class:`~association.query.result.Clarify` worded: the question back,
     naming the candidates - those on record by the name, or the near
     spellings of one nothing matched.
@@ -4565,14 +4565,14 @@ def say_clarify(asked: Clarify) -> Reply:
     else:
         message = clarification(asked.asked, candidates, asked.kind, asked.active)
         shown = {"ambiguous": asked.asked, "candidates": candidates} if asked.shown is None else dict(asked.shown)
-    return Reply(data={**shown, **dict.fromkeys(asked.under, message)}, answer=message)
+    return Answer(data={**shown, **dict.fromkeys(asked.under, message)}, text=message)
 
 
 # --- the sayer table: the body decides -----------------------------------------
 
 
 #: A Scalar body's sayer, by how it was reduced (:attr:`Scalar.how <association.query.result.Scalar.how>`).
-_SCALAR_SAYERS: dict[str, Callable[[Result], Reply]] = {
+_SCALAR_SAYERS: dict[str, Callable[[Result], Answer]] = {
     "per_game": _say_line,
     "count": say_threshold_count,
     "record": say_team_record,
@@ -4585,7 +4585,7 @@ _SCALAR_SAYERS: dict[str, Callable[[Result], Reply]] = {
 }
 
 #: A Grouped body's sayer, by what one row is (:attr:`Grouped.by <association.query.result.Grouped.by>`).
-_GROUPED_SAYERS: dict[str, Callable[[Result], Reply]] = {
+_GROUPED_SAYERS: dict[str, Callable[[Result], Answer]] = {
     "player": _say_ranking,
     "subject": _say_comparison,
     "team": _say_teams,
@@ -4600,13 +4600,13 @@ _GROUPED_SAYERS: dict[str, Callable[[Result], Reply]] = {
 }
 
 #: A Chart body's sayer, by what it draws (:attr:`Chart.kind <association.query.result.Chart.kind>`).
-_CHART_SAYERS: dict[str, Callable[[Result], Reply]] = {
+_CHART_SAYERS: dict[str, Callable[[Result], Answer]] = {
     "fingerprint": say_fingerprint,
     "shot_chart": say_shot_chart,
 }
 
 
-def _sayer(result: Result) -> Callable[[Result], Reply]:
+def _sayer(result: Result) -> Callable[[Result], Answer]:
     """The sayer of ``result``'s headline part, by the body's type and the
     one field that says what it is: a scalar by how it was reduced, a group
     by what one row is, rows by what they are in order of, a chart by what

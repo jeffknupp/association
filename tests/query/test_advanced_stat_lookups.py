@@ -79,10 +79,10 @@ def test_an_empty_advanced_season_names_the_zeroed_box_scores_not_the_1994_floor
     con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     con.execute("INSERT INTO player_box_stats VALUES ('e1', 2015, 2, '11', NULL, FALSE), ('e2', 2015, 2, '11', NULL, FALSE), ('e3', 2015, 2, '10', 30, FALSE)")
     result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Joakim Noah",)), measure=Measure(key="usage_pct", as_typed="usage_pct"), span=Span(season=2015)))
-    assert result.answer.startswith(
+    assert result.text.startswith(
         "Joakim Noah has no usage rate on record in the 2015 regular season: ESPN serves 2 of his box scores that season with every line zeroed, and the rate is computed from them."
     )
-    assert "1994" not in result.answer and "missing from this ranking" not in result.answer
+    assert "1994" not in result.text and "missing from this ranking" not in result.text
 
 
 def test_an_empty_defaulted_advanced_season_redirects_to_the_seasons_on_record(advanced_ctx: AnswerContext) -> None:
@@ -92,8 +92,8 @@ def test_an_empty_defaulted_advanced_season_redirects_to_the_seasons_on_record(a
     con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
     con.execute("INSERT INTO player_season_stats_deduped VALUES ('11', 2014, 2), ('11', 2015, 2), ('11', 2016, 2)")
     result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Joakim Noah",)), measure=Measure(key="usage_pct", as_typed="usage_pct")))
-    assert result.answer.startswith(f"Joakim Noah has no usage rate on record in the {current_season()} regular season. He last appears in 2016.")
-    assert "1994" not in result.answer
+    assert result.text.startswith(f"Joakim Noah has no usage rate on record in the {current_season()} regular season. He last appears in 2016.")
+    assert "1994" not in result.text
 
 
 def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: AnswerContext) -> None:
@@ -103,8 +103,8 @@ def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: 
     beside it, and the one an average of averages would give."""
     result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
     assert result.data["stats"]["ts_pct"] == pytest.approx(725 / 1050)
-    assert ".690 true shooting percentage" in result.answer
-    assert ".700" not in result.answer
+    assert ".690 true shooting percentage" in result.text
+    assert ".700" not in result.text
 
 
 def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: AnswerContext) -> None:
@@ -114,20 +114,20 @@ def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: AnswerContext) 
     result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
     assert result.data["seasons"] == [1994, 2025]
     # 1,050 attempts, not 1,100: (.5 x 100 + .7 x 900 + .9 x 50) / 1050.
-    assert "on 1,050 true-shooting attempts" in result.answer
+    assert "on 1,050 true-shooting attempts" in result.text
 
 
 def test_efg_is_weighted_by_field_goal_attempts_not_true_shooting_ones(advanced_ctx: AnswerContext) -> None:
     """Each rate takes its OWN denominator. Weighting eFG% by true-shooting
     attempts would give .6857 here; by field-goal attempts it is .6860."""
     result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="efg_pct", as_typed="efg_pct"), span=Span(career=True)))
-    assert "field-goal attempts" in result.answer
+    assert "field-goal attempts" in result.text
     assert result.data["stats"]["efg_pct"] == pytest.approx((0.4 * 80 + 0.6 * 720 + 0.9 * 40) / 840)
 
 
 def test_a_season_figure_is_read_rather_than_recomputed(advanced_ctx: AnswerContext) -> None:
     for stat, expected in (("ts_pct", ".700 true shooting percentage"), ("usage_pct", "31.0 usage rate"), ("game_score", "19.0 game score")):
-        answer = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=measure_of(stat), span=Span(season=2025))).answer
+        answer = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=measure_of(stat), span=Span(season=2025))).text
         assert expected in answer, stat
         assert "in the 2025 regular season" in answer, stat
 
@@ -195,17 +195,17 @@ def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: AnswerContex
     60 games it never saw, and naming the span 2014-2016 without a word about
     the hole is the fluent-but-narrower answer this project refuses."""
     result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Joakim Noah",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
-    assert "in 120 games" in result.answer, "the empty season's 60 games must not be counted"
-    assert "180 games" not in result.answer
+    assert "in 120 games" in result.text, "the empty season's 60 games must not be counted"
+    assert "180 games" not in result.text
     assert result.data["seasons_missing"] == 1
-    assert "1 season in that span is not counted" in result.answer
-    assert "box scores for it are empty" in result.answer
+    assert "1 season in that span is not counted" in result.text
+    assert "box scores for it are empty" in result.text
 
 
 def test_a_career_with_nothing_missing_says_nothing_about_it(advanced_ctx: AnswerContext) -> None:
     """The note is a caveat, not a disclaimer: a complete career does not carry
     a sentence about seasons that are all present."""
-    assert "not counted" not in player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True))).answer
+    assert "not counted" not in player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True))).text
 
 
 def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: AnswerContext) -> None:
@@ -215,7 +215,7 @@ def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: AnswerContex
     fluent overreach as counting their games."""
     result = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Taj Gibson",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), span=Span(career=True)))
     assert result.data["seasons"] == [2014, 2016]
-    assert "(2014-2016 regular seasons)" in result.answer
-    assert "2013" not in result.answer
-    assert "2017" not in result.answer
+    assert "(2014-2016 regular seasons)" in result.text
+    assert "2013" not in result.text
+    assert "2017" not in result.text
     assert result.data["seasons_missing"] == 2

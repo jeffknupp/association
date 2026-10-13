@@ -17,7 +17,7 @@ import duckdb
 import pytest
 
 from association.query.agent import Agent
-from association.query.answer import Reply
+from association.query.answer import Answer
 from association.query.entities import names_of
 from association.query.normalizer import Normalized
 from association.query.reading import NETPOINTS_FINGERPRINT, PLAYER_COMPARISON, PLAYER_LINE, PLAYER_LOG, PLAYER_MEETINGS, PointShape, Reading
@@ -51,10 +51,10 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     con.close()
     seen: list[tuple[PointShape | None, str | None, tuple[str, ...]]] = []
 
-    def record(ctx: Any, reading: Reading) -> Reply:
+    def record(ctx: Any, reading: Reading) -> Answer:
         del ctx
         seen.append((reading.asked, reading.who.player, reading.who.players if len(reading.who.players) > 1 else ()))
-        return Reply(data={}, answer="answered")
+        return Answer(data={}, text="answered")
 
     # Every intent is the compiler's (compose.COMPILED_INTENTS): the
     # Reading reaches compose.answer, through agent._run_compiled.
@@ -146,10 +146,10 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
     con.close()
     seen: list[str | None] = []
 
-    def record(ctx: Any, reading: Reading) -> Reply:
+    def record(ctx: Any, reading: Reading) -> Answer:
         del ctx
         seen.append(reading.cuts.tenure)
-        return Reply(data={}, answer="answered")
+        return Answer(data={}, text="answered")
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: record(ctx, reading))
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(["kat"], "points"))

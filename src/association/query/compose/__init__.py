@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Any
 
 import duckdb
 
-from association.query.answer import AnswerContext, Reply
+from association.query.answer import Answer, AnswerContext
 from association.query.coverage import coverage_refusal
 from association.query.reading import Cause, PointShape, ShapeDeclined
 from association.query.result import Result, Unanswered
@@ -132,7 +132,7 @@ def answer(
     trace: Callable[[Reading], None] | None = None,
     declined: Callable[[str], None] | None = None,
     declined_by: Callable[[Cause], None] | None = None,
-) -> Reply | None:
+) -> Answer | None:
     """The point the parser read for a question (:attr:`Reading.point`,
     :func:`~association.query.parse.reading_from_route`), answered - run,
     never read from the question again. ``planned`` is the point planned
@@ -222,7 +222,7 @@ def answer(
     return _answer_point(ctx, reading.point, planned, shape, trace, declined, declined_by)
 
 
-def _read_log(read: Callable[[], Result | Unanswered | None]) -> Reply | None:
+def _read_log(read: Callable[[], Result | Unanswered | None]) -> Answer | None:
     """A log read and said: a Result, or the relation's own refusal or
     question, through the sayer; ``None`` as ``None`` (the compiler's own
     sentence answers). A cell the relation refuses while reading is the
@@ -301,7 +301,7 @@ _ROUTES: dict[PointShape, _Route] = {
 }
 
 
-def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery) -> Result | Unanswered | Reply | None:
+def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery) -> Result | Unanswered | Answer | None:
     """``query`` read by its shape's reader, held to the cells the shape's
     words state (:func:`~association.query.compose.plan.cells_unhonored`,
     over the shape's row of its relation's table): a Result or the
@@ -325,7 +325,7 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
     return None if unhonored else _read_log(lambda: route.reader(con, query))
 
 
-def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | ShotQuery) -> Reply:
+def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | ShotQuery) -> Answer:
     """A point on a declared relation (NetPoints, located shots; Phase 2,
     slice (v)) read, drawn and said - its only answer, as its retired
     template was, and after the same coverage floor: a season before the
@@ -346,15 +346,15 @@ def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | S
     return say(draw_fingerprint(read, ctx.out_dir) if shape.relation == "netpoints" else draw_shot_chart(read, ctx.out_dir))
 
 
-def _said(read: Result | Unanswered | Reply | None) -> Reply | None:
+def _said(read: Result | Unanswered | Answer | None) -> Answer | None:
     """A read said: a Result or a refusal through the sayer, an answer
     already worded as it stands, ``None`` as ``None``."""
-    if read is None or isinstance(read, Reply):
+    if read is None or isinstance(read, Answer):
         return read
     return say(read)
 
 
-def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery) -> tuple[Reply | None, Unsupported | None]:
+def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery) -> tuple[Answer | None, Unsupported | None]:
     """A team's own season read for a point planned on another relation (a
     team's own total, "how many 3-pointers have the Magic made"): the same
     scope on the team-season relation first, as the retired template was
@@ -375,7 +375,7 @@ def _answer_point(
     trace: Callable[[Reading], None] | None,
     declined: Callable[[str], None] | None,
     declined_by: Callable[[Cause], None] | None = None,
-) -> Reply | None:
+) -> Answer | None:
     """``point``'s planned ``query``, run by its ``shape``
     (:func:`~association.query.compose.plan.planned_shape`): a declared
     relation's reader, a team's own season (and, for a point planned on
@@ -401,7 +401,7 @@ def _answer_point(
             if ported_team is not None:
                 return ported_team
             result = run_team(ctx.con, query)
-            return Reply(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
+            return Answer(data=_team_point_data(query, result), text=_team_sentence(query, result), artifacts=[])
         # The season's coverage floor, before any reader runs.
         refusal = coverage_refusal(shape, query)
         if refusal is not None:
@@ -434,4 +434,4 @@ def _answer_point(
     # have no box score ...") - seen on the rendered page, 2026-09-24.
     for each_note in out["notes"]:
         answer_text += f"\n{each_note}"
-    return Reply(data=_point_data(query, out, headline), answer=answer_text, artifacts=[])
+    return Answer(data=_point_data(query, out, headline), text=answer_text, artifacts=[])

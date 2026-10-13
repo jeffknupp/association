@@ -18,8 +18,8 @@ from dataclasses import replace
 
 import duckdb
 import pytest
+from routed import Said, said
 
-from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.compose.plan import refusal_result
 from association.query.entities import names_of, players_of, teams_of
@@ -50,21 +50,21 @@ from association.query.reading import Subject as Who
 from association.query.subject import Subject, read_subject
 
 
-def unanswerable(con: duckdb.DuckDBPyConnection, asked: PointShape | None, scope: Reading, question: str) -> Reply | None:
+def unanswerable(con: duckdb.DuckDBPyConnection, asked: PointShape | None, scope: Reading, question: str) -> Said | None:
     """A test's typed reading - the filters it states, what the words ask
     (``asked``) and the subject read from the question - and the first
     thing its words name that nothing reads, as the planner says it (or
     None)."""
     reading = replace(scope, asked=asked, subject=read_subject(names_of(con), question, asked, scope))
     causes = _reading_from_route_unsupported(question, reading)
-    return refusal_result(causes[0]) if causes else None
+    return said(refusal_result(causes[0])) if causes else None
 
 
-def by_question(question: str, asked: PointShape | None, con: duckdb.DuckDBPyConnection) -> Reply | None:
+def by_question(question: str, asked: PointShape | None, con: duckdb.DuckDBPyConnection) -> Said | None:
     """The refusal the words come to before any reader runs, as the planner
     says it (or None)."""
     cause = _reading_from_route_refused(players_of(con), teams_of(con), question, Reading(asked=asked, subject=Subject("everyone")))
-    return refusal_result(cause) if cause is not None else None
+    return said(refusal_result(cause)) if cause is not None else None
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ def test_a_playoff_round_is_refused_naming_the_missing_label(con: duckdb.DuckDBP
     scope = Reading(who=Who(kind="team", teams=("NBA Finals",)), cuts=Cuts(round="finals"), span=Span(season=2025, season_type=3))
     refusal = unanswerable(con, PLAYER_LOG, scope, "nba finals game log 2025")
     assert refusal is not None
-    assert "not labeled by playoff round" in refusal.answer and "'finals'" in refusal.answer
+    assert "not labeled by playoff round" in refusal.text and "'finals'" in refusal.text
     assert refusal.data["refused"] == "playoff_round"
 
 
@@ -113,7 +113,7 @@ def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDB
         "lebron ppg as an 18 year old",
     )
     assert refusal is not None
-    assert "birth date" in refusal.answer and "'18 year old'" in refusal.answer
+    assert "birth date" in refusal.text and "'18 year old'" in refusal.text
     # Hyphenated, as "18-year-old Lebron's ppg total" types it (ISSUES.md #290): read as the same
     # age, where until Phase 3, step 3 nothing read it and his 2026 line was answered.
     from association.query.cuts import CutsContext, read_cuts
@@ -127,7 +127,7 @@ def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDB
         Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(situation=situation_of("18-year-old")), measure=Measure(key="points", as_typed="points")),
         "18-year-old Lebron's ppg total",
     )
-    assert hyphenated is not None and "birth date" in hyphenated.answer and "'18-year-old'" in hyphenated.answer
+    assert hyphenated is not None and "birth date" in hyphenated.text and "'18-year-old'" in hyphenated.text
 
 
 def test_a_conference_or_division_in_no_recognized_shape_names_its_own_cause(con: duckdb.DuckDBPyConnection) -> None:
@@ -151,10 +151,10 @@ def test_a_conference_or_division_in_no_recognized_shape_names_its_own_cause(con
         "lebron in the central division these days",
     )
     assert refusal is not None
-    assert "conference or division" in refusal.answer and "not in a shape this reads" in refusal.answer
+    assert "conference or division" in refusal.text and "not in a shape this reads" in refusal.text
     other = unanswerable(con, PLAYER_LINE, Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(situation=situation_of("since returning"))), "lebron since returning")
     assert other is not None
-    assert "not something the games are read by" in other.answer
+    assert "not something the games are read by" in other.text
 
 
 def test_a_calendar_situation_is_never_refused_here(con: duckdb.DuckDBPyConnection) -> None:
@@ -194,14 +194,14 @@ def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPy
         con, PERIOD_LOG, Reading(who=Who(kind="player", players=("VJ Edgecombe",)), measure=Measure(key="minutes", as_typed="minutes"), period=Period(number=1)), "vj edgecombe 1st quarter minutes"
     )
     assert refusal is not None
-    assert "'minutes' is not among them" in refusal.answer and "rebounds, assists" in refusal.answer and "the 1st quarter" in refusal.answer
+    assert "'minutes' is not among them" in refusal.text and "rebounds, assists" in refusal.text and "the 1st quarter" in refusal.text
     half = unanswerable(
         con,
         PERIOD_LOG,
         Reading(who=Who(kind="player", players=("VJ Edgecombe",)), measure=Measure(key="plusMinus", as_typed="plusMinus"), period=Period(number=2, half=True)),
         "vj 2nd half plus minus",
     )
-    assert half is not None and "the 2nd half" in half.answer
+    assert half is not None and "the 2nd half" in half.text
     # A shooting percentage is a ratio of two rebuilt columns, read by both
     # period templates' successors (ROADMAP step 2) - so it is not refused
     # here, for a player or a team; an advanced rate still is, and the
@@ -227,7 +227,7 @@ def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPy
     advanced = unanswerable(
         con, PERIOD_LOG, Reading(who=Who(kind="player", players=("VJ Edgecombe",)), measure=Measure(key="ts_pct", as_typed="ts_pct"), period=Period(number=1)), "vj edgecombe 1st quarter true shooting"
     )
-    assert advanced is not None and "free throw percentages from them" in advanced.answer and "'ts_pct' is not among them" in advanced.answer
+    assert advanced is not None and "free throw percentages from them" in advanced.text and "'ts_pct' is not among them" in advanced.text
 
 
 def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.DuckDBPyConnection) -> None:
@@ -262,7 +262,7 @@ def test_a_teams_stat_no_period_splits_is_refused_and_a_rebuilt_one_is_not(con: 
         "blazers 1st quarter plus minus",
     )
     assert refusal is not None
-    assert "linescore" in refusal.answer and "'plusMinus'" in refusal.answer
+    assert "linescore" in refusal.text and "'plusMinus'" in refusal.text
     for stat in ("points", "threePointFieldGoalsMade", "rebounds", "turnovers"):
         scope = Reading(who=Who(kind="team", teams=("Portland Trail Blazers",)), measure=measure_of(stat), period=Period(number=1))
         assert unanswerable(con, TEAM_PERIOD_TOTAL, scope, f"blazers 1st quarter {stat}") is None, stat
@@ -276,7 +276,7 @@ def test_a_period_used_as_a_condition_is_refused_by_name(con: duckdb.DuckDBPyCon
     names what a readable line looks like instead of falling through."""
     question = "vj edgecombe three points made per game after scoring a lot in the first quarter"
     result = unanswerable(con, None, Reading(who=Who(kind="player", players=("VJ Edgecombe",)), measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")), question)
-    assert result is not None and result.data["refused"] == "period_as_condition" and "no line could be read from it" in result.answer
+    assert result is not None and result.data["refused"] == "period_as_condition" and "no line could be read from it" in result.text
     # A condition the parser read is the relation's narrowing (ROADMAP step 2, #275), not this refusal.
     read = Reading(
         who=Who(kind="player", players=("VJ Edgecombe",)),
@@ -299,7 +299,7 @@ def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.
     reading = read_route(names_of(con), "most opponent bench points allowed in the west at home by team this month", [], "points")
     assert [cause.kind for cause in reading.unsupported] == ["bench_points"]
     refusal = refusal_result(reading.unsupported[0])
-    assert "not read yet" in refusal.answer and "flags starters" in refusal.answer
+    assert "not read yet" in refusal.text and "flags starters" in refusal.text
     assert (
         unanswerable(con, None, Reading(cuts=Cuts(venue="home"), measure=Measure(key="points", as_typed="points")), "most opponent bench points allowed in the west at home by team this month") is None
     )
@@ -311,8 +311,8 @@ def test_a_championship_question_is_refused_before_a_ranking_answers_it(con: duc
     titles are not on record as such. "Title odds" is team_outlook's and is
     left alone."""
     refusal = by_question("show which team won the nba championship for the past 10 years", TEAM_RANKING, con)
-    assert refusal is not None and "not on record as such" in refusal.answer
-    assert refusal.data == {"refused": "championship", "message": refusal.answer}
+    assert refusal is not None and "not on record as such" in refusal.text
+    assert refusal.data == {"refused": "championship", "message": refusal.text}
     assert by_question("what are the sixers title odds?", TEAM_OUTLOOK, con) is None
     assert by_question("best record from 2010-11 to 2018-19", TEAM_RANKING, con) is None
 
@@ -324,5 +324,5 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
         Reading(who=Who(kind="team", teams=("Los Angeles Lakers",)), measure=Measure(key="triple_double", as_typed="triple_double"), span=Span(career=True)),
         "los angeles lakers all-time triple doubles vs west",
     )
-    assert result is not None and result.data["refused"] == "team_boolean_count" and "team's total" in result.answer
+    assert result is not None and result.data["refused"] == "team_boolean_count" and "team's total" in result.text
     assert unanswerable(con, PLAYER_RANKING, Reading(measure=Measure(key="triple_double", as_typed="triple_double")), "who has the most triple doubles this season") is None

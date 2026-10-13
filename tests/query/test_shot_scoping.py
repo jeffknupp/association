@@ -180,21 +180,21 @@ def shots_ctx(tmp_path: Path) -> AnswerContext:
 def test_shot_chart_honors_opponent(shots_ctx: AnswerContext) -> None:
     """Lakers games (e1, e3, e5, e6): 2+1+1+2 = 6 attempts, 4 made - e2's and
     e4's shots (vs the Celtics) are left out."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season=SEASON))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season=SEASON))).text or ""
     assert "4/6 made" in answer
 
 
 def test_shot_chart_honors_venue(shots_ctx: AnswerContext) -> None:
     """Every game but e2 is at home: 9 total attempts less e2's 1 = 8, and 7
     made less e2's 1 make = 6."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(venue="home"), span=Span(season=SEASON))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(venue="home"), span=Span(season=SEASON))).text or ""
     assert "6/8 made" in answer
 
 
 def test_shot_chart_honors_without(shots_ctx: AnswerContext) -> None:
     """Klay Thompson sits e4 and e5 - 2 + 1 = 3 attempts, all three made."""
     answer = (
-        shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="absent"),), span=Span(season=SEASON))).answer or ""
+        shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="absent"),), span=Span(season=SEASON))).text or ""
     )
     assert "3/3 made" in answer
 
@@ -202,16 +202,16 @@ def test_shot_chart_honors_without(shots_ctx: AnswerContext) -> None:
 def test_shot_chart_honors_a_named_half_of_the_starter_bench_split(shots_ctx: AnswerContext) -> None:
     """Curry starts every game but e5, where he came off the bench - one shot,
     made."""
-    bench = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), split="bench")).answer or ""
+    bench = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), split="bench")).text or ""
     assert "1/1 made" in bench
-    starts = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), split="starter")).answer or ""
+    starts = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), split="starter")).text or ""
     assert "6/8 made" in starts  # every attempt but e5's (9 total, 7 made, less e5's 1/1)
 
 
 def test_shot_chart_honors_one_eastern_date(shots_ctx: AnswerContext) -> None:
     """e3 alone (the Lakers game the fixture's own docstring tips at
     ``{SEASON}-11-05T23:00Z``, the same Eastern day)."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(date=f"{SEASON}-11-05"), span=Span(season=SEASON))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(date=f"{SEASON}-11-05"), span=Span(season=SEASON))).text or ""
     assert "1/1 made" in answer
     assert "e3" in answer  # the game-label fallback names the bare event id with no `games` row for it to describe further
 
@@ -222,7 +222,7 @@ def test_shot_chart_honors_a_line_on_a_box_score_column(shots_ctx: AnswerContext
         shot_chart(
             shots_ctx,
             Reading(who=Who(kind="player", players=("Stephen Curry",)), lines=(Line(measure="minutes", op="<", value=30, as_typed="under 30 minutes", narrows=True),), span=Span(season=SEASON)),
-        ).answer
+        ).text
         or ""
     )
     assert "1/1 made" in answer
@@ -231,20 +231,20 @@ def test_shot_chart_honors_a_line_on_a_box_score_column(shots_ctx: AnswerContext
 def test_shot_chart_honors_since(shots_ctx: AnswerContext) -> None:
     """``since`` SEASON-1 draws e0 (1 made) plus every SEASON attempt (7 made
     of 9) - 10 attempts, 8 made."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(since=(SEASON - 1)))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(since=(SEASON - 1)))).text or ""
     assert "8/10 made" in answer
 
 
 def test_shot_chart_honors_game_n_of_a_series(shots_ctx: AnswerContext) -> None:
     """Game 2 of the Lakers series (p2, the second by date) - 2 attempts, both
     made."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(game_n=2), span=Span(season=SEASON, season_type=3))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(game_n=2), span=Span(season=SEASON, season_type=3))).text or ""
     assert "2/2 made" in answer
 
 
 def test_shot_chart_honors_season_n(shots_ctx: AnswerContext) -> None:
     """His 1st season on record here is SEASON-1 (e0's one made shot)."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(season_n=1))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(season_n=1))).text or ""
     assert "1/1 made" in answer
 
 
@@ -252,15 +252,15 @@ def test_shot_chart_honors_limit_as_a_window_not_a_single_game(shots_ctx: Answer
     """The step's own finding: "last two games" used to chart the whole
     season. Windowed to the 2 newest (e5, e6): 1 + 2 = 3 attempts, 2 made."""
     whole_season = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(order="recent", count=2)))
-    assert "2/3 made" in (whole_season.answer or "")
-    assert "over his last 2 games" in (whole_season.answer or "")
+    assert "2/3 made" in (whole_season.text or "")
+    assert "over his last 2 games" in (whole_season.text or "")
 
 
 def test_shot_chart_honors_limit_with_no_order_slot_at_all(shots_ctx: AnswerContext) -> None:
     """The router's own traces for this exact question never emit `order` -
     only `limit` - so the fix has to read a bare `limit` as "recent" or it
     would not reach the real question. See `_shots_order`."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(count=2))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(count=2))).text or ""
     assert "2/3 made" in answer
 
 
@@ -273,7 +273,7 @@ def test_shot_chart_windows_a_narrowed_set_together(shots_ctx: AnswerContext) ->
     answer = (
         shot_chart(
             shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season=SEASON), window=Window(order="recent", count=2))
-        ).answer
+        ).text
         or ""
     )
     assert "2/3 made" in answer
@@ -293,7 +293,7 @@ def test_shot_chart_reports_no_games_rather_than_no_shots_when_narrowing_matches
     the bench against the Lakers (e5), never the Celtics - so the fact
     missing is which games, not which shots, and the relation's own
     `_no_narrowed_games` answers rather than a bare "no shots found"."""
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=SEASON), split="bench")).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=SEASON), split="bench")).text or ""
     assert "played" in answer and "none of them" in answer
 
 
@@ -306,7 +306,7 @@ def test_shot_chart_honors_situation(shots_ctx: AnswerContext) -> None:
     ({SEASON}-11-05) is the only one of the six on its weekday, and e3 alone
     is 1 attempt, made."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
-    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).text or ""
     assert "1/1 made" in answer
 
 
@@ -316,7 +316,7 @@ def test_shot_chart_honors_conditions(shots_ctx: AnswerContext) -> None:
     e1, e2, e3 and e6 (he sits e4 and e5) - 2 + 1 + 1 + 2 = 6 attempts, 4
     made."""
     answer = (
-        shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).answer or ""
+        shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).text or ""
     )
     assert "4/6 made" in answer
 
@@ -325,17 +325,17 @@ def test_shot_chart_honors_conditions(shots_ctx: AnswerContext) -> None:
 
 
 def test_shot_distance_honors_opponent(shots_ctx: AnswerContext) -> None:
-    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season=SEASON))).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season=SEASON))).text or ""
     assert "over 6 attempts" in answer
 
 
 def test_shot_distance_honors_since(shots_ctx: AnswerContext) -> None:
-    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(since=(SEASON - 1)))).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(since=(SEASON - 1)))).text or ""
     assert "over 10 attempts" in answer
 
 
 def test_shot_distance_honors_limit_as_a_window(shots_ctx: AnswerContext) -> None:
-    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(order="recent", count=2))).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(order="recent", count=2))).text or ""
     assert "over 3 attempts" in answer
     assert "over his last 2 games" in answer
 
@@ -350,7 +350,7 @@ def test_shot_distance_single_game_note_is_unchanged_by_the_relation_port(shots_
     - "most recent game (date)" - still comes from the bare `player_game_log`
     lookup (`_shots_ordered_games`), not the relation, when `order` is the
     only scoping given."""
-    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(order="recent"))).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(order="recent"))).text or ""
     assert f"most recent game ({SEASON}-11-11)" in answer
 
 
@@ -359,15 +359,14 @@ def test_shot_distance_honors_situation(shots_ctx: AnswerContext) -> None:
     season's 803-attempt (real warehouse) average regardless. e3's weekday
     (see `test_shot_chart_honors_situation`) is one attempt."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
-    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).text or ""
     assert "over 1 attempts" in answer
 
 
 def test_shot_distance_honors_conditions(shots_ctx: AnswerContext) -> None:
     """Klay Thompson starting (e1, e2, e3, e6): 2 + 1 + 1 + 2 = 6 attempts."""
     answer = (
-        shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).answer
-        or ""
+        shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).text or ""
     )
     assert "over 6 attempts" in answer
 
@@ -385,6 +384,6 @@ def test_shot_distance_situations_one_game_note_names_the_situation(shots_ctx: A
     finds) has no `order`/`limit` at all, so the note must name the weekday,
     never "most recent game"."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
-    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).text or ""
     assert f"on {weekday.capitalize()}s" in answer
     assert "most recent game" not in answer

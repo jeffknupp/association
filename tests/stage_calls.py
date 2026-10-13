@@ -216,13 +216,14 @@ def _planned_argument(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str
 
 
 def _said(said: Any, _args: tuple[Any, ...]) -> Any:
-    """What the sayer said, as recorded: its sentence (``answer``), its data
-    and its files - the said part of an answer, whatever record carries it
-    (Phase 4, step 4 folds the sayer's ``Reply`` into the ``Answer``); None
-    where the answer side declined."""
+    """What the sayer said, as recorded: its sentence (``answer``, the
+    Answer's ``text``), its data and its files - the said part of an answer,
+    recorded under the keys the sayer's ``Reply`` held until Phase 4, step 4
+    folded it into the ``Answer``, so both sides of the fold record alike;
+    None where the answer side declined."""
     if said is None:
         return None
-    return {"answer": said.answer, "data": said.data, "artifacts": said.artifacts}
+    return {"answer": said.text, "data": said.data, "artifacts": said.artifacts}
 
 
 def install(directory: Path) -> None:

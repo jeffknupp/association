@@ -15,7 +15,7 @@ import pytest
 from routed import Routed, ask_routed
 
 from association.query.agent import Agent
-from association.query.answer import Answer, Artifact, Reply, Timing
+from association.query.answer import Answer, Artifact, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
@@ -238,7 +238,7 @@ def _agent(tmp_path: Path) -> Agent:
 
 
 def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={"value": 1}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Answer(data={"value": 1}, text="templated"))
     agent = _agent(tmp_path)
     answer = ask_routed(agent, "who scored the most points", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
     assert agent.reading is not None and agent.reading.asked == PLAYER_RANKING

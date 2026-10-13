@@ -29,10 +29,11 @@ from typing import Any, get_args
 
 import duckdb
 import pytest
+from routed import Said
 from routed import planned_answer as compose_answer
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
-from association.query.answer import AnswerContext, Reply
+from association.query.answer import AnswerContext
 from association.query.compose.plan import plan_point, planned_shape
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.entities import names_of
@@ -374,7 +375,7 @@ def ctx(tmp_path: Path) -> AnswerContext:
     return AnswerContext(con=con, out_dir=tmp_path / "out")
 
 
-def _read(ctx: AnswerContext, case: str) -> tuple[PointShape | None, Reply]:
+def _read(ctx: AnswerContext, case: str) -> tuple[PointShape | None, Said]:
     """The planned shape and the answer of the case named ``case``: the
     compiler's, over the key and the typed reading the case states, with no
     question words to move its own point - planned once, as ``Agent.ask``

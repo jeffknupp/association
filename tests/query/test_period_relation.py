@@ -465,9 +465,9 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
         ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
     )
     assert (result.data["total"], result.data["stat"], [g["turnovers"] for g in result.data["games"]]) == (5, "turnovers", [5, 0])
-    assert "averaged 2.5 turnovers in the 1st half" in (result.answer or "")
+    assert "averaged 2.5 turnovers in the 1st half" in (result.text or "")
     listed = TEAM_PERIOD_AGREEMENT["turnovers"].get(SEASON)
-    assert listed is None or f"{listed:.1f}% of the time in {SEASON}" in (result.answer or "")
+    assert listed is None or f"{listed:.1f}% of the time in {SEASON}" in (result.text or "")
 
 
 def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -476,7 +476,7 @@ def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: 
     result = team_quarter_points(
         ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
     )
-    assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.answer or "")
+    assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.text or "")
 
 
 def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempts(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
@@ -491,10 +491,10 @@ def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempt
     result = team_quarter_points(ctx, scope)
     assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["average"]) == ("ft_pct", 1, 2, 50.0)
     assert [(g["freeThrowsMade"], g["freeThrowsAttempted"], g["ft_pct"]) for g in result.data["games"]] == [(1, 2, 50.0), (0, 0, None)]
-    answer = result.answer or ""
+    answer = result.text or ""
     assert "The Home Team shot 1 of 2 (50.0%) on free throws in the 1st half across 2 2026 regular season games:" in answer and "1-2  50.0%" in answer and "0-0  -" in answer
     most = team_quarter_points(ctx, replace(scope, window=Window(rank="most")))
-    assert "extreme" not in most.data and "is not ranked" in (most.answer or "")
+    assert "extreme" not in most.data and "is not ranked" in (most.text or "")
 
 
 def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -505,4 +505,4 @@ def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_div
         Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="freeThrowPct", as_typed="freeThrowPct"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True)),
     )
     assert "total" not in result.data
-    assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.answer or "") and "free throws and free throw attempts match" in (result.answer or "")
+    assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.text or "") and "free throws and free throw attempts match" in (result.text or "")

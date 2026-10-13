@@ -22,12 +22,12 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import Routed, planned_query, reading_of, with_subject
+from routed import Routed, Said, planned_query, reading_of, said, with_subject
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query import compose
-from association.query.answer import AnswerContext, Reply
+from association.query.answer import Answer, AnswerContext
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import plan, plan_point, refusal_result
@@ -92,11 +92,12 @@ def _reading(con: duckdb.DuckDBPyConnection, asked: PointShape | None, scope: Fi
     return Reading(**stated.filters(), asked=asked, subject=subject or read_subject(names_of(con), question, asked, scope))
 
 
-def compose_answer(ctx: AnswerContext, asked: PointShape | None, scope: Filtered, question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> Reply | None:
+def compose_answer(ctx: AnswerContext, asked: PointShape | None, scope: Filtered, question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> Said | None:
     """``compose.answer`` over the point ``question`` moves for the case's
     typed reading under the key ``asked``."""
     reading = with_point(question, _reading(ctx.con, asked, scope, question, subject))
-    return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
+    answered = compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
+    return None if answered is None else said(answered)
 
 
 def move_point(
@@ -513,7 +514,7 @@ def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx
     q = move_point(cx_ctx.con, PLAYER_SPLITS, scope, "Podziemski double-doubles career away")
     assert isinstance(q, Query) and q.skeleton == "scalar" and q.aggregate == "count" and ("double_double", "=", True) in q.predicates
     result = compose_answer(cx_ctx, PLAYER_SPLITS, scope, "Podziemski double-doubles career away")
-    assert result is not None and "double-double" in result.answer
+    assert result is not None and "double-double" in result.text
     with pytest.raises(Unsupported):
         _agg("double_double", Aggregate.PER_GAME)
     with pytest.raises(Unsupported):
@@ -603,7 +604,7 @@ def test_refused_carries_the_relations_own_wording(cx_ctx: AnswerContext) -> Non
     q = planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Jemel Podziemski",))))
     with pytest.raises(Refused) as excinfo:
         run(cx_ctx.con, q)
-    assert "podziemski" in (say(excinfo.value.result).answer or "").lower()
+    assert "podziemski" in (say(excinfo.value.result).text or "").lower()
 
 
 def test_a_name_nothing_resolves_to_is_the_reads_refusal(cx_ctx: AnswerContext) -> None:
@@ -626,14 +627,14 @@ def test_answer_returns_none_for_a_question_the_compiler_cannot_say(cx_ctx: Answ
 
 
 def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: AnswerContext) -> None:
-    """``answer()``'s ``Reply`` carries a sentence and the point's
+    """``answer()``'s Answer carries a sentence and the point's
     own values - what a caller checks an answer against. The question's
     "plus-minus" moves the point off ``player_stat``'s own line, so this is
     the compiler's sentence rather than the template's (``compose.present``,
     step 2a - ``test_an_intents_own_point_reads_as_its_template``)."""
     result = compose_answer(cx_ctx, PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics")), "Podziemski's plus-minus vs Boston")
     assert result is not None
-    assert "Brandin Podziemski" in result.answer
+    assert "Brandin Podziemski" in result.text
     assert result.data["skeleton"] == "scalar"
     assert result.data["player"] == "Brandin Podziemski"
     assert result.data["rows"][0]["games"] == 2
@@ -652,7 +653,7 @@ def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: AnswerContext
         cx_ctx, PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="points", as_typed="points"), span=Span(since=(s - 1), until=s)), "Podziemski's PRA"
     )
     assert both is not None
-    assert f"({s - 1}-{s})" in both.answer and "on)" not in both.answer
+    assert f"({s - 1}-{s})" in both.text and "on)" not in both.text
     assert both.data["rows"][0]["games"] == 6
     one = compose_answer(
         cx_ctx,
@@ -661,7 +662,7 @@ def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: AnswerContext
         "Podziemski's PRA",
     )
     assert one is not None
-    assert f"career ({s - 1})" in one.answer
+    assert f"career ({s - 1})" in one.text
     assert one.data["rows"][0]["games"] == 2
 
 
@@ -690,7 +691,7 @@ def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate
         "podziemski game log vs boston without jaylen brown",
     )
     assert result is not None and [g["date"] for g in result.data["games"]] == [f"{s}-03-15"]
-    assert "vs the Boston Celtics without Jaylen Brown on the other side" in (result.answer or "")
+    assert "vs the Boston Celtics without Jaylen Brown on the other side" in (result.text or "")
     # A man on neither side: the own-side reading, and the honest empty answer.
     neither = compose_answer(
         cx_ctx,
@@ -703,7 +704,7 @@ def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate
         ),
         "podziemski game log vs boston without sabonis",
     )
-    assert neither is not None and "Domantas Sabonis was not Brandin Podziemski's teammate" in (neither.answer or "")
+    assert neither is not None and "Domantas Sabonis was not Brandin Podziemski's teammate" in (neither.text or "")
 
 
 def test_an_empty_splits_read_names_the_narrowing_not_a_phantom_did_not_play(cx_ctx: AnswerContext) -> None:
@@ -717,7 +718,7 @@ def test_an_empty_splits_read_names_the_narrowing_not_a_phantom_did_not_play(cx_
         cx_ctx, PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Lakers"), span=Span(season=s, season_type=2)), "podziemski record vs lakers"
     )
     assert result is not None and result.data["games"] == 0
-    assert "none of them vs the Los Angeles Lakers" in (result.answer or "") and "did not play in any" not in (result.answer or "")
+    assert "none of them vs the Los Angeles Lakers" in (result.text or "") and "did not play in any" not in (result.text or "")
 
 
 def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: AnswerContext) -> None:
@@ -752,8 +753,8 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Answ
         "Podziemski's 15+ point games vs Detroit in his career",
     )
     assert result is not None
-    assert f"({s - 1}-{s})" in result.answer
-    assert "1994" not in result.answer
+    assert f"({s - 1}-{s})" in result.text
+    assert "1994" not in result.text
     # Against Detroit: g2 (15), g3 (28) and g7 (18) all clear 15 (see the
     # `_box` inserts above).
     assert result.data["rows"][0]["games"] == 3
@@ -774,7 +775,7 @@ def test_a_refusal_from_answer_is_the_relations_own(cx_ctx: AnswerContext) -> No
     """A near-miss name is a handled refusal from ``answer()``, not ``None``."""
     result = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Podzemski",))), "Podzemski's last 5 games")
     assert result is not None
-    assert re.search(r"podziemski", result.answer, re.I)
+    assert re.search(r"podziemski", result.text, re.I)
 
 
 # ---------------------------------------------------------------------------
@@ -1100,7 +1101,7 @@ def test_answer_composes_a_team_subject_sentence(team_cx_ctx: AnswerContext) -> 
         "how many 3 pointers have the magic made so far this season",
     )
     assert result is not None
-    assert "961" in result.answer
+    assert "961" in result.text
     assert result.data["team"] == "Orlando Magic"
     assert result.data["from_season_line"] is True
     assert result.artifacts == []
@@ -1130,7 +1131,7 @@ def test_answer_refuses_a_season_under_the_players_coverage_floor(cx_ctx: Answer
         "Podziemski's 15+ point games in 1990",
     )
     assert result is not None
-    assert "1994" in result.answer and "1990" in result.answer
+    assert "1994" in result.text and "1990" in result.text
 
 
 def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: AnswerContext) -> None:
@@ -1148,7 +1149,7 @@ def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: An
         "Podziemski's 15+ point games this season",
     )
     assert result is not None
-    assert "Note:" not in result.answer  # the current season carries no caveat - proves one is not added where none applies
+    assert "Note:" not in result.text  # the current season carries no caveat - proves one is not added where none applies
 
 
 def test_answer_refuses_a_season_under_the_teams_coverage_floor(team_cx_ctx: AnswerContext) -> None:
@@ -1161,7 +1162,7 @@ def test_answer_refuses_a_season_under_the_teams_coverage_floor(team_cx_ctx: Ans
         "how many 3 pointers did the magic make in 1990",
     )
     assert result is not None
-    assert "1994" in result.answer and "1990" in result.answer
+    assert "1994" in result.text and "1990" in result.text
 
 
 def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ctx: AnswerContext) -> None:
@@ -1176,7 +1177,7 @@ def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ct
         "total points scored by the raptors in their last 3 games",
     )
     assert result is not None
-    assert "Note:" not in result.answer
+    assert "Note:" not in result.text
 
 
 # ---------------------------------------------------------------------------
@@ -1395,7 +1396,7 @@ def test_a_stated_minimum_on_a_point_that_ranks_no_players_is_refused_by_name(cx
     with pytest.raises(PointRefused) as refused:
         move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)), "most points in a game this season minimum 20 games")
     assert refused.value.cause == Cause(kind="minimum_unranked", facts={"unit": "games", "count": 20})
-    assert "20 games" in refusal_result(refused.value.cause).answer
+    assert "20 games" in refusal_result(refused.value.cause).text
 
 
 def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misapplied(cx_ctx: AnswerContext) -> None:
@@ -1410,7 +1411,7 @@ def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misappli
             cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)), "highest points per game by a point guard with at least 100 attempts"
         )
     assert refused.value.cause == Cause(kind="ranking_floor_unit", facts={"unit": "attempts", "count": 100})
-    said = refusal_result(refused.value.cause).answer
+    said = refusal_result(refused.value.cause).text
     assert "100 attempts" in said and "at least N games" in said
 
 
@@ -1425,7 +1426,7 @@ def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_
     with pytest.raises(PointRefused) as refused:
         move_point(cx_ctx.con, GAME_HIGHS, Reading(measure=Measure(key="netpoints", as_typed="netpoints")), "who had the highest netpoints game this season")
     assert refused.value.cause == Cause(kind="no_ranking_measure", facts={"stat": "netpoints"})
-    assert "netpoints" in refusal_result(refused.value.cause).answer
+    assert "netpoints" in refusal_result(refused.value.cause).text
     # A leaderboard's NetPoints ranking is the season line's (its retired
     # template's reader, over the NetPoints tables): a point, not a refusal.
     netpoints = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="netpoints", as_typed="netpoints")), "who leads the league in netpoints this season")
@@ -1487,7 +1488,7 @@ def test_answer_appends_the_box_score_notes_to_the_sentence(cx_ctx: AnswerContex
     _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
     result = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "Podziemski's game log this season")
     assert result is not None
-    assert "Not counted: 1 game" in result.answer
+    assert "Not counted: 1 game" in result.text
     assert any("Not counted: 1 game" in note for note in result.data["notes"])
 
 
@@ -1547,12 +1548,12 @@ def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ct
         cx_ctx, PLAYER_RANKING, Reading(measure=Measure(key="triple_double", as_typed="triple_double"), window=Window(count=5, by="points")), "players with the highest scoring triple doubles"
     )
     assert result is not None
-    assert "triple-double" in result.answer
+    assert "triple-double" in result.text
     assert result.data["rows"][0]["points"] == 28
     # A league-wide row says whose game it is - the one thing a ranking of
     # players' games is asked for.
     assert result.data["rows"][0]["player"] == "Brandin Podziemski"
-    assert "Brandin Podziemski" in result.answer
+    assert "Brandin Podziemski" in result.text
 
 
 def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: AnswerContext) -> None:
@@ -1565,7 +1566,7 @@ def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: AnswerConte
     assert first is not None and second is not None
     assert first.data["rows"][0]["points"] == 26 and first.data["rows"][0]["player"] == "Jaylen Brown"
     assert second.data["rows"][0]["points"] == 40 and second.data["rows"][0]["player"] == "Stephen Curry"
-    assert "in their 2nd season" in second.answer
+    assert "in their 2nd season" in second.text
 
 
 def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: AnswerContext) -> None:
@@ -1588,10 +1589,10 @@ def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: AnswerContext)
         "golden state warriors all-time triple doubles",
     )
     assert result is not None
-    assert "Golden State Warriors" in result.answer
-    assert "with a triple-double" in result.answer  # the predicate, not just the span
+    assert "Golden State Warriors" in result.text
+    assert "with a triple-double" in result.text  # the predicate, not just the span
     assert result.data["rows"][0]["games"] == 1
-    assert result.data["headline"] == result.answer.split("\n")[0].rstrip(":")
+    assert result.data["headline"] == result.text.split("\n")[0].rstrip(":")
     assert "with a triple-double" in result.data["headline"]
     # Filed under player_stat (the router's intent for the live wording), the
     # team still makes it the same count.
@@ -1633,7 +1634,7 @@ def test_a_grouped_by_player_count_carries_the_whole_total_a_window_cut(cx_ctx: 
     )
     assert result is not None
     assert result.data["total"] == 56
-    assert "56" in result.answer and "listed" in result.answer
+    assert "56" in result.text and "listed" in result.text
 
 
 # ---------------------------------------------------------------------------
@@ -1663,7 +1664,7 @@ def _add_condition_tables(con: duckdb.DuckDBPyConnection) -> None:
 _RETIRED = json.loads((Path(__file__).parent / "retired_templates.json").read_text())
 
 
-def _retired_template_answer(question: str) -> Reply:
+def _retired_template_answer(question: str) -> Answer:
     """The answer the retired template gave for this case's question
     (``retired_templates.json``, which keeps the intent and the slot dict
     each was frozen under), the fixture's seasons put back."""
@@ -1672,7 +1673,7 @@ def _retired_template_answer(question: str) -> Reply:
         if case["question"] == question:
             text = case["expected"].replace("{S-1}-{s}", f"{s - 1}-{s % 100:02d}").replace("{S-2}-{s-1}", f"{s - 2}-{(s - 1) % 100:02d}")
             frozen = json.loads(text.replace("{S-2}", str(s - 2)).replace("{S-1}", str(s - 1)).replace("{S}", str(s)))
-            return Reply(data=frozen["data"], answer=frozen["answer"])
+            return Answer(data=frozen["data"], text=frozen["answer"])
     raise AssertionError(f"no frozen answer for {question!r}")
 
 
@@ -1683,7 +1684,7 @@ def _parity(ctx: AnswerContext, asked: PointShape, scope: Reading, question: str
     _add_condition_tables(ctx.con)
     composed = compose_answer(ctx, asked, scope, question)
     assert composed is not None
-    return _retired_template_answer(question), Reply(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
+    return _retired_template_answer(question), Answer(data=json.loads(json.dumps(composed.data, default=str)), text=composed.text)
 
 
 @pytest.mark.parametrize(
@@ -1753,7 +1754,7 @@ def test_an_intents_own_point_reads_as_its_template(cx_ctx: AnswerContext, asked
     compiler's own settled player, span and narrowing; the sentence and
     ``data`` are the template's own helpers (``compose.present``)."""
     template, composed = _parity(cx_ctx, asked, scope, question)
-    assert composed.answer == template.answer
+    assert composed.text == template.text
     assert composed.data == template.data
 
 
@@ -1828,7 +1829,7 @@ def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: AnswerContext) -> 
     )
     assert result is not None
     assert [r["group"] for r in result.data["rows"]] == [s]
-    assert "most recent 1 seasons" in result.answer
+    assert "most recent 1 seasons" in result.text
     both = compose_answer(
         cx_ctx,
         SEASON_HISTORY,
@@ -1837,7 +1838,7 @@ def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: AnswerContext) -> 
     )
     assert both is not None
     assert [r["group"] for r in both.data["rows"]] == [s, s - 1]
-    assert "most recent" not in both.answer  # the whole career fit
+    assert "most recent" not in both.text  # the whole career fit
 
 
 # ---------------------------------------------------------------------------
@@ -1908,7 +1909,7 @@ def test_the_season_line_reads_as_its_template(cx_ctx: AnswerContext, asked: Poi
     grouped by season, in its own words, before (#228)."""
     _add_season_line(cx_ctx.con)
     template, composed = _parity(cx_ctx, asked, scope, question)
-    assert composed.answer == template.answer
+    assert composed.text == template.text
     assert composed.data == template.data
 
 
@@ -1947,7 +1948,7 @@ def test_a_composed_answer_carries_no_coverage_caveat_of_its_own(cx_ctx: AnswerC
     printed ESPN's 2001-playoffs note twice. The note is the agent's to add."""
     result = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), span=Span(season=2001, season_type=3)), "podziemski plus-minus game log 2001 playoffs")
     assert result is not None
-    assert "Note:" not in result.answer
+    assert "Note:" not in result.text
     assert not any("Note:" in note for note in result.data.get("notes", []))
 
 
@@ -1969,8 +1970,8 @@ def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: AnswerCo
     assert log is not None
     g1 = next(row for row in log.data["rows"] if row["opponent"] == "BOS" and not row["home"])
     assert g1["usage_pct"] == pytest.approx(away["usage_pct"])
-    assert f"usage {away['usage_pct']:.1f}%" in log.answer
-    assert "2435" not in log.answer
+    assert f"usage {away['usage_pct']:.1f}%" in log.text
+    assert "2435" not in log.text
 
 
 def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: AnswerContext) -> None:
@@ -1988,7 +1989,7 @@ def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: AnswerCo
         "show me stats for the warriors when podziemski scored 15+ points",
     )
     assert result is not None
-    assert result.answer.startswith("Golden State Warriors record when Brandin Podziemski had 15+ points")
+    assert result.text.startswith("Golden State Warriors record when Brandin Podziemski had 15+ points")
 
 
 def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_ctx: AnswerContext) -> None:
@@ -2004,7 +2005,7 @@ def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_
         "podziemski ts% vs boston",
     )
     assert result is not None
-    assert "TS%" in result.answer and "vs the Boston Celtics" in result.answer
+    assert "TS%" in result.text and "vs the Boston Celtics" in result.text
     assert result.data["measures"] == ["ts_pct"] and result.data["skeleton"] == "scalar" and result.data["rows"][0]["games"] == 2
 
 
@@ -2024,7 +2025,7 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
     newest = out["rows"][0]
     assert newest["points"] == 10 and newest["minutes"] is None and newest["reconstructed"]
     template, composed = _parity(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "podziemski's game log")
-    assert composed.answer == template.answer
+    assert composed.text == template.text
 
 
 def test_a_teams_total_of_triple_doubles_is_declined_for_the_readings_cause(cx_ctx: AnswerContext) -> None:
@@ -2068,7 +2069,7 @@ def test_a_count_under_a_ceiling_with_no_threshold_is_counted(cx_ctx: AnswerCont
         "curry games with under 5 fta",
     )
     assert result is not None
-    assert result.answer == f"Stephen Curry had 4 games with under 5 free throw attempts in the {current_season()} regular season."
+    assert result.text == f"Stephen Curry had 4 games with under 5 free throw attempts in the {current_season()} regular season."
     assert result.data["leaders"] == [{"player": "Stephen Curry", "games": 4}]
 
 
@@ -2095,7 +2096,7 @@ def test_a_teams_own_threshold_record_is_said_by_record_whens_team_reader(cx_ctx
         "warriors record when they scored 100 points",
     )
     assert result is not None
-    assert result.answer.startswith("Golden State Warriors record when they had 100+ points")
+    assert result.text.startswith("Golden State Warriors record when they had 100+ points")
     assert result.data["reached"]["games"] == 3 and result.data["reached"]["wins"] == 3
     assert result.data["fell_short"]["games"] == 2 and result.data["fell_short"]["wins"] == 0
 
@@ -2110,7 +2111,7 @@ def test_a_record_over_a_line_of_zero_is_declined_as_the_template_refused_it(cx_
         Reading(who=Who(kind="player", players=("Stephen Curry",)), lines=(Line(measure="points", value=0, as_typed="0 points", keyed=True),), measure=Measure(key="points", as_typed="points")),
         "",
     )
-    assert refused is not None and refused.answer == "A threshold of 0 counts every game - there is no line there to keep games past."
+    assert refused is not None and refused.text == "A threshold of 0 counts every game - there is no line there to keep games past."
 
 
 def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player() -> None:
@@ -2123,11 +2124,11 @@ def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player
     with pytest.raises(PointRefused) as no_stat:
         default_point(GAME_HIGHS, Reading(who=Who(kind="player", players=("Brice Sensabaugh",)), span=Span(career=True)))
     assert no_stat.value.cause == Cause(kind="needs_stat", facts={"shape": GAME_HIGHS})
-    assert refusal_result(no_stat.value.cause).answer == "A single-game high needs a stat to rank games by, and none was read."
+    assert refusal_result(no_stat.value.cause).text == "A single-game high needs a stat to rank games by, and none was read."
     with pytest.raises(PointRefused) as unknown:
         default_point(GAME_HIGHS, Reading(who=Who(kind="player", players=("Brice Sensabaugh",)), measure=Measure(as_typed="asistss")))
     assert unknown.value.cause == Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": "asistss"})
-    assert refusal_result(unknown.value.cause).answer == "A single-game high cannot rank games by 'asistss' - only by a box-score stat each game has a number for."
+    assert refusal_result(unknown.value.cause).text == "A single-game high cannot rank games by 'asistss' - only by a box-score stat each game has a number for."
     with pytest.raises(Unsupported, match="needs a named player"):
         default_point(GAME_HIGHS, Reading(measure=Measure(key="points", as_typed="points")))
 
@@ -2140,7 +2141,7 @@ def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(c
     refused = compose_answer(
         cx_ctx, GAMES_COUNTED, Reading(cuts=Cuts(season_n=15), lines=(Line(measure="points", value=20, as_typed="20 points", keyed=True),), measure=Measure(key="points", as_typed="points")), ""
     )
-    assert refused is not None and refused.answer == "The 15th season is a place in one player's career, and no player was named."
+    assert refused is not None and refused.text == "The 15th season is a place in one player's career, and no player was named."
 
 
 def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: AnswerContext) -> None:
@@ -2150,7 +2151,7 @@ def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: AnswerContext) -
     answered player_history first from step (a), read the same default."""
     result = compose_answer(cx_ctx, SEASON_HISTORY, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "")
     assert result is not None
-    assert "points per game" in result.answer.split("\n")[0]
+    assert "points per game" in result.text.split("\n")[0]
 
 
 def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(cx_ctx: AnswerContext) -> None:
@@ -2212,7 +2213,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
     monkeypatch.setattr("association.query.point.read_point", unread)
     answered = compose.answer(cx_ctx, reading, planned=plan_point(reading))
     assert answered is not None and by_hand is not None
-    assert (answered.answer, answered.data) == (by_hand.answer, by_hand.data)
+    assert (answered.text, answered.data) == (by_hand.text, by_hand.data)
 
 
 def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx: AnswerContext) -> None:
@@ -2232,7 +2233,7 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     planned = plan_point(refused)
     answered = compose.answer(cx_ctx, refused, planned=planned)
     assert planned == Refusal(kind="no_ranking_measure", facts={"stat": "gizmos"}, shown={"stat": "gizmos"}) and answered is not None
-    assert answered.answer == "No ranking reads 'gizmos' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
+    assert answered.text == "No ranking reads 'gizmos' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
 
 
 def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: AnswerContext) -> None:
@@ -2251,7 +2252,7 @@ def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: Answe
     )
     assert result is not None
     assert result.data["rows"][0]["ts_pct"] == pytest.approx(0.5)
-    assert "50.0% TS%" in result.answer and "5000" not in result.answer
+    assert "50.0% TS%" in result.text and "5000" not in result.text
 
 
 # ---------------------------------------------------------------------------
@@ -2473,7 +2474,7 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
 
     assert set(_CAUSE_EXAMPLES) == set(CAUSES)
     for kind, facts in _CAUSE_EXAMPLES.items():
-        said = refusal_result(Cause(kind=kind, facts=facts)).answer
+        said = refusal_result(Cause(kind=kind, facts=facts)).text
         assert said and said.endswith(".") and "{" not in said, kind
         for name, value in facts.items():
             if (
@@ -2483,9 +2484,9 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
                 and not (name == "intent" and kind in _PAGE_INTENT_KINDS)
             ):
                 assert value in said, (kind, value, said)
-    assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).answer == "A matchup needs two players, and none was read."
+    assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).text == "A matchup needs two players, and none was read."
     # A shape's decline, said word for word as the decline it was (Phase 3, step 4).
-    assert refusal_result(Cause(kind="cannot_honor", facts=_CAUSE_EXAMPLES["cannot_honor"])).answer == (
+    assert refusal_result(Cause(kind="cannot_honor", facts=_CAUSE_EXAMPLES["cannot_honor"])).text == (
         "Nothing here answers this question as a record with and without named players: the seasons 2019-20 through 2023-24 cannot be read here - it would answer for a different span than was asked."
     )
     assert refusal_result(
@@ -2498,8 +2499,8 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
                 "why": "the league-wide streak has no single subject to narrow",
             },
         )
-    ).answer == ("Nothing here answers this question as a streak: the games 'on tuesdays' cannot be read here with no named team or player - the league-wide streak has no single subject to narrow.")
-    assert refusal_result(Cause(kind="needs_threshold", facts={"shape": LINE_RUNS, "stat": "threePointFieldGoalsMade"})).answer == (
+    ).text == ("Nothing here answers this question as a streak: the games 'on tuesdays' cannot be read here with no named team or player - the league-wide streak has no single subject to narrow.")
+    assert refusal_result(Cause(kind="needs_threshold", facts={"shape": LINE_RUNS, "stat": "threePointFieldGoalsMade"})).text == (
         "A streak needs the number of 3-pointers each game has to reach, and none was read."
     )
 
@@ -2513,4 +2514,4 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
         "top 10 in points / 90", Reading(**(Reading(measure=Measure(key="points", as_typed="points", how="per_90", unit="/ 90"))).filters(), asked=PLAYER_RANKING, subject=Subject("everyone"))
     )
     assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
-    assert refusal_result(reading.point_refusal).answer == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."
+    assert refusal_result(reading.point_refusal).text == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."

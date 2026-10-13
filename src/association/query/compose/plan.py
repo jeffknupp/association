@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
-from association.query.answer import Reply
+from association.query.answer import Answer
 from association.query.coverage import coverage_refusal
 from association.query.measure import spelled
 from association.query.measures import stat_measure
@@ -486,7 +486,7 @@ def _page_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in facts.items() if key not in ("shape", "planned")}
 
 
-def refusal_result(cause: Cause) -> Reply:
+def refusal_result(cause: Cause) -> Answer:
     """The refusal a point reading's :class:`~association.query.reading.Cause`
     is said with: the sentence and the data the answering loop hands on,
     one per kind in :data:`~association.query.reading.CAUSES`, said by the

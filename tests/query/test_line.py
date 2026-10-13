@@ -319,5 +319,5 @@ def test_the_companion_cell_changes_what_the_team_relation_reads(league: AnswerC
     split = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season_type=2), asked=PRESENCE_SPLIT))
     assert not isinstance(split, str)
     groups = {row["group"]: row for row in split.data["splits"]["presence"]} if "presence" in split.data.get("splits", {}) else None
-    assert "with" in split.answer.lower() and "without" in split.answer.lower()
+    assert "with" in split.text.lower() and "without" in split.text.lower()
     assert groups is None or len(groups) == 2

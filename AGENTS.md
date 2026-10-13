@@ -1813,10 +1813,14 @@ a shape:
   (another relation's question, an intent with no default point) or where
   `read_point`'s order makes it unreachable; one the user would see as
   "Nothing here answers this question" becomes a Cause (Jeff's rule,
-  "Identical means identical"). A `Reply` back (`query/answer.py`, the
-  type every reader and the sayer return; `TemplateResult` until step 6)
-  is answered `answered_by="fast"`, the intent kept, with the name
-  readings and the coverage caveat attached - including when it is itself
+  "Identical means identical"). An answer the answer side says
+  (`answer.Answer`, which the sayer and the compiler's own sentence
+  return - the text, the data and the files - and the answering loop
+  stamps with the question, the path, the timing, the decisions and the
+  planned shape; the sayer's own `answer.Reply` until Phase 4, step 4
+  folded it in, `TemplateResult` until Phase 2, step 6) is answered
+  `answered_by="fast"`, with the name readings and the coverage caveat
+  attached - including when it is itself
   a refusal (a clarification, a "no match"): looking at the question and
   having something to say about it is an answer. A shape's own decline -
   a narrowing its words do not state, a point its only reader reads

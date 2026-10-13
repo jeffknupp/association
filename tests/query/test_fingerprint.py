@@ -44,9 +44,9 @@ def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | Unanswer
     if read is None:
         return RenderResult("", None)
     if isinstance(read, Unanswered):
-        return RenderResult(say(read).answer or "", None)
+        return RenderResult(say(read).text or "", None)
     said = say(draw_fingerprint(read, out_dir))
-    return RenderResult(said.answer, said.artifacts[0] if said.artifacts else None)
+    return RenderResult(said.text, said.artifacts[0] if said.artifacts else None)
 
 
 def _unavailable(load: Callable[[], object]) -> str:

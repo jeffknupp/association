@@ -26,17 +26,16 @@ import traceback
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import duckdb
 
 from association.nba.season import calendar_season, season_on_record
-from association.query.answer import AnswerContext, Reply
+from association.query.answer import AnswerContext
 from association.query.coverage import check_coverage, coverage_caveat
 from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined, key_path
 from association.query.result import Refusal
 
-from .answer import Answer, AnsweredBy, Artifact, Timing
+from .answer import Answer, AnsweredBy, Timing
 from .compose.plan import Verdict, plan_point, planned_shape, refusal_result
 from .compose.say import nothing_answers, say, say_left_out
 from .connection import connect_read_only, latest_season_on_record
@@ -49,7 +48,7 @@ from .notes import unsaid
 from .parse import MIN_QUESTION_WORDS, too_short
 from .reading import Reading, ScopeError
 
-# The subset of Reply.data a compose.answer() carries that describes
+# The subset of the said Answer's data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
 # themselves. Traced so a refusal that becomes a composed answer says what it
 # composed, the same way "-> (parser) asked=..." says what the words ask. See
@@ -57,14 +56,17 @@ from .reading import Reading, ScopeError
 _COMPOSE_POINT_KEYS = ("skeleton", "measures", "aggregate", "group", "predicates", "window", "span", "narrowing", "player")
 
 
-def _note(result: Reply, note: str) -> None:
-    """Record a sentence appended to an answer on its ``data`` too,
-    so a caller rendering from ``data`` (the web page) does not lose what the
-    text-only reader is told: which name a default chose, how much of a
-    season the source holds."""
-    notes = result.data.setdefault("notes", [])
+def _noted(said: Answer, note: str) -> Answer:
+    """``said`` with a sentence appended to its text, and recorded on its
+    ``data`` too, so a caller rendering from ``data`` (the web page) does not
+    lose what the text-only reader is told: which name a default chose, how
+    much of a season the source holds. A new Answer: the said one is frozen
+    (it was the sayer's mutable ``Reply`` until Phase 4, step 4)."""
+    data = dict(said.data or {})
+    notes = data.setdefault("notes", [])
     if isinstance(notes, list):
-        notes.append(note)
+        data["notes"] = [*notes, note]
+    return replace(said, text=f"{said.text} {note}", data=data)
 
 
 def refusal_text(why: str, asked: PointShape | None = None) -> str:
@@ -242,22 +244,16 @@ class Agent:
         assert answer is not None
         return replace(answer, history_file=Path(path).name)
 
-    def _answer(
-        self,
-        question: str,
-        history: RunHistory,
-        text: str,
-        answered_by: AnsweredBy,
-        data: dict[str, Any] | None = None,
-        artifacts: list[Artifact] | None = None,
-        shape: PointShape | None = None,
-    ) -> Answer:
-        """Assemble the result, reading the timing off the run that just
-        produced it. Every return point in _ask_inner goes through here so
-        none of them can forget one."""
-        return Answer(
+    def _answer(self, question: str, history: RunHistory, said: Answer, answered_by: AnsweredBy, shape: PointShape | None = None) -> Answer:
+        """The answer ``said`` - what the sayer said, its text, data and
+        files, or a refusal's sentence alone - stamped with what the
+        answering loop knows of it: the question, which path answered, the
+        timing read off the run that just produced it, the decisions made on
+        the way and the planned shape. Every return point in _ask_inner goes
+        through here so none of them can forget one."""
+        return replace(
+            said,
             question=question,
-            text=text,
             answered_by=answered_by,
             timing=Timing(
                 total_seconds=history.total_seconds,
@@ -266,24 +262,25 @@ class Agent:
                 tool_seconds=history.tool_seconds,
                 tool_calls=history.tool_calls,
             ),
-            data=data,
-            artifacts=list(artifacts or []),
+            artifacts=list(said.artifacts),
             decisions=tuple(history.decisions),
             shape=shape,
         )
 
-    def _try_fast_path(self, question: str, history: RunHistory) -> Reply | None:
-        """Reading -> plan -> reader and sayer -> answer, returning the
-        whole :class:`~association.query.answer.Reply`. Returns None, with
-        :attr:`unanswered` naming why, where nothing here reads the
-        question: words that ask for nothing a reader reads, slots that fail
-        validation, or a point the compiler and the named refusals could not
-        take.
+    def _try_fast_path(self, question: str, history: RunHistory) -> Answer | None:
+        """Reading -> plan -> reader and sayer -> answer, returning what the
+        sayer said, whole (:class:`~association.query.answer.Answer`, which
+        :meth:`_answer` stamps). Returns None, with :attr:`unanswered`
+        naming why, where nothing here reads the question: words that ask
+        for nothing a reader reads, slots that fail validation, or a point
+        the compiler and the named refusals could not take.
 
-        The Reply is returned, rather than just its `answer` text, because
+        The said Answer is returned, rather than just its text, because
         that text is only one of the things the reader produced - see
-        Reply.data, which nothing could reach before 2.0. (The label, the
-        retired intent's name, was returned beside it until Phase 4, step 2.)"""
+        :attr:`Answer.data <association.query.answer.Answer.data>`, which
+        nothing could reach before 2.0. (The label, the retired intent's
+        name, was returned beside it until Phase 4, step 2; the sayer's
+        ``Reply``, until Phase 4, step 4.)"""
         self.unanswered = None
         self.unanswered_as = None
         read = self._read_or_refuse(question, history)
@@ -303,7 +300,7 @@ class Agent:
         if reading.misread and reading.asked in PLAYER_ASKS:
             misread = misread_players(list(reading.misread))
             history.log(f"  -> (player) {misread}")
-            return Reply(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
+            return Answer(data={"message": misread, "misread": list(reading.misread)}, text=misread)
         settled = self._settled_before_reading(reading, history)
         if settled is not None:
             return settled
@@ -379,7 +376,7 @@ class Agent:
         history.log(f"  -> (normalizer) names={normalized.names} stat={normalized.stat!r}")
         return read_route(names_of(self.con), question, normalized.names, normalized.stat)
 
-    def _settled_before_reading(self, reading: Reading, history: RunHistory) -> Reply | None:
+    def _settled_before_reading(self, reading: Reading, history: RunHistory) -> Answer | None:
         """What is decided before any reader runs, from the Reading alone:
         the refusal the words come to that no point answers past
         (:attr:`Reading.refused <association.query.reading.Reading.refused>`
@@ -399,7 +396,7 @@ class Agent:
             # The planner's refusal (plan_point), worded here.
             assert isinstance(self.query, Refusal)
             said = say(self.query)
-            history.log(f"  -> (refusal) {reading.refused.kind}: {said.answer}")
+            history.log(f"  -> (refusal) {reading.refused.kind}: {said.text}")
             return said
         if reading.asked is not None:
             return None
@@ -410,7 +407,7 @@ class Agent:
         self.unanswered = "what its words ask has no reader"
         return None
 
-    def _run_compiled(self, reading: Reading, history: RunHistory) -> Reply | None:
+    def _run_compiled(self, reading: Reading, history: RunHistory) -> Answer | None:
         """A shape the words ask, which the compiler alone answers (every
         one since Phase 2 retired the templates; ``compose.COMPILED_INTENTS``
         listed their names until Phase 3, step 4). Where the
@@ -441,7 +438,7 @@ class Agent:
         refused = check_coverage(self._planned_shape(), reading.point if reading.point is not None else scope)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
-            return Reply(data={"message": refused, "season": scope.span.season}, answer=refused)
+            return Answer(data={"message": refused, "season": scope.span.season}, text=refused)
         if reading.unsupported:
             # What the words name that nothing reads, said in place of the
             # plain decline - only here, where the answer side declined, so
@@ -458,7 +455,7 @@ class Agent:
         self.unanswered, self.unanswered_as = why, reading.asked
         return None
 
-    def _try_compose(self, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None, declined_by: Callable[[Cause], None] | None = None) -> Reply | None:
+    def _try_compose(self, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None, declined_by: Callable[[Cause], None] | None = None) -> Answer | None:
         """The compiler's answer to the point the parser read
         (``association.query.compose.answer``): every shape's only
         answer. The name readings the reader noted and the coverage caveat
@@ -487,21 +484,19 @@ class Agent:
             return None
         for name_reading in readings:
             history.log(f"  -> (player) {name_reading}")
-            composed.answer = f"{composed.answer} {name_reading}"
-            _note(composed, name_reading)
+            composed = _noted(composed, name_reading)
         if readings:
-            composed.data["name_readings"] = list(readings)
+            composed = replace(composed, data={**(composed.data or {}), "name_readings": list(readings)})
         shape = self._planned_shape()
         note = coverage_caveat(shape, reading.point if reading.point is not None else reading)
         if note:
-            composed.answer = f"{composed.answer} {note}"
-            _note(composed, note)
-        self._unmatched_fingerprint(reading, composed)
-        point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
+            composed = _noted(composed, note)
+        composed = self._unmatched_fingerprint(reading, composed)
+        point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if composed.data is not None and key in composed.data}
         history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(shape)} point={point}")
         return composed
 
-    def _unmatched_fingerprint(self, reading: Reading, composed: Reply) -> None:
+    def _unmatched_fingerprint(self, reading: Reading, composed: Answer) -> Answer:
         """A "vs" fingerprint that drew one polygon answered half of itself:
         the parser read which names the question compares beyond the
         players the reading holds (:attr:`Reading.left_out <association.query.reading.Reading.left_out>`),
@@ -511,10 +506,8 @@ class Agent:
         retired template's order: the floor, then the answer and this note).
         Until Phase 3, step 0 this re-read the question."""
         if reading.left_out is None or check_coverage(self._planned_shape(), reading.point if reading.point is not None else reading) is not None:
-            return
-        unmatched_note = say_left_out(reading.left_out)
-        composed.answer = f"{composed.answer} {unmatched_note}"
-        _note(composed, unmatched_note)
+            return composed
+        return _noted(composed, say_left_out(reading.left_out))
 
     def _planned_shape(self) -> PointShape | None:
         """What the last question's point is read and said as
@@ -532,15 +525,15 @@ class Agent:
         if short is not None:
             self.unanswered, self.unanswered_as = f"fewer than {MIN_QUESTION_WORDS} words", None
             history.log(f"  -> (refused) {self.unanswered}")
-            return self._answer(question, history, refusal_result(short).answer, "refused")
+            return self._answer(question, history, Answer(text=refusal_result(short).text), "refused")
         fast = self._try_fast_path(question, history)
         if fast is not None:
             # The planned point's shape, which the page renders the data by
             # (Phase 4, step 1): the one the answer side chose its reader by.
-            return self._answer(question, history, fast.answer, "fast", data=fast.data, artifacts=fast.artifacts, shape=self._planned_shape())
+            return self._answer(question, history, fast, "fast", shape=self._planned_shape())
         # Nothing read the question: the refusal names why, in the words the
         # parser or the compiler gave it up with (#129 - the
         # agent this replaced answered one such question in 23).
         why = self.unanswered or "no reading of the question"
         history.log(f"  -> (refused) {why}")
-        return self._answer(question, history, refusal_text(why, self.unanswered_as), "refused")
+        return self._answer(question, history, Answer(text=refusal_text(why, self.unanswered_as)), "refused")

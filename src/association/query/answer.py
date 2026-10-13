@@ -110,61 +110,48 @@ class AnswerContext:
     out_dir: Path
 
 
-@dataclass
-class Reply:
-    """What the answer side hands the answering loop: the final prose, the
-    same result as values, and the files it wrote - an answer, a clarifying
-    question or a refusal naming its cause alike.
-
-    ``answer`` is the final prose, so the fast path makes NO model call after
-    the normalizer. Required, not optional: ollama keeps one KV cache slot per
-    model, so a second call with a different system prompt evicts the
-    reader's prefix (measured: three consecutive router calls run 11.6s /
-    1.3s / 1.7s, but interleaving one narration call puts the next back to
-    11.2s). Phrasing every answer here also removes the last place on this
-    path where a number could be invented.
-
-    ``data`` is the same result as structured values - resolved names and
-    numbers, no ids and no schema. Tests assert against it, and it is carried
-    out to the caller in :class:`Answer`.
-
-    ``artifacts`` is whatever the reader wrote to disk - a chart, or nothing.
-
-    .. versionadded:: 5.0.0
-       ``association.query.templates.TemplateResult`` until the templates
-       were gone (Phase 2, step 6), with the same fields.
-    """
-
-    data: dict[str, Any]
-    answer: str
-    artifacts: list[Artifact] = field(default_factory=list)
-
-
 @dataclass(frozen=True)
 class Timing:
     """Where a run's wall time went, split into model inference and everything
     else. The call counts matter as much as the seconds: on the fast path one
     model call is the whole cost, and a second one would mean the KV cache
-    eviction described in :class:`Reply`.
+    eviction described in :class:`Answer`.
 
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 6.0.0
+       Every field defaults to zero: an answer the sayer said and the
+       answering loop has not yet stamped is untimed (Phase 4, step 4).
     """
 
-    total_seconds: float
-    model_seconds: float
-    model_calls: int
-    tool_seconds: float
-    tool_calls: int
+    total_seconds: float = 0.0
+    model_seconds: float = 0.0
+    model_calls: int = 0
+    tool_seconds: float = 0.0
+    tool_calls: int = 0
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Answer:
-    """One question's complete result.
+    """One question's complete result - and, before the answering loop has
+    stamped it, what the answer side said: the sayer (and the compiler's own
+    sentence) returns an Answer holding its ``text``, its ``data`` and its
+    ``artifacts``, an answer, a clarifying question or a refusal naming its
+    cause alike, and :meth:`Agent.ask <association.query.agent.Agent.ask>`
+    stamps the question, the path, the timing, the decisions, the notes and
+    the shape on it.
 
-    ``text`` is exactly what the CLI prints, unchanged. Everything else is what
-    the CLI never had a way to show: which path answered, and - on the fast
-    path only - the shape it was read and said as and the structured data
-    the reader built its sentence from.
+    ``text`` is exactly what the CLI prints, unchanged - the final prose, so
+    the fast path makes NO model call after the normalizer. ollama keeps one
+    KV cache slot per model, so a second call with a different system prompt
+    evicts the reader's prefix (measured: three consecutive router calls run
+    11.6s / 1.3s / 1.7s, but interleaving one narration call puts the next
+    back to 11.2s). Phrasing every answer on the answer side also removes the
+    last place on this path where a number could be invented. Everything
+    else is what the CLI never had a way to show: which path answered, and -
+    on the fast path only - the shape it was read and said as and the
+    structured data the reader built its sentence from: resolved names and
+    numbers, no ids and no schema, which tests assert against.
 
     ``shape`` and ``data`` are None when ``answered_by`` is ``"refused"``,
     since only a reader or the compiler produces them; ``shape`` is None on
@@ -183,12 +170,19 @@ class Answer:
        label until Phase 4, step 1 keyed the page on :attr:`shape`. The
        key the words asked is the Reading's (``Reading.asked``), the shape
        the answer was read as is :attr:`shape`.
+
+    .. versionchanged:: 6.0.0
+       Breaking: keyword-only, and the sayer's answer - ``answer.Reply``,
+       the answer side's own record of the text (``answer``), the data and
+       the files, is folded into it (Phase 4, step 4). ``question``,
+       ``answered_by`` and ``timing`` default to an answer not yet stamped
+       (``""``, ``"fast"``, untimed).
     """
 
-    question: str
+    question: str = ""
     text: str
-    answered_by: AnsweredBy
-    timing: Timing
+    answered_by: AnsweredBy = "fast"
+    timing: Timing = Timing()
     data: dict[str, Any] | None = None
     artifacts: list[Artifact] = field(default_factory=list)
     #: The basename of the ``.history/`` file this answer was recorded to -

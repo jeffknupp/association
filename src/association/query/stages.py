@@ -245,7 +245,7 @@ def _query_record(reading: Reading, planned: Verdict, mask: Mapping[str, str] | 
         from association.query.compose.say import say
 
         said = say(planned)
-        return {"refused": plain(said.data, mask=mask), "said": _masked(said.answer, mask)}
+        return {"refused": plain(said.data, mask=mask), "said": _masked(said.text, mask)}
     if isinstance(planned, Unsupported) or reading.point is None:
         return {"declined": str(planned) if isinstance(planned, Unsupported) else None}
     # A TeamQuery has no ``subject``: the team IS the relation. Read by

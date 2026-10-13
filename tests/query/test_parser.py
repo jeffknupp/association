@@ -737,9 +737,9 @@ def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:
 
     assert MIN_QUESTION_WORDS == 3
     assert too_short("Tatum rec") == Cause(kind="too_short", facts={"asked": "Tatum rec"})
-    assert refusal_result(Cause(kind="too_short", facts={"asked": "Tatum rec"})).answer == "I couldn't understand your question, 'Tatum rec'. Please try re-phrasing it."
+    assert refusal_result(Cause(kind="too_short", facts={"asked": "Tatum rec"})).text == "I couldn't understand your question, 'Tatum rec'. Please try re-phrasing it."
     short = too_short("  bam stats ")
-    assert short is not None and refusal_result(short).answer == "I couldn't understand your question, 'bam stats'. Please try re-phrasing it."
+    assert short is not None and refusal_result(short).text == "I couldn't understand your question, 'bam stats'. Please try re-phrasing it."
     assert too_short("76ers away record") is None
     assert too_short("luka td3s home") is None
 

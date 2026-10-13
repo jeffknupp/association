@@ -322,7 +322,7 @@ def test_a_plus_minus_log_shows_the_column_it_was_asked_for(pg_ctx: AnswerContex
     are refused for a playoff round first); the wording is "<player> plus
     minus game log" and "<player> +/- log"."""
     assert log_extras(measure_of("plus_minus")) == ("+/-",) == log_extras(measure_of("plusMinus"))
-    answer = game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="plusMinus", as_typed="plus_minus"))).answer or ""
+    answer = game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="plusMinus", as_typed="plus_minus"))).text or ""
     assert "+/-" in answer
 
 
@@ -355,7 +355,7 @@ def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None
 def test_the_rate_cell_changes_what_the_season_line_ranking_reads(season_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
     assert leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
     total = leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
-    assert total.data["leaders"][0]["display_name"] == "Volume Scorer" and "in total points" in total.answer
+    assert total.data["leaders"][0]["display_name"] == "Volume Scorer" and "in total points" in total.text
 
 
 def test_the_planner_declines_the_rate_cell_where_no_reader_states_it(con: Any) -> None:  # noqa: F811 - the fixture
