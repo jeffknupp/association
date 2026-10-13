@@ -83,15 +83,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #372
 
-### A position group beside a named player is read and dropped: "centers vs gobert gamelog with 34 minutes 2024" answers Gobert's own log
-- **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the subject family (`~/association-research/stages/subject_family.py`).
-- **Evidence:** 51 of the 2,710 readings carry a position group; 50 are `position` subjects and every league-wide point honors the group. One is a `player` subject carrying the group C ("centers vs gobert gamelog with 34 minutes 2024", the feed): the point reader honors a position on the league's own moves alone (`point._everyone_point`), so the point is Rudy Gobert's game log with 34+ minutes, and the answer lists his games. The question is the centers' games against Gobert.
-- **User sees:** one player's log where a position group's games against him were asked.
-- **Next step:** read a position group with a player after "vs" as the group's games with the player an opponent-side companion (`Companion(side="opponent")`, which the league's read honors); failing that, the planner refusing a position on a point that takes none (a decline-to-Cause commit, `ROADMAP-TYPES.md` "Still open" 14).
-- **Source:** ours.
-- **Priority:** P1 - a different question answered (1 feed question).
-- **GitHub:** #365
-
 
 ### A team's "allowed" figure is read as its own where a longer alias stands: "which team allowed the most points per game" ranks the teams' own scoring
 - **Found:** 2026-10-10, Phase 3 step 2's measure slice, writing the tagger's cases

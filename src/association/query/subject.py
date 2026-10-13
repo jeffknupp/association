@@ -876,6 +876,12 @@ def _asks_for_games(question: str) -> bool:
     return lexicon.GAMES_NOT_SUMMARY.search(question) is not None or any(words.search(question) for _, words, _, _ in _CHILD_GRAMMARS)
 
 
+def _versus_companions_led_by_a_group(question: str, at: int) -> bool:
+    """Whether a position group's word stands before ``at``, the versus word
+    - "centers vs gobert": the group is the subject (ISSUES.md #365)."""
+    return any(pattern.search(question[:at]) for pattern, _ in lexicon.POSITION_WORDS)
+
+
 def _versus_companions(question: str, players: tuple[str, ...], scope: Filtered, found: list[Companion]) -> tuple[list[Companion], list[Claim]]:
     """The players after a versus word, as opponent-side ``played``
     companions - only where a player is named BEFORE the phrase (the
@@ -890,12 +896,18 @@ def _versus_companions(question: str, players: tuple[str, ...], scope: Filtered,
     # that already carries them.
     carried = any(c.side == "opponent" for c in scope.companions)
     subjects = [p for p in players if not any(_same_person(p, [c.player]) for c in found)]
-    if not _asks_for_games(question) and len(subjects) <= 2 and not carried:
+    # A position group before a versus word is the subject whatever the
+    # words ask: its games against the player (ISSUES.md #365).
+    grouped = any(_versus_companions_led_by_a_group(question, m.start()) for m in lexicon.VERSUS_PHRASE.finditer(question))
+    if not _asks_for_games(question) and len(subjects) <= 2 and not carried and not grouped:
         return [], []
     versus: list[Companion] = []
     claims: list[Claim] = []
     for match in lexicon.VERSUS_PHRASE.finditer(question):
-        if not _named_before(question, players, match.start()):
+        # A position group before the versus word is the subject too:
+        # "centers vs gobert gamelog" is the centers' games against Gobert,
+        # never Gobert's own log (ISSUES.md #365).
+        if not _named_before(question, players, match.start()) and not _versus_companions_led_by_a_group(question, match.start()):
             continue
         names = [n for n in _companion_names(match.group(2), players, scope) if not any(_same_person(n, [c.player]) for c in [*found, *versus])]
         new = [Companion(player=name, predicate="played", side="opponent") for name in names if not _named_before(question, (name,), match.start())]
@@ -1143,7 +1155,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     conditions, claims, phrases = _read_subject_conditions(question, (*players, *unrouted), scope)
     companions = tuple(dict.fromkeys(c.player for c in conditions))
     players = tuple(p for p in players if p not in companions)
-    if _read_subject_alone(players, teams_here, conditions, scope):
+    if _read_subject_alone(players, teams_here, conditions, scope) and position is None:
         players, conditions, companions, claims = companions, (), (), ()
     # "for the Heat" is a player's OWN team only beside a player subject
     # named BEFORE it - the order a tenure is asked in ("lebron ... for
