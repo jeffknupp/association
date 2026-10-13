@@ -103144,5 +103144,783 @@
     }
    }
   }
+ },
+ {
+  "name": "issue_248_a_denied_start_is_refused",
+  "why": "ISSUES.md #248: a start the words deny (\"when embiid doesn't start\") was read as a start and listed his games WITH Embiid starting; refused by the cause naming the words (denied_role).",
+  "question": "maxey game log when embiid doesnt start",
+  "names": [
+   "maxey",
+   "embiid"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Joel Embiid",
+     "side": "own",
+     "predicate": "started",
+     "line": null
+    }
+   ],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "game"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "maxey"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "conditions",
+     "before": null,
+     "after": [
+      {
+       "player": "Joel Embiid",
+       "side": "own",
+       "predicate": "started"
+      }
+     ],
+     "reason": "the role the question gives each player named beside the subject"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "maxey"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "refused": {
+    "kind": "denied_role",
+    "facts": {
+     "player": "Joel Embiid",
+     "words": "when embiid doesnt start",
+     "role": "start",
+     "shape": {
+      "relation": "player_games",
+      "shape": "rows",
+      "by": "date"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "issue_248_a_denied_start_stays_on_the_split",
+  "why": "ISSUES.md #248: the with/without split shows both halves and keeps a denied start.",
+  "question": "maxey points when embiid doesnt start",
+  "names": [
+   "maxey",
+   "embiid"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "split",
+    "by": "presence"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Joel Embiid",
+     "side": "own",
+     "predicate": "started",
+     "line": null
+    }
+   ],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "doesnt"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "asked_reason": null,
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "maxey"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "conditions",
+     "before": null,
+     "after": [
+      {
+       "player": "Joel Embiid",
+       "side": "own",
+       "predicate": "started"
+      }
+     ],
+     "reason": "the role the question gives each player named beside the subject"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "split",
+    "by": "presence",
+    "measures": [
+     {
+      "key": "record",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "presence",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "maxey"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_248_a_start_stated_is_read",
+  "why": "ISSUES.md #248: a start stated outright still narrows to his starts.",
+  "question": "maxey game log when embiid starts",
+  "names": [
+   "maxey",
+   "embiid"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Joel Embiid",
+     "side": "own",
+     "predicate": "started",
+     "line": null
+    }
+   ],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "game"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "maxey"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "conditions",
+     "before": null,
+     "after": [
+      {
+       "player": "Joel Embiid",
+       "side": "own",
+       "predicate": "started"
+      }
+     ],
+     "reason": "the role the question gives each player named beside the subject"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "maxey"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
  }
 ]

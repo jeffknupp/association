@@ -1173,12 +1173,34 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     per_season = per_season_window(question)
     if per_season:
         return Cause(kind="window_per_season", facts={"window": question[per_season[0].start : per_season[0].end], "per": question[per_season[1].start : per_season[1].end]})
+    denied = _reading_from_route_denied(question, reading)
+    if denied is not None:
+        return denied
     if reading.who.kind == "team" and reading.who.team is not None and team_game_high_asked(question):
         return Cause(kind="team_game_high", facts={"team": reading.who.team, "shape": reading.asked})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)
     return Cause(kind="no_player_reading", facts={"player": player, "shape": reading.asked}) if player is not None else None
+
+
+def _reading_from_route_denied(question: str, reading: Reading) -> Cause | None:
+    """A teammate's start or bench role the words deny - "maxey game log
+    when embiid doesn't start" - which the role reader reads as the role
+    itself, so a filter on it narrows to the very games the question
+    excludes (ISSUES.md #248: his games WITH Embiid starting were listed):
+    refused by a cause naming the words, on every key but the with/without
+    split, which shows both halves and keeps it (:func:`_read_route_beside`)."""
+    if reading.asked == PRESENCE_SPLIT:
+        return None
+    roles = tuple(c for c in reading.companions if c.predicate in ("started", "bench"))
+    for match, predicate in role_phrases(roles, question):
+        if lexicon.DENIED_ROLE.search(match.group(2)):
+            player = next(c.player for c in roles if c.predicate == predicate)
+            return Cause(
+                kind="denied_role", facts={"player": player, "words": question[match.start() : match.end()].strip(), "role": "start" if predicate == "started" else "bench", "shape": reading.asked}
+            )
+    return None
 
 
 def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Cause, ...]:

@@ -4267,6 +4267,12 @@ def _say_team_boolean_count(facts: Mapping[str, Any]) -> str:
 _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
+    "denied_role": lambda facts: (
+        f"'{facts['words']}' asks for the games {facts['player']} did not "
+        f"{'start' if facts['role'] == 'start' else 'come off the bench'}, which nothing here narrows by - "
+        "a teammate's start or bench role is read only as it is stated. "
+        f"Ask for the games {facts['player']} {'came off the bench' if facts['role'] == 'start' else 'started'}, or for the line with and without him."
+    ),
     "team_game_high": lambda facts: (
         f"A team's own best single game is not read yet - nothing ranks the {facts['team']}' games by a stat. Its players' best game is: ask for the most points in a game by a {facts['team']} player."
     ),

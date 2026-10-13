@@ -270,14 +270,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #247
 
-### A start the question denies reads as a start: "maxey game log when embiid doesn't start" lists his games WITH Embiid starting
-- **Found:** 2026-09-27, plan item 6 step (d) follow-ups, probing negated roles beside the teammate-role fix.
-- **Evidence:** `subject._condition_role` finds "start" in "embiid doesn't start" and returns `started`; it has no negation, and the relation has no "did not start" predicate (`player_games.CONDITION_PREDICATES`: played, absent, started, bench, reached). On a relation template the condition narrows to the opposite games: the agent (parser reader, normalizer stubbed, main warehouse), identical on `0a7140a` and this branch, answers "maxey game log when embiid doesn't start" with "Tyrese Maxey with Joel Embiid starting, last 10 of 35 games of the 2026 regular season" - the 35 games Embiid started, where the question asked for the 35 he did not (38 started of the 76ers' 82 per `with_without`'s own split, of which Maxey played 35). The parser keeps a denied start on `with_without` for a stat question ("maxey points when embiid doesn't start" shows both halves), but the log row, the chart row and a record's `player_splits` row come first.
-- **User sees:** the inverse of the question, labeled with the condition it inverted ("with Joel Embiid starting").
-- **Next step:** read a denied start or bench in `_condition_role` (the parser's `parse._DENIED_ROLE` is the pattern) and either refuse it on a filter or add a `not_started` predicate to the relation (NOT EXISTS over the started clause, bounded by the tenure an absence already carries); a test per wording.
-- **Source:** ours.
-- **GitHub:** #248
-
 ### "nba most fga with 0 fgm single game" ranks the league's FGA highs with "0 fgm" unread, and "without fgm" is read as a teammate
 - **Found:** 2026-09-27, checking the answers the #168 fix moved. Rewritten 2026-10-13 (lane N of the P1 sweep), which made "nba" alone no team word where a measure is named (`parse._parent_asked_nba_unmeasured`), so both wordings are the players' now and "single game" is the high (`CHANGES.md`).
 - **Evidence:** on sweep-N after that fix, "nba most fga with 0 fgm single game" answers "every player, 2026 regular season - top 3 by FGA: Cade Cunningham 45 ..." - the high over FGA, the "0 fgm" line unread (the lines tagger reads no line at 0, lane L's); "nba most fga without fgm single game" reads "fgm" as an absent teammate and answers "No player found matching 'fgm'.", and "Nba most fga without fgm" is refused "games without fgm cannot be read here".
