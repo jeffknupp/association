@@ -94,7 +94,7 @@ from association.query.subject import (
     subject_claims,
     team_named_in,
 )
-from association.query.window import MinimumRead, WindowContext, contradicting_ends, per_season_window, read_minimum, read_window
+from association.query.window import MinimumRead, WindowContext, contradicting_ends, own_seasons_window, per_season_window, read_minimum, read_window
 
 ANY = frozenset({"player", "pair", "team", "teams", "team_players", "position", "everyone", "player+companions", "team+companions"})
 """Every subject kind, for a grammar row that applies whatever the kind."""
@@ -1090,9 +1090,14 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       games of 2026, "every season" unread (ISSUES.md #379) - nothing reads
       a window per season yet
       (:func:`~association.query.window.per_season_window`).
+    - a count of a career's own seasons by their place
+      (``own_seasons_window``): "lebron james stats through their first 9
+      seasons" answered his 2026 line (ISSUES.md #392) - which seasons are
+      his first nine is a fact of his career the reader does not hold
+      (:func:`~association.query.window.own_seasons_window`).
 
     The championship first, as the answering loop asked them, then the
-    window's ends, then a window per season."""
+    window's ends, then a window per season, then a career's own seasons."""
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
     ends = contradicting_ends(question)
@@ -1101,6 +1106,9 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     per_season = per_season_window(question)
     if per_season:
         return Cause(kind="window_per_season", facts={"window": question[per_season[0].start : per_season[0].end], "per": question[per_season[1].start : per_season[1].end]})
+    own = own_seasons_window(question)
+    if own:
+        return Cause(kind="own_seasons_window", facts={"seasons": [question[claim.start : claim.end] for claim in own]})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)

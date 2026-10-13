@@ -449,12 +449,12 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #391
 
-### A player's first or last N seasons is read by nothing: "lebron james stats through their first 9 seasons" answers his 2026 line
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
-- **Evidence:** 3 of the 2,082 feed questions: "lebron james stats through their first 9 seasons" (his 2026 line), "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons" (their 2026 lines), "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?" (his line since 2018 - "last 9 seasons" read as the relative "past N seasons" of the league's calendar, `span._relative_since`, and "first 9" by nothing). The window tagger excludes a count of seasons from its own ends (`lexicon.COUNTED_END`'s `(?!\s+(?:seasons?|years?))`), and the span reads "last N seasons" as the calendar's, never the player's own.
-- **User sees:** a wrong answer: one season's line where the first nine of his career were asked.
-- **Next step:** an end of a player's OWN seasons ("his first/last N seasons", "through their first N") read as a span over the seasons on record for him (`season_line.seasons_on_record`), the comparison's per player; refused by a cause until then.
-- **Priority:** P1 - 3 of the 2,082.
+### A player's first or last N seasons is refused: "lebron james stats through their first 9 seasons"
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers); refused by a cause in the P1 sweep (lane S, 2026-10-13).
+- **Evidence:** a count of a career's own seasons by their place ("their first 9 seasons", "his last 9 seasons", "first 2 years": `lexicon.OWN_SEASONS`) is refused by the parser before any reader runs (`own_seasons_window`, `window.own_seasons_window`): "A career's own seasons by their place ('their first 9 seasons') are read by nothing here yet - name the seasons themselves ...". 3 of the 2,082 feed questions ("lebron james stats through their first 9 seasons", "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons", "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?"); until the sweep they answered his 2026 line, their 2026 lines and LeBron's line since 2018.
+- **User sees:** an honest refusal where the first nine seasons of a career were asked.
+- **Next step:** read it: the window tagger types it as a window of SEASONS with its end (`Window(order, count, of="seasons")`, beside a history's "past 5 years"), and the season line resolves it per player over the seasons he has on record (`season_line.seasons_on_record`, the relation's: the first or last N of his regular seasons) - a comparison per player, each over his own; then the cause goes.
+- **Priority:** P3 - a refusal.
 - **Source:** ours.
 - **GitHub:** #392
 

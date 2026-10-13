@@ -55,7 +55,7 @@ from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
-from association.query.window import MinimumRead, WindowContext, WindowRead, contradicting_ends, per_season_window, read_minimum, read_window
+from association.query.window import MinimumRead, WindowContext, WindowRead, contradicting_ends, own_seasons_window, per_season_window, read_minimum, read_window
 
 S = current_season()
 
@@ -384,3 +384,19 @@ def test_a_question_naming_both_ends_is_found_by_the_words_of_each(question: str
 )
 def test_a_window_taken_in_each_season_is_found_by_its_words(question: str, expected: list[str]) -> None:
     assert [question[claim.start : claim.end] for claim in per_season_window(question)] == expected
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        # ISSUES.md #392: a career's own seasons by their place.
+        ("lebron james stats through their first 9 seasons", ["their first 9 seasons"]),
+        ("Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?", ["his first 9 seasons", "his last 9 seasons"]),
+        ("wembanyama first 2 years", ["first 2 years"]),
+        # The calendar's last N seasons, and a window of games, are not.
+        ("lebron stats last 3 seasons", []),
+        ("lebron first 10 games", []),
+    ],
+)
+def test_a_careers_own_seasons_by_their_place(question: str, words: list[str]) -> None:
+    assert [question[c.start : c.end] for c in own_seasons_window(question)] == words

@@ -310,6 +310,22 @@ def contradicting_ends(question: str) -> tuple[Claim, ...]:
     return tuple(sorted({*found["recent"], *found["first"]}, key=lambda claim: (claim.start, claim.end)))
 
 
+def own_seasons_window(question: str) -> tuple[Claim, ...]:
+    """The words of a count of a career's own seasons by their place -
+    "first 9 seasons" in "lebron james stats through their first 9
+    seasons", "last 9 seasons" in "... in his last 9 seasons"
+    (:data:`~association.query.lexicon.OWN_SEASONS`; ISSUES.md #392) - or
+    none. The span reads seasons by the calendar, and which seasons are a
+    player's first nine is a fact of his career on record, which the reader
+    does not hold: the parser refuses the question by a cause naming the
+    words (``own_seasons_window``), where his 2026 line answered with "first
+    9" unread - or, for "his last 9 seasons", the league's last nine.
+
+    .. versionadded:: 6.0.0
+    """
+    return tuple(Claim(match.start(), match.end(), "window") for match in lexicon.OWN_SEASONS.finditer(question))
+
+
 def per_season_window(question: str) -> tuple[Claim, ...]:
     """The words of a window of games taken in each season - "first 10
     game" beside "every season" in "warriors first 10 game record every

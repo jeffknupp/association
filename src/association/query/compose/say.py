@@ -590,6 +590,15 @@ def _window_ends_contradict(ends: Sequence[str]) -> str:
     return f"The question names both ends of the games at once ({said}) - ask for the first games or the last ones, not both."
 
 
+def _own_seasons_window(seasons: Sequence[str]) -> str:
+    """The refusal for a count of a career's own seasons by their place
+    ("lebron james stats through their first 9 seasons", ISSUES.md #392):
+    which seasons those are is a fact of the career nothing reads yet, so
+    the sentence names the words and the wording that is read."""
+    said = " and ".join(repr(words) for words in seasons)
+    return f'A career\'s own seasons by their place ({said}) are read by nothing here yet - name the seasons themselves ("from 2004 to 2012"), or ask for his career.'
+
+
 def _window_per_season(window: str, per: str) -> str:
     """The refusal for a window of games taken in each season ("warriors
     first 10 game record every season", ISSUES.md #379): nothing reads one
@@ -4519,6 +4528,7 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "minimum_unranked": lambda facts: _minimum_unranked(facts["unit"], facts["count"]),
     "window_ends_contradict": lambda facts: _window_ends_contradict(facts["ends"]),
     "window_per_season": lambda facts: _window_per_season(facts["window"], facts["per"]),
+    "own_seasons_window": lambda facts: _own_seasons_window(facts["seasons"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
 }
 
