@@ -131,7 +131,7 @@ STUB = """
       const question = decodeURIComponent(url.split("question=")[1] || "");
       const a = byQuestion.get(question);
       setTimeout(() => {
-        const missing = {text: "(no recorded answer for this question)", answered_by: "agent", intent: null,
+        const missing = {text: "(no recorded answer for this question)", answered_by: "refused", shape: null,
                          timing: {total_seconds: 0}, data: null, artifacts: [], history_file: null};
         const payload = JSON.stringify(a || missing);
         (this.listeners["answer"] || []).forEach(f => f({data: payload}));
@@ -232,7 +232,8 @@ def main() -> int:
     for question, names, stat in cases:
         answer = answer_as_recorded(args.db_path, args.out, question, names, stat)
         answers.append(answer)
-        print(f"{answer['answered_by']:5s} {answer.get('intent') or '-':18s} {question[:70]}", flush=True)
+        shape = answer.get("shape")
+        print(f"{answer['answered_by']:5s} {'/'.join(shape.values()) if shape else '-':32s} {question[:70]}", flush=True)
     gallery = write_gallery(args.out, answers)
     print(f"\n{len(answers)} answers -> {gallery}")
     if args.screenshots:

@@ -48,7 +48,6 @@ from association.query.reading import (
     Reading,
     Span,
     Window,
-    asked_label,
 )
 from association.query.reading import Subject as Who
 from association.query.subject import SUBJECT_KINDS, Subject, apply_subject, child_named, question_supports, read_subject, settle_subject
@@ -282,8 +281,8 @@ def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConne
     player = reading.who.player
     team_subject = reading.subject.kind in ("team", "team_players") and not reading.subject.players
     if reading.asked in PLAYER_ASKS and team_subject and player:
-        no_line = reading.intent == "record_when" and not (threshold_of(reading) and reading.measure is not None and reading.measure.named)
-        assert not find_teams(teams_of(con), player) and not no_line, (question, reading.intent, player)
+        no_line = reading.asked == LINE_RECORD and not (threshold_of(reading) and reading.measure is not None and reading.measure.named)
+        assert not find_teams(teams_of(con), player) and not no_line, (question, reading.asked, player)
 
 
 def test_a_router_entry_that_is_not_what_its_slot_says_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
@@ -415,7 +414,7 @@ def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.
     # A log against a player is his own games with the other on the far side (ROADMAP step 3), the model's Jokic still carried as invented.
     assert s.kind == "player" and s.players == ("Jay Huff",) and [(c.player, c.side) for c in s.conditions] == [("Joel Embiid", "opponent")] and s.invented == ("Nikola Jokic",)
     invented = _parsed(con, "jay huff game log vs Embiid", ["Jaylen Huff", "Nikola Jokic"])
-    assert invented.intent == "game_log" and invented.misread == ("Nikola Jokic",)
+    assert invented.asked == PLAYER_LOG and invented.misread == ("Nikola Jokic",)
     assert (
         read_subject(names_of(con), "luka vs the lakers", PLAYER_LOG, Reading(who=Who(kind="player", players=("Luka Doncic",)), cuts=Cuts(opponent="Los Angeles Lakers"))).opponent
         == "Los Angeles Lakers"
@@ -424,9 +423,9 @@ def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.
     assert team.who.player == "Luka Doncic" and team.cuts.opponent == "Los Angeles Lakers" and team.misread == ()
     # A log against a player: his own games, the other on the far side (ROADMAP step 3); the bare pair is still the matchup.
     log = _parsed(con, "luka game log vs embiid", ["luka", "embiid"])
-    assert log.intent == "game_log" and log.who.player == "Luka Doncic" and [(c.player, c.side) for c in log.companions] == [("Joel Embiid", "opponent")] and log.misread == ()
+    assert log.asked == PLAYER_LOG and log.who.player == "Luka Doncic" and [(c.player, c.side) for c in log.companions] == [("Joel Embiid", "opponent")] and log.misread == ()
     pair = _parsed(con, "luka vs embiid", ["luka", "embiid"])
-    assert pair.intent == "player_matchup" and pair.who.players == ("Luka Doncic", "Joel Embiid") and not pair.cuts.opponent and pair.misread == ()
+    assert pair.asked == PLAYER_MEETINGS and pair.who.players == ("Luka Doncic", "Joel Embiid") and not pair.cuts.opponent and pair.misread == ()
 
 
 def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyConnection) -> None:
@@ -769,7 +768,7 @@ def test_a_teams_record_when_a_player_reached_a_threshold_is_assigned(con: duckd
     # filed the subject as an outlook's "team" named Joel Embiid (day5), a
     # shape the parser never writes.
     reading = _parsed(con, "how many playoff games has embiid won?", ["embiid"])
-    assert reading.intent == "record_when" and reading.who.player == "Joel Embiid" and not reading.who.team and reading.measure is not None and reading.measure.as_typed == "wins"
+    assert reading.asked == LINE_RECORD and reading.who.player == "Joel Embiid" and not reading.who.team and reading.measure is not None and reading.measure.as_typed == "wins"
     asked, _ = _assigned(
         con,
         "how many games have the celtics won this season",
@@ -987,13 +986,11 @@ def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: 
         s.kind == "team"
         and s.teams == ("Philadelphia 76ers",)
         and [(c.player, c.predicate, c.line) for c in s.conditions] == [("maxey", "reached", Line(measure="points", value=20, as_typed="20+ points"))]
-        and s.intent == "record_when"
+        and s.asked == LINE_RECORD
     )
     assert "companions the router named nobody for ['maxey']" in s.evidence
     applied = apply_subject(s, scope, asked=PLAYER_LINE)
-    assert (
-        asked_label(applied.asked) == "record_when" and applied.dropped == [] and (applied.scope.who.player, applied.scope.who.team, threshold_of(applied.scope)) == ("maxey", "Philadelphia 76ers", 20)
-    )
+    assert applied.asked == LINE_RECORD and applied.dropped == [] and (applied.scope.who.player, applied.scope.who.team, threshold_of(applied.scope)) == ("maxey", "Philadelphia 76ers", 20)
     s = _read(con, "thunder record with jalen williams out", TEAM_RECORD, scope=Reading(who=Who(kind="team", teams=("Oklahoma City Thunder",))))
     assert s.conditions == (Companion(player="jalen williams", predicate="absent"),)
     for question in (
@@ -1168,7 +1165,7 @@ def test_the_subject_is_read_once_per_question(con: duckdb.DuckDBPyConnection, m
     reading = route
     assert reading.subject is not None and reading.subject.players == ("Nikola Jokic",)
     assert seen == [None]  # read under no shape: the grammar has not named one yet
-    assert reading.intent == "threshold_count" and reading.subject.intent == "threshold_count"
+    assert reading.asked == GAMES_COUNTED and reading.subject.asked == GAMES_COUNTED
 
 
 def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() -> None:
@@ -1181,7 +1178,7 @@ def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() ->
     meeting = settle_subject(team, TEAM_MEETINGS)
     assert (meeting.kind, meeting.teams, meeting.opponent) == ("teams", ("Philadelphia 76ers", "Boston Celtics"), None)
     against = settle_subject(team, TEAM_PERIOD_TOTAL)
-    assert (against.kind, against.teams, against.opponent, against.intent) == ("team", ("Philadelphia 76ers",), "Boston Celtics", "team_quarter_points")
+    assert (against.kind, against.teams, against.opponent, against.asked) == ("team", ("Philadelphia 76ers",), "Boston Celtics", TEAM_PERIOD_TOTAL)
     assert against.evidence == ("team word '76ers'",)
 
     player = Subject("player", players=("Nikola Jokic",))
@@ -1189,7 +1186,11 @@ def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() ->
     assert child_named(player, PLAYER_LOG, question) == (GAMES_COUNTED, "How many 30+ point games")
     assert child_named(player, GAMES_COUNTED, question) is None  # a child already chosen stands
     counted = settle_subject(player, GAMES_COUNTED, parent=PLAYER_LOG, words="How many 30+ point games")
-    assert counted.intent == "threshold_count" and counted.intent_reason == "the words 'How many 30+ point games' name threshold_count" and counted.evidence[-1].endswith("name threshold_count")
+    assert (
+        counted.asked == GAMES_COUNTED
+        and counted.asked_reason == "the words 'How many 30+ point games' name player_games/scalar/count"
+        and counted.evidence[-1].endswith("name player_games/scalar/count")
+    )
 
 
 @pytest.mark.parametrize(

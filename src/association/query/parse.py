@@ -72,7 +72,7 @@ from association.query.reading import (
     Reading,
     Unsupported,
     Window,
-    asked_label,
+    key_path,
 )
 from association.query.reading import Subject as ReadSubject
 from association.query.span import SpanContext, needed, read_by, read_span
@@ -744,22 +744,24 @@ def _read_route_staged(
         staged = settle(numbered, child, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines, reached_when=reached_when)
         # A team's record under a companion's line names no words, and the
         # rules' own settling of it stands. The decisions record the moves
-        # by their labels, as the trace prints them.
+        # by their keys, as the trace prints them (``asked``,
+        # ``relation/shape/by``; by the page's labels, as ``intent``, until
+        # Phase 4, step 2).
         if staged.asked == child or words is None:
-            decisions.append(Decision("parser", "intent", asked_label(parent), asked_label(child), _why_named(child, words)))
+            decisions.append(Decision("parser", "asked", key_path(parent), key_path(child), _why_named(child, words)))
             if staged.asked != child:
-                decisions.append(Decision("parser", "intent", asked_label(child), asked_label(staged.asked), "the stages settle it from the question's words"))
+                decisions.append(Decision("parser", "asked", key_path(child), key_path(staged.asked), "the stages settle it from the question's words"))
             return staged, tuple(decisions), words, child_claims
-        decisions.append(Decision("parser", "intent", asked_label(child), asked_label(parent), f"the words {words!r} name {asked_label(child)}, and the stages declined it"))
+        decisions.append(Decision("parser", "asked", key_path(child), key_path(parent), f"the words {words!r} name {key_path(child)}, and the stages declined it"))
     staged = settle(numbered, parent, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines, reached_when=reached_when)
     if staged.asked != parent:
-        decisions.append(Decision("parser", "intent", asked_label(parent), asked_label(staged.asked), "the stages settle it from the question's words"))
+        decisions.append(Decision("parser", "asked", key_path(parent), key_path(staged.asked), "the stages settle it from the question's words"))
     return staged, tuple(decisions), None, child_claims
 
 
 def _why_named(child: PointShape, words: str | None) -> str:
-    """The reason a child stands, as :attr:`~association.query.subject.Subject.intent_reason` says it."""
-    return f"the words {words!r} name {asked_label(child)}" if words is not None else "a team's record in the games a player named beside it reached a line"
+    """The reason a child stands, as :attr:`~association.query.subject.Subject.asked_reason` says it."""
+    return f"the words {words!r} name {key_path(child)}" if words is not None else "a team's record in the games a player named beside it reached a line"
 
 
 def _tagged(
@@ -946,7 +948,6 @@ def _reading(
     reading = Reading(
         **applied.scope.filters(),
         asked=applied.asked,
-        intent=asked_label(applied.asked),
         subject=subject,
         decisions=(*_subject_decisions(subject), *decisions, *applied.decisions),
         misread=tuple(applied.dropped),

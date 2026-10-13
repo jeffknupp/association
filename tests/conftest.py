@@ -13,18 +13,47 @@ hand.
 
 And, when asked for, the recording of every call the suite makes across a
 stage boundary (``tests/stage_calls.py``).
+
+And no git variable of the environment reaches a test: every ``GIT_*``
+variable is removed before any test runs (:func:`without_git_variables`).
+``git rebase --exec`` exports ``GIT_DIR`` to the command it runs, and on
+2026-10-12 a rebase gated by a suite run handed it to the tests that build a
+scratch repository - ``git init``, ``git config``, ``git commit`` in a
+``tmp_path`` - and to the scripts and the package code they call, which run
+git themselves: they wrote into the real shared repository instead,
+``core.bare=true`` and ``user.name=Test`` in its config and test commits on
+a worktree's HEAD. Removed here, once, for the whole process, rather than
+in each test's ``subprocess.run``: the git a test runs through
+``scripts/check_changes_per_commit.py``, ``scripts/bump_version.py``,
+``association.cli.paths`` or ``association.query.history`` inherits the
+process's environment too.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
 
 import pytest
 
 from association.nba.season import TODAY_ENV
 
 os.environ.setdefault(TODAY_ENV, "2026-09-30")
+
+
+def without_git_variables(environ: MutableMapping[str, str]) -> list[str]:
+    """Remove every ``GIT_*`` variable from ``environ`` - ``GIT_DIR``,
+    ``GIT_WORK_TREE``, ``GIT_INDEX_FILE``, ``GIT_AUTHOR_NAME``, ... - so a
+    git command run with it reads the repository its working directory or
+    ``-C`` names and nothing else; returns the names removed. ``GITHUB_*``
+    (CI's) is no git variable and stays."""
+    removed = sorted(name for name in environ if name.startswith("GIT_"))
+    for name in removed:
+        del environ[name]
+    return removed
+
+
+without_git_variables(os.environ)
 
 # Off unless asked for: every call the suite makes across a stage boundary,
 # written out for comparing two trees (tests/stage_calls.py; ROADMAP.md,

@@ -38,7 +38,7 @@ def _reading() -> Reading:
 def _answer(**changes: Any) -> Answer:
     games = [{"date": "2026-01-02", "points": 31, "rate": 0.5}, {"date": "2026-03-04", "points": 22, "rate": 0.25}]
     data = {"player": "Nikola Jokic", "games": games, "value": 53, "headline": "Jokic scored 53", "notes": ["a caveat"]}
-    return Answer(**{"question": QUESTION, "text": "Jokic scored 53 points. a caveat", "answered_by": "fast", "timing": _TIMING, "intent": "player_stat", "data": data, **changes})
+    return Answer(**{"question": QUESTION, "text": "Jokic scored 53 points. a caveat", "answered_by": "fast", "timing": _TIMING, "data": data, **changes})
 
 
 def _snapshot(**changes: Any) -> dict[str, Any]:
@@ -49,7 +49,7 @@ def test_a_snapshot_holds_the_four_stages_as_json() -> None:
     record = _snapshot()
     assert set(STAGES) <= set(record) and record["question"] == QUESTION
     assert json.loads(json.dumps(record)) == record
-    assert record["reading"]["intent"] == "player_stat" and record["reading"]["asked"] == {"relation": "player_seasons", "shape": "scalar", "by": "line"}
+    assert "intent" not in record["reading"] and record["reading"]["asked"] == {"relation": "player_seasons", "shape": "scalar", "by": "line"}
     assert (record["reading"]["who"]["players"], record["reading"]["cuts"]["opponent"], record["reading"]["span"]["season"]) == (["Nikola Jokic"], "Boston Celtics", 2026)
     assert record["reading"]["decisions"] == [{"stage": "subject", "field": "kind", "before": None, "after": "player", "reason": ""}]
     assert record["reading"]["point"]["shape"] == "scalar" and [m["key"] for m in record["reading"]["point"]["measures"]] == ["points"]
@@ -89,7 +89,7 @@ def test_the_reading_and_query_records_can_be_taken_without_an_answer() -> None:
 
 
 def test_a_question_nothing_read_has_no_reading_or_query() -> None:
-    record = snapshot(None, _answer(text="refused", answered_by="refused", intent=None, data=None), unanswered="fewer than 3 words")
+    record = snapshot(None, _answer(text="refused", answered_by="refused", data=None), unanswered="fewer than 3 words")
     assert record["reading"] is None and record["query"] is None and record["result"] is None
     assert record["answer"]["unanswered"] == "fewer than 3 words"
 
@@ -106,7 +106,7 @@ def test_a_point_the_compiler_has_none_of_says_why() -> None:
     assert snapshot(declined, _answer(), planned=plan_point(declined))["reading"]["point_declined"] == "no player subject"
     assert snapshot(refused, _answer(), planned=plan_point(refused))["reading"]["point_refusal"] == {"kind": "no_ranking_measure", "facts": {"stat": "bench points"}}
     whole = snapshot(_reading(), _answer(), planned=plan_point(_reading()))["reading"]
-    assert whole["point_declined"] is None and whole["point_refusal"] is None and whole["point"]["intent"] == "player_stat"
+    assert whole["point_declined"] is None and whole["point_refusal"] is None and whole["point"]["asked"] == {"relation": "player_seasons", "shape": "scalar", "by": "line"}
 
 
 def test_plain_values_are_the_same_on_every_run() -> None:
@@ -161,7 +161,7 @@ def _moved(path: list[Any], value: Any, stage: str = "result") -> dict[str, Any]
         (["value"], 53.0, "result", ("result", "value", "type")),
         (["value"], None, "result", ("result", "value", "changed")),
         (["span", "season"], 2025, "reading", ("reading", "span.season", "changed")),
-        (["intent"], "game_log", "reading", ("reading", "intent", "changed")),
+        (["asked", "by"], "date", "reading", ("reading", "asked.by", "changed")),
         (["aggregate"], "per_game", "query", ("query", "aggregate", "changed")),
         (["text"], "Jokic scored 54 points.", "answer", ("answer", "text", "changed")),
         (["answered_by"], "refused", "answer", ("answer", "answered_by", "changed")),
@@ -241,7 +241,7 @@ def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={"value": 1}, answer="templated"))
     agent = _agent(tmp_path)
     answer = ask_routed(agent, "who scored the most points", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
-    assert agent.reading is not None and agent.reading.intent == "leaderboard"
+    assert agent.reading is not None and agent.reading.asked == PLAYER_RANKING
     record = snapshot(agent.reading, answer, planned=agent.planned)
     with pytest.raises(ValueError, match="needs its planning"):
         snapshot(agent.reading, answer)

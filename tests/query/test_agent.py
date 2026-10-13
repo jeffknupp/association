@@ -12,12 +12,14 @@ from routed import Routed, ask_routed
 from association.query.agent import Agent
 from association.query.reading import (
     GAMES_COUNTED,
+    LINE_RECORD,
     NETPOINTS_FINGERPRINT,
     PLAYER_COMPARISON,
     PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_RANKING,
     SHOT_CHART,
+    SHOT_DISTANCE,
     TEAM_MEETINGS,
     TEAM_RANKING,
     TEAM_RECORD,
@@ -29,6 +31,7 @@ from association.query.reading import (
     Reading,
     Span,
     Window,
+    key_path,
 )
 from association.query.reading import Subject as Who
 
@@ -175,7 +178,7 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
     )
     assert not reached
     assert "Alperen Sengun" in answer.text
-    assert "team leaderboard" in answer.text
+    assert "a ranking of teams has no reading for one" in answer.text
 
 
 def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -245,7 +248,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
 
     def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
         del ran  # the agent's own callback, not this test's record of the paths taken
-        paths.append(f"compose {reading.intent}")
+        paths.append(f"compose {key_path(reading.asked)}")
         return Reply(data={}, answer="composed")
 
     import duckdb
@@ -265,8 +268,8 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
         "sixers record when maxey scored 20+ points",
         Routed(TEAM_RECORD, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2))),
     )
-    assert paths == ["compose record_when"]
-    assert answer.intent == "record_when" and "composed" in (answer.text or "")
+    assert paths == ["compose player_games/split/line"]
+    assert agent.reading is not None and agent.reading.asked == LINE_RECORD and "composed" in (answer.text or "")
 
 
 def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -358,23 +361,23 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
 
     answer = ask_routed(agent, "who had the most triple-doubles?", Routed(None))
     assert answer.answered_by == "refused"
-    assert answer.text == refusal_text("intent 'other' has no reader")
-    assert answer.intent is None and answer.data is None
-    assert agent.unanswered == "intent 'other' has no reader"
+    assert answer.text == refusal_text("what its words ask has no reader")
+    assert answer.shape is None and answer.data is None
+    assert agent.unanswered == "what its words ask has no reader"
 
     # A reader's own refusal while reading, with its reason: a fingerprint of
     # nobody (the compiler's since Phase 2's slice (v); with_without,
     # head_to_head and the fingerprint's template, which this used, are gone).
     answer = ask_routed(agent, "a question nothing reads", Routed(NETPOINTS_FINGERPRINT))
-    assert answer.answered_by == "refused" and "fingerprint: fingerprint needs a player" in answer.text
-    assert agent.unanswered == "fingerprint: fingerprint needs a player name"
+    assert answer.answered_by == "refused" and "as a NetPoints fingerprint: fingerprint needs a player" in answer.text
+    assert (agent.unanswered, agent.unanswered_as) == ("fingerprint needs a player name", NETPOINTS_FINGERPRINT)
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
     # refused with the compiler's reason where it has no reading: a log of
     # nobody.
     answer = ask_routed(agent, "a game log", Routed(PLAYER_LOG))
-    assert answer.answered_by == "refused" and "game_log: no player subject" in answer.text
-    assert agent.unanswered is not None and agent.unanswered.startswith("game_log: ")
+    assert answer.answered_by == "refused" and "as a game log: no player subject" in answer.text
+    assert (agent.unanswered, agent.unanswered_as) == ("no player subject and no ranking or position-group reading of the question", PLAYER_LOG)
     # And says a cause where the reading came to one, as an answer: a count
     # with no line to count (Phase 2, step 3).
     answer = ask_routed(agent, "how many games", Routed(GAMES_COUNTED, Reading(measure=Measure(key="points", as_typed="points"))))
@@ -395,9 +398,11 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
 
 
 def test_a_composed_answer_is_returned_as_fast_with_the_trace_line(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The compiler's answer is answered_by="fast", the intent kept, with
-    a trace line naming the point on the relation it composed, the way
-    "-> (router) intent=..." names what was routed."""
+    """The compiler's answer is answered_by="fast", with a trace line naming
+    the key the words asked, the planned shape and the point on the relation
+    it composed, the way "-> (parser) asked=..." names what the words ask
+    (each a key, ``relation/shape/by``, where the retired intent's name
+    stood until Phase 4, step 2)."""
     from association.query.answer import Reply
 
     def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
@@ -413,11 +418,12 @@ def test_a_composed_answer_is_returned_as_fast_with_the_trace_line(monkeypatch: 
 
     assert answer.text == "Joel Embiid has averaged 30.0 points since 2024."
     assert answer.answered_by == "fast"
-    assert answer.intent == "player_stat"
+    assert agent.reading is not None and agent.reading.asked == PLAYER_LINE
     assert answer.data == {"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}
     compose_lines = [line for line in seen if "(compose)" in line]
     assert len(compose_lines) == 1
-    assert "intent='player_stat'" in compose_lines[0]
+    assert "asked=player_seasons/scalar/line shape=player_games/scalar/line" in compose_lines[0]
+    assert any("-> (parser) asked=player_seasons/scalar/line kind=" in line for line in seen), seen
     assert "'skeleton': 'aggregate'" in compose_lines[0] and "'measures': ['points']" in compose_lines[0]
     # The point is what was composed, not the rows it produced.
     assert "rows" not in compose_lines[0]
@@ -466,11 +472,12 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     assert answer.data == {"name_readings": [reading], "notes": [reading]}
 
 
-def test_an_unported_intent_is_refused_by_name(tmp_path: Path) -> None:
-    """A shape with no template is refused naming the intent, in seconds."""
+def test_words_that_ask_for_no_shape_are_refused_saying_so(tmp_path: Path) -> None:
+    """Words that name no shape a reader reads are refused saying so, in
+    seconds ("intent 'other' has no reader" until Phase 4, step 2)."""
 
     answer = ask_routed(_agent(tmp_path), "who had the most triple-doubles?", Routed(None))
-    assert answer.answered_by == "refused" and "intent 'other' has no reader" in answer.text
+    assert answer.answered_by == "refused" and "what its words ask has no reader" in answer.text
 
 
 def test_a_reader_failure_is_refused_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -479,7 +486,7 @@ def test_a_reader_failure_is_refused_rather_than_erroring(monkeypatch: pytest.Mo
     assert answer.answered_by == "refused" and "the normalizer returned no usable reply" in answer.text
 
 
-def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_the_fast_path_carries_out_the_shape_and_data_it_used_to_discard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Reply.data existed so a caller could render the answer itself,
     and _try_fast_path returned only result.answer, so nothing ever could.
     That is the whole reason Phase 0 of the 2.0 plan exists."""
@@ -491,7 +498,7 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
 
     assert answer.text == "Jokic."
     assert answer.answered_by == "fast"
-    assert answer.intent == "leaderboard"
+    assert answer.shape == PLAYER_RANKING
     assert answer.data == {"leaders": ["Jokic"]}
     assert answer.question == "who leads the league in scoring?"
 
@@ -515,14 +522,13 @@ def test_an_answer_carries_the_shape_the_answer_side_chose_its_reader_by(monkeyp
     assert any("-> (compose)" in line and "shape=player_seasons/ranking/player" in line for line in seen), seen
 
 
-def test_a_refused_answer_has_no_intent_or_data_rather_than_an_empty_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_a_refused_answer_has_no_shape_or_data_rather_than_an_empty_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Only a template or the compiler produces those. None says so; {} would
     read as "the template ran and found nothing", which is a different claim."""
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: None)
     answer = _agent(tmp_path).ask("what is this question")
 
     assert answer.answered_by == "refused"
-    assert answer.intent is None
     assert answer.shape is None
     assert answer.data is None
 
@@ -581,7 +587,7 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
 
     agent = _agent_with_players(tmp_path)
     answer = ask_routed(agent, "who had the most triple-doubles?", Routed(None))
-    assert answer.text == refusal_text("intent 'other' has no reader") == "Nothing here answers this question: intent 'other' has no reader."
+    assert answer.text == refusal_text("what its words ask has no reader") == "Nothing here answers this question: what its words ask has no reader."
 
 
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -680,7 +686,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     agent.verbose = True
     answer = ask_routed(agent, "how many 30 point games did embiid have?", recorded)
 
-    assert answer.text == "Joel Embiid had 9 games with 30+ points." and answer.answered_by == "fast" and answer.intent == "threshold_count"
+    assert answer.text == "Joel Embiid had 9 games with 30+ points." and answer.answered_by == "fast" and agent.reading is not None and agent.reading.asked == GAMES_COUNTED
     assert calls == ["compose"]
     reading_lines = [line for line in seen if "(reading)" in line]
     expected = "  -> (reading) relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc"
@@ -700,7 +706,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     answer = ask_routed(agent, "how many 30 point games did embiid have?", recorded)
     assert answer.answered_by == "refused" and "a test double's reason" in answer.text
     assert calls == ["compose"]
-    assert agent.unanswered == "threshold_count: a test double's reason for having no reading"
+    assert (agent.unanswered, agent.unanswered_as) == ("a test double's reason for having no reading", GAMES_COUNTED)
 
 
 def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -730,7 +736,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
     con.close()
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
     answer = agent.ask("how many points does embiid average")
-    assert (answer.text, answer.intent) == ("templated", "player_stat")
+    assert answer.text == "templated" and agent.reading is not None and agent.reading.asked == PLAYER_LINE
     assert (seen["player"], seen["stat"]) == ("Joel Embiid", "points")
 
 
@@ -753,12 +759,13 @@ def test_the_intent_the_parsers_words_assign_reaches_the_answers_decisions(monke
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players VALUES ('1', 'Joel Embiid')")
     con.close()
-    answer = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history").ask("how far away does embiid shoot from?")
-    assert (answer.text, answer.intent) == ("templated", "shot_distance")
-    moved = [d for d in answer.decisions if (d.stage, d.field) == ("parser", "intent")]
-    assert [(d.before, d.after, d.reason) for d in moved] == [("player_stat", "shot_distance", "the words 'how far' name shot_distance")]
+    agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+    answer = agent.ask("how far away does embiid shoot from?")
+    assert answer.text == "templated" and agent.reading is not None and agent.reading.asked == SHOT_DISTANCE
+    moved = [d for d in answer.decisions if (d.stage, d.field) == ("parser", "asked")]
+    assert [(d.before, d.after, d.reason) for d in moved] == [("player_seasons/scalar/line", "shots/scalar/distance", "the words 'how far' name shots/scalar/distance")]
     record = next(iter((tmp_path / ".history").glob("*.log"))).read_text()
-    assert "  -> (decision) parser intent: 'player_stat' -> 'shot_distance' (the words 'how far' name shot_distance)" in record
+    assert "  -> (decision) parser asked: 'player_seasons/scalar/line' -> 'shots/scalar/distance' (the words 'how far' name shots/scalar/distance)" in record
 
 
 def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Path) -> None:
@@ -781,7 +788,7 @@ def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Pat
         ),
     )
     assert answer.answered_by == "refused" and "a rate per 36 cannot be read here" in answer.text
-    assert agent.unanswered == "threshold_count: a rate per 36 cannot be read here - it would answer for a different span than was asked"
+    assert (agent.unanswered, agent.unanswered_as) == ("a rate per 36 cannot be read here - it would answer for a different span than was asked", GAMES_COUNTED)
 
 
 def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

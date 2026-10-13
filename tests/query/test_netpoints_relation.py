@@ -1,6 +1,7 @@
 """The NetPoints relation's reads (:mod:`association.query.netpoints`), each
 over a fixture warehouse in the shape of the real tables: the three a
-player's NetPoints are read from and the three a fingerprint is. Phase 4,
+player's NetPoints are read from, the three a fingerprint is, and a
+comparison's NetPoints rows (from ``season_line``, the same day). Phase 4,
 step 5 moved the statements here from ``compose.netpoints`` and
 ``fingerprint``; these hold what each returns, apart from the readers that
 say it.
@@ -23,9 +24,9 @@ def con() -> duckdb.DuckDBPyConnection:
     c = duckdb.connect(":memory:")
     c.execute(
         "CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, overall DOUBLE, offense DOUBLE, defense DOUBLE, "
-        "overall_per_100_poss DOUBLE, total_minutes DOUBLE, games INTEGER)"
+        "overall_per_100_poss DOUBLE, total_minutes DOUBLE, games INTEGER, offense_per_100_poss DOUBLE, defense_per_100_poss DOUBLE)"
     )
-    c.execute("INSERT INTO net_points_player VALUES ('1', 2026, 'Regular Season', 10.0, 7.0, 3.0, 1.5, 2000.0, 70), ('1', 2026, 'Postseason', 2.0, 1.0, 1.0, 0.5, 300.0, 9)")
+    c.execute("INSERT INTO net_points_player VALUES ('1', 2026, 'Regular Season', 10.0, 7.0, 3.0, 1.5, 2000.0, 70, 1.0, 0.5), ('1', 2026, 'Postseason', 2.0, 1.0, 1.0, 0.5, 300.0, 9, 0.25, 0.25)")
     columns = ", ".join(f"{category}_{side}_net_pts DOUBLE" for category in ("total", "rim", "corner") for side in ("o", "d", "t"))
     c.execute(f"CREATE TABLE net_points_player_fingerprint (athlete_id VARCHAR, season INTEGER, minutes DOUBLE, total_poss DOUBLE, {columns})")
     c.execute("INSERT INTO net_points_player_fingerprint VALUES ('1', 2026, 2000.0, 4000.0, 1, 2, 3, 4, 5, 6, 7, 8, 9), ('2', 2026, 900.0, 1800.0, 9, 8, 7, 6, 5, 4, 3, 2, 1)")
@@ -54,6 +55,18 @@ def test_a_season_line_is_read_on_its_own_string_season_type(con: duckdb.DuckDBP
     assert netpoints.season_totals(con, "1", 2026, 2) == (10.0, 7.0, 3.0, 1.5, 2000.0, 70)
     assert netpoints.season_totals(con, "1", 2026, 3) == (2.0, 1.0, 1.0, 0.5, 300.0, 9)
     assert netpoints.season_totals(con, "2", 2026, 2) is None
+
+
+def test_a_comparisons_row_is_read_per_100_on_the_tables_own_season_type_and_raises_without_the_table(con: duckdb.DuckDBPyConnection) -> None:
+    """A comparison's NetPoints rows (``season_line.NETPOINTS_COMPARE_ROWS``'
+    columns), told apart by the season type's label; a missing table raises,
+    which the comparison's reader catches and drops the section for."""
+    assert netpoints.netpoints_row(con, "1", 2026, 2) == (1.5, 1.0, 0.5)
+    assert netpoints.netpoints_row(con, "1", 2026, 3) == (0.5, 0.25, 0.25)
+    assert netpoints.netpoints_row(con, "2", 2026, 2) is None
+    con.execute("DROP TABLE net_points_player")
+    with pytest.raises(duckdb.Error):
+        netpoints.netpoints_row(con, "1", 2026, 2)
 
 
 def test_a_season_fingerprint_reads_each_category_offense_defense_and_total(con: duckdb.DuckDBPyConnection) -> None:

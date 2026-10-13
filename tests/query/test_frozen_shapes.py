@@ -32,13 +32,16 @@ from typing import Any
 
 from association.query.grammar import CODE_ASSIGNED_ASKS
 from association.query.parse import PARENT_GRAMMAR
-from association.query.reading import SHAPE_NAMES, PointShape
+from association.query.reading import PointShape
 from association.query.subject import KIND_ASSIGNED_ASKS
 
 # Every shape the words could ask on 2026-09-30 - the 25 intents the reader
 # named then, keyed since Phase 3, step 4 as (relation, shape, by): the
-# grammar's keys (each the label table's, ``reading.SHAPE_NAMES``, which
-# names it back to the page). Remove one when its slice deletes it; adding
+# grammar's keys (each named back to the page by the label table,
+# ``reading.SHAPE_NAMES``, until Phase 4, step 2 deleted the label; said in
+# words by the sayer since, ``compose.say.asked_as``, which
+# ``test_say.test_every_key_the_grammar_names_is_said_in_words`` holds to
+# every one). Remove one when its slice deletes it; adding
 # one is a decision the roadmap has to change for.
 FROZEN = frozenset(
     {
@@ -73,7 +76,6 @@ FROZEN = frozenset(
 
 def _named_today() -> set[tuple[str, str, str]]:
     asked: set[PointShape] = set(CODE_ASSIGNED_ASKS) | set(KIND_ASSIGNED_ASKS) | {row[-1] for row in PARENT_GRAMMAR}
-    assert asked <= set(SHAPE_NAMES), "a key the grammar names that the label table cannot name back to the page"
     return {(shape.relation, shape.shape, shape.by) for shape in asked}
 
 

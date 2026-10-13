@@ -123,13 +123,21 @@ this tree:
   file's writer, `history.RunHistory.write`, which records the question
   asked and answers nothing), how many statements each module executes (105 in 19
   modules when it was first counted, 2026-10-02; 80 in 20 since
-  2026-10-05 - counted per module because a listed module could grow
+  2026-10-05; 74 in 12 since Phase 4, step 5 (2026-10-12): the relation
+  modules and their shared steps (`conditions` among them), `entities`
+  (the name index's two loads and the resolver's elimination read) and
+  `connection` (the latest season), and no module of `compose/` - counted
+  per module because a listed module could grow
   statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
   package's own string-SQL helpers since 2026-10-03, when a statement
   through `entities._read_table` counted as none (each found by its body
-  since 2026-10-12 - a function that runs the SQL it is handed - and its
-  own call of that SQL no longer counted beside its callers', which read
-  the name index's two loads as three); and since 2026-10-05
+  since 2026-10-12 - a function that runs the SQL it is handed, as a
+  parameter (`con.execute(sql)`) or an attribute of one
+  (`con.execute(statement.sql, ...)`), or hands its parameter on to such a
+  function - and its own call of that SQL no longer counted beside its
+  callers', which read the name index's two loads as three and the
+  compiler's one door, `compose.core._executed`, as a statement of
+  `compose.core`'s, #397); and since 2026-10-05
   every `core.rows_of`/`core.values_of` call over a statement the compiler
   did not build, in the module making the call, and every call of a
   function that only hands its parameter to one, such as
@@ -572,10 +580,12 @@ gets turned off.
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py` and the
-    standings' reads beside it, `standings.py`, and the two declared
+    standings beside it, `standings.py`, which builds and runs the four
+    statements a team's record reads, and the two declared
     relations' own since Phase 4, step 5: `netpoints.py`, the NetPoints
     relation, which builds and runs every statement the NetPoints reader
-    and the fingerprint read, and `shots.py`, the shot relation, every
+    and the fingerprint read and a comparison's NetPoints rows, and
+    `shots.py`, the shot relation, every
     statement its chart and distance read - each relation module runs
     its own statements, and `compose/` runs only what the compiler built
     or a relation hands it, Phase 4, step 5), the
@@ -1570,15 +1580,21 @@ a shape:
     `_ROUTES` by that key alone; the shapes' rows of the two relation
     tables are keyed by it (`RELATION_SCOPING_EXCLUDED`,
     `TEAM_RELATION_SCOPING_EXCLUDED`, one row per route since step 2's
-    closing slice); `reading.SHAPE_NAMES` keeps a retired template's name
-    for the page's label and the name a shape's decline cause carries
-    alone (`no_reading_of_point`: "game_log has no reading of this
-    point"; a `cannot_honor` says its cells by what the words asked,
-    "player_compare: the seasons since 2022-23 cannot be read here - ...",
-    the page's label before it), ONE
-    table keyed by the shape - the asked key for the label, the planned key
-    for a decline - which Phase 4, step 2 deletes (the page renders by the
-    planned shape since step 1, not by the label); `coverage.SOURCES`
+    closing slice). No table names a shape back by a retired template's
+    name since Phase 4, step 2 deleted the page's label (`reading.SHAPE_NAMES`,
+    `asked_label`, `labeled`, `Reading.intent`, `Subject.intent`,
+    `Answer.intent`; the page renders by the planned shape since step 1);
+    the trace and the records name a key by `reading.key_path`
+    (`relation/shape/by`). A decline named the shape by the label until
+    step 2's decline commit ("Nothing here answers this question:
+    player_compare: ...", "game_log has no reading of this point"); it
+    says what the words were read as asking in the shape's words since -
+    the sayer's one phrase per key the grammar names (`say.asked_as`,
+    framed by `say.nothing_answers`): "Nothing here answers this question
+    as a comparison of players: the seasons since 2022-23 cannot be read
+    here - ...", "a team's record has no reading of this point" (the
+    planned shape, a `no_reading_of_point` cause's `planned` fact);
+    `coverage.SOURCES`
     is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
     and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
     sayer from the headline body's type and the one field that says what
@@ -1589,15 +1605,21 @@ a shape:
     reader since Phase 3, step 4: the grammar names what the words ask as
     a `PointShape` (`Reading.asked`, below, "An intent comes from the
     question's own words"), the point reader and the taggers key on it,
-    and `Reading.intent` is a label alone (`Answer.intent`, written from
-    `SHAPE_NAMES`, Phase 4, step 2's to delete; the page renders by
-    `Answer.shape` since step 1). A cause carries the
+    and the label it left behind (`Reading.intent`, written from
+    `SHAPE_NAMES`) went with Phase 4, step 2 - `Answer.intent`, the API's
+    `intent` and the `partial_season` note's `intent` fact first, then the
+    Reading's, its point's and the subject reading's, and the decisions
+    about what the words ask (`field` `asked` where it was `intent`, each
+    value and reason a `key_path`, the subject reading's `asked_reason`
+    where it was `intent_reason`). A cause carries the
     key, never the label (its `shape` fact, since the Phase 3 review's
     cleanup (b)2): the sayer's phrase tables are keyed by the `PointShape`
-    (`say._LINE_SHAPES`, `_STAT_FOR`, `_REACHING`), and a sentence or a
-    page that prints the retired name reads it off the key through
-    `asked_label` (a decline's "Nothing here answers this question:
-    <label>: ...", `compose.plan._page_facts`). Proved on the four populations: 628 of 628, 2,082 of 2,082
+    (`say._LINE_SHAPES`, `_STAT_FOR`, `_REACHING`, `_ASKED_AS`), and no
+    sentence or page prints the retired name since Phase 4, step 2 (a
+    decline's "Nothing here answers this question: <label>: ..." until its
+    decline commit, `say.asked_as` since; the page's `intent` beside a
+    cause's sentence, `compose.plan._page_facts`, until the commit after
+    it, which shows a cause's plain facts and no shape). Proved on the four populations: 628 of 628, 2,082 of 2,082
     and the 2,710 readings identical with the point's `by`, `on`, `shape`
     and `source` left out (`compare --ignore`, `reader_cmp.py --ignore`:
     each lists the field's values by count), 2,608 of 2,608 unit-test
@@ -1741,16 +1763,24 @@ a shape:
     as missing (`team_games.unnarrowed_games`). The standings', a module
     of their own (`query/standings.py`, the team-season relation's reads
     of ESPN's `standings` and the season totals they are checked against:
-    `season_row`, `career_rows`, `first_season`, `season_games`), which
+    `season_row`, `career_rows`, `first_season`, `season_games`, with the
+    four statements they run, built there since the step's close), which
     `compose/standings.py` reads. The season line's (`season_line.season_row`
-    and the five beside it; `compose/seasons.py` executes nothing), the
+    and the four beside it; `compose/seasons.py` executes nothing, and
+    takes a comparison's NetPoints rows from the NetPoints relation,
+    `netpoints.netpoints_row`, which the season line ran until the step's
+    close), the
     team seasons' (`team_seasons`' `read_team_lines`, `read_team_records`
     and the five beside them, the team compiler's season total among
     them; `compose/team_stats.py` executes nothing), and the team-games
     relation's shared steps hold the three a team reader ran over the
     games (`team_relation.team_season_game_counts`, `team_game_list_gaps`,
     `team_games_total`; `compose/team_records.py` and `compose/team.py`
-    execute nothing).
+    execute nothing). And a single-game chart's label
+    (`game_label.game_label`, which the fingerprint and the shot chart
+    print) words the row the player-games relation reads for it
+    (`player_games.game_label_row`, beside the relation's join) and runs
+    nothing.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body
@@ -1834,9 +1864,10 @@ a shape:
   (`query/player_relation.py`, `query/team_relation.py`; see "A reader on
   a relation does not declare, or apply, scoping of its own" above). Every
   key the grammar names is the compiler's (`Reading.asked` set; "no
-  shape", `None`, is refused with the reason "has no reader"): the 25 the
+  shape", `None`, is refused with the reason "what its words ask has no
+  reader" - "intent 'other' has no reader" until Phase 4, step 2): the 25 the
   intents were, whose names `compose.COMPILED_INTENTS` listed until Phase
-  3, step 4 and the label table names back (`reading.SHAPE_NAMES`:
+  3, step 4 and the label table named back until Phase 4, step 2 (`reading.SHAPE_NAMES`:
   `threshold_count`, `single_game_high`, `record_when`, `player_history`,
   `game_log`, `player_stat`, `player_splits`, `leaderboard`,
   `period_split`, `player_compare`, `streak`, `player_matchup`,
@@ -2030,13 +2061,13 @@ a shape:
   the words ask for bare (`Reading.asked`, `Subject.asked`;
   `None` for no shape, the retired `other`), one key per retired intent
   (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`),
-  each the label table's (`reading.SHAPE_NAMES`, which names it back as
-  the page's `Answer.intent`: `Reading.intent` is that label, filled from
-  the key and held to it, read for the API's `intent`, the trace and the
-  records (the page reads `Answer.shape` since Phase 4, step 1) -
-  and, until Phase 4 keys them on the `PointShape`, as a cause fact four of
-  the sayer's refusal phrase tables choose their words by, the Phase 3
-  review's finding, 2026-10-11). The kind is no part of the key: it is the subject reading's,
+  each named back as the page's label by the label table until Phase 4,
+  step 2 deleted both (`reading.SHAPE_NAMES`, `Reading.intent`, filled
+  from the key and held to it, read for the page, the trace and the
+  records - and, until the Phase 3 review's cleanup (b)2 keyed them on
+  the `PointShape`, as a cause fact four of the sayer's refusal phrase
+  tables chose their words by); a sentence says a key in words since
+  (`say.asked_as`), the trace and the records by `reading.key_path`. The kind is no part of the key: it is the subject reading's,
   read before the grammar, which the grammar is keyed BY. Measured first
   (`~/association-research/stages/intent_family.py`, the 2,710
   readings): an intent maps to up to four planned keys (`player_stat`:
@@ -2046,7 +2077,7 @@ a shape:
   `game_log` 297 and `player_stat` 15; the game-level ranking from
   `leaderboard` 367, `game_log` 3, `other` 1) - so the key is what the
   words ASK and the planned `PointShape` what the point IS, and the label
-  is keyed by the asked one. Every intent set and intent-keyed table is a
+  was keyed by the asked one. Every intent set and intent-keyed table is a
   set of those keys or a predicate on one (`reading.PLAYER_ASKS`,
   `TEAM_ONLY_ASKS`, `PLAYER_REQUIRED_ASKS`, `SUBJECT_RESTORABLE_ASKS`,
   `OWN_TEAM_RESTORABLE_ASKS`, `on_a_declared_relation` where
@@ -2745,6 +2776,16 @@ The habits that caught real bugs here, in rough order of how often they paid:
   failed write looks like a diff or a crash unrelated to the change. Compress
   or hash large outputs, delete them once compared, and check `df -h /tmp`
   before a large run.
+- **Never gate rebased commits with `git rebase --exec` running the suite
+  or the hooks.** The rebase exports `GIT_DIR` to the command, and the tests
+  that build a scratch repository (`git init`, `git config`, `git commit`
+  in a `tmp_path`) and the scripts they call inherited it: on 2026-10-12 they
+  wrote into the real shared repository - `core.bare=true` and
+  `user.name=Test` in its config, test commits on a worktree's HEAD, its
+  index clobbered. `tests/conftest.py` removes every `GIT_*` variable before
+  a test runs now (`without_git_variables`), but a hook is not a test: squash
+  or reorder with no `--exec`, then run the gate chain once on the tip, as a
+  plain command.
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.

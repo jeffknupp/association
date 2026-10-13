@@ -119,7 +119,9 @@ def names_read(whole: dict[str, Any]) -> list[str]:
     found: list[str] = [*who.get("players", []), *who.get("teams", []), *(name for name in (cuts.get("opponent"), cuts.get("tenure")) if isinstance(name, str))]
     companions = reading.get("companions") or []
     absent = [c["player"] for c in companions if c.get("predicate") == "absent" and c.get("side") == "own"]
-    if reading.get("intent") == "with_without" and not absent:
+    # The with/without split, by the key the words asked (its label,
+    # "with_without", until Phase 4, step 2 deleted the label).
+    if reading.get("asked") == {"relation": "team_games", "shape": "split", "by": "presence"} and not absent:
         found.extend(c["player"] for c in companions if c.get("side") == "own" and c.get("predicate") == "played")
     found.extend(absent)
     subject = reading.get("subject") or {}

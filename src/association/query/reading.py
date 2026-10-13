@@ -1397,17 +1397,17 @@ missing thing, never only the slot"):
   (``ranking_unit``: ``metric``, ``rate``);
 - a shape over a line on a stat - a single-game high, a record or a count
   of games over a line, a streak, a log kept past a number - with no stat
-  read (``needs_stat``: ``intent``), a stat with no per-game column
-  (``unknown_stat``: ``intent``, ``stat``), a stat with no number
-  (``needs_threshold``: ``intent``, ``stat``), a number with no stat
-  (``threshold_needs_stat``: ``intent``, ``threshold``), a number every
-  game clears (``threshold_counts_every_game``: ``intent``,
+  read (``needs_stat``: ``shape``), a stat with no per-game column
+  (``unknown_stat``: ``shape``, ``stat``), a stat with no number
+  (``needs_threshold``: ``shape``, ``stat``), a number with no stat
+  (``threshold_needs_stat``: ``shape``, ``threshold``), a number every
+  game clears (``threshold_counts_every_game``: ``shape``,
   ``threshold``), or a below/above phrase naming no stat
   (``line_names_no_stat``: ``phrase``, ``side``);
 - a league-wide count with no line read at all (``needs_line``); an
   ordinal season with no player to be a place in (``career_place_needs_player``:
   ``season_n``); a record over a line with neither a player nor a team
-  (``needs_subject``: ``intent``); a team's run of a stat line
+  (``needs_subject``: ``shape``); a team's run of a stat line
   (``team_streak_of_stat``: ``stat``); a matchup without exactly two
   players (``matchup_needs_two``: ``names``); a quarter's or half's figure
   the period's line does not rebuild (``no_period_stat``: ``stat``);
@@ -1418,36 +1418,38 @@ missing thing, never only the slot"):
   :func:`~association.query.parse.too_short`);
 - a refusal the words come to before any reader runs
   (:attr:`Reading.refused`): a championship, which no table holds
-  (``championship``: ``intent``), both ends of the span named at once
+  (``championship``: ``shape``), both ends of the span named at once
   (``window_ends_contradict``: ``ends``, the words of each), a window of
   games taken in each season, which nothing reads yet
   (``window_per_season``: ``window``, ``per``), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
-  ``intent``);
+  ``shape``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,
   said only where the answer side declines): a playoff round
-  (``playoff_round``: ``intent``, ``round``), a situation nothing reads
-  (``non_calendar_situation``: ``intent``, ``situation``, ``reads_as`` -
+  (``playoff_round``: ``shape``, ``round``), a situation nothing reads
+  (``non_calendar_situation``: ``shape``, ``situation``, ``reads_as`` -
   ``age``, ``alignment`` or ``other``), a stat a quarter's line does not
-  rebuild on a period shape (``period_stat``: ``intent``, ``stat``,
+  rebuild on a period shape (``period_stat``: ``shape``, ``stat``,
   ``period``, ``half``), a quarter as a condition with no line
-  (``period_as_condition``: ``intent``), a team's quarter of a stat
-  nothing holds (``team_period_stat``: ``intent``, ``stat``), bench points
-  (``bench_points``: ``intent``), a team's total of its players'
-  triple-doubles (``team_boolean_count``: ``intent``, ``stat``). Each was
+  (``period_as_condition``: ``shape``), a team's quarter of a stat
+  nothing holds (``team_period_stat``: ``shape``, ``stat``), bench points
+  (``bench_points``: ``shape``), a team's total of its players'
+  triple-doubles (``team_boolean_count``: ``shape``, ``stat``). Each was
   ``refusals.unanswerable``'s check, asked by the answering loop with the
-  question until Phase 3, step 0; their ``intent`` is what the page shows
-  beside the sentence (``refused`` and ``intent``, as it did);
+  question until Phase 3, step 0; the page shows the kind beside the
+  sentence (``refused``; with the page's label, ``intent``, until Phase 4,
+  step 2);
 - a narrowing the point's shape cannot honor beyond its relation's cells
-  (``cannot_honor``: ``intent``, the shape's retired ``name``, the
-  ``slots`` it sets, ``without`` - ``player`` or ``team or player`` where
-  the cell needs a named subject the point has none of - and ``why``, the
+  (``cannot_honor``: ``shape``, the ``cells`` it sets as the words
+  asked them, ``without`` - ``player`` or ``team or player`` where the
+  cell needs a named subject the point has none of - and ``why``, the
   reason its shape's row gives, as the row words it), and a point a
   shape's only reader reads nothing of (``no_reading_of_point``:
-  ``intent``, ``name``). Declines the user saw as "Nothing here answers
-  this question: ..." until Phase 3, step 4; said in that sentence, word
-  for word, and only where the floor and the reading's own causes did
-  not speak first, as the decline was (:class:`ShapeDeclined`).
+  ``shape``, ``planned``). Declines the user saw as "Nothing here answers
+  this question: ..." until Phase 3, step 4; said in that sentence, and
+  only where the floor and the reading's own causes did not speak first,
+  as the decline was (:class:`ShapeDeclined`) - the shape in its words
+  since Phase 4, step 2, by the page's label before it.
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.
@@ -1528,8 +1530,8 @@ class PointShape:
 # ``by``. One key per retired intent, the intent's own default point's (a
 # player's, where a team's reads another relation: the point reader moves a
 # team's log to ``team_games``, an unnarrowed line stays on the season line
-# and a narrowed one moves to the games), so the page's label is one lookup
-# (:data:`SHAPE_NAMES`). Measured first (``~/association-research/stages/
+# and a narrowed one moves to the games), so the page's label was one
+# lookup (``SHAPE_NAMES``, until Phase 4, step 2). Measured first (``~/association-research/stages/
 # intent_family.py``, the 2,710 readings): an intent maps to up to four
 # planned keys, since ``on`` and sometimes the shape follow the typed
 # filters, and two planned keys are reached by more than one intent - so
@@ -1668,84 +1670,19 @@ and no reader takes it.
 .. versionadded:: 6.0.0
 """
 
-SHAPE_NAMES: dict[PointShape, str] = {
-    PLAYER_LOG: "game_log",
-    PointShape("player_games", "scalar", "line"): "player_stat",
-    LINE_RECORD: "record_when",
-    PLAYER_SPLITS: "player_splits",
-    GAMES_COUNTED: "threshold_count",
-    PointShape("player_games", "ranking", "count"): "threshold_count",
-    PointShape("player_games", "rows", "count"): "threshold_count",
-    GAME_HIGHS: "single_game_high",
-    LINE_RUNS: "streak",
-    PLAYER_MEETINGS: "player_matchup",
-    PERIOD_LOG: "period_split",
-    PointShape("player_periods", "split", "period"): "period_split",
-    PERIOD_RANKING: "period_leaderboard",
-    PLAYER_RANKING: "leaderboard",
-    PLAYER_LINE: "player_stat",
-    SEASON_HISTORY: "player_history",
-    PLAYER_COMPARISON: "player_compare",
-    PointShape("team_games", "rows", "date"): "game_log",
-    PointShape("team_games", "split", "splits"): "player_splits",
-    PointShape("team_games", "runs", "won"): "streak",
-    PRESENCE_SPLIT: "with_without",
-    PointShape("team_games", "split", "line"): "record_when",
-    TEAM_MEETINGS: "head_to_head",
-    TEAM_PERIOD_TOTAL: "team_quarter_points",
-    TEAM_RECORD: "team_record",
-    TEAM_LINE: "team_stat",
-    TEAM_RANKING: "team_leaderboard",
-    TEAM_OUTLOOK: "team_outlook",
-    NETPOINTS_RATINGS: "player_netpoints",
-    NETPOINTS_FINGERPRINT: "fingerprint",
-    SHOT_CHART: "shot_chart",
-    SHOT_DISTANCE: "shot_distance",
-    TEAM_COACH: "coach",
-}
-"""The retired intent's name for a shape, and nothing else: ONE table,
-keyed by the shape (:class:`PointShape`), for the two things that still
-say a retired template's name - the page's label (``Answer.intent``,
-through :attr:`Reading.intent`, written from the key the words asked for:
-:func:`asked_label`), and a decline's sentence ("game_log has no reading of
-this point", "head_to_head cannot honor [...]", keyed by the PLANNED
-shape). Every shape a reader takes, and the coach's, which none does.
-Phase 4 deletes it with the page's renderers (decision D3: the page renders
-by shape).
 
-.. versionadded:: 6.0.0
-   In ``reading``, keyed by the asked shape as well as the planned one;
-   ``compose.plan``'s, the decline's name alone, until Phase 3, step 4.
-"""
-
-
-def asked_label(asked: PointShape | None) -> str:
-    """The retired intent's name for what the words ask
-    (:data:`SHAPE_NAMES`), ``"other"`` where they name no shape - the page's
-    label (``Answer.intent``) and the trace's, read nowhere on the
-    answering path.
+def key_path(shape: PointShape | None) -> str:
+    """A shape as the trace and the records name it: ``relation/shape/by``
+    ("player_games/scalar/count"), ``"none"`` where the words name no shape -
+    the decisions' values and reasons about what the words ask, and the
+    trace's ``(parser)`` and ``(compose)`` lines. Since Phase 4, step 2,
+    where the retired intent's name stood (``SHAPE_NAMES``, ``asked_label``:
+    "threshold_count", ``"other"``); a sentence names a shape in its words
+    (``compose.say.asked_as``).
 
     .. versionadded:: 6.0.0
     """
-    return "other" if asked is None else SHAPE_NAMES[asked]
-
-
-def labeled(asked: PointShape | None, label: str) -> str:
-    """``label`` checked against the key it names (:func:`asked_label`), or
-    filled from it where it is empty: a label is the table's, never a second
-    choice beside the key. Empty stays empty only where nothing was asked -
-    a record built by hand, never read from words.
-
-    .. versionadded:: 6.0.0
-    """
-    if asked is None:
-        if label not in ("", "other"):
-            raise ValueError(f"the label {label!r} names a shape, and nothing was asked")
-        return label
-    expected = asked_label(asked)
-    if label not in ("", expected):
-        raise ValueError(f"the label {label!r} is not the one {asked} is named by ({expected!r})")
-    return expected
+    return "none" if shape is None else f"{shape.relation}/{shape.shape}/{shape.by}"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1827,6 +1764,13 @@ class Reading(Filtered):
        ``period``, ``window``), where they stood on a ``scope`` record until
        Phase 3, step 4, slice (b); ``Reading.from_slots`` went with the
        slot door.
+
+    .. versionchanged:: 6.0.0
+       Breaking: ``intent`` is gone (Phase 4, step 2) - the retired
+       intent's name, the page's label for :attr:`asked`, with the table
+       that named it (``SHAPE_NAMES``, ``asked_label``, ``labeled``). What
+       the words ask is :attr:`asked`; :func:`key_path` names it in the
+       trace and the records.
     """
 
     #: The point's shape, what one row is ``by`` and the relation it is read
@@ -1883,15 +1827,6 @@ class Reading(Filtered):
     #:
     #: .. versionadded:: 6.0.0
     asked: PointShape | None = None
-    #: The page's label for :attr:`asked` - the retired intent's name, from
-    #: the one table (:data:`SHAPE_NAMES`, :func:`asked_label`), filled from
-    #: the key and held to it (:func:`labeled`); read only for
-    #: ``Answer.intent``, the trace and the records, never to decide. Empty
-    #: on a Reading built by hand with nothing asked.
-    #:
-    #: .. versionchanged:: 6.0.0
-    #:    The label alone: the readers key on :attr:`asked`.
-    intent: str = ""
     #: Who the question is about, as the subject reading read it.
     subject: subject_reading.Subject | None = None
     #: One line per finding, for the trace.
@@ -1973,10 +1908,6 @@ class Reading(Filtered):
     #:
     #: .. versionadded:: 6.0.0
     left_out: LeftOut | None = None
-
-    def __post_init__(self) -> None:
-        """Hold :attr:`intent` to the label :attr:`asked` is named by."""
-        object.__setattr__(self, "intent", labeled(self.asked, self.intent))
 
     def describe(self) -> str:
         """The one trace line: every field that decides the answer, the
@@ -2293,8 +2224,8 @@ class ShapeDeclined(Unsupported):
     the shape's reader is asked (``compose._read``), with the decline's
     sentence as its message, so every caller that catches
     :class:`Unsupported` reads what it always read. The cause's facts lack
-    the page's label (``intent``) its sentence begins with, which the
-    answering loop, the label's one reader, adds (:meth:`labeled`).
+    the key the words ask (``shape``), which its sentence names the shape
+    by and the answering loop adds (:meth:`under`).
 
     .. versionadded:: 6.0.0
     """
@@ -2307,9 +2238,10 @@ class ShapeDeclined(Unsupported):
 
     @staticmethod
     def under(cause: Cause, asked: PointShape | None) -> Cause:
-        """``cause`` under the key the words ask (``asked``), whose label
-        the sentence begins with (``"Nothing here answers this question:
-        <label>: ..."``, :func:`asked_label`).
+        """``cause`` under the key the words ask (``asked``), which the
+        sentence names in the shape's words (``"Nothing here answers this
+        question as a ranking of teams: ..."``, ``compose.say.asked_as``;
+        the page's label, ``asked_label``, until Phase 4, step 2).
 
         .. versionchanged:: 6.0.0
            ``labeled(cause, intent)``, which carried the label itself, until

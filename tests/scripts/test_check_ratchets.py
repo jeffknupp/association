@@ -85,6 +85,33 @@ def test_a_string_sql_helper_counts_its_callers_and_not_its_own_body() -> None:
     assert ratchets.sql_outside_the_relations(modules) == {"entities": 3, "compose.charts": 1}
 
 
+def test_the_compilers_door_runs_its_parameters_attribute_and_counts_as_no_statement() -> None:
+    """``compose.core._executed(con, statement)`` runs ``statement.sql`` -
+    an ATTRIBUTE of its parameter - and every compiled and relation
+    statement goes through it; until lane C4's commit (2026-10-12,
+    ISSUES.md #397) only a bare parameter made a door, so the door read as
+    one statement of ``compose.core``'s. A helper of it that hands on its
+    own parameter is a door too, and its callers are counted; ``rows_of``
+    and ``values_of`` hand theirs on and stay counted by where their
+    statement comes from (a compiled one is none); a method running its own
+    attribute (``self.sql``) runs SQL it holds, and counts."""
+    modules = _modules(
+        compose__core=(
+            "def _executed(con, statement):\n    return con.execute(statement.sql, statement.params)\n"
+            "def rows_of(con, compiled):\n    return _executed(con, compiled).fetchall()\n"
+            "def values_of(con, statement):\n    return _executed(con, statement).fetchall()\n"
+            "def run(con, q):\n    return rows_of(con, compile_query(con, q))"
+        ),
+        compose__seasons=(
+            "def line(con):\n    return values_of(con, Statement('SELECT 1', [])), _executed(con, Statement('SELECT 2', []))\n"
+            "def _raw(con, statement):\n    return _executed(con, statement)\n"
+            "def other(con):\n    return _raw(con, Statement('SELECT 3', []))\n"
+            "class Cache:\n    def load(self):\n        return self.con.execute(self.sql)"
+        ),
+    )
+    assert ratchets.sql_outside_the_relations(modules) == {"compose.seasons": 4}
+
+
 def test_a_connection_under_another_name_is_a_connection_in_the_reader() -> None:
     """``con_in_the_reader`` read a parameter's name alone until 2026-10-10,
     when the list reached zero: a reader function handed the warehouse as

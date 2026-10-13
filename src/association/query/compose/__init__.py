@@ -1,7 +1,7 @@
 """One compiler over the player-games and team-games relations: the only
-answer a shape the words ask for has (every key the grammar names,
-:data:`~association.query.reading.SHAPE_NAMES`; ``compose.COMPILED_INTENTS``
-listed the 25 intents' names until Phase 3, step 4), and the last step
+answer a shape the words ask for has (every key the grammar names;
+``compose.COMPILED_INTENTS`` listed the 25 intents' names until Phase 3,
+step 4), and the last step
 before a refusal naming why.
 
 The pipeline is parser -> template or compiler -> refusal. :func:`answer`
@@ -46,7 +46,7 @@ import duckdb
 
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import coverage_refusal
-from association.query.reading import SHAPE_NAMES, Cause, PointShape, ShapeDeclined
+from association.query.reading import Cause, PointShape, ShapeDeclined
 from association.query.result import Result, Unanswered
 
 from .core import Query, Refused, Unsupported, run
@@ -62,7 +62,7 @@ from .presence import read_with_without
 from .rankings import read_leaderboard
 from .records import read_record_when, read_team_record_when
 from .runs import read_streak, read_team_streak
-from .say import say
+from .say import asked_as, say
 from .seasons import read_player_compare, read_player_history, read_player_line
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
@@ -227,11 +227,13 @@ def _read_log(read: Callable[[], Result | Unanswered | None]) -> Reply | None:
     return None if read_log is None else say(read_log)
 
 
-def _read_only(read: Callable[[], Result | Unanswered | None], name: str) -> Result | Unanswered:
+def _read_only(read: Callable[[], Result | Unanswered | None], shape: PointShape) -> Result | Unanswered:
     """A shape whose reader is the point's only answer, as its retired
     template was: a cell the reader refuses while reading is the compiler's
     decline with the reader's own reason (no prefix), and a point it does
-    not read is declined too, named by its words (``name``), never handed
+    not read is declined too, named by the planned shape (``planned``, said
+    in its words, :func:`~association.query.compose.say.asked_as`; the
+    retired intent's name, ``name``, until Phase 4, step 2), never handed
     to the compiler's sentence - by a cause the planner says
     (``no_reading_of_point``, :class:`~association.query.reading.ShapeDeclined`)."""
     try:
@@ -239,7 +241,7 @@ def _read_only(read: Callable[[], Result | Unanswered | None], name: str) -> Res
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
     if found is None:
-        raise ShapeDeclined("no_reading_of_point", {"name": name}, f"{name} has no reading of this point")
+        raise ShapeDeclined("no_reading_of_point", {"planned": shape}, f"{asked_as(shape)} has no reading of this point")
     return found
 
 
@@ -312,7 +314,7 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
     if unhonored and found is not None and found[1].declined == "read":
         raise beyond_words(query, unhonored)
     if route.only:
-        return _read_only(lambda: None if unhonored else route.reader(con, query), SHAPE_NAMES[shape])
+        return _read_only(lambda: None if unhonored else route.reader(con, query), shape)
     return None if unhonored else _read_log(lambda: route.reader(con, query))
 
 

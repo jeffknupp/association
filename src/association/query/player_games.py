@@ -1216,6 +1216,49 @@ def most_games(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: b
     return int(row[0][0]) if row else 0
 
 
+# One game of one player's, as the relation holds it: the date, the
+# opponent, the venue, the result and the score - the row a single-game
+# chart's label is worded from (:mod:`association.query.game_label`). The
+# relation's own join, the one ``_PLAYER_GAMES`` writes (keyed on season as
+# well as the event, since the phantom 1993 shares its event ids with 1994),
+# spelled out as the statement was before it moved here, with no
+# played guard: the label names the game the chart was drawn for, and a
+# game with no usable row is the label's to fall back on.
+_GAME_LABEL_SQL = """
+SELECT pgl.game_date, pgl.opponent_abbr,
+       g.home_team_id = pgl.team_id AS at_home,
+       g.winner_team_id = pgl.team_id AS won,
+       CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score,
+       CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score
+FROM player_game_log pgl
+JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season
+WHERE pgl.athlete_id = ? AND pgl.event_id = ?
+LIMIT 1
+"""
+
+
+def game_label_row(con: duckdb.DuckDBPyConnection, athlete_id: str, event_id: str) -> tuple[Any, ...] | None:
+    """One player's game, read for its label: ``(game_date, opponent_abbr,
+    at_home, won, team_score, opponent_score)`` - the raw UTC stamp, the
+    opponent's season-correct abbreviation, whether his team was at home and
+    won, and the two scores from his team's side - or ``None`` where he has
+    no row for the event. Run through the compiler's one door
+    (:func:`~association.query.compose.core.values_of`). Raises
+    :class:`duckdb.CatalogException` where the warehouse has no
+    ``player_game_log`` or ``games``, which the label catches
+    (:func:`association.query.game_label.game_label`).
+
+    .. versionadded:: 6.0.0
+       ``game_label.game_label``'s statement, moved whole to its relation
+       (Phase 4, step 5's close).
+    """
+    from association.query.compose.core import values_of  # at call time: the compiler imports this module
+    from association.query.season_line import Statement  # and so does the season line, whose Statement the door takes
+
+    rows = values_of(con, Statement(_GAME_LABEL_SQL, [athlete_id, event_id]))
+    return rows[0] if rows else None
+
+
 def column(alias: str, name: str, box: BoxSource) -> str:
     """A box-score column as a reader may trust it: blanked on a rebuilt row
     when it is one the rebuild fills but was never measured for

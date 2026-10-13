@@ -9,10 +9,13 @@ the fingerprint's loaders ran (:mod:`association.query.fingerprint`, the
 season's pool, the per-game pool, a player's first or last game) moved
 here whole, text-identical, with the parameters each took. The readers keep
 their words and the fingerprint its pool and drawing, and run no statement
-of their own. Not yet every statement over these tables: the season line
-reads ``net_points_player`` for a comparison's NetPoints rows and ranks its
-NetPoints metrics (:mod:`association.query.season_line`), and the name
-resolver reads which players have a row (``entities.narrow_to_available``).
+of their own. A comparison's NetPoints rows (:func:`netpoints_row`) are
+the relation's too, since the same day: the season line's comparison
+reader (:mod:`association.query.compose.seasons`) ran them through the
+season line until then. Not yet every statement over these tables: the
+season line ranks its NetPoints metrics
+(:mod:`association.query.season_line`), and the name resolver reads which
+players have a row (``entities.narrow_to_available``).
 
 Four tables, three encodings of the season type (``DATA.md``):
 ``net_points_player`` keeps its own STRING (``net_points_season_type``,
@@ -39,7 +42,7 @@ from typing import Any
 import duckdb
 
 from association.query.metrics import SEASON_TYPE_LABELS
-from association.query.season_line import Statement
+from association.query.season_line import NETPOINTS_COMPARE_ROWS, Statement
 
 NETPOINTS_TOTALS = ("overall", "offense", "defense", "overall_per_100_poss", "total_minutes", "games")
 """``net_points_player``'s season line, in the order :func:`season_totals`
@@ -173,6 +176,42 @@ def game_line(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, seas
     .. versionadded:: 6.0.0
     """
     return _first(_values(con, netpoints_game_statement(athlete_id, season, season_type, order)))
+
+
+# --- a comparison's NetPoints ----------------------------------------------------
+
+
+def netpoints_statement(athlete_id: str, season: int, season_type: int) -> Statement:
+    """One player's NetPoints summary for a comparison
+    (:data:`~association.query.season_line.NETPOINTS_COMPARE_ROWS`' columns).
+    ``net_points_player`` uses its OWN string season_type; filtering it with
+    the numeric one every other table uses silently matches nothing. The
+    table exists only where the NetPoints fetch was run, so its absence is
+    the caller's to catch.
+
+    .. versionadded:: 5.0.0
+       ``templates.players._compare_netpoints``' statement.
+
+    .. versionchanged:: 6.0.0
+       Moved from ``season_line`` to the relation.
+    """
+    label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
+    selected = ", ".join(column for _, column in NETPOINTS_COMPARE_ROWS)
+    return Statement(f"SELECT {selected} FROM net_points_player WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?", [athlete_id, season, label])
+
+
+def netpoints_row(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, season_type: int) -> tuple[Any, ...] | None:
+    """One player's NetPoints summary for a comparison
+    (:func:`netpoints_statement`): its one row, or ``None``. Raises
+    ``duckdb.Error`` where the NetPoints table does not exist, which the
+    caller catches - the table exists only where the NetPoints fetch was run.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.seasons``' comparison reader until then; on the
+       season line (``season_line.netpoints_row``) until it moved to the
+       relation, the same day.
+    """
+    return _first(_values(con, netpoints_statement(athlete_id, season, season_type)))
 
 
 # --- a player's fingerprint ------------------------------------------------------
