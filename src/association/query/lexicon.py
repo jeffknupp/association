@@ -509,8 +509,20 @@ seasons written as its first and last (:func:`season_spans`).
 
 .. versionadded:: 6.0.0
 """
-YEAR = re.compile(r"\b((?:19|20)\d{2})\b")
-"""A calendar-shaped year, read as the season ending in it (:func:`season_from_text`).
+YEAR = re.compile(r"\b((?:19|20)\d{2})(?:\b|(?=(?:playoffs?|postseason|season)\b))", re.IGNORECASE)
+"""A calendar-shaped year, read as the season ending in it (:func:`season_from_text`) -
+glued to a season-type word too ("2024playoff", ISSUES.md #393).
+
+.. versionadded:: 6.0.0
+"""
+SHORT_YEAR_TYPED = re.compile(
+    r"(?<![\w/'-])(?<!last )(?<!past )(?<!next )(?<!first )(?<!previous )(?<!recent )'?(\d\d)\s+(?:playoffs?|postseason|post[- ]season|season)\b(?![-/]\d)(?!\s+games?\b)",
+    re.IGNORECASE,
+)
+"""A season written as two digits beside a season-type word: "Gilbert arenas
+06 playoffs numbers", "the '06 season" (ISSUES.md #393) - never a count
+("last 10 seasons", "last 15 regular season games"): the season ending in
+that year, 69-99 the 1900s as a date's two digits are.
 
 .. versionadded:: 6.0.0
 """
@@ -675,6 +687,20 @@ DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
 .. versionadded:: 6.0.0
 """
+# A decade written short after "the": "most pts in the 80s", "the '90s"
+# (ISSUES.md #393) - the 1950s to the 1990s, the ones a two-digit decade
+# names - and never a percentage or a number of points ("shooting in the 90s
+# from the line", "scored in the 40s"): no shooting or scoring word stands
+# before it and no "from", "%" or stat word after it.
+SHORT_DECADE = re.compile(
+    r"(?<!shooting in )(?<!shoots in )(?<!shot in )(?<!scored in )(?<!scoring in )(?<!scores in )(?<!temperature in )"
+    r"\bthe\s+'?([5-9])0'?s\b(?!\s*(?:%|percent|from|on|at|ft|fg|3pt|points?|pts|range|degrees))",
+    re.IGNORECASE,
+)
+"""A decade written short: the ten seasons from 19x0.
+
+.. versionadded:: 6.0.0
+"""
 
 # A CLOSED range - both ends named - rather than the open "since 2020" above.
 # `until` was declared nowhere and honored nowhere until this existed
@@ -695,6 +721,18 @@ RANGE_TO_WORDS = re.compile(r"\s+(?:to|through)\s+", re.IGNORECASE)
 # (the same reading SINCE_YEAR's own bare year gets), not calendar years.
 RANGE_BETWEEN = re.compile(r"\bbetween\s+((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
 """A closed range between two bare years.
+
+.. versionadded:: 6.0.0
+"""
+# Two two-digit years opened by "between" or "from": "between 03 to 25"
+# (ISSUES.md #393) - never a line ("between 20 and 30 points", "from 10 to 15
+# feet"), so nothing a number counts may follow.
+RANGE_SHORT_YEARS = re.compile(
+    r"\b(?:between|from)\s+'?(\d\d)\s+(?:to|and|through|thru|-)\s+'?(\d\d)\b(?![-/.]\d)"
+    r"(?!\s*(?:\+|%|percent|points?|pts|rebounds?|rebs?|assists?|asts?|minutes|mins?|ppg|rpg|apg|threes|3s|feet|ft|games?|shots?|years?|seconds|wins?|losses|fg|steals?|blocks?))",
+    re.IGNORECASE,
+)
+"""A closed range between two seasons written as two digits each.
 
 .. versionadded:: 6.0.0
 """
@@ -1486,6 +1524,12 @@ SITUATION = re.compile(
     # slot the relation filters on.
     # A window defined by an event rather than a date.
     r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
+    # Games after a result ("after a playoff loss", "coming off a win"): a
+    # circumstance nothing narrows by - the games carry no "the game before"
+    # - so it is refused by value rather than the whole span answered
+    # (found with ISSUES.md #393: "luka dončić average after a playoff loss
+    # 2024playoff" answered his whole 2024 postseason once the year was read).
+    r"\b(?:after|following|coming\s+off(?:\s+of)?)\s+(?:a\s+|an\s+)?(?:playoff\s+|home\s+|road\s+|close\s+)?(?:loss|losses|win|wins|defeat)\b|"
     # A calendar day is NOT here: the tagger resolves it to a real date
     # (CALENDAR_DATE) and `game_log` then answers the game that was asked
     # about. What is left here is the date this project cannot turn into one
@@ -1609,6 +1653,16 @@ teammates again by it.
 
 .. versionadded:: 6.0.0
 """
+
+
+def short_year(digits: str) -> int:
+    """The year two digits name, the way strptime's ``%y`` reads them: 69-99
+    the 1900s, 00-68 the 2000s ("06" is 2006, "85" 1985).
+
+    .. versionadded:: 6.0.0
+    """
+    year = int(digits)
+    return 1900 + year if year >= 69 else 2000 + year
 
 
 def _in_range(year: int) -> int | None:
@@ -1777,6 +1831,12 @@ def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
         return year, read
     if years:
         return None
+
+    short = SHORT_YEAR_TYPED.search(low)
+    if short is not None:
+        season = _in_range(short_year(short.group(1)))
+        if season is not None:
+            return season, ((short.start(), short.end()),)
 
     previous = PREVIOUS_SEASON.search(low)
     if previous:

@@ -283,10 +283,28 @@ def _validate_range(question: str) -> tuple[int, int | None, list[Claim]] | None
     since = lexicon.SINCE_YEAR.search(question)
     if since is not None:
         return int(since.group(1)), None, [Claim(since.start(), since.end(), "range")]
+    return _validate_range_decade(question)
+
+
+def _validate_range_decade(question: str) -> tuple[int, int, list[Claim]] | None:
+    """The last of :func:`_validate_range`'s forms: a decade ("the 1980s"),
+    two seasons written as two digits each ("between 03 to 25"), and a
+    decade written short ("the 80s") - the two short forms read only where
+    nothing longer was (ISSUES.md #393)."""
     decade = lexicon.DECADE.search(question)
     if decade is not None:
         first = int(decade.group(1) + "0")
         return first, first + 9, [Claim(decade.start(), decade.end(), "range")]
+    short = lexicon.RANGE_SHORT_YEARS.search(question)
+    if short is not None:
+        # Read only where both are seasons on record.
+        first, last = sorted(lexicon.short_year(short.group(n)) for n in (1, 2))
+        if first >= lexicon.MIN_SEASON and last <= current_season() + 1:
+            return first, last, [Claim(short.start(), short.end(), "range")]
+    short_decade = lexicon.SHORT_DECADE.search(question)
+    if short_decade is not None:
+        first = 1900 + int(short_decade.group(1)) * 10
+        return first, first + 9, [Claim(short_decade.start(), short_decade.end(), "range")]
     return None
 
 

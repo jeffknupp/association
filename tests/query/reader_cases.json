@@ -99502,24 +99502,20 @@
   }
  },
  {
-  "name": "test_an_invented_name_never_changes_the_kind_or_the_key#373",
-  "why": "ISSUES.md #373: a model name the question never held rides on misread alone and is replaced from the question's one name, so Luka's quarter breakdown stays his, not the league's ranking.",
-  "question": "points per quarter for Luka",
-  "names": [
-   "Stephen Curry"
-  ],
-  "stat": "points",
+  "name": "short_years#393a",
+  "why": "Two two-digit seasons after 'between' are a range (ISSUES.md #393), where the current season answered.",
+  "question": "who averaged the most points per game in the nba between 03 to 25",
+  "names": [],
+  "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_periods",
-    "shape": "rows",
-    "by": "date"
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "Luka Doncic"
-    ],
+    "kind": "everyone",
+    "players": [],
     "teams": [],
     "position": null
    },
@@ -99552,8 +99548,8 @@
     "season_type": 2,
     "both": false,
     "career": false,
-    "since": null,
-    "until": null
+    "since": 2003,
+    "until": 2025
    },
    "split": null,
    "period": null,
@@ -99566,26 +99562,25 @@
    },
    "minimum": null,
    "unread": [
-    "per"
+    "averaged",
+    "most",
+    "per",
+    "game"
    ],
    "subject": {
-    "kind": "player",
-    "players": [
-     "Luka Doncic"
-    ],
+    "kind": "everyone",
+    "players": [],
     "teams": [],
     "position": null,
     "opponent": null,
     "own_team": null,
     "companions": [],
-    "invented": [
-     "Stephen Curry"
-    ],
+    "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
     },
     "asked_reason": null,
     "conditions": [],
@@ -99597,36 +99592,20 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "question names players ['Luka Doncic']; router names the question never held ['Stephen Curry']"
-    },
-    {
-     "stage": "subject",
-     "field": "players",
-     "before": null,
-     "after": [
-      "Luka Doncic"
-     ],
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "player",
-     "before": "Stephen Curry",
-     "after": "Luka Doncic",
-     "reason": "the question never names the router's player; it names this one"
+     "after": "everyone",
+     "reason": ""
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
     },
-    "relation": "player",
-    "on": "player_periods",
-    "shape": "split",
-    "by": "period",
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "player",
     "measures": [
      {
       "key": "points",
@@ -99642,28 +99621,17 @@
      }
     ],
     "aggregate": "per_game",
-    "group": "period",
+    "group": "player",
     "predicates": [],
-    "order": "date",
-    "direction": "asc",
-    "limit": null,
-    "minimum_games": null,
-    "available": {
-     "table": "shot_chart"
-    },
-    "subject_span": {
-     "season": null,
-     "season_type": 2,
-     "both": false,
-     "career": false,
-     "since": null,
-     "until": null
-    },
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "Luka Doncic"
-     ],
+     "kind": "everyone",
+     "players": [],
      "teams": [],
      "position": null
     },
@@ -99696,8 +99664,8 @@
      "season_type": 2,
      "both": false,
      "career": false,
-     "since": null,
-     "until": null
+     "since": 2003,
+     "until": 2025
     },
     "split": null,
     "period": null,
@@ -99715,25 +99683,20 @@
   }
  },
  {
-  "name": "test_an_invented_name_never_changes_the_kind_or_the_key#373-two",
-  "why": "ISSUES.md #373's neighbor: two model names for one question name - the second is fiction with no spare, reported on misread for the answering loop's by-name refusal.",
-  "question": "jokic game log this season",
-  "names": [
-   "Nikola Jokic",
-   "Stephen Curry"
-  ],
-  "stat": "points",
+  "name": "short_years#393b",
+  "why": "A decade written short after 'the' is its ten seasons (ISSUES.md #393), where the current season answered.",
+  "question": "most pts in the 80s",
+  "names": [],
+  "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_games",
-    "shape": "rows",
-    "by": "date"
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "Nikola Jokic"
-    ],
+    "kind": "everyone",
+    "players": [],
     "teams": [],
     "position": null
    },
@@ -99762,8 +99725,177 @@
     "beside": []
    },
    "span": {
-    "season": 2026,
+    "season": null,
     "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": 1980,
+    "until": 1989
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "most"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "player",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "per_game",
+    "group": "player",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": 1980,
+     "until": 1989
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "short_years#393c",
+  "why": "Two digits beside a season-type word are that season (ISSUES.md #393), where the current postseason answered.",
+  "question": "Gilbert arenas 06 playoffs numbers",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Gilbert Arenas"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": 2006,
+    "season_type": 3,
     "both": false,
     "career": false,
     "since": null,
@@ -99780,75 +99912,59 @@
    },
    "minimum": null,
    "unread": [
-    "game"
+    "numbers"
    ],
    "subject": {
     "kind": "player",
     "players": [
-     "Nikola Jokic"
+     "Gilbert Arenas"
     ],
     "teams": [],
     "position": null,
     "opponent": null,
     "own_team": null,
     "companions": [],
-    "invented": [
-     "Stephen Curry"
-    ],
-    "named_season": 2026,
+    "invented": [],
+    "named_season": 2006,
     "asked": {
-     "relation": "player_games",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
     },
     "asked_reason": null,
     "conditions": [],
     "filler": []
    },
-   "misread": [
-    "Stephen Curry"
-   ],
+   "misread": [],
    "decisions": [
     {
      "stage": "subject",
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router players the question supports ['Nikola Jokic']; router names the question never held ['Stephen Curry']"
+     "reason": "question names players ['Gilbert Arenas']"
     },
     {
      "stage": "subject",
      "field": "players",
      "before": null,
      "after": [
-      "Nikola Jokic"
+      "Gilbert Arenas"
      ],
      "reason": "from the question's own words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_games",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
     },
     "relation": "player",
-    "on": "player_games",
-    "shape": "rows",
-    "by": "date",
+    "on": "player_seasons",
+    "shape": "scalar",
+    "by": "line",
     "measures": [
-     {
-      "key": "minutes",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     },
      {
       "key": "points",
       "as_typed": null,
@@ -99886,26 +100002,19 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
+    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": {
-     "season": 2026,
-     "season_type": 2,
-     "both": false,
-     "career": false,
-     "since": null,
-     "until": null
-    },
+    "subject_span": null,
     "who": {
      "kind": "player",
      "players": [
-      "Nikola Jokic"
+      "Gilbert Arenas"
      ],
      "teams": [],
      "position": null
@@ -99922,21 +100031,10 @@
     },
     "companions": [],
     "lines": [],
-    "measure": {
-     "key": "points",
-     "as_typed": "points",
-     "how": null,
-     "unit": null,
-     "whose": "own",
-     "side": null,
-     "shot_value": null,
-     "category": null,
-     "won": null,
-     "beside": []
-    },
+    "measure": null,
     "span": {
-     "season": 2026,
-     "season_type": 2,
+     "season": 2006,
+     "season_type": 3,
      "both": false,
      "career": false,
      "since": null,
@@ -99955,6 +100053,230 @@
    },
    "point_declined": null,
    "point_refusal": null
+  }
+ },
+ {
+  "name": "short_years#393d",
+  "why": "A year glued to a season-type word is that season (ISSUES.md #393); games after a result are a circumstance refused by value, not the whole postseason.",
+  "question": "luka dončić average after a playoff loss 2024playoff",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Luka Doncic"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": {
+     "text": "after a playoff loss",
+     "calendar": null,
+     "alignment": null
+    },
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": 2024,
+    "season_type": 3,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "average"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Luka Doncic"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2024,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Luka Doncic']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Luka Doncic"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "per_game",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": 2024,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "Luka Doncic"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": {
+      "text": "after a playoff loss",
+      "calendar": null,
+      "alignment": null
+     },
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2024,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "unsupported": [
+    {
+     "kind": "non_calendar_situation",
+     "facts": {
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
+      "situation": "after a playoff loss",
+      "reads_as": "other"
+     }
+    }
+   ]
   }
  }
 ]

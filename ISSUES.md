@@ -467,6 +467,12 @@ those were found.
 - **User sees:** the teams' points per game for a count of scoreless games; three single games for a count of 30-point triple-doubles.
 - **Next step:** the lines tagger (lane L's `line.py`) reads a line at 0 ("0 point games") and a line beside a boolean stat ("30 point triple doubles" - a count of triple-doubles with 30+ points); then the parent row and the count's child read them as they read "40 point games". A test per wording, the feed's moves enumerated.
 - **Priority:** P1 - 2 of the 2,082 answered as a different question.
+### A count of N-point games with no subject is read as a team ranking, and a count beside a teammate's absence as the with/without split: "most 40 point games in nba history" is refused "team_leaderboard cannot honor ['span']"
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** "most 40 point games in nba history" (and 50, 60) are read under the team ranking key (`asked` `team_seasons`/`ranking`/`team`, the kind `everyone`), and refused "Nothing here answers this question: team_leaderboard: team_leaderboard cannot honor ['span'] ..."; "most 0 point games in nba team history" answers the teams' points per game; "most 30 point triple doubles in the last 3 years" ranks single games with a triple-double by points (top 3), the 30 unread; "nba most fga with 0 fgm single game" the teams' field goals made (#303's). And "how many 30 point games did maxey have without embiid" is read under the with/without split (`team_games`/`split`/`presence`), answering his line with and without Embiid, the 30-point count unread - the count's child grammar (`subject.child_named`) never sees it, since the parent named the split.
+- **User sees:** a refusal naming the wrong cause for the three league counts (the league's 40-point-game leaders are `threshold_count`'s, which answers "most 40 point games since 2000"); a different question answered for Maxey (his averages, not his count of 30-point games without Embiid).
+- **Next step:** the parent grammar's team-ranking row should not take "N point games" (a line the lines tagger reads, `lexicon.LINE_MARK_*`) with no team word; the count's row should stand over the split's where a line and "how many" are read beside a companion's absence (the count honors the companion cell, `RELATION_SCOPING`). A test per wording, the feed's moves enumerated.
+- **Priority:** P1 - 7 of the 2,082 answered or refused as a different question (an eighth, "harden 61 points", is the feed's input: with no model names "harden" alone is read as nobody).
 - **Source:** ours.
 - **GitHub:** #394
 
@@ -2326,6 +2332,14 @@ those were found.
 - **Next step:** refuse a rate per N possessions for N != 100 by a cause naming the unit, and add the "50" case to `span.needed`'s `gives_up` checks so the number stays unread until it is.
 - **Priority:** P2 - a different figure than asked, with the unit said.
 - **GitHub:** #376
+
+### A range of seasons reaching under the ranking's floor is answered over what is left, or as "No games ... (1994-1989)": "most pts in the 1980s"
+- **Found:** 2026-10-13, the P1 sweep (lane S), fixing #393 (a decade written short).
+- **Evidence:** `coverage.check_coverage` and `coverage_refusal` read `Span.season` alone (`coverage.py:286`, `:321`) and return None for a range, so a range of seasons is never checked against a floor. "most pts in the 1980s" and, since #393, "most pts in the 80s" and "How many players averaged 30 ppg in the 80s" (2 of the 2,082 feed questions) answer "No games for every player in the regular season career (1994-1989)." - a range clamped to the ranking floor until it ends before it starts; "most pts from 1985 to 1995" answers "every player, regular season career (1994-1995) ..." with nothing saying the nine seasons before 1994 were left out, where "most points per game 1985" is refused by the floor's own sentence ("A league-wide ranking for 1985 would not be one - ...").
+- **User sees:** "No games" for a decade the league played (a wrong cause), or a narrower range answered as the one asked.
+- **Next step:** the coverage check reads a range's seasons: refuse by the floor's sentence where the range's last season is under the floor, and say the seasons it could not read (a `floor` note) where only its first is - `coverage.py`, the answer side's (lane T's in the sweep).
+- **Priority:** P2 - a refusal naming the wrong cause, or a narrower answer with the cut shown only in the heading.
+- **Source:** ours.
 
 ## P3: refusal or gap
 
