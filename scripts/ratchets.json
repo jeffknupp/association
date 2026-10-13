@@ -3,7 +3,6 @@
   "history:RunHistory.write"
  ],
  "sql_outside_the_relations": {
-  "compose.core": 1,
   "conditions": 7,
   "connection": 1,
   "entities": 3,

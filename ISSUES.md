@@ -2979,15 +2979,6 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### The SQL ratchet counts the compiler's one door as a hand-written statement in `compose.core`
-- **Found:** 2026-10-12, Phase 4, step 5, lane C2, moving the standings', periods' and logs' statements into their relations.
-- **Evidence:** `scripts/ratchets.json` holds `"compose.core": 1`, and the roadmap's step 5 assigned it to `_box_notes`' read; but `_box_notes` executes nothing (its read is `player_relation.box_score_notes_read`, in the relation since Phase 2). The one site is `compose.core._executed` (`con.execute(statement.sql, statement.params)`), the door every `rows_of`/`values_of` statement runs through - its statement is a parameter typed `Compiled | TeamCompiled | Statement`, which `check_ratchets._origin` already reads as "compiled" for a door call, but `sql_outside_the_relations` counts every `.execute` call whatever its argument. Measured over every `_EXECUTORS` call in `query/` (2026-10-12, `phase4-laneC2`): one other `.execute` passes on a statement it was handed - `entities._read_table`'s `con.execute(sql)`, a string-SQL door counted beside its two callers (`_read_players`, `_read_teams`: 3 counted for 2 statements) - so a rule "an `.execute` of a statement traced to a parameter is a door, its callers are counted" (the one `_door_sites` already applies to the `rows_of`/`values_of` wrappers) would move `compose.core` 1 -> 0 and `entities` 4 -> 3, and nothing else.
-- **User sees:** nothing; the step's exit ("the ratchet's count reads the relation modules and nothing else") cannot be met while the door counts, and the count would read a statement where there is none.
-- **Next step:** the lead's call (a ratchet's definition): count an `.execute` whose statement traces to a parameter as a door, as `_door_sites` does for the doors' wrappers, watch it fail on a hand statement written into `_executed`, and lower `compose.core` and `entities` with `--shrink` in the same commit.
-- **Source:** ours.
-- **Priority:** P4 - a count, no answer.
-- **GitHub:** #397
-
 ### A measure tagger's claim holds the team's name: "how many 3 pointers have the magic made" is claimed whole as the measure
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, adding the subject reading's claims.
 - **Evidence:** on the 2,710 readings 4 settled team names claim no characters of their own: their words sit inside a `measure` claim the measure tagger made over the whole team-total phrase (`lexicon.TEAM_TOTAL`: "how many 3 pointers have the magic made", "so far this season, how many three-pointers have the magic made?", "How many 10+ point leads did the Sacramento Kings have", "How many games in the 23-24 NBA season did the Los Angeles lakers have"), so the team's claim folds into it (`span.claimed`). Every reading is right; the claims say "measure" for the team's words.

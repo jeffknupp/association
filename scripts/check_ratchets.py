@@ -30,7 +30,10 @@ target"):
     ``entities._read_table`` (since 2026-10-03) or any function that runs
     the SQL it is handed (found by its body since 2026-10-12, its own call
     of that SQL no longer counted beside its callers': the name index's two
-    loads read as three until then), and - since 2026-10-05,
+    loads read as three until then; the SQL an attribute of what it is
+    handed as well since lane C4's commit the same day, so the compiler's
+    one door, ``compose.core._executed``, running ``statement.sql``, is a
+    door and no statement of ``compose.core``'s), and - since 2026-10-05,
     when Phase 2's review found 35 hand-written statements moved whole
     behind the compiler's door, where the count was blind to them - each
     ``core.rows_of``/``core.values_of`` call whose statement is not one the
@@ -44,7 +47,10 @@ target"):
     listed, since 2026-10-02: a listed module could grow statements freely,
     and nothing said so. 80 statements in 20 modules at the redefinition
     (38 in 11 before it; the list was regenerated once, by hand, with
-    Jeff's say-so).
+    Jeff's say-so); 74 in 12 since Phase 4, step 5 (2026-10-12): the
+    relation modules, ``entities`` (the name index's two loads and the
+    resolver's elimination read) and ``connection`` (the warehouse's latest
+    season), and no module of ``compose/``.
 ``regex_outside_the_reader``
     A module that imports ``re`` outside the reader. Contract 6: regexes
     live in the lexicon. 6 when it was written; 0 since Phase 3, step 4,
@@ -291,30 +297,57 @@ def _door_sites(modules: dict[str, ast.Module]) -> dict[str, int]:
 
 
 def _string_sql_helpers(modules: dict[str, ast.Module]) -> set[str]:
-    """The functions that run a statement handed to them as a string: an
+    """The functions that run a statement handed to them: an
     ``.execute``-family call (:data:`_EXECUTORS`) whose SQL is one of the
-    function's own parameters - ``entities._read_table(con, sql)``. Each is
-    a door, as :func:`_door_sites`' are: its callers are counted, and its
-    own call of the parameter is not a second statement (until 2026-10-12
-    ``_read_table``'s body counted beside each of its two callers, so the
-    name index's two loads read as three). Found, not listed, so a new
-    helper's callers are counted without anyone adding it."""
+    function's own parameters - ``entities._read_table(con, sql)`` - or an
+    attribute of one - ``compose.core._executed(con, statement)``, which
+    runs ``statement.sql`` - or a call of such a helper handing it the
+    function's own parameter (``rows_of(con, compiled)`` handing
+    ``compiled`` to ``_executed``). Each is a door, as :func:`_door_sites`'
+    are: its callers are counted, and its own call of the parameter is not a
+    second statement (until 2026-10-12 ``_read_table``'s body counted beside
+    each of its two callers, so the name index's two loads read as three;
+    until lane C4's commit the same day ``_executed``, the compiler's one
+    door, read as one statement of ``compose.core``'s, ISSUES.md #397).
+    Found, not listed, so a new helper's callers are counted without anyone
+    adding it. Found until no new one turns up, so a helper's own wrapper is
+    one too - except through ``rows_of``/``values_of`` (:data:`_DOORS`),
+    whose callers :func:`_door_sites` counts by where the statement comes
+    from, since a statement the compiler built is not one."""
     found: set[str] = set()
-    for tree in modules.values():
-        for function, call in _calls_by_function(tree):
-            if function is not None and _runs_its_parameter(function, call):
-                found.add(function.name)
-    return found
+    while True:
+        passing = found - _DOORS
+        new = {function.name for tree in modules.values() for function, call in _calls_by_function(tree) if function is not None and _runs_its_parameter(function, call, passing)} - found
+        if not new:
+            return found
+        found |= new
 
 
 #: The connection's own methods that run a statement: the SQL is their first argument.
 _CONNECTION_METHODS = frozenset({"execute", "executemany", "sql", "query"})
 
 
-def _runs_its_parameter(function: Function, call: ast.Call) -> bool:
-    """Whether ``call`` is a connection method (``con.execute(sql)``) whose
-    SQL is one of ``function``'s own parameters."""
-    return isinstance(call.func, ast.Attribute) and call.func.attr in _CONNECTION_METHODS and bool(call.args) and isinstance(call.args[0], ast.Name) and call.args[0].id in _parameters(function)
+def _handed(function: Function, expr: ast.AST) -> bool:
+    """Whether ``expr`` is one of ``function``'s own parameters
+    (``sql``), or an attribute of one (``statement.sql``) - a statement the
+    function was handed. ``self`` and ``cls`` are no statement: a method
+    running its own attribute runs SQL it holds, not SQL it was handed."""
+    if isinstance(expr, ast.Attribute):
+        expr = expr.value
+    return isinstance(expr, ast.Name) and expr.id not in {"self", "cls"} and expr.id in _parameters(function)
+
+
+def _runs_its_parameter(function: Function, call: ast.Call, helpers: frozenset[str] | set[str] = frozenset()) -> bool:
+    """Whether ``call`` runs a statement ``function`` was handed
+    (:func:`_handed`): a connection method (``con.execute(sql)``,
+    ``con.execute(statement.sql, ...)``) whose SQL is it, or a call of one
+    of ``helpers`` handing it on after the connection
+    (``_executed(con, statement)``)."""
+    if not call.args:
+        return False
+    if isinstance(call.func, ast.Attribute) and call.func.attr in _CONNECTION_METHODS:
+        return _handed(function, call.args[0])
+    return _callee(call) in helpers and any(_handed(function, argument) for argument in call.args[1:])
 
 
 def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
@@ -326,11 +359,13 @@ def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
     hand-built statement run through the compiler's door
     (:func:`_door_sites`), counted in the module whose call hands it over."""
     helpers = _string_sql_helpers(modules)
-    executors = _EXECUTORS | helpers
+    # rows_of and values_of are helpers (they hand their statement to the
+    # compiler's own door) whose callers _door_sites counts, by origin.
+    executors = _EXECUTORS | (helpers - _DOORS)
 
     def passes_on(function: Function | None, call: ast.Call) -> bool:
         # A helper's own call of the SQL it was handed: its callers count it.
-        return function is not None and function.name in helpers and _runs_its_parameter(function, call)
+        return function is not None and function.name in helpers and _runs_its_parameter(function, call, helpers - _DOORS)
 
     counts = {name: sum(1 for function, call in _calls_by_function(tree) if _callee(call) in executors and not passes_on(function, call)) for name, tree in modules.items()}
     for name, count in _door_sites(modules).items():

@@ -123,13 +123,21 @@ this tree:
   file's writer, `history.RunHistory.write`, which records the question
   asked and answers nothing), how many statements each module executes (105 in 19
   modules when it was first counted, 2026-10-02; 80 in 20 since
-  2026-10-05 - counted per module because a listed module could grow
+  2026-10-05; 74 in 12 since Phase 4, step 5 (2026-10-12): the relation
+  modules and their shared steps (`conditions` among them), `entities`
+  (the name index's two loads and the resolver's elimination read) and
+  `connection` (the latest season), and no module of `compose/` - counted
+  per module because a listed module could grow
   statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
   package's own string-SQL helpers since 2026-10-03, when a statement
   through `entities._read_table` counted as none (each found by its body
-  since 2026-10-12 - a function that runs the SQL it is handed - and its
-  own call of that SQL no longer counted beside its callers', which read
-  the name index's two loads as three); and since 2026-10-05
+  since 2026-10-12 - a function that runs the SQL it is handed, as a
+  parameter (`con.execute(sql)`) or an attribute of one
+  (`con.execute(statement.sql, ...)`), or hands its parameter on to such a
+  function - and its own call of that SQL no longer counted beside its
+  callers', which read the name index's two loads as three and the
+  compiler's one door, `compose.core._executed`, as a statement of
+  `compose.core`'s, #397); and since 2026-10-05
   every `core.rows_of`/`core.values_of` call over a statement the compiler
   did not build, in the module making the call, and every call of a
   function that only hands its parameter to one, such as
