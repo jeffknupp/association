@@ -88,6 +88,10 @@ class WindowCandidates:
     order_words: tuple[tuple[str, Claim], ...]
     rank: tuple[Literal["most", "fewest", "best", "worst"], Claim] | None
     ranked_by: tuple[str, tuple[Claim, ...]] | None
+    #: Whether the grammar's window words say "games" ("last ten games",
+    #: "last 10 home games"): such an end is the question's own, kept on
+    #: every key (ISSUES.md #352).
+    games_said: bool = False
 
     def of_games(self) -> tuple[Claim, ...]:
         """Where a window of GAMES is read from - the grammar's end and count,
@@ -135,13 +139,16 @@ def read_window(question: str, context: WindowContext) -> WindowCandidates:
     seasons = _seasons_counted(question)
     single = lexicon.SINGLE_GAME.search(question)
     order_words = tuple((name, Claim(match.start(), match.end(), "window")) for name, pattern in lexicon.ORDER_WORDS.items() if (match := pattern.search(question)) is not None)
+    grammar = _grammar(question)
+    claim = grammar[2]
     return WindowCandidates(
-        grammar=_grammar(question),
+        grammar=grammar,
         seasons=seasons,
         single=(_single_game_end(single), Claim(single.start(), single.end(), "window")) if single is not None else None,
         order_words=order_words,
         rank=_rank(question),
         ranked_by=_ranked_by(question, context),
+        games_said=claim is not None and lexicon.WINDOW_GAMES_WORD.search(question, claim.start, claim.end) is not None,
     )
 
 
@@ -301,6 +308,22 @@ def contradicting_ends(question: str) -> tuple[Claim, ...]:
     if not found["recent"] or not found["first"]:
         return ()
     return tuple(sorted({*found["recent"], *found["first"]}, key=lambda claim: (claim.start, claim.end)))
+
+
+def own_seasons_window(question: str) -> tuple[Claim, ...]:
+    """The words of a count of a career's own seasons by their place -
+    "first 9 seasons" in "lebron james stats through their first 9
+    seasons", "last 9 seasons" in "... in his last 9 seasons"
+    (:data:`~association.query.lexicon.OWN_SEASONS`; ISSUES.md #392) - or
+    none. The span reads seasons by the calendar, and which seasons are a
+    player's first nine is a fact of his career on record, which the reader
+    does not hold: the parser refuses the question by a cause naming the
+    words (``own_seasons_window``), where his 2026 line answered with "first
+    9" unread - or, for "his last 9 seasons", the league's last nine.
+
+    .. versionadded:: 6.0.0
+    """
+    return tuple(Claim(match.start(), match.end(), "window") for match in lexicon.OWN_SEASONS.finditer(question))
 
 
 def per_season_window(question: str) -> tuple[Claim, ...]:

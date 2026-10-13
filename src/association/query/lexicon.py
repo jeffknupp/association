@@ -966,6 +966,15 @@ winning; a ``limit`` of 0 is the count the words hold.
    In the lexicon, compiled (``parse.WINDOW_GRAMMAR`` until Phase 3, step 2).
 """
 
+WINDOW_GAMES_WORD = re.compile(rf"\b{WINDOW_GAMES}\b", re.IGNORECASE)
+"""A window's "games" (:data:`WINDOW_GAMES`) as a word: whether the window
+grammar's words said the window was of games ("last ten games", "last 10
+home games"), which keeps its end on a reader that honors none, for the
+planner to refuse by name (ISSUES.md #352).
+
+.. versionadded:: 6.0.0
+"""
+
 # Which end of the span a window reads from, said with "games": the two
 # forms the router's model emitted (``recent``, ``first``). Tighter than the
 # grammar's rows (no venue or season type between the count and "games": "his
@@ -1002,6 +1011,17 @@ COUNTED_END = re.compile(rf"\b(last|past|previous|most\s+recent|latest|final|fir
 # career. Not a bare "by season": deleting "regular" from "last 15 games ...
 # by regular season game" made one, so the refusal claimed a word it did not
 # read.
+OWN_SEASONS = re.compile(
+    rf"\b(?:(?:his|her|their|its)\s+(?:first|last|initial|final|opening|earliest|latest)|first|initial|opening|earliest)\s+{COUNT}\s+(?:nba\s+|pro\s+)?(?:seasons?|years?|yrs?)\b",
+    re.IGNORECASE,
+)
+"""A count of a career's OWN seasons by their place: "through their first 9
+seasons", "in his last 9 seasons", "first 3 years" (ISSUES.md #392) - counted
+from where a career starts or ends, never the calendar's "the last 5
+seasons", which needs no possessive.
+
+.. versionadded:: 6.0.0
+"""
 EACH_SEASON = re.compile(r"\b(?:each|every|per)\s+(?:season|year)\b|\b(?:season|year)[- ]by[- ](?:season|year)\b", re.IGNORECASE)
 """Words asking for something in each season, as typed.
 
