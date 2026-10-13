@@ -1744,7 +1744,11 @@ a shape:
     relation's shared steps hold the three a team reader ran over the
     games (`team_relation.team_season_game_counts`, `team_game_list_gaps`,
     `team_games_total`; `compose/team_records.py` and `compose/team.py`
-    execute nothing).
+    execute nothing). And a single-game chart's label
+    (`game_label.game_label`, which the fingerprint and the shot chart
+    print) words the row the player-games relation reads for it
+    (`player_games.game_label_row`, beside the relation's join) and runs
+    nothing.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body

@@ -8,6 +8,10 @@ all three for that id. This is the one place that builds the sentence -
 into two descriptions of the same game (see `ISSUES.md` #155 and the "One
 concept, one definition" rule in `AGENTS.md`).
 
+The words alone: the row is the player-games relation's read
+(:func:`association.query.player_games.game_label_row`, since Phase 4,
+step 5's close), and this module runs no statement.
+
 .. versionadded:: 4.4.0
 """
 
@@ -16,24 +20,15 @@ from __future__ import annotations
 import duckdb
 
 from association.nba.season import eastern_date
-
-_GAME_LABEL_SQL = """
-SELECT pgl.game_date, pgl.opponent_abbr,
-       g.home_team_id = pgl.team_id AS at_home,
-       g.winner_team_id = pgl.team_id AS won,
-       CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score,
-       CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score
-FROM player_game_log pgl
-JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season
-WHERE pgl.athlete_id = ? AND pgl.event_id = ?
-LIMIT 1
-"""
+from association.query.player_games import game_label_row
 
 
 def game_label(con: duckdb.DuckDBPyConnection, athlete_id: str, event_id: str) -> str | None:
     """One player's game, as ``"<date> vs|@ <OPP>, <W/L> <score>-<score>"``.
 
-    Read from ``player_game_log`` - which already carries season-correct team
+    Worded from the row the player-games relation reads for it
+    (:func:`association.query.player_games.game_label_row`):
+    ``player_game_log`` - which already carries season-correct team
     abbreviations through a franchise rename, see
     :func:`association.nba.franchises.season_name` - joined to ``games`` for
     the final score. ``game_date`` is a raw UTC stamp, so it is dated through
@@ -47,9 +42,13 @@ def game_label(con: duckdb.DuckDBPyConnection, athlete_id: str, event_id: str) -
     its event id, exactly as before this existed.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 6.0.0
+       Runs no statement of its own: the row is the player-games relation's
+       read (Phase 4, step 5's close).
     """
     try:
-        row = con.execute(_GAME_LABEL_SQL, [athlete_id, event_id]).fetchone()
+        row = game_label_row(con, athlete_id, event_id)
     except duckdb.CatalogException:
         return None
     if row is None or any(value is None for value in row):

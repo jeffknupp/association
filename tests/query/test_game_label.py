@@ -8,6 +8,7 @@ import duckdb
 import pytest
 
 from association.query.game_label import game_label
+from association.query.player_games import game_label_row
 
 
 @pytest.fixture
@@ -56,3 +57,16 @@ def test_a_warehouse_with_no_player_game_log_falls_back_to_none() -> None:
 def test_a_score_not_yet_posted_falls_back_to_none(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("UPDATE games SET home_score = NULL, away_score = NULL WHERE event_id = '100'")
     assert game_label(con, "1", "100") is None
+
+
+def test_the_row_is_the_player_games_relations_read_keyed_on_the_season(con: duckdb.DuckDBPyConnection) -> None:
+    """The row the label is worded from is the player-games relation's read
+    (Phase 4, step 5's close): the raw stamp, the opponent, the venue, the
+    result and the score from the player's side - joined to ``games`` on the
+    season as well as the event, so the phantom 1993's copy of an event id
+    (a different game, scored differently) is never the one read."""
+    con.execute("INSERT INTO games VALUES ('100', 1993, '20', '9', 90, 80, '20')")
+    assert game_label_row(con, "1", "100") == ("2025-04-13T00:30Z", "POR", True, True, 118, 104)
+    assert game_label_row(con, "nobody", "100") is None
+    with pytest.raises(duckdb.CatalogException):
+        game_label_row(duckdb.connect(":memory:"), "1", "100")
