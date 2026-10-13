@@ -570,7 +570,8 @@ gets turned off.
     standings' reads beside it, `standings.py`, and the two declared
     relations' own since Phase 4, step 5: `netpoints.py`, the NetPoints
     relation, which builds and runs every statement the NetPoints reader
-    and the fingerprint read, and `shots.py`, the shot relation, every
+    and the fingerprint read and a comparison's NetPoints rows, and
+    `shots.py`, the shot relation, every
     statement its chart and distance read - each relation module runs
     its own statements, and `compose/` runs only what the compiler built
     or a relation hands it, Phase 4, step 5), the
@@ -1731,7 +1732,10 @@ a shape:
     of ESPN's `standings` and the season totals they are checked against:
     `season_row`, `career_rows`, `first_season`, `season_games`), which
     `compose/standings.py` reads. The season line's (`season_line.season_row`
-    and the five beside it; `compose/seasons.py` executes nothing), the
+    and the four beside it; `compose/seasons.py` executes nothing, and
+    takes a comparison's NetPoints rows from the NetPoints relation,
+    `netpoints.netpoints_row`, which the season line ran until the step's
+    close), the
     team seasons' (`team_seasons`' `read_team_lines`, `read_team_records`
     and the five beside them, the team compiler's season total among
     them; `compose/team_stats.py` executes nothing), and the team-games
