@@ -862,7 +862,9 @@ otherwise.
     composed), so no word is claimed that the key does not read.
   - **A grammar reads a line and an opponent as the taggers type them**,
     written over their words by marks that keep every character where it
-    stands (`lexicon.mark_lines`, `mark_opponent`): the child grammars the
+    stands (`lexicon.mark_lines`, `mark_opponent` - deleted with the other
+    marks in Phase 4, step 6, the values held apart from the words in the
+    grammar's text since; below): the child grammars the
     whole line, the parent grammar and the rules its number (a stat word
     is also a measure's word they read), the parent grammar the opponent
     with its versus word. The keys move nowhere: 2,710 of 2,710 readings
@@ -898,6 +900,53 @@ otherwise.
     record's), `(player_games, ranking, player)` per game 336 and TOTAL 1
     (the word "total") - so deriving it needs a `by` or a `Measure.how`
     the point does not carry yet.
+- **Declared in code by Phase 4, step 6, the grammar's text** (2026-10-12,
+  lane A; Still open 15 and 17 closed by it): the grammars and the
+  grammar's rules read `lexicon.GrammarText` - the question's words with
+  every character a tagger typed written as one character, `lexicon.TYPED`
+  (U+FFFC, the same for every kind, so no pattern over the words reads
+  what stands there), and beside them what was typed at each character, a
+  closed `lexicon.TypedKind`: a line's number by how it is stated
+  (`line_plus`, `line_at_least`, `line_number`), the words leading a line
+  under a number and a line's stat (`line_lead`, `line_stat`), the
+  opponent by its versus word (`opponent_against`, `opponent_versus`,
+  `opponent`), a companion's phrase by its presence word
+  (`companion_with`, `companion`), a window of games (`window`) and a range
+  opened on a dated day (`date`) - each from the typed value its reader
+  read (`line.LinesNamed`, `subject.opponent_read`,
+  `Subject.companion_phrases`, `window.WindowCandidates.of_games`,
+  `cuts.CutsRead.dated`), typed over one another by `parse.grammar_text`.
+  - A parent grammar row is a predicate over the text
+    (`lexicon.GrammarRow`): its words (`Words`, the lexicon's `*_ROW`
+    patterns), a value standing anywhere (`Stands`), right after the words
+    that lead it (`StandsAfter`) or right before the words after it
+    (`StandsBefore`), and any, all or none of those. The table - which
+    kinds a row applies to, the shape it names - stays the parser's
+    (`parse.PARENT_GRAMMAR`), the words the lexicon's.
+  - A pattern that reads a value WHERE it stands among the words (a child
+    grammar's "a line's number, then its stat, then 'games'", a rule's
+    "had <a line's number>") is a `lexicon.Ask`: a regex written with
+    `lexicon.typed(kind, ...)` for each value, matched against the text
+    with each typed character spelled by its kind, from the typed values
+    alone (`GrammarText.spelled`; a character of that alphabet in the
+    question's own words is written as `TYPED`). Considered and not taken:
+    a matcher of its own over the words and the values - a backtracking
+    engine standing in for the regex wherever a value stands - which would
+    have to reproduce Python's backtracking order to read every input as
+    before (splitting `SUBJECT_OF_HIGH` into two whole patterns already
+    reads "X scored has 30" differently from the one regex), and would run
+    a Python loop per position on every probe of every rule. The ask IS
+    the regex, so it reads every input as before by construction; the
+    spelled alphabet exists inside the match and nowhere else.
+  - A rule's probe deletes a word from the text with the values in place
+    (`GrammarText.without`, which `span.needed`/`read_by` take as they take
+    a string). The 2,710 readings, their claims and unread words, the 628
+    and the 2,082 answered and every unit-test call held identical
+    (`claims_pop.py`, `reader_pop.py`, `stage_snapshots.py`, the ledgers,
+    `route_family.py`); the intake that read every private-use character as
+    a space (ISSUES.md #383) went with the marks, since no value is read
+    from a character - the #383 test holds the reading with one typed in
+    equal to the reading with a space there.
 
 ## What must be decided before which phase
 
@@ -909,7 +958,7 @@ otherwise.
 | Phase 2, slice (iv), team shapes | "Still open" 5: `team_snapshots` |
 | Phase 2, slice (v), charts | "Still open" 6: two charts, not four |
 | Phase 3 (one reader) | the Filter union, `Measure`, `Window`, `Unsupported`: reviewed again with the shadow reader's diffs in hand |
-| Phase 4 (close out; its draft rows are in `ROADMAP.md`, 2026-10-12) | step 3: "Still open" 13, the point's `measures`/`aggregate` as the typed `Measure` and a closed aggregate on the Query; step 4: "The four records" - which of today's ten are records between stages and which are the reader's inputs; step 6: "Still open" 15 and 17, the grammar's writes onto the subject and the partial-overlap join, both retired with the marks; step 2: the label's last readers |
+| Phase 4 (close out; its draft rows are in `ROADMAP.md`, 2026-10-12) | step 3: "Still open" 13, the point's `measures`/`aggregate` as the typed `Measure` and a closed aggregate on the Query; step 4: "The four records" - which of today's ten are records between stages and which are the reader's inputs; step 6: "Still open" 15 and 17, the grammar's writes onto the subject and the partial-overlap join, both decided with the marks' retirement (2026-10-12: the writes stay the rules', measured; the join stays as tolerance, held at zero); step 2: the label's last readers |
 
 ## What exists, in one table
 
@@ -1407,21 +1456,32 @@ moves into `data` before the slice that rewords its answer:
     games with Gobert an opponent-side companion; the planner refusing a
     position on a point that takes none is the decline-to-Cause shape.
     ISSUES.md.
-15. **The grammar's rules settle three names** (the stages' until Phase 3,
-    step 4, slice (b), which deleted them with `router.py`). The grammar's
-    subject of a count, a high or a line record (30 of the 2,710 readings),
-    a team's quarter from its one nickname (24) and a quarter's player read
-    back (1) are written on the typed subject by the grammar's rules
+15. **The grammar's rules settle three names** - decided (Phase 4, step
+    6): they stay the rules' writes, re-read on every probe of the rules,
+    and are handed on typed as they were, on the typed subject the rules
+    return (`grammar.Asked.subject`, a `reading.Subject`). The grammar's
+    subject of a count, a high or a line record (30 of the 2,710
+    readings), a team's quarter from its one nickname (24) and a quarter's
+    player read back (1) are written by the grammar's rules
     (`grammar.settle`), under the key they choose, from the subject
-    reading's own readers of the words (`subject.subject_named_in`,
-    `team_words_in`). They stay the rules' writes and not
-    `subject.settle_subject`'s, measured: the period rules read the names
-    they write as they go - the nickname's team turns the next rule's "a
-    team named" true, the quarter's player turns the key to the period log
-    and drops the team the model filed - so a writer after the rules would
-    have to replay them. One writer of the Reading's subject still holds
-    (`subject.apply_subject`, over the scope the taggers write); the rules
-    write their working reading of it.
+    reading's own readers of the words (`subject.subject_named_in`, over
+    the grammar's text since step 6 - "had <N>" asks a line's number by
+    value - and `team_words_in`, read ONCE and handed to the rules since
+    Phase 3, step 4, slice (c)). Measured, twice: the period rules read the
+    names they write as they go - the nickname's team turns the next
+    rule's "a team named" true, the quarter's player turns the key to the
+    period log and drops the team the model filed - so a writer after the
+    rules would have to replay them; and reading the grammar's subject
+    ONCE, handed to the rules like the team words, moves 3 of the 2,710
+    readings (`~/association-research/stages/claims_pop.py` beside a
+    patched `grammar.settle`): "score" in "How many times did bill Russell
+    score below 10" and its "... points" twin and "most" in "nba players
+    that scored most 40 pt games" become unread - each the word that makes
+    the grammar name its subject (Bill Russell is in no table; the rules
+    write "bill russell" because "score" follows it), which the rules'
+    decision turns on and so claims. One writer of the Reading's subject
+    still holds (`subject.apply_subject`, over the scope the taggers
+    write); the rules write their working reading of it.
 
 16. **The subject reading's claims are declared, not measured** (Phase 3,
     step 3). Every other rule's claims are cut to what its reading depends
@@ -1446,7 +1506,16 @@ moves into `data` before the slice that rewords its answer:
     more - and a second reading of the subject per word is what the
     read-once rule forbids. Jeff's: keep the rule and the residue, or allow the
     subject reading to be asked again for its claims alone.
-17. **A partial overlap of two claims joins them, named for both** (since
+17. **A partial overlap of two claims joins them, named for both** -
+    decided (Phase 4, step 6): no joined claim on either population since
+    the step fixed #354 (`situation+date` 4 -> 0: the situation's month no
+    longer read inside a day), and the claims ledger holds both at zero
+    (`HELD_JOINS` empty for the 628, the feed's held joins empty in
+    `scripts/ledger_held.json`): a new kind fails `report`. The join itself
+    stays, by Jeff's ruling (2026-10-10), as the reader's tolerance - a
+    partial overlap never raises to a user, as "lebron's last game 7" did
+    - and every join it makes is a finding the ledger names. The history,
+    as written before (since
     `a29c7fd`; the span slice's decision was that it fails the reader).
     Measured on the 2,710 at the step's end: 48 joined claims, where step 2
     closed with 4. 43 are a child grammar's words (claimed whole, since
