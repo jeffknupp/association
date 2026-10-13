@@ -498,6 +498,14 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #394
 
+### "average" beside a month or a date is read as a game log: "How many points did De'aaron fox average in November 2023" and "tatum averages since 12/11/2023" list the last 10 games
+- **Found:** 2026-10-13, the P1 sweep (lane S), proving #353 (a worded since-date with a year).
+- **Evidence:** the parent grammar's player log row (`lexicon.PLAYER_LOG_ROW`, `parse._PLAYER_LOG`) reads `\d+/\d+` and the month names `march|january|february|april|december|november|october` as a log, ahead of every row that reads a line, and nothing reads "average" against it. On the readings run of `21f12bd` plus #353's fix (`reader_pop.py`, the 2,710): "How many points did De'aaron fox average in November 2023" ("De'Aaron Fox in November, last 10 of 13 games ..."), "Scottie Barnes averages Feb 28th to April 14th 2026" and its "... ts%" twin (his last 10 games between the days) are `player_games`/`rows`/`date` - 3 of the 2,082 feed questions, "average" unread in each. Probed with the model's names and stat (`lebron`, `points`): "how many points did lebron average since 1/31/2020" and "... since january 31 2020" list his last 10 of 381 games, "average" unread; "tatum averages since 12/11/2023" lists his last 10 of 141, where "tatum averages since dec 11 2023" (a month the row does not hold) answers his line, 26.2 points per game in 141 games.
+- **User sees:** ten rows of a log where one average was asked - a different shape, fluently.
+- **Next step:** the log row reads a month or a slashed day only where no line word ("average(s)", "avg", "ppg", "per game") stands beside it, so the line's row takes the question with the cut on it; measure the 2,710 readings and both answer populations first, every moved answer enumerated. The row is the grammar family's (lane N's), not the cuts'.
+- **Priority:** P1 - a different shape answered fluently; 3 of the 2,082 (and #267's own question).
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A team's stat asked under a companion's line answers the team's record: "how many fgm did the celtics make when tatum scored 30" answers the Celtics' record when Tatum had 30+ points
@@ -544,15 +552,6 @@ those were found.
 - **Source:** ours.
 - **Priority:** P2 - a refusal naming the wrong cause, 6 feed questions.
 - **GitHub:** #367
-
-### A worded since-date with a year is read as that season cut at the day, where the numeric form is every game from the date on: "since january 31st 2020" vs "since 1/31/2020"
-- **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (measuring the family: `~/association-research/stages/cuts_family.py`, the situation and the span as each stage set them).
-- **Evidence:** the words are read twice, by two families: the span's `season_named` reads "2020" as the one season, and the cuts' `SITUATION` reads "since january 31st" (its date-range alternative carries no year), a `since_day` within each season of the span. The numeric form "since 1/31/2020" is read by `NUMERIC_DATE_RANGE` with its year into a `since_date` across seasons, and the cuts tagger hands the year to the span (`CutsRead.dated_since`), so the seasons start there. Measured on master (`78096f7`, `ask_unnamed.py`): "lebron ppg since january 31st 2020" answers his 2019-20 games from January 31 on (per game 32.9 minutes, 24.8 points, the 2020 regular season's last weeks); "lebron ppg since 1/31/2020" answers every game from that date through 2026 (per game 32.0, 19.9). The worded form with an abbreviated month fares worse: "Nick Richards stats after Dec 11 2023" (the feed) keeps the situation "after dec 11" - `CALENDAR_DATE` matched "after Dec 11 2023" with its year, but `SITUATION` had matched the shorter words first and the year never reached the span - and `SITUATION_SINCE_DAY` takes full month names only, so it is refused by value ("'after dec 11' is not something the games are read by") with the year gone from the sentence. On the 2,710 readings: 2 numeric since-dates, 13 worded `since_day`s with no year, 1 worded with a year ("after dec 11 2023"); none of the 628.
-- **User sees:** a narrower answer than asked, said as the season's ("since january 31st 2020" is the question's own words, and the answer heads the 2019-20 season); a refusal naming the date without its year.
-- **Next step:** decide what a worded since-date with a year means (the numeric form's reading, every game from that date on, is the natural one) and read both forms the same way: the cuts tagger prefers the `CALENDAR_DATE` range match where it carries a year (the situation's words whole, `dated_since` the year), `SITUATION_SINCE_DAY` takes an optional year as a `since_date` and the abbreviated months `CALENDAR_DATE` already takes, and the span does not read the range's year as the one season. One feed answer moves ("Nick Richards stats after Dec 11 2023", a refusal becoming his line since that date) - an enumerated commit with a test on both wordings.
-- **Priority:** P2 - a narrower question answered under the question's own words; the typed `Situation` records what was read (`ROADMAP-TYPES.md`, "Still open" 10).
-- **Source:** ours.
-- **GitHub:** #353
 
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
 - **Found:** 2026-10-05, the Phase 2 review
@@ -3002,6 +3001,14 @@ those were found.
 - **GitHub:** #382
 
 ## P4: tooling, docs, low impact
+
+### A line said over a since-date states the date and the span's opening season both: "... in 141 games since December 11, 2023 since 2024 (2024-2026 regular seasons)"
+- **Found:** 2026-10-13, the P1 sweep (lane S), reading #353's moved answer.
+- **Evidence:** "Nick Richards stats after Dec 11 2023" (the feed, on #353's fix) answers "Nick Richards averaged 8.5 points, 7.3 rebounds and 0.7 assists per game in 158 games since December 11, 2023 since 2024 (2024-2026 regular seasons)."; a team's record does the same on master ("celtics record since 1/26/2020": "The Boston Celtics are 343-167 (.673) since January 26, 2020 in the regular seasons since 2020."). The narrowing's phrase (the calendar cut) and the span's phrase (the season the cuts tagger opened the span at, `CutsRead.dated_since`) are each said; the log's heading says the date alone ("since December 11, 2023, last 10 of 158 games (2024-2026 regular seasons)").
+- **User sees:** a redundant, slightly confusing clause; the figures are right.
+- **Next step:** the sayer drops the span's "since <season>" where a `since_date` or `date_range` calendar cut opened it, as the log's heading does (`compose/say.py`, the answer side's).
+- **Priority:** P4 - wording only.
+- **Source:** ours.
 
 ### "1 of these game has no box score from ESPN": the plural sits on the wrong word
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 6).

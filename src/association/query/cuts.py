@@ -121,6 +121,13 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
     else:
         situation, situation_claim = _situation(question)
         day, day_claim = _day(question)
+        dated = _dated_day(question, situation_claim)
+        if dated is not None:
+            # A range opened on a worded day with its year is that day on,
+            # across seasons, as the numeric form is (ISSUES.md #353): the
+            # situation is its words whole, and the season the day falls in
+            # opens the span.
+            situation, dated_since, situation_claim = dated
     if ranged is None and day_claim is None and situation is None:
         # A date that named itself but could not be pinned to one day - a
         # range opened on it, or a day on a career question - is a
@@ -224,6 +231,28 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
         return date(year, month, day).isoformat(), Claim(match.start(), match.end(), "date")
     except ValueError:
         return None, None  # "february 31"
+
+
+def _dated_day(question: str, situation: Claim | None) -> tuple[str, int, Claim] | None:
+    """A range opened on a worded day with its year ("since january 31st
+    2020", "after Dec 11 2023": :data:`~association.query.lexicon.CALENDAR_DATE`
+    with a lead of "since", "from" or "after" and a year) as the situation
+    it is, with the season the day falls in and the characters read - where
+    the circumstance the words otherwise name is that day's own words (a
+    weekday or a conference elsewhere in the question stays the situation).
+    None where the words name no such range."""
+    match = lexicon.CALENDAR_DATE.search(question)
+    if match is None or match.group("year") is None or not match.group("range"):
+        return None
+    if match.group("range").split()[0].casefold() not in ("since", "from", "after"):
+        return None
+    if situation is not None and not (match.start() <= situation.start and situation.end <= match.end()):
+        return None
+    try:
+        day = date(int(match.group("year")), lexicon.month_number(match.group("month")), int(match.group("day")))
+    except ValueError:
+        return None  # "february 31 2020", refused by value as before
+    return match.group(0).casefold(), season_of_day(day), Claim(match.start(), match.end(), "situation")
 
 
 def _date_range(question: str) -> tuple[str, int, int, bool, Claim] | None:

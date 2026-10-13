@@ -168,6 +168,10 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
        is whatever :data:`HOLIDAYS` maps it to. A typographic apostrophe
        reaches it straight, folded where the question entered the parser
        (:func:`association.query.parse.read_route`).
+
+    .. versionchanged:: 6.0.0
+       Reads a "since" worded with its year ("since january 31st 2020", a
+       ``since_date``) and a month written short ("after dec 11"), ISSUES.md #353.
     """
     if not isinstance(text, str) or not text.strip():
         return None
@@ -180,6 +184,13 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     if m:
         month = lexicon.month_number(m.group("month"))
         return CalendarNarrowing("month", month, f"in {_MONTH_NAMES[month - 1]}")
+    m = lexicon.SITUATION_SINCE_DATED.fullmatch(words)
+    if m:
+        try:
+            day = date(int(m.group("year")), lexicon.month_number(m.group("month")), int(m.group("num")))
+        except ValueError:
+            return None  # "february 31 2020"
+        return CalendarNarrowing("since_date", day.isoformat(), f"since {_day_label(day)}")
     m = lexicon.SITUATION_SINCE_DAY.fullmatch(words)
     if m:
         month = lexicon.month_number(m.group("month"))

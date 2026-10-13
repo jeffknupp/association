@@ -1469,11 +1469,26 @@ SITUATION_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH_NAME}
 .. versionadded:: 6.0.0
    ``calendar._IN_MONTH`` until Phase 3, step 2.
 """
-SITUATION_SINCE_DAY = re.compile(rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_NAME}\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
-"""A situation value opening a range on a day of each season.
+SITUATION_SINCE_DAY = re.compile(rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_WORD}\.?\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+"""A situation value opening a range on a day of each season - its month
+written out or short ("after dec 11", ISSUES.md #353).
 
 .. versionadded:: 6.0.0
    ``calendar._SINCE_DAY`` until Phase 3, step 2.
+"""
+# A range opened on a worded day WITH its year: "since january 31st 2020",
+# "after Dec 11 2023" - every game from that calendar day on, across
+# seasons, as "since 1/31/2020" is (ISSUES.md #353). Until it the words were
+# read twice - the year as THE season, the day as a "since <day>" inside it
+# - and "lebron ppg since january 31st 2020" answered the 2019-20 season's
+# last weeks.
+SITUATION_SINCE_DATED = re.compile(
+    rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_WORD}\.?\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?,?\s+(?P<year>(?:19|20)\d\d)$",  # codespell:ignore nd - an ordinal suffix
+    re.IGNORECASE,
+)
+"""A situation value opening a range on a worded day with its year.
+
+.. versionadded:: 6.0.0
 """
 SITUATION_SINCE_NUMERIC = re.compile(r"^(?:since|from|after)\s+(?:the\s+)?(?P<date>\d{1,2}/\d{1,2}(?:/\d{2}(?:\d{2})?)?)$", re.IGNORECASE)
 """A situation value opening a range on a date written in numbers.
