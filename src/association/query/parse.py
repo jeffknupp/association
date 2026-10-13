@@ -29,7 +29,7 @@ from dataclasses import replace
 from typing import Any
 
 from association.query import lexicon, names
-from association.query.cuts import CutsContext, CutsRead, read_cuts
+from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
 from association.query.grammar import Asked, absent, settle
@@ -1096,8 +1096,17 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       his first nine is a fact of his career the reader does not hold
       (:func:`~association.query.window.own_seasons_window`).
 
+    - a conference or division a ranking's subject belongs to
+      (``own_alignment``): "top scorers in the western conference this
+      season" ranked every player's games against the West (ISSUES.md #339)
+      - nothing ranks a conference's own yet
+      (:func:`~association.query.cuts.own_alignment`); said only where the
+      words name nothing else that nothing reads (bench points), whose
+      cause is said where the answer side declines, as before.
+
     The championship first, as the answering loop asked them, then the
-    window's ends, then a window per season, then a career's own seasons."""
+    window's ends, then a window per season, then a career's own seasons,
+    then a ranking's own conference."""
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
     ends = contradicting_ends(question)
@@ -1109,6 +1118,11 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     own = own_seasons_window(question)
     if own:
         return Cause(kind="own_seasons_window", facts={"seasons": [question[claim.start : claim.end] for claim in own]})
+    aligned = own_alignment(reading.asked, reading.cuts)
+    if aligned is not None and not _reading_from_route_unsupported(question, reading):
+        # Where the words name something else nothing reads ("bench points
+        # allowed in the west"), that cause is said, as it was.
+        return Cause(kind="own_alignment", facts={"shape": reading.asked, "alignment": aligned})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)

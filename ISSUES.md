@@ -346,11 +346,12 @@ those were found.
 - **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 3 - "Gabe Vincent 3’s as a laker", "Jarred 3’s as a laker" (a team's line), "steph curry 3's per season" (his points line).
 - **GitHub:** #270
 
-### A conference or division the players or teams belong to is answered as the whole league, or as games against it
-- **Found:** 2026-10-09, Phase 3 step 0, probing which questions reach `calendar.conference_named` (none of the 2,710 readings does)
-- **Evidence:** through the whole agent on `4b9c254`, replies as `run --feed` gives them (no names; the stat where named): "who leads the east in scoring" answers "Luka Doncic led the league in points per game in the 2026 regular season ... at 33.5" - the league, and a Western player; "who leads the east" answers every player by points per game; "top scorers in the western conference this season" answers "every player against Western Conference teams" - `situation` "in the western conference" read as the OPPONENT's alignment (`calendar.parse_alignment` takes "in the west" as a narrowing to games against it), where the question asks for players IN the West. "best record in the east" is refused ("team_leaderboard cannot honor ['situation']"), the one wording probed that does not answer. #25's "What remains" said "a refusal for 'who leads the East'": no longer true.
-- **User sees:** a fluent answer to a different question - the league's leaders, or every player's games against the conference.
-- **Next step:** read a conference or division the subject belongs to ("in the east", "the east's", "eastern conference players/teams") as the subject's own alignment - a ranking pool narrowed by `team_alignment` on the player's or team's own team that season - distinct from "vs/against the east" (the opponent's); until a reader takes it, refuse it by name rather than answer the league. #25 is the same gap from the data side.
+### A ranking within the subject's own conference or division is refused: "top scorers in the western conference this season"
+- **Found:** 2026-10-09, Phase 3 step 0; refused by a cause in the P1 sweep (lane S, 2026-10-13).
+- **Evidence:** since the sweep a conference or division on a ranking that no "vs"/"versus"/"against" leads ("in the western conference", "who leads the east", "eastern conference players points leaders", "atlantic division standings": `cuts.own_alignment`, `lexicon.ALIGNMENT_AS_OPPONENT`) is refused before any reader runs (`own_alignment`): "A ranking within a conference or division ('in the western conference') is read by nothing here yet - ...", where "top scorers in the western conference this season" ranked every player's games against the West and "who leads the east in scoring" the league. Off a ranking the words keep the opponent's reading ("lebron points in the west": his games against the West). None of the 628 or the 2,082 holds the class (the wordings are probes).
+- **User sees:** an honest refusal where a conference's own leaders were asked.
+- **Next step:** a ranking pool narrowed by the player's or team's own alignment that season (`team_alignment` on the team's id and season, the standings' conference and division), then the cause goes. #25 is the same gap from the data side.
+- **Priority:** P3 - a refusal.
 - **GitHub:** #339
 
 ### A team's record when a companion reaches a line the stages cannot read is answered as the with/without split
