@@ -797,11 +797,13 @@ the grammar row or rule that names it from the words; the point reader's
 keying; a reader returning a typed `Result`; the sayer's phrase; the
 `coverage.SOURCES` entry; the frozen-keys list grown with the lifting
 recorded beside it; a test per wording, watched to fail; and the four
-populations with every move enumerated. The other freeze occasions the
-sweep has measured stay refusals by name until decided: #364's remainder
-(a team's own games ranked by a figure, `team_games/rows/measure`, about
-2 feed answers) and #392's remainder (a player's first or last N seasons
-resolved over his seasons on record, 3).
+populations with every move enumerated. Lifted again the same evening for #364's
+remainder (Jeff, 2026-10-13): a team's own games ranked by a figure,
+`team_games/rows/measure`, lane N's after its current entry with the team
+compiler's files, about 2 feed answers and the "by a thunder player"
+family. Still a refusal by name until decided: #392's remainder (a
+player's first or last N seasons resolved over his seasons on record, 3),
+which is the relation's, not a shape.
 
 Three rules hold throughout, Phase 3's: a decline or a refusal reworded
 is ONE enumerated commit; a boundary that moves is recorded in
