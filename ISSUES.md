@@ -70,6 +70,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** read "win percentage"/"win %" as a measure word; with no player word, the teams' ranking by win percentage (`TEAM_RANKING`, the standings' `win_pct`); with "player(s)", a refusal naming the figure until a ranking of players by their games' record exists.
 - **Priority:** P1 - a different figure answered fluently; 2 of the 2,082.
 - **Source:** ours.
+- **GitHub:** #428
 
 ### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
@@ -116,6 +117,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent wrong answer - ten games where ten seasons were asked.
 - **Next step:** the team log row reads a window of games as the window tagger types it (`lexicon.stands("window")`, `WINDOW_MARK` until Phase 4, step 6) and no longer its own `last COUNT` words (`lexicon.TEAM_LOG_ROW`), and "last N seasons" on a team becomes the team-season relation's history over N seasons (`Window.of == "seasons"`, as a player's history reads it) - with the answers enumerated. Measured in Phase 4, step 6 (lane A, `9ee8c8f`; the row's `(last|past|previous|most recent) COUNT` alternative dropped, the 2,710 readings and the feed answers): 8 readings move, all feed, none of the 628 - "raptors record last 10 season" and "... last 5 season" become the team's record over the range ("The Toronto Raptors are 438-362 (.547) in the regular seasons since 2017", right); "portland trailblazers winning percentage last 10 seasons" and "... last 15", "sacramento kings winning percentage last 10 seasons" and "raptors last 5 season" become `team_stat` refusing the range ("the seasons since 2016-17 cannot be read here"), honest where they were wrong; but "hornets on the road vs magic last 2 seasons" (the 4 road games against Orlando since 2025, right today) and "suns vs jazz last 10 match ups" (the form the tagger does not type) become `team_stat` refusals too. So the row's words cannot simply go: a team's season-by-season line (or `team_stat` over a range) is the missing piece, on the answer side, and the row then reads "last N seasons" as that and keeps its words for a team's narrowed games.
 - **Priority:** P1 - a wrong answer fluently.
+- **GitHub:** #429
 ### A team's figure over its last N seasons is refused: "portland trailblazers winning percentage last 10 seasons"
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c); the reading half fixed in the P1 sweep (lane S, 2026-10-13).
 - **Evidence:** since the sweep a team's "last N seasons" is a count of seasons, never a log of N games (`lexicon.TEAM_LOG_ROW` reads no count followed by "season(s)"/"year(s)"): "raptors record last 10 season" answers the record over the range ("The Toronto Raptors are 438-362 (.547) in the regular seasons since 2017"), and a team's games against an opponent over N seasons with no record word stay a log of those meetings (`lexicon.TEAM_GAMES_OVER_SEASONS_ROW`: "hornets on the road vs magic last 2 seasons", the 4 road games since 2025). But "portland trailblazers winning percentage last 10 seasons", "... last 15 seasons", "sacramento kings winning percentage last 10 seasons" and "raptors last 5 season" (4 of the 2,082 feed questions) are read under the team's season line (`team_seasons`/`scalar`/`line`), which reads one season, and are refused ("the seasons since 2016-17 cannot be read here"), where they listed the last 10 games until the sweep. "winning percentage" is no record word to the parent grammar (`TEAM_RECORD_ROW`), so the record over the range, which answers, is not asked.
@@ -144,47 +146,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P2 - (2) answers a broader question on 6 of the 2,082; (1) and (3) are refusals or #390's.
 - **GitHub:** #371
 
-### A count's second and later bare lines are dropped: "most games with 20 pts, 10 reb, 5 ast last season" answers the most 20+ point games
-- **Found:** 2026-10-09, Phase 3 step 2's line slice (`line_family.py`: the multi-line questions)
-- **Evidence:** 6 of the 2,710 readings (`/tmp/s2e/read-after.jsonl`): "most games with 20 pt,s 10 reb, 5 ast", "most games with 20 pts, 10 reb, 5 ast last season", and "most playoff games with 46/47/48/49 points N assists N rebounds". The tagger reads all three lines (`Scope.lines`: `20 pts` keyed, `10 reb` and `5 ast` neither keyed nor narrowing), but the league count with a ranking word (`point._everyone_threshold_count`, through `_everyone_threshold_predicates`) takes the keyed line alone: the planned query's predicates are `[["points", ">=", 20]]`, and the feed answer is "Shai Gilgeous-Alexander had the most games with 20+ points in the 2025 regular season, with 76." The listing without a ranking word applies every line ("players with 20 point 20 rebound games": two predicates, `_numbered_lines`). Tried in this slice and reverted: handing the count every bare line as a predicate moved the answer to the compiler's own sentence, "every player, 2025 regular season with 10+ rebounds and 5+ assists, by player: Nikola Jokic 51 G ..." - the count's reader (`compose/counts.py`) steps aside for more than one predicate and the sentence then names the lines it did not rank by, so the fix is the count shape's, not the tagger's.
-- **User sees:** a fluent leader for a one-line question where a three-line one was asked.
-- **Next step:** `compose/counts.py`'s ranking takes every predicate (the games clearing all of them, counted per player) and says them all ("the most games with 20+ points, 10+ rebounds and 5+ assists"); `_everyone_threshold_predicates` then reads every bare whole-game line of `Scope.lines`. Enumerate the 6 before and after.
-- **Priority:** P1 - 6 of the 2,710 readings.
-- **GitHub:** #358
-
-### A companion's line is read as the subject's too: "maxey record when embiid scores 20+ points" keys the record on Maxey's 20+ points as well
-- **Found:** 2026-10-09, Phase 3 step 2's line slice, choosing whether the lines tagger reads inside a companion's phrase
-- **Evidence:** answered on this tree AND on `7be1ff9` with the names stubbed (`/tmp/s2e/ask_stub.py`, names `["Tyrese Maxey", "Joel Embiid"]`, stat `points`): "Philadelphia 76ers record when Tyrese Maxey had 20+ points in games Joel Embiid had 20+ points, 2026 regular season: 20+ points 26 18-8 ... under 20 points 4 1-3 ...". The stages read the record's threshold from the whole question's first "N+ stat" (and the tagger keeps that: measured, skipping the companion's phrase moved "In his 18th season, how many games with 40+ points did Lebron James have?" from a count to a ranking, because that phrase reads as a companion's and the subject is LeBron himself), so the one line in the question is both Embiid's (`Companion.line`) and the subject's (`Scope.lines`, keyed). On the 2,710 readings every companion with a line is a team's record (23, `_apply_team_record_when` moves the line onto the team and the companion goes), so no population answer carries this.
-- **User sees:** a record table split by the wrong player's line - the question asked for the 76ers' record in Embiid's 20+ games, with Maxey beside him.
-- **Next step:** when the subject reading's companion claim holds the line's claim (the two fold into one, `Reading.claims`), the subject has no line of its own: `router._settle` can read that from the claims once the subject's claims reach the stages (they are on the Route today), and a `record_when` with a companion's line and none of the subject's is the team's record (the team form already answers it) or a refusal naming the missing line. Watch the LeBron wording when it changes.
-- **Priority:** P1 - a wrong table fluently; 0 of the 2,710 readings.
-- **GitHub:** #359
-
-### "knicks vs celtics total points" answers the season series record, not the points
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** the answer is "met 4 times ... won the series 3-1". Before Phase 2 the reading held a team `total` of points that the template ignored; since `4db543a` the reading itself is a `record`. Same answer on both trees, names `["knicks","celtics"]`, stat `points`.
-- **User sees:** a different question answered fluently.
-- **Next step:** a `head_to_head` with a box-score stat is the meetings' totals (the team compiler's rows read sums them), or a refusal naming the stat.
-- **GitHub:** #326
-
-### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
-- **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);
-  re-verified offline the same day at `011091f`.
-- **Evidence:** "jokic assists per game after a big first quarter"
-  (normalizer reply `jokic` / `assists`) reads `period_split` with
-  `period: 1` and answers "Nikola Jokic had 240 assists in the 1st quarter
-  over 65 games of the 2026 regular season, averaging 3.7." The question
-  asks for his whole-game assists in games whose first quarter was "big".
-  `parse.read_period_condition` reads a condition only where a number
-  names the line ("after making one three in the first quarter"), and
-  `refusals._period_as_condition` did not fire: "big" names no line.
-- **User sees:** a fluent answer to a different question.
-- **Next step:** "after|following|when ... <quarter>" with no line is a
-  condition nothing can hold: refuse it naming the missing number, rather
-  than read the quarter as the period. A reader fix; goes with the read
-  stage's work (`ROADMAP.md`, Phase 1) unless it shows up in the wild
-  first.
-- **GitHub:** #291
 ### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
 - **Evidence:** `live_day10.jsonl` (bcf30a8): the router files `head_to_head` (team PHI, opponent BOS); the reading's rule "a player's record against a team, not two teams meeting" (`subject._decide_intent`) reroutes to `with_without` with `without=[Joel Embiid]`, and the template answers "Philadelphia 76ers with and without Joel Embiid vs the Boston Celtics, 2026 regular season: out 2 1-1, played 2 1-1". The key (blind, reading a, dominant): the 76ers went 4-2 in the 6 games Embiid played vs Boston in 2025-26 - 2 regular-season meetings and playoff Games 4-7 (he has no box row for Games 1-3). Two faults: the SHAPE (a split with an "out" row nobody asked for, where the question is his games and their record - dates, outcomes, and reasonably his line in each), and the SCOPE ("this year" narrowed to the regular season by the unstated-season-type default, `_validate_season_type`; `season_type_unstated` widens only "last N games" and "including playoffs" wordings today).
@@ -303,30 +264,6 @@ those were found.
 - **Priority:** P1 - a broader question answered (1 of the 2,082), and a refusal by the wrong cause (2).
 - **GitHub:** #266
 
-### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
-- **Found:** 2026-09-28, fixing #259 (one of the 19 research-corpus questions with a typographic apostrophe).
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["De'aaron fox"]`): routes `{'player': "De'Aaron Fox", 'season': 2023, 'situation': 'in november'}` and lists "De'Aaron Fox in November, last 10 of 13 games of the 2023 regular season", dated 2022-11-11 to 2022-11-30. November 2023 is in the 2024 season (2023-24): `season_text.season_from_text` reads "2023" as the season ending that year, which is right for a year alone and wrong beside October, November or December. Of the 3,084 distinct research-corpus questions, 7 name a month with its year; this is the only one whose month falls before the new year ("Luka doncic march 2026", "steph stats april 2021" and the rest read right).
-- **User sees:** a wrong answer - the right player's games from a year earlier, captioned as the month asked.
-- **Next step:** where a month from October to December is written with its year, read the season as that year + 1 (`router._validate_season` beside the situation reader); a case per month in `tests/query/test_router.py`.
-- **Source:** ours.
-- **GitHub:** #267
-
-### A possessive on a name several players share drops the player: "Curry's stats by month 2016" answers the league's 2016 scorers
-- **Found:** 2026-09-28, fixing #259.
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Curry's"]`, and `["Curry’s"]`, which reads the same since #259): routes `leaderboard` with no player and answers "every player, 2016 regular season, by player (points per game, minimum 20 games): Stephen Curry ... James Harden ...". `parse.classify_span` strips the possessive for its team check but looks the player up as given: `find_players(con, "Curry's")` needs a player holding the word "s", and the near-spelling fallback takes only a single near spelling, which "Curry" (six players) is not - so the span is nobody's and dropped. "curry stats by month 2016" keeps the name, and the template asks which Curry.
-- **User sees:** a wrong answer - the league ranked where one player, a name several share, was asked about.
-- **Next step:** in `classify_span`, look the player up with the possessive stripped too (the `low` it already computes), so a shared surname stays a player's span for the template to ask about; a case in `tests/query/test_parser.py`.
-- **Source:** ours.
-- **GitHub:** #268
-
-### A team named for a player's tenure beside an opponent is dropped: "d'angelo russell vs pistons as a laker" answers his 2026 games as a Maverick
-- **Found:** 2026-09-28, fixing #259 (the question carries a typographic apostrophe; its straight twin reads the same).
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["d'angelo russell", "pistons", "laker"]`): routes `{'player': "D'Angelo Russell", 'opponent': 'Detroit Pistons'}` with no team, and answers "D'Angelo Russell averaged 17.5 points ... in 2 games vs the Detroit Pistons in the 2026 regular season" - his 2026 season is Dallas's (`player_season_stats_deduped`: 26 games for the Mavericks); his Lakers years are 2016-2017 and 2023-2025. The model's "laker" is dropped by `parse._read_route_names` once the reading placed an opponent, and `subject._apply_own_team` writes no `own_team` where an opponent is set (`subject.py:1091`), so "as a laker" narrows nothing.
-- **User sees:** a wrong answer - another team's games, where a tenure was asked.
-- **Next step:** read "as a <team>" beside an opponent as `own_team` (the tenure) rather than dropping it; a case in `tests/query/test_one_writer.py`.
-- **Source:** ours.
-- **GitHub:** #269
-
 ### "as a laker" with no opponent beside it, and "per season", are read by nothing: "Gabe Vincent 3’s as a laker" answers his 2026 line as a Heat player
 - **Found:** 2026-09-28, fixing #259; "3's" itself read since 2026-10-13 (the P1 sweep's lane L, #270).
 - **Evidence:** on sweep-L, "Gabe Vincent 3’s as a laker" answers "Gabe Vincent averaged 1.1 3-pointers per game in 53 games in the 2026 regular season" (`Cuts.tenure` None: "as a laker" unread; his 2026 season is not a Laker's), "Jarred 3’s as a laker" answers the Lakers' team line (no player read from "Jarred"), and "steph curry 3's per season" answers his 2026 line where a season-by-season history was asked ("per season" unread). The tenure is the subject reading's (`subject._apply_own_team`, lane N; #339 is its neighbor beside an opponent), "per season" the grammar's history row.
@@ -350,21 +287,6 @@ those were found.
 - **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
 - **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
 - **GitHub:** #340
-
-### "worst" is not a ranking word, so "who has the worst fg% with atleast 1000 fg attempted" (typed as one word) answers the best
-- **Found:** 2026-10-09, the lead, reading the feed population's field-goal rankings while re-floored `fg_pct` (#12); the floor half fixed 2026-10-11 (#377: the stated minimum, "atleast" included, is the Reading's typed `minimum`).
-- **Evidence:** the feed answer is "Nikola Jokic led the league in field-goal percentage in the 2026 regular season (minimum 1,000 field-goal attempts), at 56.9% ..." - the best, where the worst was asked; the floor is the one asked since #377. `point._RANKING` is `leaders?|most|highest|top|best|fewest|least|lowest`: no "worst", so the direction stays descending, and "worst" is the question's one unread word. The same for "who has the worst 3pt% / ft% with atleast 1000 ... attempted" (empty at that floor in one season).
-- **User sees:** the opposite ranking, fluently.
-- **Next step:** "worst" joins the ranking words with "lowest"'s direction (the window family's words, `lexicon.RANK_WORDS` already reads it for a team ranking); a case per wording in `tests/query/test_parser.py`; the readings and feed answers that move enumerated.
-- **Source:** ours.
-- **Priority:** P1 - the opposite question answered.
-- **GitHub:** #350
-### A window on a reader that refuses one is dropped before the planner can refuse it: "Warriors vs Mavs record last ten games" answers this season's series
-- **Found:** 2026-10-09, Phase 3, step 2's window slice (`~/association-research/stages/window_family.py`, the four window slots on all 2,710 readings)
-- **Evidence:** on a shape outside `window.ORDER_ASKS` (and not `player_stat`'s single game) the end a question names beside a count of two or more is dropped and the count kept - `_route_side_and_order`'s rule since the router, ported as-is by the tagger (`window._order_elsewhere`) because the proof holds the four populations identical. The relation then reads the bare count as the newest N (`relation_window`), inside the default season. Measured on the 2,710 readings: 13 carry an end the grammar read that the route no longer holds - `head_to_head` 3 ("Warriors vs Mavs record last ten games", "Oh Washington last ten games vs jazz", "lakers vs mavs record last 10 home games played"), `player_matchup` 1 ("lamelo ball last 7 home games vs suggs"), `leaderboard` 9 (every one an unrecognized name, refused for other reasons). The three head-to-head answers tally this season's 3, 2 and 2 meetings ("met 3 times in the 2026 regular season; the Warriors won the series 2-1") and the matchup "1 meeting, 2026 regular season": fewer than the ten or seven asked for, nothing saying the window was not applied, and no decision recorded. `TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"]["window"]` says "picking the last N of them is not built", and the span tagger's "last N vs an opponent is every meeting" rule (`span._implied_career`) applies to `game_log` alone.
-- **User sees:** a wrong answer, fluently: "Warriors vs Mavs record last ten games" is their last ten meetings across seasons (or, at least, a refusal naming the window), and the answer is this season's three.
-- **Next step:** keep the end on the typed `Window` for every intent (the tagger reads it; the drop is the model-era "an intent that cannot honor it" rule) and let the planner's cell check refuse it by name where the reader's table excludes it - a decline-to-Cause commit under Jeff's rule, with the 4 moved answers (3 head_to_head, 1 player_matchup) enumerated; or build the window into `head_to_head`'s tally and widen its span the way `game_log`'s "last N vs" is widened. Either way the first 9 (`leaderboard`, unrecognized names) move only in their reading.
-- **GitHub:** #352
 
 ### A window whose "games" is misspelled is no window: "Lamelo ball stats last 5 gMes" answers his season average, "Draymond green vs mavs last 6 gamew" his 3 games this season
 - **Found:** 2026-10-10, Phase 3, step 3: the Reading's own unread words disagreeing with the claims ledger on 5 of the 2,082 feed questions, each the misspelled word ("gmes", "gamew", "gane", "gamess", "match"), which the deletion counts as read (take it away and "last 5" alone is read as the window) while no rule claims it - a word whose presence makes the reader read less.
