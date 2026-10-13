@@ -319,21 +319,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #266
 
-### A possessive on a name several players share drops the player: "Curry's stats by month 2016" answers the league's 2016 scorers
-- **Found:** 2026-09-28, fixing #259.
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Curry's"]`, and `["Curry’s"]`, which reads the same since #259): routes `leaderboard` with no player and answers "every player, 2016 regular season, by player (points per game, minimum 20 games): Stephen Curry ... James Harden ...". `parse.classify_span` strips the possessive for its team check but looks the player up as given: `find_players(con, "Curry's")` needs a player holding the word "s", and the near-spelling fallback takes only a single near spelling, which "Curry" (six players) is not - so the span is nobody's and dropped. "curry stats by month 2016" keeps the name, and the template asks which Curry.
-- **User sees:** a wrong answer - the league ranked where one player, a name several share, was asked about.
-- **Next step:** in `classify_span`, look the player up with the possessive stripped too (the `low` it already computes), so a shared surname stays a player's span for the template to ask about; a case in `tests/query/test_parser.py`.
-- **Source:** ours.
-- **GitHub:** #268
-### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
-- **Found:** 2026-09-28, fixing #259 (one of the 19 research-corpus questions with a typographic apostrophe).
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["De'aaron fox"]`): routes `{'player': "De'Aaron Fox", 'season': 2023, 'situation': 'in november'}` and lists "De'Aaron Fox in November, last 10 of 13 games of the 2023 regular season", dated 2022-11-11 to 2022-11-30. November 2023 is in the 2024 season (2023-24): `season_text.season_from_text` reads "2023" as the season ending that year, which is right for a year alone and wrong beside October, November or December. Of the 3,084 distinct research-corpus questions, 7 name a month with its year; this is the only one whose month falls before the new year ("Luka doncic march 2026", "steph stats april 2021" and the rest read right).
-- **User sees:** a wrong answer - the right player's games from a year earlier, captioned as the month asked.
-- **Next step:** where a month from October to December is written with its year, read the season as that year + 1 (`router._validate_season` beside the situation reader); a case per month in `tests/query/test_router.py`.
-- **Source:** ours.
-- **GitHub:** #267
-
 ### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
 - **Found:** 2026-09-28, fixing #259.
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Gabe Vincent", "laker"]`, stat `threePointFieldGoalsMade`): routes `player_stat` with no stat and answers "Gabe Vincent averaged 4.4 points, 1 rebounds and 1.4 assists per game in 53 games in the 2026 regular season". `parse.MEASURE_GRAMMAR` reads "3s", "threes" and "3 pointers", and "3's" is none of them; the model's key is not kept for a line the words do not name. "Jarred 3’s as a laker" is the corpus's other one. Both also carry "as a laker", which the answer does not honor (Vincent's 2026 line is not a Laker's).
@@ -356,15 +341,6 @@ those were found.
 - **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
 - **Next step:** read the companion's line from "has N" with the normalizer's stat and from box-score abbreviations ("fta", "3pm") in the condition reader (`subject._condition_role`, `_CONDITION_THRESHOLD`); where a number is named and no line can be read, refuse naming the missing stat rather than fall back to the parent.
 - **GitHub:** #340
-
-### A lone word that is exactly one player's name outranks the two typed words that nearly spell another's: "micheal jordan shot chart" is Micheal Williams's
-- **Found:** 2026-10-09, the lead, reading the feed population's empty shot charts while fixing #105; `~/association-research/stages/feed_recorded.jsonl` holds the normalizer's reply for it as no name and no stat (`{"names": [], "stat": ""}`), so the subject is read from the words alone.
-- **Evidence:** on the main warehouse, `subject.players_named_in(index, "micheal jordan shot chart")` is `['Micheal Williams']`: "micheal" is a whole word of exactly one player's name (his, a Pacer and Timberwolf through 1999), and the rule names him and stops. Every reader of the PAIR says Michael Jordan (id 1035): `subject.question_derived_player(index, question, "micheal jordan")`, `entities.read_near_spelling(con, "micheal jordan")` and `entities.suggest_players(con, "micheal jordan")` each return him, the only near spelling of the two words (one transposition); "jordan" alone names nobody, being many players' word. The feed answer is "No shots found for Micheal Williams in the 2026 regular season." - and Jordan's 2002-2003 Wizards shots are on record, so the right reading would redirect to them.
-- **User sees:** a different player, named in the sentence - visible, but a question about Jordan answered about a journeyman, with no way to tell from the answer that the typo is why. It is the "an invented name resolves" shape of `AGENTS.md` from the other side: the question's own misspelt given name is somebody else's correctly spelt one.
-- **Next step:** in `players_named_in` (the subject reading; Phase 3's seam, so with the step in flight or after it), read the adjacent pair before a lone word - two question words that are an exact match or the single near spelling of one player outrank either word naming somebody on its own, which is the discipline `question_derived_player` already applies to a model's completion. Measure on the 2,710 readings (`reader_pop.py`) and the subject tests; "larry bird" (Jabari Bird) is the surname back-off case that must still ask, and a bare "jordan" must still name nobody.
-- **Source:** ours.
-- **Priority:** P1 - a different player answered.
-- **GitHub:** #346
 
 ### A team total asked as "how many ... did they make" is answered per game: "how many 3 pointers did the sixers make in the 2001 playoffs" answers 3.8 per game; "... have the magic made" answers the total
 - **Found:** 2026-10-09, the lead, re-measuring #227 with `~/association-research/stages/ask_unnamed.py` (the stat `threePointFieldGoalsMade`).
@@ -452,14 +428,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #392
 
-### A two-digit year, a decade written short, and a year glued to a word are read by nothing, and the current season answers: "who averaged the most points per game in the nba between 03 to 25" answers 2026
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
-- **Evidence:** 12 of the 2,082 feed questions hold a season the span does not read: "who averaged the most points per game in the nba between 03 to 25" and "most pts in the 80s" (the 2026 leaders; `lexicon.DECADE` reads "the 1980s" and "the 2010s" only, `RANGE_BETWEEN` four-digit years only), "How many players averaged 30 ppg in the 80s" (the same), "Gilbert arenas 06 playoffs numbers" ("no 2026 postseason numbers"), "Shaquille O neal 01" (the points ranking; the name too), and typos nothing could read ("202r", "20222-23", "29025%3F", "the 201", "2024playoff", "2019 20most"); two restate a season that is read ("kawhi leonard 2012- 2013": 2013; "tmac 2001 to 2001-02": the span's 2002, the bare year before it left as its test holds).
-- **User sees:** a wrong answer for the first five: the current season where 2003-2025, the 1980s or 2006 was asked.
-- **Next step:** "between YY to YY"/"YY to YY" read as a range only where both are two-digit years the league played and "between"/"from" opens it; "the 80s"/"the '90s" as the decade 19x0 where "the" stands before it and no percentage word follows ("shooting in the 90s from the line" is a free-throw percentage); "'06"/"06 playoffs" as season 2006 only beside a season-type word. Measure each on both corpora before writing it; the moved answers enumerated.
-- **Priority:** P1 - 5 of the 2,082 answered for the wrong seasons.
+### The team after a versus word is read from a span that only ends in a team: "zach lavine vs magic on bulls" is his games against the Bulls
+- **Found:** 2026-10-13, lane N of the P1 sweep, enumerating #346's moves ("zach lavigne vs magic on bulls" moved from the Magic-Bulls meetings to LaVine's games vs the Bulls).
+- **Evidence:** `subject._team_after_versus` tries the words after "vs" as spans of three, two and one, and `_team_named` reads "magic on bulls" (three words) as the Chicago Bulls - a span holding a team's word anywhere - before the one word "magic" is tried. On `be033d7`'s tree, through the whole agent with no names, "zach lavine vs magic on bulls" answers "Zach LaVine averaged 30 points ... in 1 game vs the Chicago Bulls in the 2026 regular season"; "zach lavine vs magic for the bulls" reads Orlando as the opponent and the Bulls as his tenure, rightly. 1 of the 2,082 feed questions (the typo'd twin, since #346).
+- **User sees:** a different opponent - his games against a team he was asked about playing FOR.
+- **Next step:** a span after a versus word names a team only where its FIRST word is a trace of that team (the shorter spans then reach "magic"), and "on <team>" after the opponent is the tenure as "for <team>" is (`lexicon.FOR_TEAM_PHRASE`). Measure on the 2,710 readings; a case per wording.
+- **Priority:** P1 - a different question answered.
 - **Source:** ours.
-- **GitHub:** #393
 
 ### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers). Rewritten 2026-10-13 (lane N of the P1 sweep) to what remains: the team-ranking row steps aside for games kept by a line with no team word (`lexicon.LINE_OF_GAMES_ROW`), so "most 40 point games in nba history" (and 50, 60) and "nba most playoff games with 2+ block and 2+ steals" are the players' count, and the count's child grammar is named under the with/without split, so "how many 30 point games did maxey have without embiid" is his count over the games Embiid missed (`CHANGES.md`).
