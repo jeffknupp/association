@@ -20,9 +20,7 @@
  },
  "regex_outside_the_reader": [],
  "regex_in_the_reader": {
-  "line": 1,
-  "parse": 5,
-  "point": 11
+  "parse": 2
  },
  "con_in_the_reader": []
 }

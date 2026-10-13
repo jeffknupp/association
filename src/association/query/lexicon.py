@@ -3131,7 +3131,8 @@ def content_words(question: str, names: tuple[str, ...] | list[str], stat: str) 
 
 CONTENT_SPACES = re.compile(r"\s+")
 """A run of white space, closed to one space where a word was deleted
-(:func:`without_word`).
+(:func:`without_word`), and in a line's stat words before they are looked
+up (``line.read_period_line``, its own ``re.sub`` until Phase 4, step 6).
 
 .. versionadded:: 6.0.0
 """
@@ -3457,4 +3458,123 @@ split is read (:func:`~association.query.split.read_split`).
 
 .. versionadded:: 6.0.0
    ``parse._ROLE_TAIL`` until Phase 3, step 4.
+"""
+
+
+# ---------------------------------------------------------------------------
+# The point reader's words (Phase 4, step 6): the patterns ``point.py``
+# compiled for itself until then, moved here whole, each under the name of
+# what it reads - the point reader reads the words through the lexicon as
+# every tagger does.
+
+TOP_IN_A_GAME = re.compile(r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b", re.IGNORECASE)
+"""One game's top figure: "most points in a game", a "single-game" or a
+"career high" - a ranking of single games, never of season lines.
+
+.. versionadded:: 6.0.0
+   ``point._TOP_IN_A_GAME`` until Phase 4, step 6.
+"""
+# Not this relation's question: a team as the subject, an opponent's or
+# allowed figure, or a period. Refused, never answered with a ranking of
+# players - "least points by the Wizards in the first half" ranked players
+# by fewest points until this existed.
+NOT_THE_PLAYERS_QUESTION = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopponent'?s?\b|\bbench points\b|\bfranchise\b", re.IGNORECASE)
+"""A team as the subject, an opponent's or allowed figure, or the bench's:
+not a ranking of players' games.
+
+.. versionadded:: 6.0.0
+   ``point._NOT_PLAYERS`` until Phase 4, step 6.
+"""
+HOW_MANY_OR_OFTEN = re.compile(r"\bhow many\b|\bhow often\b|\bnumber of\b|\btimes\b", re.IGNORECASE)
+"""A count asked: "how many", "how often", "number of", "times".
+
+.. versionadded:: 6.0.0
+   ``point._HOW_MANY_OR_OFTEN`` until Phase 4, step 6.
+"""
+WON_WORDS = re.compile(r"\b(won|wins|win)\b", re.IGNORECASE)
+"""A game won, asked of a count: "how many games did he win".
+
+.. versionadded:: 6.0.0
+   ``point._WON`` until Phase 4, step 6.
+"""
+# "least" on its own is ascending ("the least points"); "AT least" is the
+# minimum-sample floor phrase (``reading.Minimum``, F056: "with at least
+# 100 attempts") and names no direction at all - the negative lookbehind
+# keeps that phrase from flipping a "highest ..." ranking to ascending,
+# which it did before this existed (measured against the real warehouse:
+# "highest 3-point percentage ... with at least 40 games" answered
+# lowest-first).
+FEWEST_WORDS = re.compile(r"\b(fewest|lowest)\b|(?<!at )\bleast\b", re.IGNORECASE)
+"""A ranking from the bottom: "fewest", "lowest", "least" - never "at least".
+
+.. versionadded:: 6.0.0
+   ``point._FEWEST`` until Phase 4, step 6.
+"""
+TOTAL_WORD = re.compile(r"\btotal\b", re.IGNORECASE)
+"""A total asked where a ranking would average: "total points".
+
+.. versionadded:: 6.0.0
+   ``point._TOTAL`` until Phase 4, step 6.
+"""
+VERSUS_OR_AGAINST_WORD = re.compile(r"\b(vs\.?|versus|against)\b", re.IGNORECASE)
+"""A versus word, whole - wherever it stands (:data:`VERSUS_OR_AGAINST`
+needs one before what follows it).
+
+.. versionadded:: 6.0.0
+   ``point._VS`` until Phase 4, step 6.
+"""
+RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.IGNORECASE)
+"""A ranking asked in words: "leaders", "most", "top", "fewest".
+
+.. versionadded:: 6.0.0
+   ``point._RANKING`` until Phase 4, step 6.
+"""
+LOG_OR_STATS_WORDS = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.IGNORECASE)
+"""A log asked, or the bare "stats" a position's log and a team's players
+are asked by.
+
+.. versionadded:: 6.0.0
+   ``point._LOG`` until Phase 4, step 6.
+"""
+BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best)\b", re.IGNORECASE)
+"""The words that size a ranking of yes/no games ("biggest triple-double"),
+which the games are then ordered by a measure for.
+
+.. versionadded:: 6.0.0
+   ``point._BOOLEAN_GAME_RANKING`` until Phase 4, step 6.
+"""
+# A question about players ON a team - a ranking, a log, or an explicit
+# "who"/"which player" framing - is the league-wide read's question, never
+# the team's own subject.
+PLAYERS_ON_A_TEAM = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplayer\b", re.IGNORECASE)
+""""who" or "which player": a team's players asked about, not the team.
+
+.. versionadded:: 6.0.0
+   ``point._TEAM_NOT_SUBJECT`` until Phase 4, step 6.
+"""
+
+
+# ---------------------------------------------------------------------------
+# The refusals the parser reads (Phase 4, step 6: ``parse.py``'s own
+# patterns until then).
+
+CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
+"""A championship or a title won: no table holds titles, and a team
+ranking would answer the question fluently and wrongly.
+
+.. versionadded:: 6.0.0
+   ``parse._CHAMPIONSHIP`` until Phase 4, step 6.
+"""
+TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
+""""Title odds": a regular-season projection ``team_outlook`` answers, not a
+championship.
+
+.. versionadded:: 6.0.0
+   ``parse._TITLE_ODDS`` until Phase 4, step 6.
+"""
+BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
+"""The word "bench", whole: "bench points" names a figure nothing reads.
+
+.. versionadded:: 6.0.0
+   ``parse._BENCH_WORD`` until Phase 4, step 6.
 """

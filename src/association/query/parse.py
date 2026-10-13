@@ -1081,14 +1081,6 @@ def with_point(question: str, reading: Reading) -> Reading:
 # carried on the Reading as reading.Cause values the planner says through the
 # one phrase table (compose.plan.refusal_result, say.refusal_phrase).
 
-_CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
-"""A championship or a title won: no table holds titles, and a team
-ranking would answer the question fluently and wrongly."""
-_TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
-""""Title odds": a regular-season projection ``team_outlook`` answers, not a
-championship."""
-_BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
-
 
 def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamIndex, question: str, reading: Reading) -> Cause | None:
     """The refusal the words come to that no point answers past, said
@@ -1122,7 +1114,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
 
     The championship first, as the answering loop asked them, then the
     window's ends, then a window per season."""
-    if _CHAMPIONSHIP.search(question) and not _TITLE_ODDS.search(question):
+    if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
     ends = contradicting_ends(question)
     if ends:
@@ -1249,7 +1241,7 @@ def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
     # beside the one word this reads (slice (c): it read "bench points" as
     # words, and the measure's "points" twice over).
     named = reading.measure is not None and reading.measure.key == "points" and any(c.what == "measure" for c in reading.claims)
-    return Cause(kind="bench_points", facts={"shape": reading.asked}) if named and _BENCH_WORD.search(question) else None
+    return Cause(kind="bench_points", facts={"shape": reading.asked}) if named and lexicon.BENCH_WORD.search(question) else None
 
 
 def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:

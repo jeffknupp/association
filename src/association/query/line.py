@@ -45,7 +45,6 @@ counted games with 20+ rebounds).
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -293,7 +292,7 @@ def read_period_line(question: str) -> tuple[Line, Claim] | None:
         return None
     number = match.group("n").lower()
     value = int(number) if number.isdigit() else lexicon.CONDITION_NUMBERS[number]
-    words = re.sub(r"\s+", " ", match.group("stat").lower().strip())
+    words = lexicon.CONTENT_SPACES.sub(" ", match.group("stat").lower().strip())
     stat = lexicon.CONDITION_STAT_WORDS.get(words) or lexicon.MEASURE_WORDS.get(words) or lexicon.MEASURE_WORDS.get(f"{words}s")
     if stat is None or stat not in PERIOD_COLUMNS or value < 1:
         return None
