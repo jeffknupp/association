@@ -296,11 +296,11 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #246
 
-### A misspelled team name is dropped by the parser, and the question is answered without it: "gui last 5 games vs sours" lists his last 5 games, none against the Spurs
-- **Found:** 2026-09-27, plan item 6 step (d) part 3 (deleting the router reader), re-measuring #131 ("gui last 5 games vs sours") on the parser path.
-- **Evidence:** the parser path offline on 33cfd60 (and before it on 96b4b65), the normalizer stubbed with the question's own name spans (what the model is told to copy, and what `parse._as_typed` puts back when it corrects one), read-only on the main warehouse: "gui last 5 games vs sours" routes `{'player': 'Gui Santos', 'order': 'recent', 'limit': 5, ...}` with no `opponent` and lists his last 5 games (LAC, SAC, HOU, CLE, DEN), where "gui last 5 games vs spurs" lists his last 4 against San Antonio; "jalen brunson points vs the celtcs this season" answers his season average (26 points in 74 games); "lakers record vs the nuggest" answers the Lakers' season record (53-29). `parse.classify_span` reads a span as a team only by its exact word, nickname, code or name (`team_named_in`, `find_teams`), and the index's near-spelling pass is for players only, so the typo'd span is nobody's and is dropped, and nothing says a word of the question went unread.
-- **User sees:** a fluent answer to the un-narrowed question - the player's or team's whole window or season - with the opponent it names nowhere in it.
-- **Next step:** a near spelling of exactly one franchise's word or nickname (within the index's edit budget, against the 30 franchises' words only) reads as that team and says so, the way `entities.read_near_spelling` does for a player; a span near nothing refuses by name rather than vanishing. A `tests/query/test_parser.py` case per wording above, watched to fail, and the hold-out comparison.
+### A misspelled team the index cannot read alone is still dropped: "kmart vs houson", "steph curry vs phnx" answer without the opponent
+- **Found:** 2026-09-27, plan item 6 step (d) part 3 (#131, "gui last 5 games vs sours"); rewritten 2026-10-13 by the P1 sweep's lane N, which read a near spelling of exactly one team after a versus word (`subject._read_opponent_near`, `entities.near_team`, said by `entities.resolved_team`): "gui last 5 games vs sours", "jalen brunson points vs the celtcs", "lakers record vs the nuggest" and 8 feed questions read their opponent now.
+- **Evidence:** what is left, on the 2,082 feed questions (no model names) at the fix's commit: a word after "vs" near a team AND a player is read as neither - "Kmart vs houson" (Allan Houston), "austin reaves 2nd half game log vs clevland" (Antonius Cleveland), "Bobby Portis vs magics Gamelog" (Magic Johnson); a word near nothing is still unread with no refusal - "steph curry vs phnx", "og annuby vs philidalephis stats", "Vucevic vs magocs", "suns v kingsrecord last 20 games"; a nickname split in two, "lebron record vs t wolves". Each answers the subject's line or log over every opponent. A typo'd TEAM subject ("nuggers record") is not read either: only the word a versus word leads is tried.
+- **User sees:** a fluent answer to the un-narrowed question, the opponent named nowhere in it.
+- **Next step:** a word after a versus word that is near nothing on record and is no ordinary word refuses by name (a reading cause naming the word) rather than vanishing; a word near a team and a player asks which. A test per wording.
 - **Source:** ours.
 - **GitHub:** #247
 
@@ -511,6 +511,14 @@ those were found.
 - **GitHub:** #394
 
 ## P2: misleading or incomplete
+
+### A league ranking narrowed to one opponent says "No games for every player": "most points vs nuggets this season" keeps the 20-game qualifier over the games against one team
+- **Found:** 2026-10-13, the P1 sweep's lane N, measuring #247's moves (the typo'd opponent read as the team made three feed answers this).
+- **Evidence:** on `088fb94`, names stubbed (`[]`, `points`), "most points vs nuggets this season" plans `Query(who=everyone, cuts.opponent='Denver Nuggets', skeleton='grouped', group='player', aggregate=per_game, minimum_games=20, ...)` and answers "No games for every player vs the Denver Nuggets in the 2026 regular season." - no player has 20 games against one team in a season. 75 of the 2,082 feed answers begin "No games for every ..." (most a player name unread with no model names, read as the league: "Curry vs the suns", "mpj vs atl"; but also real league questions: "which position has scored most points vs boston", "centers blocks against detroit pistons this season", "How many ppg do centers score against the mavericks", "highest scoring shooting guard in a game for the nets").
+- **User sees:** a false statement that no games exist, where the league's leaders against that team were asked.
+- **Next step:** the game-level ranking's qualifier scaled to the games the cuts leave (or dropped under an opponent, with the floor said as a decision), or the empty result refused naming the qualifier rather than "No games"; `compose/rankings.py` and the compiler's `minimum_games` (lane L's files).
+- **Source:** ours.
+- **Priority:** P2 - a refusal naming the wrong cause; 75 feed answers.
 
 ### A team's stat asked under a companion's line answers the team's record: "how many fgm did the celtics make when tatum scored 30" answers the Celtics' record when Tatum had 30+ points
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 2).

@@ -384,6 +384,26 @@ def test_resolve_team_reports_not_found(con: duckdb.DuckDBPyConnection) -> None:
     assert resolve_team(con, "Not A Team") == NotFound(query="Not A Team")
 
 
+def test_a_teams_single_near_spelling_is_read_and_said(league_teams: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #247: a word near exactly one team's word, and the word of
+    none, is that team ("sours" the Spurs, "lakrs" the Lakers); a word near
+    two, a short word and a team's own word read as nothing here. The
+    relation's resolution reads it and the answer says so, as a player's
+    near spelling is said (``note_team_typo_reading``)."""
+    from association.query.entities import collect_name_readings, near_team, resolved_team, teams_of
+
+    teams = teams_of(league_teams)
+    assert near_team(teams, "sours") == Entity(id="24", name="San Antonio Spurs")
+    assert near_team(teams, "lakrs") == Entity(id="13", name="Los Angeles Lakers")
+    assert near_team(teams, "knics") == Entity(id="18", name="New York Knicks")
+    assert near_team(teams, "lakers") is None  # the word outright is no near spelling
+    assert near_team(teams, "sas") is None  # three letters are never near anything
+    assert near_team(teams, "stats") is None  # "state" is no word a team is near by
+    with collect_name_readings() as said:
+        assert resolved_team(league_teams, "sours") == Entity(id="24", name="San Antonio Spurs")
+    assert said == ["('sours' matches no team exactly and was read as the San Antonio Spurs, the only near spelling on record - spell the name exactly to ask about another team.)"]
+
+
 def test_nickname_resolves_to_the_player_it_unambiguously_means(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander'),('10','Victor Wembanyama')")
     assert resolve_player(con, "SGA") == Entity(id="9", name="Shai Gilgeous-Alexander")
