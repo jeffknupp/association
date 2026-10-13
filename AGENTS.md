@@ -403,6 +403,16 @@ rows through DuckDB's `executemany` - one statement per row. Registered as a
 single Arrow table, the same rows take half a second. Before marking a test
 slow, find out where its time goes.
 
+The same cost hid in fixtures, a few rows at a time. DuckDB's Python API
+binds `?` parameters slowly, so a fixture built row by row through
+`executemany` or one `execute` per row pays it again for every test that
+asks for it: `cx_ctx` (`test_compose.py`) and `league`
+(`test_conditions.py`) spent 34 of their files' 39 seconds on it
+(2026-10-13; a multi-row `INSERT` with the values bound is no cure, since the
+binding is the cost). A fixture's rows go through
+`tests/warehouse_rows.py`'s `insert_rows`, one Arrow table per table, and
+`pytest --durations` showing the time under `setup` is the sign to look.
+
 **A fresh worktree needs syncing before either command works at all.**
 `uv run` creates the venv on first use but does not install the `dev`, `docs`
 or `web` extras, so `uv run pytest -q` fails with `Failed to spawn: pytest`
