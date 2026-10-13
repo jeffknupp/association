@@ -1126,3 +1126,23 @@ def test_a_teams_points_given_up_by_the_verb_are_the_opponents(con: duckdb.DuckD
     the longer alias "points per game" as the team's own."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.whose == whose
+
+
+@pytest.mark.parametrize(
+    ("question", "unit"),
+    [
+        ("how many 3 pointers did the sixers make in the 2001 playoffs", "total"),
+        ("how many points did the celtics score this season", "total"),
+        ("how many rebounds did the celtics grab last season", "total"),
+        ("how many 3 pointers have the magic made so far this season", "total"),
+        # What a team does in a game, and a per-game word, stay per game.
+        ("how many points do the celtics score", None),
+        ("how many points per game did the celtics score this season", None),
+    ],
+)
+def test_a_teams_count_asked_by_the_bare_verb_after_did_is_a_total(con: duckdb.DuckDBPyConnection, question: str, unit: str | None) -> None:
+    """ISSUES.md #347: "how many 3 pointers did the sixers make in the 2001
+    playoffs" answered 3.8 per game where the count was asked - the total's
+    verbs were the past forms alone, and "did ... make" holds none."""
+    reading = _read(con, question)
+    assert reading.measure is not None and reading.measure.unit == unit

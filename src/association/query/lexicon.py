@@ -3063,8 +3063,12 @@ PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
 """
 
 #: A team's season TOTAL asked for by "how many ... made/scored/have" or
-#: "total", with no per-game word beside it (:data:`PER_GAME_WORDS`).
-TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit|grabbed|dished)\b|\btotal\b", re.IGNORECASE)
+#: "total", with no per-game word beside it (:data:`PER_GAME_WORDS`) - and
+#: by the bare verb after "did" ("how many 3 pointers did the sixers make in
+#: the 2001 playoffs", ISSUES.md #347): what a team did over a span is a
+#: count. Not after "do"/"does" ("how many points do the celtics score"),
+#: which asks what it does in a game.
+TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit|grabbed|dished)\b|\bhow\s+many\b.{0,60}\bdid\b.{0,40}\b(?:make|score|grab|dish)\b|\btotal\b", re.IGNORECASE)
 """A season total asked of a team's own stat.
 
 .. versionadded:: 6.0.0
