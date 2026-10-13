@@ -38,7 +38,7 @@ from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDecli
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose.plan import Planned, plan_point, refusal_result
-from .compose.say import say_left_out
+from .compose.say import nothing_answers, say_left_out
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -67,17 +67,25 @@ def _note(result: Reply, note: str) -> None:
         notes.append(note)
 
 
-def refusal_text(why: str) -> str:
+def refusal_text(why: str, asked: PointShape | None = None) -> str:
     """The sentence a question nothing here reads is answered with: the
     reason the fast path gave it up, as the parser or the compiler stated
-    it - an intent nothing reads, a narrowing the relation cannot
-    honor, a reply the normalizer could not use. Naming the cause is the
-    whole point: the reader learns which part of the question has no answer
-    here, where the agent this replaced spent minutes and then guessed.
+    it - words that ask for nothing a reader reads, a narrowing the
+    relation cannot honor, a reply the normalizer could not use - and what
+    the words were read as asking (``asked``), where they asked something.
+    Naming the cause is the whole point: the reader learns which part of
+    the question has no answer here, where the agent this replaced spent
+    minutes and then guessed. The sayer's frame
+    (:func:`~association.query.compose.say.nothing_answers`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes ``asked``, said in the shape's words ("Nothing here answers
+       this question as a ranking of teams: ..."), where the reason began
+       with the retired intent's name ("team_leaderboard: ...").
     """
-    return f"Nothing here answers this question: {why}."
+    return nothing_answers(why, asked)
 
 
 class Agent:
@@ -126,6 +134,13 @@ class Agent:
         #: own refusal (a clarification, a "no match", a shape nothing reads)
         #: is an answer: it looked at the question and had something to say.
         self.unanswered: str | None = None
+        #: What the words were read as asking where the last question was
+        #: refused with no reading after they asked something - the key the
+        #: refusal names in the shape's words (:func:`refusal_text`) - or
+        #: None.
+        #:
+        #: .. versionadded:: 6.0.0
+        self.unanswered_as: PointShape | None = None
         #: The Reading the last question settled into, or None where it was
         #: refused before anything read it - what a stage snapshot records
         #: beside the answer (:func:`association.query.stages.snapshot`).
@@ -269,6 +284,7 @@ class Agent:
         produced - see Reply.data, which nothing could reach before
         2.0."""
         self.unanswered = None
+        self.unanswered_as = None
         read = self._read_or_refuse(question, history)
         if read is None:
             return None
@@ -389,7 +405,7 @@ class Agent:
             refusal = refusal_result(reading.unsupported[0])
             history.log(f"  -> (refusal) {reading.unsupported[0].kind}: nothing here reads that shape")
             return reading.intent, refusal
-        self.unanswered = f"intent {reading.intent!r} has no reader"
+        self.unanswered = "what its words ask has no reader"
         return None
 
     def _run_compiled(self, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
@@ -437,7 +453,7 @@ class Agent:
             history.log(f"  -> (compose) {why} - refused ({causes[0].kind})")
             return intent, refusal_result(ShapeDeclined.under(causes[0], reading.asked))
         history.log(f"  -> (compose) {why}: refused")
-        self.unanswered = f"{intent}: {why}"
+        self.unanswered, self.unanswered_as = why, reading.asked
         return None
 
     def _try_compose(self, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None, declined_by: Callable[[Cause], None] | None = None) -> Reply | None:
@@ -506,7 +522,7 @@ class Agent:
         # the planner: no model call, no guess at "Tatum rec".
         short = too_short(question)
         if short is not None:
-            self.unanswered = f"fewer than {MIN_QUESTION_WORDS} words"
+            self.unanswered, self.unanswered_as = f"fewer than {MIN_QUESTION_WORDS} words", None
             history.log(f"  -> (refused) {self.unanswered}")
             return self._answer(question, history, refusal_result(short).answer, "refused")
         fast = self._try_fast_path(question, history)
@@ -521,4 +537,4 @@ class Agent:
         # agent this replaced answered one such question in 23).
         why = self.unanswered or "no reading of the question"
         history.log(f"  -> (refused) {why}")
-        return self._answer(question, history, refusal_text(why), "refused")
+        return self._answer(question, history, refusal_text(why, self.unanswered_as), "refused")

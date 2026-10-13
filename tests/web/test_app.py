@@ -160,7 +160,7 @@ def test_a_missing_history_file_is_reported_as_null_not_omitted(tmp_path: Path) 
 def test_a_refused_answer_reports_no_intent_rather_than_an_empty_one(tmp_path: Path) -> None:
     """A question nothing reads is an ordinary answer whose text names why
     (5.0.0: what --disable-fallthrough made a 501 is the only answer now)."""
-    client = _client(StubAnswerer(_answer("Nothing here answers this question: intent 'other' has no reader.", answered_by="refused", intent=None, data=None)), tmp_path)
+    client = _client(StubAnswerer(_answer("Nothing here answers this question: what its words ask has no reader.", answered_by="refused", intent=None, data=None)), tmp_path)
     body = client.post("/api/ask", json={"question": "something odd"}).json()
 
     assert body["answered_by"] == "refused"

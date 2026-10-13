@@ -1559,14 +1559,18 @@ a shape:
     tables are keyed by it (`RELATION_SCOPING_EXCLUDED`,
     `TEAM_RELATION_SCOPING_EXCLUDED`, one row per route since step 2's
     closing slice); `reading.SHAPE_NAMES` keeps a retired template's name
-    for the page's label and the name a shape's decline cause carries
-    alone (`no_reading_of_point`: "game_log has no reading of this
-    point"; a `cannot_honor` says its cells by what the words asked,
-    "player_compare: the seasons since 2022-23 cannot be read here - ...",
-    the page's label before it), ONE
-    table keyed by the shape - the asked key for the label, the planned key
-    for a decline - which Phase 4, step 2 deletes (the page renders by the
-    planned shape since step 1, not by the label); `coverage.SOURCES`
+    for the page's label, ONE table keyed by the asked shape, which Phase
+    4, step 2 deletes (the page renders by the planned shape since step 1,
+    not by the label). A decline named the shape by that label until step
+    2's decline commit ("Nothing here answers this question:
+    player_compare: ...", "game_log has no reading of this point"); it
+    says what the words were read as asking in the shape's words since -
+    the sayer's one phrase per key the grammar names (`say.asked_as`,
+    framed by `say.nothing_answers`): "Nothing here answers this question
+    as a comparison of players: the seasons since 2022-23 cannot be read
+    here - ...", "a team's record has no reading of this point" (the
+    planned shape, a `no_reading_of_point` cause's `planned` fact);
+    `coverage.SOURCES`
     is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
     and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
     sayer from the headline body's type and the one field that says what
@@ -1808,7 +1812,8 @@ a shape:
   (`query/player_relation.py`, `query/team_relation.py`; see "A reader on
   a relation does not declare, or apply, scoping of its own" above). Every
   key the grammar names is the compiler's (`Reading.asked` set; "no
-  shape", `None`, is refused with the reason "has no reader"): the 25 the
+  shape", `None`, is refused with the reason "what its words ask has no
+  reader" - "intent 'other' has no reader" until Phase 4, step 2): the 25 the
   intents were, whose names `compose.COMPILED_INTENTS` listed until Phase
   3, step 4 and the label table names back (`reading.SHAPE_NAMES`:
   `threshold_count`, `single_game_high`, `record_when`, `player_history`,

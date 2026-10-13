@@ -463,3 +463,24 @@ def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
         named = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)} | {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
         arguments = {arg.arg for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) for arg in node.args.args}
         assert "intent" not in named and "intent" not in arguments, module.__name__
+
+
+def test_every_key_the_grammar_names_is_said_in_words() -> None:
+    """A decline says what the words were read as asking in the shape's
+    words ("Nothing here answers this question as a ranking of teams: ...";
+    the retired intent's name until Phase 4, step 2): every key the grammar
+    can name has its phrase, and so does every shape whose reader is the
+    point's only answer, which a ``no_reading_of_point`` decline names."""
+    from association.query.compose import _ROUTES
+    from association.query.compose.say import asked_as, nothing_answers
+    from association.query.grammar import CODE_ASSIGNED_ASKS
+    from association.query.parse import PARENT_GRAMMAR
+    from association.query.reading import TEAM_RANKING
+    from association.query.subject import KIND_ASSIGNED_ASKS
+
+    asked = set(CODE_ASSIGNED_ASKS) | set(KIND_ASSIGNED_ASKS) | {row[-1] for row in PARENT_GRAMMAR} | {shape for shape, route in _ROUTES.items() if route.only}
+    phrases = {shape: asked_as(shape) for shape in asked}
+    assert len(set(phrases.values())) == len(phrases), "two keys said in the same words"
+    assert all(phrase.startswith(("a ", "an ", "two ")) for phrase in phrases.values()), phrases
+    assert nothing_answers("no team metric for stat 'rebounds allowed'", TEAM_RANKING) == "Nothing here answers this question as a ranking of teams: no team metric for stat 'rebounds allowed'."
+    assert nothing_answers("the normalizer returned no usable reply") == "Nothing here answers this question: the normalizer returned no usable reply."

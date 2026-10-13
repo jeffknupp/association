@@ -479,7 +479,8 @@ def _page_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
     the words ask (``shape``) under the page's label, as ``intent`` - what
     the page showed while the facts carried the label (Phase 4 deletes the
     label with :data:`~association.query.reading.SHAPE_NAMES`)."""
-    return {("intent" if key == "shape" else key): (asked_label(value) if key == "shape" else value) for key, value in facts.items()}
+    renamed = {"shape": "intent", "planned": "name"}
+    return {renamed.get(key, key): (asked_label(value) if key in renamed else value) for key, value in facts.items()}
 
 
 def refusal_result(cause: Cause) -> Reply:

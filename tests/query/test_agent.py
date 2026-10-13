@@ -175,7 +175,7 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
     )
     assert not reached
     assert "Alperen Sengun" in answer.text
-    assert "team leaderboard" in answer.text
+    assert "a ranking of teams has no reading for one" in answer.text
 
 
 def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -358,23 +358,23 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
 
     answer = ask_routed(agent, "who had the most triple-doubles?", Routed(None))
     assert answer.answered_by == "refused"
-    assert answer.text == refusal_text("intent 'other' has no reader")
+    assert answer.text == refusal_text("what its words ask has no reader")
     assert answer.intent is None and answer.data is None
-    assert agent.unanswered == "intent 'other' has no reader"
+    assert agent.unanswered == "what its words ask has no reader"
 
     # A reader's own refusal while reading, with its reason: a fingerprint of
     # nobody (the compiler's since Phase 2's slice (v); with_without,
     # head_to_head and the fingerprint's template, which this used, are gone).
     answer = ask_routed(agent, "a question nothing reads", Routed(NETPOINTS_FINGERPRINT))
-    assert answer.answered_by == "refused" and "fingerprint: fingerprint needs a player" in answer.text
-    assert agent.unanswered == "fingerprint: fingerprint needs a player name"
+    assert answer.answered_by == "refused" and "as a NetPoints fingerprint: fingerprint needs a player" in answer.text
+    assert (agent.unanswered, agent.unanswered_as) == ("fingerprint needs a player name", NETPOINTS_FINGERPRINT)
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
     # refused with the compiler's reason where it has no reading: a log of
     # nobody.
     answer = ask_routed(agent, "a game log", Routed(PLAYER_LOG))
-    assert answer.answered_by == "refused" and "game_log: no player subject" in answer.text
-    assert agent.unanswered is not None and agent.unanswered.startswith("game_log: ")
+    assert answer.answered_by == "refused" and "as a game log: no player subject" in answer.text
+    assert (agent.unanswered, agent.unanswered_as) == ("no player subject and no ranking or position-group reading of the question", PLAYER_LOG)
     # And says a cause where the reading came to one, as an answer: a count
     # with no line to count (Phase 2, step 3).
     answer = ask_routed(agent, "how many games", Routed(GAMES_COUNTED, Reading(measure=Measure(key="points", as_typed="points"))))
@@ -466,11 +466,12 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     assert answer.data == {"name_readings": [reading], "notes": [reading]}
 
 
-def test_an_unported_intent_is_refused_by_name(tmp_path: Path) -> None:
-    """A shape with no template is refused naming the intent, in seconds."""
+def test_words_that_ask_for_no_shape_are_refused_saying_so(tmp_path: Path) -> None:
+    """Words that name no shape a reader reads are refused saying so, in
+    seconds ("intent 'other' has no reader" until Phase 4, step 2)."""
 
     answer = ask_routed(_agent(tmp_path), "who had the most triple-doubles?", Routed(None))
-    assert answer.answered_by == "refused" and "intent 'other' has no reader" in answer.text
+    assert answer.answered_by == "refused" and "what its words ask has no reader" in answer.text
 
 
 def test_a_reader_failure_is_refused_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -581,7 +582,7 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
 
     agent = _agent_with_players(tmp_path)
     answer = ask_routed(agent, "who had the most triple-doubles?", Routed(None))
-    assert answer.text == refusal_text("intent 'other' has no reader") == "Nothing here answers this question: intent 'other' has no reader."
+    assert answer.text == refusal_text("what its words ask has no reader") == "Nothing here answers this question: what its words ask has no reader."
 
 
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -700,7 +701,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     answer = ask_routed(agent, "how many 30 point games did embiid have?", recorded)
     assert answer.answered_by == "refused" and "a test double's reason" in answer.text
     assert calls == ["compose"]
-    assert agent.unanswered == "threshold_count: a test double's reason for having no reading"
+    assert (agent.unanswered, agent.unanswered_as) == ("a test double's reason for having no reading", GAMES_COUNTED)
 
 
 def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -781,7 +782,7 @@ def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Pat
         ),
     )
     assert answer.answered_by == "refused" and "a rate per 36 cannot be read here" in answer.text
-    assert agent.unanswered == "threshold_count: a rate per 36 cannot be read here - it would answer for a different span than was asked"
+    assert (agent.unanswered, agent.unanswered_as) == ("a rate per 36 cannot be read here - it would answer for a different span than was asked", GAMES_COUNTED)
 
 
 def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
