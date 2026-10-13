@@ -3008,6 +3008,22 @@ PER_MINUTES = re.compile(r"\bper[\s-]*(?!90\b)\d{2}\b(?:\s*(?:minutes|mins?)\b)?
 
 .. versionadded:: 6.0.0
 """
+# The opponent's figure asked by "opp"/"opponent"/"opponents'" before the
+# stat (ISSUES.md #409): "mavs opp fg percentage last 3 games" - the measure
+# whose="opponent", as "allowed" after a team metric reads. Not before a
+# word that is no stat ("opponents' bench players", "the opponent record"),
+# and not where the words add or set two figures side by side ("fgm + opp
+# fgm", "pts and opp pts"), which no one measure reads (OPPONENT_SUM).
+OPPONENT_STAT = re.compile(r"\b(?:opp|opponents?'?|opponent's)\s+(?!(?:bench|players?|record|teams?|games?|in|at|on|by|of|this|last)\b)[a-z0-9%]", re.IGNORECASE)
+"""The opponent's figure named before a stat.
+
+.. versionadded:: 6.0.0
+"""
+OPPONENT_SUM = re.compile(r"\+|\bminus\b|\band\s+(?:opp|opponents?'?|opponent's)\b", re.IGNORECASE)
+"""Two figures added or set side by side, the opponent's among them.
+
+.. versionadded:: 6.0.0
+"""
 PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
 """A per-90 rate named - a football unit, held in nothing here.
 

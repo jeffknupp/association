@@ -1082,3 +1082,21 @@ def test_a_teams_record_under_a_number_is_keyed_on_that_line(con: duckdb.DuckDBP
     assert reading.asked == LINE_RECORD and reading.point is not None and reading.point.on == "team_games"
     keyed = [each for each in reading.point.lines if each.keyed]
     assert [(each.measure, each.op, each.value) for each in keyed] == [line] and not any(each.narrows for each in reading.point.lines)
+
+
+@pytest.mark.parametrize(
+    ("question", "whose"),
+    [
+        ("mavs opp fg percentage last 3 games", "opponent"),
+        ("celtics opponent rebounds this season", "opponent"),
+        ("mavs fg percentage last 3 games", "own"),
+        ("most fgm + opp fgm in a game by celtics", "own"),
+        ("celtics vs magic pts and opp pts game logs", "own"),
+    ],
+)
+def test_opp_before_a_stat_is_the_opponents_figure(con: duckdb.DuckDBPyConnection, question: str, whose: str) -> None:
+    """ISSUES.md #409: "opp" before a stat was read by nothing, and the team's
+    own figure answered; it is the opponent's (``whose="opponent"``) - not
+    where two figures are added or set side by side."""
+    reading = _read(con, question)
+    assert reading.measure is not None and reading.measure.whose == whose
