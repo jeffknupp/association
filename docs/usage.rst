@@ -169,24 +169,28 @@ One-shot:
      2024  77  38.7  268  692
      2023  69  41.2  301  731
 
-Add ``--verbose`` to watch the reading and every tool call as they happen:
-what the model copied out of the question (``normalizer``), what the parser
-read from the words - what they ask, who it is about and the filters as
-slots (``parser``) - and the point the answer was read from (``reading``),
-each with its timing. The same trace is always written to ``.history/`` regardless, so a
-surprising answer can be diagnosed after the fact (timing lines left out
-here):
+Add ``--verbose`` to watch each stage as it happens: what the model copied
+out of the question (``normalizer``), what the parser read from the words -
+the shape they ask as ``relation/shape/by``, who it is about and the
+filters as typed values (``parser``) - each choice the reader made
+(``decision``), the point the answer was read from (``reading``) and the
+shape it was planned and said as (``compose``), each with its timing. The
+same trace is always written to ``.history/`` regardless, so a surprising
+answer can be diagnosed after the fact (timing lines and the history line
+left out here; the first line is printed while the calendar's new season
+has no games on record):
 
 .. code-block:: console
 
    $ association query --verbose "most games with 20+ rebounds this season?"
+     -> (decision) default season: 2026 (the calendar's 2027 has no games on record)
      -> (normalizer) names=[] stat='rebounds'
-     -> (parser) asked='threshold_count' kind='everyone' slots={'stat': 'rebounds', 'threshold': 20, 'season': 2026, 'season_type': 2} - the compiler
-     -> (decision) subject kind: 'everyone'
-     -> (reading) relation=everyone subject=everyone shape=grouped measures=[] aggregate=count group=player predicates=[('rebounds', '>=', 20)] window=measure/desc/5 source=games scope={'stat': 'rebounds', 'threshold': 20, 'season': 2026, 'season_type': 2}
-     -> (compose) intent='threshold_count' point={'span': None}
-   Nikola Jokic had the most games with 20+ rebounds in the 2026 regular season, with
-   5. Next: Karl-Anthony Towns (3), Donovan Clingan (2), Andre Drummond (1), Bam Adebayo (1).
+     -> (parser) asked=player_games/scalar/count kind='everyone' filters={'lines': [{'measure': 'rebounds', 'value': 20, 'as_typed': '20+ rebounds', 'keyed': True}], 'measure': {'key': 'rebounds', 'as_typed': 'rebounds'}, 'span': {'season': 2026, 'season_type': 2}} - the compiler
+     -> (decision) subject kind: 'everyone' (the words 'most games with 20+' name player_games/scalar/count)
+     -> (decision) parser asked: 'player_seasons/ranking/player' -> 'player_games/scalar/count' (the words 'most games with 20+' name player_games/scalar/count)
+     -> (reading) relation=everyone subject=everyone shape=ranking by=count on=player_games measures=[] aggregate=count group=player predicates=[('rebounds', '>=', 20)] window=measure/desc/5 filters={'lines': [{'measure': 'rebounds', 'value': 20, 'as_typed': '20+ rebounds', 'keyed': True}], 'measure': {'key': 'rebounds', 'as_typed': 'rebounds'}, 'span': {'season': 2026, 'season_type': 2}}
+     -> (compose) asked=player_games/scalar/count shape=player_games/ranking/count point={'span': None}
+   Nikola Jokic had the most games with 20+ rebounds in the 2026 regular season, with 5. Next: Karl-Anthony Towns (3), Donovan Clingan (2), Andre Drummond (1), Bam Adebayo (1).
 
 What you can ask
 ----------------
@@ -247,13 +251,13 @@ season asked about, and the answer asks which one you meant when more than one
 is left: "how did curry do against the celtics this year" asks whether you
 meant Seth Curry or Stephen Curry.
 
-Some questions are not answered by a template:
+Some questions are refused rather than answered:
 
 * **A season before a table's data starts** is refused, with the reason: "Shot
   charts only go back to 2002 - shots are derived from play-by-play, which ESPN
   does not have before 2002." :doc:`data-sources` lists where each kind of data
   starts.
-* **A narrowing no template honors**, such as back-to-backs, "in the Finals"
+* **A narrowing no reader honors**, such as back-to-backs, "in the Finals"
   or "since returning from injury", is refused with the reason rather than
   being answered for everything.
 * **A conference** named as the subject ("who leads the east") is refused,
@@ -261,8 +265,8 @@ Some questions are not answered by a template:
   filter ("Celtics record in the eastern conference", "Western Conference
   standings"), it is one of the narrowings above and refused the same way.
 
-Every refusal says what is missing. Until 5.0.0 a question no template read
-went to a tool-calling agent that wrote its own SQL; measured, it answered one
+Every refusal says what is missing. Until 5.0.0 a question the fast path
+could not read went to a tool-calling agent that wrote its own SQL; measured, it answered one
 question in 23 over minutes, so it is gone, and the refusal that names the
 gap is the answer.
 
@@ -352,11 +356,13 @@ with. ``--port`` is there for anyone who wants to bookmark one, and
 ``--db-path``/``--out-dir`` take the same defaults the ``data`` subcommands do.
 
 .. figure:: _static/web_ui_example.png
-   :alt: The web interface, showing a top-5 scoring leaderboard rendered as a table and a four-season 3PT% history rendered as a sparkline over a table, each labeled with the template that produced it and how long it took.
+   :alt: The web interface, showing a top-5 scoring leaderboard rendered as a table and a four-season 3PT% history rendered as a sparkline over a table, each labeled with what answered it and how long it took.
    :width: 660px
 
-   Two questions, answered by templates and rendered from their structured
-   data. Real output.
+   Two questions, rendered from their structured data. Real output, taken
+   while each answer's label still named the template that answered it;
+   the page now says ``answered`` and the shape the answer was read as
+   ("ranking by player, player seasons").
 
 It needs the ``web`` extra, which is not installed by default:
 
@@ -364,16 +370,15 @@ It needs the ``web`` extra, which is not installed by default:
 
    $ uv tool install 'association-py[web]'
 
-Answers are rendered per question shape, from the structured data the template
-already produced - a leaderboard or a game log as a table, a multi-season
+Answers are rendered by the shape they were read as, from the structured data
+the reader already produced - a leaderboard or a game log as a table, a multi-season
 history as a sparkline over its numbers, a team's record as a card. This is not
-a second phrasing of the answer: the sentences live in the templates, in
+a second phrasing of the answer: the sentences live in the sayer, in
 Python, once, and what a renderer picks is a *caption*, taken either from a
-scope string the template computed (``question_shape``) or from the answer's
+scope string the reader computed (``question_shape``) or from the answer's
 own first line.
 
-An intent with no renderer answers exactly as it always did, in the text the
-CLI prints - which is the normal case, not a failure. A ranking still renders
+An answer whose shape draws no body answers in the text the CLI prints - which is the normal case, not a failure. A ranking still renders
 down to a single leader ("who leads the league in assists?"), but a shape a
 renderer decides is not worth a table still falls back to the sentence - two
 players compared where the same question would draw one polygon for a
@@ -399,8 +404,8 @@ complete, theme-aware documents of pure HTML, SVG and CSS - they have never
 contained a script - so nothing is lost by refusing to run one, and the
 directory being served is one you can drop files into yourself. A frame taller
 than the cap scrolls, and the link beneath it opens the standalone file. A
-chart-only answer still gets a headline above it and any note the template
-attached beneath - which player, which season, how a name was read - rather
+chart-only answer still gets a headline above it and any note the answer
+carries beneath - which player, which season, how a name was read - rather
 than just the chart on its own.
 
 Three more things about it are deliberate:
@@ -409,9 +414,9 @@ Three more things about it are deliberate:
   "what about last year?" will not work. That is a real change in what a
   question *means* and it deserves its own routing cases rather than arriving
   as a footnote to a UI release.
-* **Every answer says whether it was answered** — ``template`` in green, with
-  the intent, or ``refused`` in amber where nothing here had a reading of the
-  question and the text says what was missing. Never hidden.
+* **Every answer says whether it was answered** — ``answered`` in green, with
+  the shape it was read as, or ``refused`` in amber where nothing here had a
+  reading of the question and the text says what was missing. Never hidden.
 * **One question at a time.** ollama keeps a single KV cache slot per model, so
   two questions in flight would evict each other's prefix and both come back
   slow. A question that arrives while another is running is told it is waiting.
@@ -452,8 +457,8 @@ names out of the question and picking a stat. :doc:`installation` has the
 ``ollama pull`` command. ``--router-model`` names it, for both ``query`` and
 ``web``.
 
-Until 5.0.0 a second, larger model wrote SQL for questions no template
-answered, and ``--model``, ``--think``, ``--no-fast-path``,
+Until 5.0.0 a second, larger model wrote SQL for questions the fast path did
+not answer, and ``--model``, ``--think``, ``--no-fast-path``,
 ``--disable-fallthrough`` and ``--agent-budget`` configured it. They are gone
 with it; a question nothing reads is refused naming why, which is what
 ``--disable-fallthrough`` used to make an error.

@@ -17,8 +17,9 @@ Versioning
 Released versions follow `semantic versioning <https://semver.org>`_. The
 compatibility promise covers the CLI surface — command and option names, and
 output shapes a script might parse — and the documented Python API. It does not
-cover the query templates or the router's intent set, which are expected to
-grow continuously; a new intent is a minor bump, not a major one.
+cover the set of question shapes the reader names or the wording of an
+answer, which are expected to grow; a new shape is a minor bump, not a major
+one.
 
 ``pyproject.toml`` holds the only copy of the number. The package reads it back
 through :func:`importlib.metadata.version` and exposes it as

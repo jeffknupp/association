@@ -13,7 +13,7 @@ association web
 # association is serving at http://127.0.0.1:40525  (ctrl-c to stop)
 ```
 
-<img src="docs/_static/web_ui_example.png" alt="The association web interface: a top-5 scoring leaderboard rendered as a table, and a four-season 3PT% history rendered as a sparkline over a table, each labeled with the template that produced it and how long it took" width="700">
+<img src="docs/_static/web_ui_example.png" alt="The association web interface: a top-5 scoring leaderboard rendered as a table, and a four-season 3PT% history rendered as a sparkline over a table, each labeled with what answered it and how long it took" width="700">
 
 No default port — it binds a free one and prints the URL for your terminal to
 linkify. Common question shapes are rendered from structured data: leaderboards
@@ -21,8 +21,8 @@ and game logs as tables, a multi-season history as a sparkline, a team's record
 as a card. Anything without a renderer still answers, in the same text the CLI
 prints — and every rendered answer keeps that text one click away.
 
-Every answer says whether a **template** produced it or the question was
-**refused** for want of a reading, because that is the most useful thing you
+Every answer says whether it was **answered** - and the shape it was read as -
+or the question was **refused** for want of a reading, because that is the most useful thing you
 can know about how far to trust it. Each message is a new question; there is
 no conversation memory.
 
@@ -74,12 +74,12 @@ association query "who had the most assists in a single game this season?"
 ```
 
 Questions like these are answered in about a second. Anything outside that
-set is refused, and the refusal says what is missing - an intent nothing
+set is refused, and the refusal says what is missing - a shape nothing
 answers, a narrowing the data cannot honor, a season a table does not reach.
-No model writes SQL here: the one that used to, for questions no template
-covered, answered one in 23 and is gone.
+No model writes SQL here: the one that used to, for questions the fast path
+could not read, answered one in 23 and is gone.
 
-The templates cover the shapes real NBA stat questions take, measured against
+The readers cover the shapes real NBA stat questions take, measured against
 StatMuse's live query feed. For example:
 
 - **Against one opponent**: "jaylen brown last 8 games vs pistons", "evan mobley avg against bucks" (the averages, then the meetings behind them)
@@ -93,7 +93,7 @@ StatMuse's live query feed. For example:
 - **Careers**: "career points leaders", "Jokic career averages"
 - **Team rankings, lines and outlook**: "which team scores the most points per game", "Knicks home record", "what are the celtics playoff odds"
 
-A question that narrows to something no template can honor, such as "on back-to-backs",
+A question that narrows to something no reader can honor, such as "on back-to-backs",
 "in the Finals" or "since returning from injury", is not answered for everything instead:
 it is refused, naming the narrowing. A question about a season a table does not reach,
 such as a 1996 shot chart, is refused, and the answer says why.
@@ -234,7 +234,7 @@ src/association/
   fetch/            client, endpoints, parse, storage, pipeline, warehouse
     repairs/        load-time repairs of ESPN's faults, and the filtered game list and rebuilt box lines
   check/            data coverage report, cross-checked live against ESPN
-  query/            the reader (parse.py, what the model is told in normalizer.py, and the stages in router.py), query templates, entity resolution, leaderboard, conditions (splits, with/without, streaks), team metrics, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
+  query/            READ (parse.py; what the model is told in normalizer.py; the grammar's rules in grammar.py; the lexicon and the seven taggers; the subject reading; the point reader), the relations (player and team games, the season line, team seasons, standings, NetPoints, shots) and entity resolution, compose/ (PLAN, the compiler, the readers and the sayer), coverage floors, court and radar renderers, the answering loop (agent.py)
   web/              the local web interface: HTTP API, one-at-a-time runner, single-page app
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed

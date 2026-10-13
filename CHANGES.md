@@ -8,8 +8,8 @@ number changes when something that used to work stops working, the minor
 number when something is added, the patch number for fixes. What counts as
 "something that used to work" here is the CLI surface - command and option
 names, output shapes that scripts parse - and the documented Python API, not
-the internal query templates or the router's intent set, which are expected to
-grow continuously.
+the set of question shapes the reader names or the wording of an answer, which
+are expected to grow.
 
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
