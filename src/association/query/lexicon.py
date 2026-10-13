@@ -514,6 +514,14 @@ YEAR = re.compile(r"\b((?:19|20)\d{2})\b")
 
 .. versionadded:: 6.0.0
 """
+LATE_MONTH_YEAR = re.compile(r"\b(?:october|november|december|oct|nov|dec)\.?,?\s+((?:19|20)\d{2})\b")
+"""A year written right after October, November or December: the season
+that starts in that year, not the one ending in it ("November 2023" is
+2023-24, the season 2024; ISSUES.md #267). The year's characters are the
+span's; the month's are the situation's (:data:`SITUATION`).
+
+.. versionadded:: 6.0.0
+"""
 PREVIOUS_SEASON = re.compile(r"\b(?:last|previous|prior)\s+(?:season|year)\b|\ba year ago\b")
 """The season before the current one, named relatively.
 
@@ -1709,7 +1717,9 @@ def season_from_text(text: str) -> int | None:
 def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
     """The season :func:`season_from_text` reads, with the characters it
     read it from: one span, every occurrence of the one year, or the
-    relative words. None where the words name no season, or two.
+    relative words. None where the words name no season, or two. A year
+    right after October, November or December is the season starting in
+    it (:data:`LATE_MONTH_YEAR`).
 
     .. versionadded:: 6.0.0
     """
@@ -1722,7 +1732,17 @@ def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
 
     years = [(y, m) for m in YEAR.finditer(low) for y in (_in_range(int(m.group(1))),) if y is not None]
     if len({y for y, _ in years}) == 1:
-        return years[0][0], tuple((m.start(), m.end()) for _, m in years)
+        year, read = years[0][0], tuple((m.start(), m.end()) for _, m in years)
+        late = LATE_MONTH_YEAR.search(low)
+        # A year beside October, November or December names the season that
+        # STARTS in it: "November 2023" is 2023-24, the season 2024, where a
+        # year alone is the season ending in it (ISSUES.md #267; April 2021
+        # is 2021 either way). The characters read are the year's; the
+        # month is the situation's, and the reading depends on it.
+        if late is not None and int(late.group(1)) == year:
+            season = _in_range(year + 1)
+            return None if season is None else (season, read)
+        return year, read
     if years:
         return None
 
