@@ -4262,6 +4262,9 @@ def _say_team_boolean_count(facts: Mapping[str, Any]) -> str:
 _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
+    "team_game_high": lambda facts: (
+        f"A team's own best single game is not read yet - nothing ranks the {facts['team']}' games by a stat. Its players' best game is: ask for the most points in a game by a {facts['team']} player."
+    ),
     "playoff_round": lambda facts: (
         f"The games are not labeled by playoff round, so '{facts['round']}' cannot pick them out yet. "
         "Name the two teams and the season instead - a series is their postseason meetings, and those are read."

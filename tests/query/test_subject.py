@@ -674,10 +674,12 @@ def test_a_single_game_named_without_an_article_is_one_game(con: duckdb.DuckDBPy
         scope=Reading(who=Who(kind="player", players=("Nikola Jokic",)), measure=Measure(key="rebounds", as_typed="rebounds"), span=Span(season_type=2)),
     )
     assert asked == GAME_HIGHS and reading.who.player == "Nikola Jokic" and _stat(reading) == "rebounds"
-    asked, _ = _assigned(
+    asked, reading = _assigned(
         con, "celtics most points single game", None, scope=Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2))
     )
-    assert asked is None
+    # The team's own best game, which nothing ranks: refused by the cause
+    # naming it (ISSUES.md #364), where the team's season line answered.
+    assert asked is None and reading.refused is not None and reading.refused.kind == "team_game_high"
     # A plural is games, not one game.
     asked, _ = _assigned(con, "jokic single games stats", PLAYER_LOG, scope=Reading(who=Who(kind="player", players=("Nikola Jokic",)), span=Span(season_type=2)))
     assert asked == PLAYER_LOG

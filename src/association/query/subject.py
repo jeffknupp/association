@@ -1121,8 +1121,8 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     if unrouted:
         # "the router" is the model here, kept as recorded (:func:`_evidence`).
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
-    decided = _decide(players, teams, position, opponent, own_team, companions, evidence, asked, question)
-    subject = replace(decided, conditions=conditions, companion_phrases=phrases, claims=(*claims, *_decide_claims(decided, question)))
+    decided = _decide_team_players(index.teams, _decide(players, teams, position, opponent, own_team, companions, evidence, asked, question), question)
+    subject = replace(decided, conditions=conditions, companion_phrases=phrases, claims=(*claims, *_decide_claims(index.teams, decided, question)))
     # Read, not decided: what the subject's shape settles the words to ask
     # is the parser's step (:func:`child_named`, with the grammar's rules run
     # once under it), and :func:`settle_subject` writes it here. Until 5.0.0's
@@ -1348,11 +1348,64 @@ def _decide(
     return Subject("everyone", (), (), position, opponent, own_team, companions, evidence)
 
 
-def _decide_claims(subject: Subject, question: str) -> tuple[Claim, ...]:
+def _decide_team_players(teams: names.TeamIndex, subject: Subject, question: str) -> Subject:
+    """A team named as the team its players played for, beside a single
+    game, is its players as the subject (``team_players``): "most points in
+    a single game on the 76ers", "most points by a knick in a game", "most
+    points in a game in cavs history" asked the team's players' best game
+    and were answered with the team's season line (ISSUES.md #364). Only
+    the subject's own team, named by the words
+    :data:`~association.query.lexicon.TEAM_AS_ITS_PLAYERS` leads it with."""
+    if subject.kind != "team" or len(subject.teams) != 1 or lexicon.CHILD_SINGLE_GAME_HIGH.search(question) is None:
+        return subject
+    if _team_named_by(teams, lexicon.TEAM_AS_ITS_PLAYERS, question, subject.teams[0]) is None:
+        return subject
+    return replace(subject, kind="team_players")
+
+
+def _team_named_by(teams: names.TeamIndex, phrase: re.Pattern[str], question: str, team: str) -> tuple[re.Match[str], int, int] | None:
+    """The first match of ``phrase`` whose group is a word naming ``team``
+    (its singular, a nickname or a whole word of its name), with where that
+    word stands - or None."""
+    for match in phrase.finditer(question):
+        group = next((i for i in range(1, (match.lastindex or 0) + 1) if match.group(i)), None)
+        if group is None:
+            continue
+        word = match.group(group).lower().removesuffix("'s").rstrip("'")
+        if lexicon.TEAM_SINGULARS.get(word) == team or team_named_in(teams, word) == team:
+            return match, match.start(group), match.end(group)
+    return None
+
+
+def team_game_high_asked(question: str) -> bool:
+    """Whether a team subject's question names a single game - the team's
+    own best game ("most points in a game by the 76ers", "the knicks
+    highest scoring game"), which nothing reads yet, where the subject
+    reading kept the team as the subject and not its players
+    (:func:`_decide_team_players`; ISSUES.md #364). The parser refuses it by
+    the ``team_game_high`` cause, where the team's season line answered.
+
+    .. versionadded:: 6.0.0
+    """
+    return lexicon.CHILD_SINGLE_GAME_HIGH.search(question) is not None
+
+
+def _decide_claims(teams: names.TeamIndex, subject: Subject, question: str) -> tuple[Claim, ...]:
     """The words :func:`_decide` read the subject's kind from beside the
     names (which :func:`subject_claims` claims): the "player" of "a Hawks
-    player", which makes the team's players the subject."""
-    noun = lexicon.PLAYER_NOUN.search(question) if subject.kind == "team_players" else None
+    player", which makes the team's players the subject - or the words that
+    lead the team as its players' ("on the", "by a", "in ... history"), the
+    team's own word left to the team's claim."""
+    if subject.kind != "team_players":
+        return ()
+    # The lead first: beside a single game it reads the team's players alone,
+    # so a "player" after it restates them ("most points in a game by a knicks
+    # player" reads the same without the word, and the ledger's deletion says so).
+    named = _team_named_by(teams, lexicon.TEAM_AS_ITS_PLAYERS, question, subject.teams[0]) if subject.teams and lexicon.CHILD_SINGLE_GAME_HIGH.search(question) else None
+    if named is not None:
+        match, start, end = named
+        return tuple(Claim(a, b, "subject") for a, b in ((match.start(), start), (end, match.end())) if question[a:b].strip())
+    noun = lexicon.PLAYER_NOUN.search(question)
     return () if noun is None else (Claim(noun.start(), noun.end(), "subject"),)
 
 

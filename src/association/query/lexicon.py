@@ -3187,6 +3187,17 @@ TEAM_NOUN = re.compile(r"\bteam\b", re.IGNORECASE)
 .. versionadded:: 6.0.0
    ``subject._decide``'s pattern until Phase 3, step 2.
 """
+# A team named as the team its PLAYERS played for, beside a single game:
+# "most points in a single game on the 76ers", "most points by a knick in a
+# game", "most points in a game in cavs history" - the team's players' best
+# game, not the team's own (ISSUES.md #364). The group holds the word the
+# team is named by, which the subject reading checks names the subject's team.
+TEAM_AS_ITS_PLAYERS = re.compile(r"\bon\s+the\s+([\w']+)|\b(?:by|for)\s+an?\s+([\w']+)|\bin\s+(?:the\s+)?([\w']+?)(?:'s|')?\s+(?:franchise\s+)?history\b", re.IGNORECASE)
+"""A team named as its players' team: "on the <team>", "by a <team>",
+"for a <team>", "in <team> history".
+
+.. versionadded:: 6.0.0
+"""
 
 
 def whole_phrases(phrases: list[str] | tuple[str, ...]) -> re.Pattern[str]:
