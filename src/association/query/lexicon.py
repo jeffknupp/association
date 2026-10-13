@@ -2838,11 +2838,13 @@ or the number of a line the lines tagger read stated with a plus, or with
 # pointers made in single game 24-25" answered the season's leaders (ISSUES.md
 # #260) - "single games", a plural, is not one.
 CHILD_SINGLE_GAME_HIGH = ask(
-    r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b"
+    r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b(?![- ]+(?:triple|double)[- ]?doubles?\b)|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b"
     # "his best scoring game", "luka highest scoring games vs bucks": the
     # best scoring game is the high by points, and the plural the highs
     # ranked - each read as his season line or his log by date until
-    # 2026-10-13 (lane N of the P1 sweep). Only beside "scoring": "highest
+    # 2026-10-13 (lane N of the P1 sweep). "single game triple doubles"
+    # is a count of triple-doubles - every one is one game's - never a
+    # single game's high of a yes/no measure (ISSUES.md #265). Only beside "scoring": "highest
     # win% games" is a ranking of players by a rate over games.
     r"|\b(?:best|highest)\s+scoring\s+games?\b",
     re.IGNORECASE,

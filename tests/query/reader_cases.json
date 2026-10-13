@@ -102557,5 +102557,406 @@
    "point_declined": null,
    "point_refusal": null
   }
+ },
+ {
+  "name": "issue_265_single_game_triple_doubles_are_counted",
+  "why": "ISSUES.md #265: \"single game\" before a yes/no measure modifies the stat - every triple-double is one game's - so the question is the triple-double ranking, where a single game's high of triple-doubles was refused.",
+  "question": "who has the most single game triple doubles",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "triple_double",
+    "as_typed": "triple_double",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "most",
+    "single",
+    "game"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "player",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "per_game",
+    "group": "player",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "triple_double",
+     "as_typed": "triple_double",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_265_single_game_points_stay_the_high",
+  "why": "ISSUES.md #265: \"single game\" before a box-score measure stays the single game's high.",
+  "question": "most single game points this season",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "measure"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "most"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "asked_reason": "the words 'single game' name player_games/rows/measure",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": "the words 'single game' name player_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/ranking/player",
+     "after": "player_games/rows/measure",
+     "reason": "the words 'single game' name player_games/rows/measure"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "measure"
+    },
+    "relation": "everyone",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "measure",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "none",
+    "group": "none",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 3,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
  }
 ]
