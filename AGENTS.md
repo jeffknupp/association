@@ -1788,7 +1788,9 @@ a shape:
   and the reading's own causes have had their look: a refusal the words
   come to before any point (`Reading.refused` - a championship, both ends
   of the span named at once, `window.contradicting_ends`, a window of
-  games taken in each season, `window.per_season_window`, a player
+  games taken in each season, `window.per_season_window`, a fact no table
+  holds or nothing reads - a draft position, a birth date, a height,
+  `lexicon.ABSENT_FACTS` - a player
   named on a question whose shape has no reading for one), which the
   planner says before any reader runs, and what the words name that
   nothing reads (`Reading.unsupported` - a playoff round, an age, a

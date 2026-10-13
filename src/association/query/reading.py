@@ -1373,6 +1373,7 @@ CAUSES: frozenset[str] = frozenset(
         "championship",
         "window_ends_contradict",
         "window_per_season",
+        "fact_not_read",
         "no_player_reading",
         "playoff_round",
         "non_calendar_situation",
@@ -1423,7 +1424,11 @@ missing thing, never only the slot"):
   (``championship``: ``shape``), both ends of the span named at once
   (``window_ends_contradict``: ``ends``, the words of each), a window of
   games taken in each season, which nothing reads yet
-  (``window_per_season``: ``window``, ``per``), or a player named on a question whose
+  (``window_per_season``: ``window``, ``per``), a fact about a player or a
+  game no table holds or nothing reads - a draft position, a birth date, a
+  height, a jersey number, a lead, a four-point play, a role, an
+  opponent's wins (``fact_not_read``: ``fact``, ``words``, ISSUES.md
+  #389), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
   ``shape``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,

@@ -3809,6 +3809,49 @@ championship.
 .. versionadded:: 6.0.0
    ``parse._TITLE_ODDS`` until Phase 4, step 6.
 """
+# A fact about a player or a game no table here holds or nothing here reads
+# (ISSUES.md #389): measured on the 2,082 feed questions, 41 named one and
+# each fell to the parent grammar's default reading - "3rd nba overall draft
+# picks", "players that wear number 5 jersey active" and "6 ft 6 inches nba
+# players" were each answered with the 2026 points leaders, and "NBA players
+# born on August 1" was refused as a GAME on August 1. Each fact is a word
+# or phrase no other reading of a question takes: "pick" only after "what",
+# "which" or "overall"; a height only as feet and inches, an apostrophe
+# height ("6'10"), "how tall" or "height"; "4 ft" alone is a shot's
+# distance and is left alone; a lead only with its margin or its size
+# ("10+ point leads", "biggest lead"), never "leads the league".
+ABSENT_FACTS: tuple[tuple[Literal["draft", "birth", "height", "jersey", "lead", "four-point play", "role", "wins"], re.Pattern[str]], ...] = (
+    (
+        "draft",
+        re.compile(
+            r"\bdraft(?:ed|s)?\b|\b(?:what|which)\s+pick\b|\boverall\s+picks?\b|\blottery\s+picks?\b"
+            r"|\b(?:\d+(?:st|nd|rd|th)|first|second|third)\s+(?:nba\s+)?overall(?:\s+(?:draft\s+)?picks?)?\b",  # codespell:ignore nd - an ordinal suffix
+            re.IGNORECASE,
+        ),
+    ),
+    ("birth", re.compile(r"\bborn\b|\bbirth(?:\s?(?:days?|dates?|places?|years?))?\b", re.IGNORECASE)),
+    (
+        "height",
+        re.compile(
+            r"\bhow\s+tall\b|\btall(?:est|er)?\b|\bheights?\b|\binch(?:es)?\b|\b\d\s*(?:ft|feet|foot)\s*\d{1,2}(?:\s*inch(?:es)?)?\b|\b[5-7]['\u2019]\s?\d{1,2}\b|\b[5-7]-(?:foot|ft)\b", re.IGNORECASE
+        ),
+    ),
+    ("jersey", re.compile(r"\bjerseys?\b|\bwear(?:s|ing)?\s+(?:the\s+)?(?:number|no\.?|#)\s*\d+", re.IGNORECASE)),
+    ("lead", re.compile(r"\b\d+\+?\s*-?\s*(?:points?|pts?)\s+leads?\b|\b(?:biggest|largest)\s+(?:\w+\s+)?leads?\b|\bblown\s+leads?\b", re.IGNORECASE)),
+    ("four-point play", re.compile(r"\b(?:4|four)[- ]?(?:point|pt)\s+plays?\b|\band[- ]ones?\b", re.IGNORECASE)),
+    ("role", re.compile(r"\b(?:1st|2nd|3rd|first|second|third)\s+options?\b", re.IGNORECASE)),
+    ("wins", re.compile(r"\b\d+[- ]?wins?\s+teams?\b", re.IGNORECASE)),
+)
+"""The facts a question can name that no table here holds (a draft
+position, a birth date, a height), holds only as a dateless snapshot (a
+jersey number) or that nothing here reads from what it holds (a lead within
+a game, a four-point play, a player's role on his team, an opponent's win
+total) - each with the words that name it, in the order tried. The parser
+reads the first into the ``fact_not_read`` cause before any point
+(:attr:`~association.query.reading.Reading.refused`).
+
+.. versionadded:: 6.0.0
+"""
 BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
 """The word "bench", whole: "bench points" names a figure nothing reads.
 

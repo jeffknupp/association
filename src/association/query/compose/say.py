@@ -4224,6 +4224,37 @@ def _say_no_player_reading(facts: Mapping[str, Any]) -> str:
     )
 
 
+#: What each fact :data:`~association.query.lexicon.ABSENT_FACTS` names is
+#: refused with (``fact_not_read``, ISSUES.md #389): what the warehouse holds
+#: of it - nothing, a dateless snapshot, or the plays nothing reads it from -
+#: and what to ask instead.
+_FACT_NOT_READ: dict[str, str] = {
+    "draft": ("No draft record is on file here - the player records hold no draft year, round or pick - so {words!r} cannot be read. Ask for a player's or the league's stats by season instead."),
+    "birth": "No birth date is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by season, team or position instead.",
+    "height": "No height is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by position instead (centers, forwards or guards).",
+    "jersey": (
+        "A jersey number is not read here: the player records hold only the number each player wore on the day he was first fetched, with no date, "
+        "so {words!r} cannot be answered reliably. Ask for a player by name instead."
+    ),
+    "lead": (
+        "A lead within a game is not read: the plays carry the running score, but nothing here follows a game's margin through it yet, "
+        "so {words!r} cannot be counted. Ask for a team's record or its point differential instead."
+    ),
+    "four-point play": (
+        "A four-point play is not read: the plays hold every shot and free throw, but nothing here pairs a made three with the foul shot after it yet, "
+        "so {words!r} cannot be counted. Ask for threes or free throws made instead."
+    ),
+    "role": "{words!r} names a role on a team, and nothing here says which player is a team's first or second option. Ask for a team's players ranked by a stat instead.",
+    "wins": "Games are not narrowed by how many wins the opponent had, so {words!r} cannot be read. Ask against a named team, a conference or a division instead.",
+}
+
+
+def _say_fact_not_read(facts: Mapping[str, Any]) -> str:
+    """A fact no table holds or nothing reads, by what the warehouse holds
+    of it (:data:`_FACT_NOT_READ`)."""
+    return _FACT_NOT_READ[facts["fact"]].format(words=facts["words"])
+
+
 def _say_non_calendar_situation(facts: Mapping[str, Any]) -> str:
     """A situation nothing reads, by what the reader recognized in it: an
     age (no birth dates on record), a conference or division word in a
@@ -4262,6 +4293,7 @@ def _say_team_boolean_count(facts: Mapping[str, Any]) -> str:
 _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
+    "fact_not_read": _say_fact_not_read,
     "playoff_round": lambda facts: (
         f"The games are not labeled by playoff round, so '{facts['round']}' cannot pick them out yet. "
         "Name the two teams and the season instead - a series is their postseason meetings, and those are read."
