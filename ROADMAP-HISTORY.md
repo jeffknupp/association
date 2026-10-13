@@ -1452,9 +1452,12 @@ agents' reports named here are in `~/association-research/stages/`.
     new `answer.shape` field; the SQL ratchet 80 in 20 -> 79 in 17; four
     merge-time conflicts in C2's (`CHANGES.md`, the ratchet list, both
     import contracts, `AGENTS.md`), each a union of disjoint edits,
-    resolved by hand and gated. Not merged: lane A's measures slice
-    (`807d0aa`, one line in lane C1's `compose/seasons.py`), waiting for
-    C1; lane C1 still running at the entry's writing. Open for Jeff from
+    resolved by hand and gated. Then, later the same evening, lane C1
+    (`13304d1`: the season line's, the team seasons' and the team-games
+    relation's reads, 75 in 14) and lane A's measures slice on top of it
+    (`93016f3`: `Reading.measures` a `tuple[Measure, ...]`, proved by
+    naming each typed list back through the catalog), the same way; the
+    four follow-ups the C agents named went to one more agent. Open for Jeff from
     lane A: the aggregate is not a function of the shape alone (27
     readings in three keys move under either design), and the typed
     `Query.measures` follows step 5. What it taught: merging each lane
@@ -1463,7 +1466,7 @@ agents' reports named here are in `~/association-research/stages/`.
     runs) at the price of a redo had a proof failed - none did; and an
     `AGENTS.md` that documents the conflict markers trips a resolver that
     greps for them anywhere, so the check is anchored to a line start.
-    Cost: the four agents' 3.4 hours (1.43M tokens) and the lead's four
+    Cost: the five agents' 4.7 hours (1.72M tokens) and the lead's six
     re-verifications of about ten minutes each. Filed: #396 (P1), #397
     (P4). Rewritten: #110.
 
