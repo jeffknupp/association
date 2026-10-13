@@ -1257,7 +1257,13 @@ a shape:
   ("more than 40 points", "exactly 25 fga", "fga = 25":
   `lexicon.LINE_OVER_OR_AT`, `EQUALS_LINE`, ISSUES.md #371 - but on a
   ranking of players' seasons, where it is a season's line; under a line's
-  shape "more than 40" is the shape's own "41+"), two or more "N+ stat"
+  shape "more than 40" is the shape's own "41+"), a line on a player's
+  SEASON figure on a ranking of players' seasons alone ("averaged 30 ppg",
+  "> 5 apg", "10000 points": `Line.per`, `season` or `total`, the
+  `season_line` cell, kept by `season_line.ranking_statement` on the
+  season's deduped box row and by `career_ranking_statement` over a
+  career's rows; the game lines read inside one set aside, ISSUES.md #390),
+  two or more "N+ stat"
   pairs - as the router's stages read them
   until 5.0.0 (a single
   "20+ points" on a log is read by nothing, ISSUES.md). `threshold_named`

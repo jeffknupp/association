@@ -613,6 +613,15 @@ holds the same five as SQL).
 .. versionadded:: 6.0.0
 """
 
+LinePer = Literal["game", "season", "total"]
+"""What a line's figure is (:attr:`Line.per`): one game's (``game``), a
+player's average per game over the span - a season, or a career on a
+career ranking (``season``: "averaged 30 ppg") - or his total over it
+(``total``: "10000 points in his career").
+
+.. versionadded:: 6.0.0
+"""
+
 
 @dataclass(frozen=True, kw_only=True)
 class Line:
@@ -644,7 +653,7 @@ class Line:
     measure: str | None
     op: LineOp = ">="
     #: The number: a count of the stat (a boolean measure's line holds True).
-    value: int | bool = 1
+    value: int | float | bool = 1
     #: The quarter or half the line is read in, where the words put it in
     #: one ("after making one three in the first quarter"); None for the
     #: whole game.
@@ -670,6 +679,13 @@ class Line:
     #: which the stages read the first of and dropped the rest (ISSUES.md,
     #: "A second bare line on a count is dropped").
     narrows: bool = False
+    #: What the line's figure is (:data:`LinePer`): one game's, where the
+    #: relation keeps the games past it; or the season line's - a player's
+    #: average or total over the span - which a ranking of players' seasons
+    #: keeps the players past (``season_line``, ISSUES.md #390). A season
+    #: line is neither keyed nor narrowing, and holds a decimal ("3.5
+    #: assists").
+    per: LinePer = "game"
 
     #: The family's two cells on the subject's own lines, the ones a
     #: relation's cell table declares (``player_relation.RELATION_SCOPING``)
@@ -681,11 +697,20 @@ class Line:
     #: into the point's predicate rather than applied by the relation, and
     #: sets no cell - as the ``threshold`` slot never did.
     CELLS: ClassVar[frozenset[str]] = frozenset({"line", "period_line"})
+    #: The cell a season line sets (:attr:`per` not ``game``): a ranking of
+    #: players' seasons takes it beyond its relation's table
+    #: (``player_relation.RELATION_SCOPING_EXCLUDED``), and no reader of the
+    #: games relation honors it.
+    SEASON_CELLS: ClassVar[frozenset[str]] = frozenset({"season_line"})
 
     def __post_init__(self) -> None:
         if self.op not in (">=", ">", "<=", "<", "="):
             raise ScopeError(f"line op {self.op!r} is not one of ('>=', '>', '<=', '<', '=')")
         if isinstance(self.value, bool):
+            return
+        if self.per != "game":
+            if not isinstance(self.value, (int, float)) or self.keyed or self.narrows or self.period is not None:
+                raise ScopeError(f"a season line ({self.as_typed!r}) is a number on the season's figure, keyed on nothing and narrowing no games")
             return
         if not isinstance(self.value, int):
             raise ScopeError(f"line value {self.value!r} is not a whole number")
@@ -1221,7 +1246,7 @@ class Filtered:
     #: family's, whose value (:data:`Split`, a closed set of names) is not
     #: typed yet; a subject is no cell (:attr:`Subject.CELLS`). What the two
     #: relation tables and each shape's row speak of, and nothing else.
-    CELLS: ClassVar[frozenset[str]] = Span.CELLS | Window.CELLS | Cuts.CELLS | Period.CELLS | Line.CELLS | Companion.CELLS | Measure.CELLS | {"split"}
+    CELLS: ClassVar[frozenset[str]] = Span.CELLS | Window.CELLS | Cuts.CELLS | Period.CELLS | Line.CELLS | Line.SEASON_CELLS | Companion.CELLS | Measure.CELLS | {"split"}
 
     def filters(self) -> dict[str, Any]:
         """The ten typed values by field name - what a Reading hands the
@@ -1279,6 +1304,8 @@ class Filtered:
             held.add("line")
         if any(line.period is not None for line in self.lines):
             held.add("period_line")
+        if any(line.per != "game" for line in self.lines):
+            held.add("season_line")
         if self.companions:
             held.add("companion")
         return frozenset(held)
@@ -1286,7 +1313,7 @@ class Filtered:
 
 #: The order a decline names a point's cells in: the span, the window, the
 #: cuts, the period, the lines, the companions, the split, the unit.
-CELL_ORDER: tuple[str, ...] = ("career", "range", "both", "window", "ranked_by", *_CUT_ORDER, "period", "line", "period_line", "companion", "split", "rate")
+CELL_ORDER: tuple[str, ...] = ("career", "range", "both", "window", "ranked_by", *_CUT_ORDER, "period", "line", "period_line", "season_line", "companion", "split", "rate")
 """Every cell a point can set (:meth:`Filtered.cells`), in the order a
 decline names them (:func:`cell_facts`).
 
@@ -1320,8 +1347,8 @@ def cell_facts(scope: Filtered, cell: str) -> dict[str, Any]:
         facts.update(value=getattr(cuts, cell))
     elif cell == "period" and scope.period is not None:
         facts.update(number=scope.period.number, half=scope.period.half)
-    elif cell in ("line", "period_line"):
-        facts.update(lines=[_line_facts(line) for line in scope.lines if (line.period is not None) == (cell == "period_line") and (line.narrows or cell == "period_line")])
+    elif cell in ("line", "period_line", "season_line"):
+        facts.update(lines=_cell_lines(scope, cell))
     elif cell == "companion":
         facts.update(companions=[{"player": c.player, "side": c.side, "predicate": c.predicate} for c in scope.companions])
     elif cell == "split":
@@ -1331,11 +1358,21 @@ def cell_facts(scope: Filtered, cell: str) -> dict[str, Any]:
     return facts
 
 
+def _cell_lines(scope: Filtered, cell: str) -> list[dict[str, Any]]:
+    """The lines a line cell holds, as a decline's plain facts: the ones the
+    relation narrows by on the whole game (``line``), in a quarter or half
+    (``period_line``), or on the season's figure (``season_line``)."""
+    if cell == "season_line":
+        return [_line_facts(line) for line in scope.lines if line.per != "game"]
+    return [_line_facts(line) for line in scope.lines if (line.period is not None) == (cell == "period_line") and (line.narrows or cell == "period_line")]
+
+
 def _line_facts(line: Line) -> dict[str, Any]:
     """One line as a decline's plain facts: the words it was read from, its
     stat, way and number, and the period it stands in."""
     period = None if line.period is None else {"number": line.period.number, "half": line.period.half}
-    return {"as_typed": line.as_typed, "measure": line.measure, "op": line.op, "value": line.value, "period": period}
+    facts = {"as_typed": line.as_typed, "measure": line.measure, "op": line.op, "value": line.value, "period": period}
+    return facts if line.per == "game" else {**facts, "per": line.per}
 
 
 def cell_set(scope: Filtered, cell: str) -> bool:

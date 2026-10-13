@@ -302,7 +302,9 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
         },
-        taken=Measure.CELLS,
+        # A unit, and a line on the season's own figure ("averaged 30 ppg",
+        # ISSUES.md #390), which the ranking keeps its players past.
+        taken=Measure.CELLS | ReadLine.SEASON_CELLS,
     ),
     PointShape("player_seasons", "split", "season"): ShapeCells(
         unstated={

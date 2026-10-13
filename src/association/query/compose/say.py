@@ -2423,6 +2423,50 @@ def _leaderboard_headline(answer: str) -> str:
     return answer.split("\n")[0].rstrip(":").split(" Next: ")[0]
 
 
+#: How a season line's comparison is said before its number (ISSUES.md #390).
+_SEASON_LINE_WAYS: dict[str, str] = {">=": "{}+", ">": "over {}", "<": "under {}", "<=": "{} or fewer", "=": "exactly {}"}
+
+
+def _season_line_number(value: float) -> str:
+    """A season line's number: a whole one with its thousands separated, a
+    decimal as typed."""
+    return f"{int(value):,}" if float(value).is_integer() else f"{value:g}"
+
+
+def season_lines_phrase(lines: Sequence[tuple[str, str, float, str]], *, career: bool = False) -> str:
+    """The season lines a ranking kept its players past, as the past tense
+    of what they did: "averaged 30+ points per game", "had 10,000+ points",
+    "averaged 16+ points per game and 10+ rebounds per game" - over their
+    careers where ``career``.
+
+    .. versionadded:: 6.0.0
+    """
+    averages = [f"{_SEASON_LINE_WAYS[op].format(_season_line_number(value))} {_stat_words(measure)} per game" for measure, op, value, per in lines if per == "season"]
+    totals = [f"{_SEASON_LINE_WAYS[op].format(_season_line_number(value))} {_stat_words(measure)}" for measure, op, value, per in lines if per != "season"]
+    said = ([f"averaged {' and '.join(averages)}{' over their careers' if career else ''}"] if averages else []) + (
+        [f"had {' and '.join(totals)}{' in their careers' if career else ''}"] if totals else []
+    )
+    return " and ".join(said)
+
+
+def _say_season_lines_ranking(rows: list[dict[str, Any]], facts: RankingFacts, label: str, period: str, qualifier: str, ratio: Sequence[str] | None) -> str:
+    """A ranking kept past season lines (ISSUES.md #390), said as the set it
+    is: how many players cleared the lines, and who, by the ranked figure -
+    "3 players averaged 30+ points per game in the 2026 regular season
+    (minimum 20 games): Luka Doncic (33.5), ...", the top ones named where
+    more cleared them than are shown."""
+    pool = facts.pool or 0
+    who = f"{facts.team} player" if facts.team else "player"
+    did = season_lines_phrase(facts.lines)
+    if not pool:
+        return f"No {who} {did} in the {period}{qualifier}."
+    named = ", ".join(f"{row['display_name']} ({_leader_value(row, ratio, short=True)})" for row in rows)
+    count = f"{pool:,} {who}{'s' if pool != 1 else ''} {did} in the {period}{qualifier}"
+    if pool > len(rows):
+        return f"{count}; the {len(rows)} with the highest {label}: {named}."
+    return f"{count}, by {label}: {named}."
+
+
 def say_leaderboard(result: Result) -> Answer:
     """A ranking over the season line, worded as the retired template
     worded it (``templates.players._leaderboard_ranking``): the leader and
@@ -2453,7 +2497,12 @@ def say_leaderboard(result: Result) -> Answer:
     trade_note = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
     minimum, applied = _leaderboard_minimum(result)
     qualifier = _leaderboard_qualifier(result, minimum)
-    answer = _tabulate_leaderboard(rows, label, where, period, fields, qualifier, ratio) if fields else _phrase_leaderboard(rows, label, where, period, qualifier, ratio)
+    if facts.lines and not fields:
+        answer = _say_season_lines_ranking(rows, facts, label, period, qualifier, ratio)
+    elif fields:
+        answer = _tabulate_leaderboard(rows, label, f"{where}'s players who {season_lines_phrase(facts.lines)}" if facts.lines else where, period, fields, qualifier, ratio)
+    else:
+        answer = _phrase_leaderboard(rows, label, where, period, qualifier, ratio)
     data = {
         "question_shape": f"{label}, {period}",
         "season": season,
@@ -2463,6 +2512,8 @@ def say_leaderboard(result: Result) -> Answer:
         "headline": _leaderboard_headline(answer),
         "notes": [trade_note.strip()] if trade_note else [],
     }
+    if facts.lines:
+        data.update(lines=[list(line) for line in facts.lines], pool=facts.pool)
     return Answer(data=data, text=answer + trade_note)
 
 
@@ -2483,7 +2534,19 @@ def _say_career_leaderboard(result: Result, body: Grouped) -> Answer:
     minimum, applied = _leaderboard_minimum(result)
     qualifier = _leaderboard_qualifier(result, minimum)
     gap = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
-    if not rows:
+    lined = _facts(result, RankingFacts)
+    if lined.lines:
+        # Kept past career lines (ISSUES.md #390): the set, said as one.
+        did = season_lines_phrase(lined.lines, career=True)
+        pool = lined.pool or 0
+        named = ", ".join(f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows)
+        head = f"Among players active in {since} or later, {pool:,} {'player' if pool == 1 else 'players'} {did} in the {kind}{qualifier}"
+        answer = (
+            f"Among players active in {since} or later, none {did} in the {kind}{qualifier}. {gap}"
+            if not pool
+            else (f"{head}; the {len(rows)} with the highest {label}: {named}. {gap}" if pool > len(rows) else f"{head}, by {label}: {named}. {gap}")
+        )
+    elif not rows:
         answer = f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
     else:
         top = rows[0]
@@ -4632,6 +4695,7 @@ def cell_phrase(facts: Mapping[str, Any]) -> str:
         "period": lambda: _period_phrase(facts.get("number"), facts.get("half")),
         "line": lambda: _joined_phrases([_line_phrase(line) for line in facts["lines"]]),
         "period_line": lambda: _joined_phrases([f"{_line_phrase(line)} in {_period_phrase(*_line_period(line))}" for line in facts["lines"]]),
+        "season_line": lambda: f"players who {season_lines_phrase([(line['measure'], line['op'], line['value'], line['per']) for line in facts['lines']])}",
         "companion": lambda: _joined_phrases([_companion_phrase(companion) for companion in facts["companions"]]),
         "split": lambda: _SPLIT_PHRASES.get(str(facts["split"]), f"a split by {facts['split']}"),
         "rate": lambda: _rate_phrase(facts.get("unit")),

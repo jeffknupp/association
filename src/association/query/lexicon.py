@@ -2348,12 +2348,66 @@ SEASON_LINE = re.compile(
 
 .. versionadded:: 6.0.0
 """
+# The words a season line's stat is named by (ISSUES.md #390): a box-score
+# word (:data:`MEASURE_WORDS`) or a per-game abbreviation, each to the
+# season line's measure.
+SEASON_LINE_PER_GAME_WORDS: dict[str, str] = {"ppg": "points", "rpg": "rebounds", "apg": "assists", "spg": "steals", "bpg": "blocks", "mpg": "minutes", "topg": "turnovers"}
+"""Each per-game abbreviation to the measure it averages.
+
+.. versionadded:: 6.0.0
+"""
+_SEASON_STAT = r"(?:ppg|rpg|apg|spg|bpg|mpg|topg|points?|pts|rebounds?|rebs?|boards|assists?|asts?|steals?|stls?|blocks?|blks?|threes|3s|turnovers?|minutes|mins)"
+_SEASON_LEAD = r"(?P<lead>over|more\s+than|above|at\s+least|a\s+minimum\s+of|under|less\s+than|fewer\s+than|below)"
+# A season line read into a typed ``Line`` (``per="season"`` or ``"total"``):
+# "averaged 30 ppg", "average 25+", "averaged under 10 points", "averaged a
+# minimum of 20 points per game" (an average, its stat optional - the
+# ranking's own where none is named); "> 5 apg", "with 25 ppg" (a per-game
+# abbreviation after a comparison or "with" - "August 1 ppg" is a day);
+# "18 points per game", "less than 4 rebounds per game" (a stat per game);
+# "10000 points" (a total no game holds, never a year); and after any of
+# them, "N stat" lines continuing it ("average 16 points 10 rebounds",
+# "average 18 ppg 3.5 assists").
+SEASON_LINE_AVERAGE = re.compile(
+    rf"\baverag\w*\s+(?:a\s+)?(?:{_SEASON_LEAD}\s+)?(?P<n>\d{{1,3}}(?:\.\d+)?)(?P<plus>\+)?(?![\w.-])(?:\s*(?P<stat>{_SEASON_STAT})\b(?:\s+(?:per|a)\s+game\b)?)?",
+    re.IGNORECASE,
+)
+"""A season average stated after "average(d)", as worded.
+
+.. versionadded:: 6.0.0
+"""
+SEASON_LINE_PER_GAME = re.compile(
+    rf"(?:(?:\b(?:{_SEASON_LEAD.replace('(?P<lead>', '(?P<lead>with|')}))|(?P<sign>[<>]=?))\s*(?:a\s+)?(?P<n>\d{{1,3}}(?:\.\d+)?)(?P<plus>\+)?\s*(?P<stat>ppg|rpg|apg|spg|bpg|mpg|topg)\b"
+    rf"|(?:\b{_SEASON_LEAD.replace('lead', 'lead2')}\s+)?\b(?P<n2>\d{{1,3}}(?:\.\d+)?)(?P<plus2>\+)?\s*(?P<stat2>{_SEASON_STAT})\s+(?:per|a)\s+game\b",
+    re.IGNORECASE,
+)
+"""A season average stated per game, as worded.
+
+.. versionadded:: 6.0.0
+"""
+SEASON_LINE_TOTAL = re.compile(r"\b(?!(?:19|20)\d\d\b)(?P<n>\d{4,})\+?\s+(?P<stat>points|rebounds|assists|steals|blocks)\b", re.IGNORECASE)
+"""A total over the span no game holds ("10000 points"), as worded.
+
+.. versionadded:: 6.0.0
+"""
+# A percentage beside a season line ("and shot 54% or better"): a season
+# figure the season line's columns do not keep players past yet, refused by
+# name rather than dropped.
+SEASON_LINE_PERCENT = re.compile(r"\b(?:shot\s+|shooting\s+)?\d{1,3}(?:\.\d+)?\s*%(?:\s+or\s+(?:better|more|higher))?", re.IGNORECASE)
+"""A percentage stated beside a season line, as worded.
+
+.. versionadded:: 6.0.0
+"""
+SEASON_LINE_NEXT = re.compile(rf"\s*,?\s*(?:and\s+)?(?P<n>\d{{1,3}}(?:\.\d+)?)(?P<plus>\+)?\s*(?P<stat>{_SEASON_STAT})\b(?:\s+(?:per|a)\s+game\b)?", re.IGNORECASE)
+"""A season line continuing the one before it ("16 points 10 rebounds").
+
+.. versionadded:: 6.0.0
+"""
 # A count of a player's SEASONS over a line (ISSUES.md #391): "most seasons
 # averaging 30 ppg", "most 25 point seasons", "most seasons with 2000
 # points", "most seasons with a per of 30", "most 60 win seasons". A count
 # reads games; nothing counts season lines yet.
 SEASONS_COUNTED = re.compile(
-    r"\bmost\s+(?:\w+\s+){0,2}seasons?\b.{0,40}?(?:\b\d+(?:\.\d+)?\+?\s*(?:or\s+more\s+)?(?:ppg|rpg|apg|spg|bpg|points?|pts|rebounds?|assists?|steals?|blocks?|wins?)\b|\bof\s+\d+)"
+    r"\bmost\s+(?:\w+\s+){0,2}seasons?\b.{0,40}?(?:\b\d+(?:\.\d+)?\+?\s*(?:or\s+more\s+)?(?:ppg|rpg|apg|spg|bpg|points?|pts|rebounds?|assists?|steals?|blocks?|wins?)\b(?:\s+(?:per|a)\s+game\b)?|\bof\s+\d+)"
     r"|\bmost\s+(?:\w+\s+){0,2}\d+\+?[\s-]*(?:points?|pts?|rebounds?|assists?|wins?)\s+seasons?\b",
     re.IGNORECASE,
 )

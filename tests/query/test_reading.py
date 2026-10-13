@@ -176,7 +176,7 @@ def test_every_group_is_the_compilers_and_every_declared_cell_a_filters_cell() -
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
     assert set(get_args(Group)) == {"none", "presence", "period", "line", *GROUPS}
     # Every cell is a typed value's, but the split's, whose value is a field of its own (Phase 3, step 2; the closing slice named it on Scope.CELLS).
-    assert {"split"} == Filtered.CELLS - Span.CELLS - Window.CELLS - Cuts.CELLS - Period.CELLS - Line.CELLS - Companion.CELLS - Measure.CELLS and "split" in names
+    assert {"split"} == Filtered.CELLS - Span.CELLS - Window.CELLS - Cuts.CELLS - Period.CELLS - Line.CELLS - Line.SEASON_CELLS - Companion.CELLS - Measure.CELLS and "split" in names
     assert RELATION_SCOPING <= Filtered.CELLS and TEAM_RELATION_SCOPING <= Filtered.CELLS
     assert Span.CELLS | Window.CELLS | (Cuts.CELLS - {"round"}) <= RELATION_SCOPING and "round" not in RELATION_SCOPING
 

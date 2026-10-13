@@ -70,7 +70,7 @@ from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION
 _SLOT_ERA = ("threshold", "above", "below", "period_condition", "with_player", "without", "conditions")
 
 
-def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
+def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, bool]:
     return (line.measure, line.op, line.value, line.as_typed, line.keyed, line.narrows)
 
 
@@ -210,7 +210,7 @@ def test_a_line_or_a_companion_the_relation_could_not_read_is_refused() -> None:
     with pytest.raises(ScopeError, match="op"):
         Line(measure="points", op="!=", value=3)  # type: ignore[arg-type]
     with pytest.raises(ScopeError, match="whole number"):
-        Line(measure="points", value=3.5)  # type: ignore[arg-type]
+        Line(measure="points", value=3.5)
     with pytest.raises(ScopeError, match="reached"):
         Companion(player="X", predicate="started", line=Line(measure="points", value=3))
     with pytest.raises(ScopeError, match="reached"):
