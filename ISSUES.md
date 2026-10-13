@@ -2734,46 +2734,24 @@ those were found.
   the attempts floor above, and the current season's generic position
   codes (DATA.md).
 
-### An award or All-Star question has no table to refuse from, so nothing refuses it by name
+### Awards and All-Star selections are refused by name; whether ESPN serves an honors collection anywhere is unprobed
 - **Found:** 2026-09-18, the algebra spike's attack pass over the large
   StatMuse set (`~/association-research/algebra-spike/stage1/attack_report.md`)
-- **Evidence:** 11 of 2,285 real questions ask for an honor outright - "nba
-  mvps in 1980's", "how many times has bam adebayo been selected to
-  all-defensive team", "most all star appearances for a nets player",
-  "players with 5 or more nba all stars and 5 or more all nba teams since
-  2000" - and no table holds a selection or a vote share (DATA.md, "No award,
-  All-Star or All-NBA selection anywhere"). Nothing catches the shape: no
-  coverage floor (there is no table to put one on), no keyword refusal the way
-  `coach` has one in `CODE_ASSIGNED_INTENTS`, and no floor can see a
-  question that reads no point. Not re-verified end to end - running the router is out of
-  scope for a read-only pass - but the path was the one `check_coverage`'s
-  own reasoning describes: a question with nothing to find reached the
-  fall-through agent (removed 2026-09-29), which filled the silence from its
-  own weights, as it did for the "Ronaldo Lopes" fingerprint.
-- **User sees:** on the fast path, a wrong answer (below); with the agent
-  gone, otherwise a refusal naming only the intent.
-- **Next step:** cheapest first - a code-assigned `award` intent that refuses
-  on the words (MVP, All-Star, All-NBA, All-Defensive, Rookie of the Year,
-  Sixth Man, Defensive Player of the Year), exactly the `coach` mechanism.
-  Then probe whether ESPN's core API serves an honors collection at all,
-  with the live check the coach entry used, before anyone writes "ESPN does
-  not publish awards".
-- **Re-measured 2026-09-21: this is a wrong answer on the fast path, not only
-  an agent risk.** In the live sample (same directory as #10's note) "nba mvps
-  in 2010's" answered "Nene led the league in true shooting % in the 2010
-  regular season" and "1999 sixth man of the year" answered the 1999 minutes
-  leader - `stat` is required, so the decoder spends the award on it. 2 of 200
-  wrong, 3 more fell through; 27 of 1,972 reasonable large-set questions name
-  an award (regex also catches "since the all star break"). P1 by the file's
-  own definition.
-- **Parser path (5.0.0):** still wrong. "nba mvps in 2010's" (normalizer
-  stubbed with no names and no stat) reads parent `leaderboard` with
-  `since: 2010, until: 2019` and answers the 2026 points-per-game board
-  ("every player, regular season career (2010-2019), by player (points per
-  game, minimum 20 games): Kevin Durant 28.0 ...") - the award unread. (The
-  range was dropped too until `_resolve_everyone` read `since`/`until`,
-  the fix for the retired #207.)
-- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 4 - "nba players with exactly 2 all star appearances" (2 wordings, the 2026 points ranking), "players with 5 or more nba all stars and 5 or more all nba teams since 2000" (2 wordings, refused as the team relation's question - the wrong cause).
+- **Evidence:** no table here holds an MVP, an All-Star, All-NBA or
+  All-Defensive selection or a vote share (DATA.md, "No award, All-Star or
+  All-NBA selection anywhere"). Since the P1 sweep's lane L (2026-10-13) the
+  words are refused by name before any reader runs (`lexicon.ABSENT_FACTS`'
+  `award`, the `fact_not_read` cause): "nba mvps in 2010's", "1999 sixth man
+  of the year", "most all star appearances for a nets player" and 19 other
+  feed questions answered a points ranking, a season line or a log until
+  then. What is left is the source: nobody has checked whether ESPN's core
+  API serves an honors collection the pull does not read.
+- **User sees:** "No award, All-Star or All-NBA selection is on file here,
+  so 'mvps' cannot be read. ..." - a refusal naming the missing fact.
+- **Next step:** probe ESPN's core API for an honors or awards collection,
+  with the live check the coach entry used (DATA.md, "ESPN publishes
+  coaches"), before anyone writes "ESPN does not publish awards"; if it
+  serves one, a table and a reader would answer these 22 feed questions.
 - **GitHub:** #146
 
 ### `_subject_named_in`'s original grammar reads a bare noun as a subject on four corpus questions

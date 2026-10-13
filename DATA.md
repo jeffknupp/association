@@ -620,8 +620,10 @@ the table's 1988 floor and are easy to get wrong from the response alone.
 - **Whether ESPN publishes honors at all through some other collection has
   not been checked** - this records that nothing fetched holds them, not that
   nothing exists upstream. The coach entry above is the model for that probe.
-- **What we do about it:** ISSUES.md, "An award or All-Star question has no
-  table to refuse from".
+- **What we do about it:** the question is refused by name
+  (`lexicon.ABSENT_FACTS`' `award`); ISSUES.md, "Awards and All-Star
+  selections are refused by name; whether ESPN serves an honors collection
+  anywhere is unprobed".
 
 ### ESPN publishes coaches, and the collection that looks league-wide is not historical
 

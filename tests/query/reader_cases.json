@@ -15916,8 +15916,7 @@
    },
    "minimum": null,
    "unread": [
-    "all-star",
-    "game"
+    "all-star"
    ],
    "subject": {
     "kind": "everyone",
@@ -16074,8 +16073,7 @@
    "minimum": null,
    "unread": [
     "all",
-    "star",
-    "games"
+    "star"
    ],
    "subject": {
     "kind": "everyone",
