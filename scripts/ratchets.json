@@ -19,8 +19,6 @@
   "team_seasons": 7
  },
  "regex_outside_the_reader": [],
- "regex_in_the_reader": {
-  "parse": 2
- },
+ "regex_in_the_reader": {},
  "con_in_the_reader": []
 }

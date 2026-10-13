@@ -74,6 +74,18 @@ class CutsRead:
     #: reading keeps the venue or drops it (:func:`~association.query.point.cuts_under`).
     venue_claim: Claim | None = None
 
+    def dated(self, question: str) -> tuple[Claim, ...]:
+        """Where a range opened on a dated day was read from ("since
+        1/26/20", a situation with the day in it), which the parent grammar
+        asks for where it stands (``parse.grammar_text``). A calendar day,
+        a month and a weekday stay words: the log row reads a month's name
+        and a slashed day itself, as it did.
+
+        .. versionadded:: 6.0.0
+           ``parse._date_spans`` until Phase 4, step 6.
+        """
+        return tuple(c for c in self.claims if c.what == "situation" and lexicon.SLASHED_DAY.search(question[c.start : c.end]) is not None)
+
 
 def read_cuts(question: str, context: CutsContext) -> CutsRead:
     """The cuts ``question``'s words name, under ``context``.

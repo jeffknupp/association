@@ -146,9 +146,11 @@ this tree:
   parent grammar's 23 rows kept there - `line` 1; the Phase 3 review found
   the step 4 exit "the reader's regexes outside the lexicon are gone"
   measured by the ratchet before it, which counts modules OUTSIDE the
-  reader and so read 0 over these 18; a new grammar ROW does not raise the
-  count, since one call compiles them all - Phase 4 moves the rows to the
-  lexicon as predicates over typed values), and a reader function that
+  reader and so read 0 over these 18; 2 since Phase 4, step 6's first
+  slice, which moved the point reader's and the refusals' patterns to the
+  lexicon, and 0 since its second, where the parent grammar's rows became
+  predicates over typed values with their words in the lexicon), and a
+  reader function that
   takes a DuckDB connection, by its name or its annotation (23, 0 since
   slice (b): the reader takes the names' in-memory index,
   `names.NameIndex`, which the answering loop reads before the parser
@@ -1127,8 +1129,9 @@ a shape:
   layer of the reader - held inside the reader by the `regex_in_the_reader`
   ratchet since 2026-10-11, at the counts the Phase 3 review found:
   `point.py` 12 compiled patterns, `parse.py` 5 `re` calls with the parent
-  grammar's 23 rows, `line.py` one; `regex_outside_the_reader` counts
-  modules OUTSIDE the reader and read 0 over them). **A tagger reads the words alone, never the key
+  grammar's 23 rows, `line.py` one - 0 since Phase 4, step 6;
+  `regex_outside_the_reader` counts modules OUTSIDE the reader and read 0
+  over them). **A tagger reads the words alone, never the key
   the words ask** (Phase 3, step 4, slice (b)): each family is read twice
   over in `parse._tagged` - the tagger reads every candidate the words
   hold (`line.LineCandidates`, `window.WindowCandidates`,
@@ -2073,57 +2076,86 @@ a shape:
   `threshold_count` and "who lead the league in avg 3 point distance" (no
   player) off `shot_distance`. Measured when the seven left the router's
   prompt: 0 false positives over 261 recorded questions of other intents.
-  **A grammar reads a line or an opponent as its tagger types it, never
-  by its words** (Phase 3, step 4, slice (b)): the child grammars read the
-  question with each line the lines tagger reads written over by its mark
-  (`line.LinesNamed.marked`: the number with its plus, the stat, the
-  words that lead a line under a number - `lexicon.LINE_MARK_*`), the
-  parent grammar and the grammar's rules with each line's NUMBER marked
-  (`numbered`: they read a stat word as a measure's, "most 10 points games"
-  is no team ranking) and the rules the typed values beside it
-  (`LinesNamed.threshold`, `below`), and the parent grammar the opponent
-  the subject reading read, versus word and team, marked
-  (`lexicon.mark_opponent`, `subject.opponent_read`: `_PLAYER_LOG`'s
-  "games against boston" is "games" before an opponent), and since slice
-  (c) each companion's phrase as the subject reading read it
-  (`lexicon.mark_companions` over `subject.Subject.companion_phrases`, the
-  phrases whole - the probed claims are cut to the words the companion
-  reading needed and can land on a word a row reads;
-  `COMPANION_MARK_PRESENCE` where the phrase holds a presence word, which
-  the with/without split's rows read, `COMPANION_MARK` otherwise), each
-  window of games the window tagger reads (`WINDOW_MARK`: the grammar's
-  end and count and the looser end words - not a ranking's "top 5", a
-  count of seasons or one game named as the subject's own, whose stretch
-  reaches over words other rows read) and a range opened on a dated day
-  (`DATE_MARK`, "since 1/26/20"; a calendar day and a month stay words),
-  which the log rows read where they read the words (`parse._PLAYER_LOG`,
-  the team's log row; `parse.marked_for_grammar` is the same text for a
-  test of the rows over words alone). The rules are handed the team
-  nicknames the words hold (`subject.team_words_in`, read once by
-  `grammar.settle` and claimed as the `team` where a rule writes one), a
-  reached companion's "when" clause (`reached_when`; `lexicon.WHEN_REACHES`
-  stays for a clause with no companion in it) and his name as a line
-  record's player (`grammar._restored_subject`). Every mark keeps
-  each character where it stands, so a row's distances hold and a child's
-  words in its decision are the question's own. A grammar so claims its
-  own words around the value and the value's characters are its tagger's:
-  measured on the 2,710 readings (`route_family.py`), `intent+line` 17 ->
-  0 and `intent+opponent` 5 -> 0 joined claims at slice (b), every reading,
-  answer and unread word identical, and the 11 left but #354's at slice
-  (c), where a window read as the typed window no longer needs its "games"
-  (48 of the 2,710 readings' unread words grew by it, 12 of the 628's) and a
-  broader window the tagger reads is a log as "last 10 games" is (14
-  readings' key moved and 10 answers with them, 1 of the 628 and 9 feed,
-  each named in `CHANGES.md`; kept by Jeff's ruling, 2026-10-11 - two of
-  them answer a narrower question than asked, `ISSUES.md`). A row that reads a number or a versus word reads
-  the mark beside it (`N_PLUS`, `MARKED_NUMBER`, `MEETING_WORDS`,
-  `_PAIR_MEETING`); a new row does the same. The count's child grammar
-  reads no bare digits beside its marks: a count is named from a line the
-  tagger read, so a number no line is read from ("games with 40 field
-  goal percentage") stays in `Reading.unread`, where it was hidden in the
-  child's claim (`intent+measure`, 11 -> 0; ISSUES.md, the P1 it hid).
-  A season type or a venue may stand between the marked line and "games"
-  ("how many 40 point playoff games does kobe have", ISSUES.md #375).
+  **A grammar reads the values the taggers typed, never their words**
+  (Phase 3, step 4, slices (b) and (c), as marks written into the question;
+  since Phase 4, step 6 by value). What a grammar reads is the grammar's
+  text, `lexicon.GrammarText`: the question's words with every character
+  a tagger typed written as `lexicon.TYPED` (U+FFFC, the same for every
+  kind, so a pattern over the words sees that something stands there -
+  no word, no space, no digit - and never what), and beside them what was
+  typed at each character, a closed `lexicon.TypedKind`: a line's number
+  by how it is stated (`line_plus`, `line_at_least`, `line_number`), the
+  words that lead a line under a number and a line's stat (`line_lead`,
+  `line_stat`) - the lines tagger's (`line.LinesNamed`); the opponent the
+  subject reading read, with its versus word, by that word
+  (`opponent_against`, `opponent_versus`, `opponent`;
+  `subject.opponent_read`); each companion's phrase as the subject reading
+  read it, by whether a presence word is in it (`companion_with`, which the
+  with/without split's rows read, or `companion`; the phrases whole, from
+  `subject.Subject.companion_phrases` - the probed claims are cut to the
+  words the companion reading needed and can land on a word a row reads);
+  each window of games the window tagger reads (`window`:
+  `window.WindowCandidates.of_games`, the grammar's end and count and the
+  looser end words - not a ranking's "top 5", a count of seasons or one
+  game named as the subject's own, whose stretch reaches over words other
+  rows read); and a range opened on a dated day (`date`:
+  `cuts.CutsRead.dated`, "since 1/26/20"; a calendar day and a month stay
+  words). The child grammars read the text with each line typed whole
+  (`LinesNamed.marked`); the parent grammar and the grammar's rules with
+  each line's NUMBER typed (`numbered`: they read a stat word as a
+  measure's, "most 10 points games" is no team ranking) and the rules the
+  typed values beside it (`LinesNamed.threshold`, `below`); the parent
+  grammar the rest typed over it, a later value over an earlier, a line
+  inside a companion's phrase kept the line (`parse.grammar_text`, which
+  called with the question alone types the windows and the days, for a
+  test of the rows over words alone). A value is asked BY VALUE, two ways.
+  A parent row is a predicate over the text (`lexicon.GrammarRow`): words
+  read anywhere (`Words`, the lexicon's `*_ROW` patterns), a value
+  standing anywhere (`Stands`: "a window of games is read here"), right
+  after the words that lead it (`StandsAfter`: "games" and then the
+  opponent, `_PLAYER_LOG`'s "games against boston") or right before the
+  words after it (`StandsBefore`: a window and then "log"), and any, all
+  or none of those (`AnyOf`, `AllOf`, `NoneOf`) - `parse.PARENT_GRAMMAR`
+  holds the rows, which kinds each applies to and the shape it names; the
+  lexicon holds the words. A child grammar's or the rules' pattern that
+  reads a value WHERE it stands among the words ("a line's number, then
+  its stat, then 'games'") is an `lexicon.Ask`: a regex whose values are
+  `lexicon.typed(kind, ...)` fragments, matched against the text with each
+  typed character spelled by its kind (`GrammarText.spelled`, built from
+  the typed values when the ask is searched and nowhere else - a character
+  of that alphabet in the question's own words is written as `TYPED`, so
+  no question can spell a value by typing it; ISSUES.md #383, where a
+  typed mark forged a 10-game window, needs no intake since). The rules
+  are handed the team nicknames the words hold (`subject.team_words_in`,
+  read once by `grammar.settle` and claimed as the `team` where a rule
+  writes one), a reached companion's "when" clause (`reached_when`;
+  `lexicon.WHEN_REACHES` stays for a clause with no companion in it) and
+  his name as a line record's player (`grammar._restored_subject`). Every
+  typed value keeps each character where it stands, so a row's distances
+  hold and a child's words in its decision are the question's own, and a
+  rule's probe deletes a word from the text with the values in place
+  (`GrammarText.without`, which `span.needed`/`read_by` take as they take a
+  string). A grammar so claims its own words around the value and the
+  value's characters are its tagger's: measured on the 2,710 readings
+  (`route_family.py`), `intent+line` 17 -> 0 and `intent+opponent` 5 -> 0
+  joined claims at slice (b), every reading, answer and unread word
+  identical, and the 11 left but #354's at slice (c), where a window read
+  as the typed window no longer needs its "games" (48 of the 2,710
+  readings' unread words grew by it, 12 of the 628's) and a broader window
+  the tagger reads is a log as "last 10 games" is (14 readings' key moved
+  and 10 answers with them, 1 of the 628 and 9 feed, each named in
+  `CHANGES.md`; kept by Jeff's ruling, 2026-10-11 - two of them answer a
+  narrower question than asked, `ISSUES.md`); Phase 4, step 6's move from
+  marks to values moved none of the 2,710 readings, claims included. A
+  row that reads a number or a versus word reads the typed value beside
+  it (`N_PLUS`, `LINE_NUMBER_NO_PLUS`, `MEETING_WORDS`, `_PAIR_MEETING`); a
+  new row does the same. The count's child grammar reads no bare digits
+  beside its lines: a count is named from a line the tagger read, so a
+  number no line is read from ("games with 40 field goal percentage")
+  stays in `Reading.unread`, where it was hidden in the child's claim
+  (`intent+measure`, 11 -> 0; ISSUES.md, the P1 it hid). A season type or
+  a venue may stand between the typed line and "games" ("how many 40
+  point playoff games does kobe have", ISSUES.md #375).
   The child is named from the grammar alone (`subject.child_named`), and
   the grammar's rules run ONCE, under it (`parse._read_route_staged`); they
   may decline it (a count with no threshold is a ranking), and only then

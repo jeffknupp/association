@@ -126,8 +126,8 @@ class LinesNamed:
     line's number (:func:`threshold_named`: a count with no line is a
     ranking), whether a line under a number stands (a count stated as a
     ceiling keeps its key), and where each line's number and stat stand
-    (``marks``: ``(start, end, how)``, which
-    :func:`~association.query.lexicon.mark_lines` writes over).
+    (``marks``: ``(start, end, how)``, typed over the question in the
+    grammar's text, :class:`~association.query.lexicon.GrammarText`).
 
     .. versionadded:: 6.0.0
     """
@@ -137,18 +137,41 @@ class LinesNamed:
     marks: tuple[tuple[int, int, str], ...]
     stats: tuple[tuple[int, int], ...] = ()
 
-    def numbered(self, question: str) -> str:
-        """``question`` with each line's number marked - what the parent
+    def numbered(self, question: str) -> lexicon.GrammarText:
+        """``question`` with each line's number typed - what the parent
         grammar and the grammar's rules read, which read a stat word as a
-        measure's (a team ranking is no player's points)."""
-        return lexicon.mark_lines(question, tuple(mark for mark in self.marks if mark[2] != "lead"))
+        measure's (a team ranking is no player's points).
 
-    def marked(self, question: str) -> str:
-        """``question`` with each line marked whole - its number, its stat
+        .. versionchanged:: 6.0.0
+           The grammar's text, where it was the question with each number
+           written over by a mark (Phase 4, step 6).
+        """
+        return lexicon.GrammarText.of(question).typed_over(self._typed(tuple(mark for mark in self.marks if mark[2] != "lead")))
+
+    def marked(self, question: str) -> lexicon.GrammarText:
+        """``question`` with each line typed whole - its number, its stat
         and the words that lead a line under a number - what the child
         grammars read: a count of "30+ point games" is the count's words
-        around a line, and the line is the lines tagger's."""
-        return lexicon.mark_lines(question, self.marks, self.stats)
+        around a line, and the line is the lines tagger's.
+
+        .. versionchanged:: 6.0.0
+           The grammar's text, where it was the question with each line
+           written over by marks (Phase 4, step 6).
+        """
+        return lexicon.GrammarText.of(question).typed_over((*self._typed(self.marks), *((start, end, "line_stat") for start, end in self.stats)))
+
+    @staticmethod
+    def _typed(marks: tuple[tuple[int, int, str], ...]) -> tuple[tuple[int, int, lexicon.TypedKind], ...]:
+        """Each line's number or lead as the stretch typed over the question,
+        by how the words state it - a line inside another (a bare "14 fta"
+        inside "under 14 fta") typed as the plainer one first and the stated
+        one over it."""
+        return tuple((start, end, _LINE_KINDS.get(how, "line_number")) for start, end, how in sorted(marks, key=lambda mark: mark[2] != "bare"))
+
+
+#: What each way of stating a line's number, and the words that lead a line
+#: under a number, is typed as in the grammar's text.
+_LINE_KINDS: dict[str, lexicon.TypedKind] = {"plus": "line_plus", "at_least": "line_at_least", "lead": "line_lead"}
 
 
 def lines_named(question: str) -> LinesNamed:

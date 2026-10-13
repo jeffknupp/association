@@ -25,6 +25,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, fields, is_dataclass
+from typing import overload
 
 from association.nba.season import current_season
 from association.query import lexicon
@@ -386,7 +387,7 @@ def _reads_both_types(question: str, context: SpanContext) -> bool:
     return not (lexicon.PLAYOFF_WORDS.search(question) or lexicon.REGULAR_SEASON_WORDS.search(question))
 
 
-def needed(question: str, claims: Iterable[Claim], reads: Callable[[str], object], *, outside: str | None = None, gives_up: bool = False) -> tuple[Claim, ...]:
+def needed[P: (str, lexicon.GrammarText)](question: P, claims: Iterable[Claim], reads: Callable[[P], object], *, outside: str | None = None, gives_up: bool = False) -> tuple[Claim, ...]:
     """``claims`` cut to the words the rule that made them could not do
     without (Phase 3, step 3): each content word a claim touches is deleted
     from the question in turn (:func:`~association.query.lexicon.without_word`,
@@ -421,20 +422,27 @@ def needed(question: str, claims: Iterable[Claim], reads: Callable[[str], object
     <association.query.reading.Reading.unread>`) agree with the ledger's
     wherever the reading of a word is one rule's.
 
+    A grammar's text (:class:`~association.query.lexicon.GrammarText`) is
+    probed the same way over its words, each typed value keeping its place
+    among the words left (:meth:`~association.query.lexicon.GrammarText.without`).
+
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes a grammar text as well as a string (Phase 4, step 6).
     """
     claims = tuple(claims)
     if not claims and outside is None:
         return ()
     held = reads(question)
-    tokens = lexicon.content_tokens(question)
+    tokens = lexicon.content_tokens(lexicon.words_of(question))
     verdicts: dict[tuple[int, int], bool | None] = {}
 
     def verdict(start: int, end: int, word: str) -> bool | None:
         """Whether the word at ``start``-``end`` was needed, asked once -
         None for a function word, kept only between two words kept."""
         if (start, end) not in verdicts:
-            verdicts[(start, end)] = None if not word or lexicon.without_possessive(word) in lexicon.CONTENT_STOPWORDS else reads(lexicon.without_word(question, start, end)) != held
+            verdicts[(start, end)] = None if not word or lexicon.without_possessive(word) in lexicon.CONTENT_STOPWORDS else reads(_without(question, start, end)) != held
         return verdicts[(start, end)]
 
     kept: list[Claim] = []
@@ -444,9 +452,20 @@ def needed(question: str, claims: Iterable[Claim], reads: Callable[[str], object
     if outside is not None:
         untouched = [(index, start, end, verdict(start, end, word)) for index, (start, end, word) in enumerate(tokens) if not any(start < claim.end and end > claim.start for claim in claims)]
         if gives_up:
-            untouched = [(index, start, end, False if keep and _gives_up(held, reads(lexicon.without_word(question, start, end))) else keep) for index, start, end, keep in untouched]
+            untouched = [(index, start, end, False if keep and _gives_up(held, reads(_without(question, start, end))) else keep) for index, start, end, keep in untouched]
         kept.extend(_needed_runs(untouched, outside))
     return tuple(kept)
+
+
+@overload
+def _without(question: str, start: int, end: int) -> str: ...
+@overload
+def _without(question: lexicon.GrammarText, start: int, end: int) -> lexicon.GrammarText: ...
+def _without(question: str | lexicon.GrammarText, start: int, end: int) -> str | lexicon.GrammarText:
+    """``question`` with the word at ``start``-``end`` deleted (:func:`needed`'s probe)."""
+    if isinstance(question, lexicon.GrammarText):
+        return question.without(start, end)
+    return lexicon.without_word(question, start, end)
 
 
 def _gives_up(held: object, probed: object) -> bool:
@@ -470,7 +489,7 @@ def _gives_up_parts(held: object, probed: object) -> bool:
     return False
 
 
-def read_by(question: str, what: str, reads: Callable[[str], object]) -> tuple[Claim, ...]:
+def read_by[P: (str, lexicon.GrammarText)](question: P, what: str, reads: Callable[[P], object]) -> tuple[Claim, ...]:
     """The words of ``question`` a rule that reads the whole question
     decided by - a grammar of rows written as lookaheads, which look for the
     words they want and the words that rule them out anywhere in it - as
