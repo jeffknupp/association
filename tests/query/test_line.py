@@ -121,7 +121,7 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
             "most playoff games with 46 points 6 assists 6 rebounds",
             GAMES_COUNTED,
             [("points", ">=", 46, "46 points", True, False), ("assists", ">=", 6, "6 assists", False, False), ("rebounds", ">=", 6, "6 rebounds", False, False)],
-            None,
+            "points",
         ),
         # A line stated over or at a number by its lead, on any box-score stat (ISSUES.md #371): read where a line under
         # a number is, the pair inside it ("40 points" of "more than 40 points") no line of its own.

@@ -26092,8 +26092,8 @@
     }
    ],
    "measure": {
-    "key": "rebounds",
-    "as_typed": "rebounds",
+    "key": "points",
+    "as_typed": "points",
     "how": null,
     "unit": null,
     "whose": "own",
@@ -26337,8 +26337,8 @@
      }
     ],
     "measure": {
-     "key": "rebounds",
-     "as_typed": "rebounds",
+     "key": "points",
+     "as_typed": "points",
      "how": null,
      "unit": null,
      "whose": "own",
