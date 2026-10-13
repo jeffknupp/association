@@ -329,14 +329,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #268
 
-### A team named for a player's tenure beside an opponent is dropped: "d'angelo russell vs pistons as a laker" answers his 2026 games as a Maverick
-- **Found:** 2026-09-28, fixing #259 (the question carries a typographic apostrophe; its straight twin reads the same).
-- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["d'angelo russell", "pistons", "laker"]`): routes `{'player': "D'Angelo Russell", 'opponent': 'Detroit Pistons'}` with no team, and answers "D'Angelo Russell averaged 17.5 points ... in 2 games vs the Detroit Pistons in the 2026 regular season" - his 2026 season is Dallas's (`player_season_stats_deduped`: 26 games for the Mavericks); his Lakers years are 2016-2017 and 2023-2025. The model's "laker" is dropped by `parse._read_route_names` once the reading placed an opponent, and `subject._apply_own_team` writes no `own_team` where an opponent is set (`subject.py:1091`), so "as a laker" narrows nothing.
-- **User sees:** a wrong answer - another team's games, where a tenure was asked.
-- **Next step:** read "as a <team>" beside an opponent as `own_team` (the tenure) rather than dropping it; a case in `tests/query/test_one_writer.py`.
-- **Source:** ours.
-- **GitHub:** #269
-
 ### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
 - **Found:** 2026-09-28, fixing #259.
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Gabe Vincent", "laker"]`, stat `threePointFieldGoalsMade`): routes `player_stat` with no stat and answers "Gabe Vincent averaged 4.4 points, 1 rebounds and 1.4 assists per game in 53 games in the 2026 regular season". `parse.MEASURE_GRAMMAR` reads "3s", "threes" and "3 pointers", and "3's" is none of them; the model's key is not kept for a line the words do not name. "Jarred 3’s as a laker" is the corpus's other one. Both also carry "as a laker", which the answer does not honor (Vincent's 2026 line is not a Laker's).
@@ -464,12 +456,12 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #393
 
-### A count of N-point games with no subject is read as a team ranking, and a count beside a teammate's absence as the with/without split: "most 40 point games in nba history" is refused "team_leaderboard cannot honor ['span']"
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
-- **Evidence:** "most 40 point games in nba history" (and 50, 60) are read under the team ranking key (`asked` `team_seasons`/`ranking`/`team`, the kind `everyone`), and refused "Nothing here answers this question: team_leaderboard: team_leaderboard cannot honor ['span'] ..."; "most 0 point games in nba team history" answers the teams' points per game; "most 30 point triple doubles in the last 3 years" ranks single games with a triple-double by points (top 3), the 30 unread; "nba most fga with 0 fgm single game" the teams' field goals made (#303's). And "how many 30 point games did maxey have without embiid" is read under the with/without split (`team_games`/`split`/`presence`), answering his line with and without Embiid, the 30-point count unread - the count's child grammar (`subject.child_named`) never sees it, since the parent named the split.
-- **User sees:** a refusal naming the wrong cause for the three league counts (the league's 40-point-game leaders are `threshold_count`'s, which answers "most 40 point games since 2000"); a different question answered for Maxey (his averages, not his count of 30-point games without Embiid).
-- **Next step:** the parent grammar's team-ranking row should not take "N point games" (a line the lines tagger reads, `lexicon.LINE_MARK_*`) with no team word; the count's row should stand over the split's where a line and "how many" are read beside a companion's absence (the count honors the companion cell, `RELATION_SCOPING`). A test per wording, the feed's moves enumerated.
-- **Priority:** P1 - 7 of the 2,082 answered or refused as a different question (an eighth, "harden 61 points", is the feed's input: with no model names "harden" alone is read as nobody).
+### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers). Rewritten 2026-10-13 (lane N of the P1 sweep) to what remains: the team-ranking row steps aside for games kept by a line with no team word (`lexicon.LINE_OF_GAMES_ROW`), so "most 40 point games in nba history" (and 50, 60) and "nba most playoff games with 2+ block and 2+ steals" are the players' count, and the count's child grammar is named under the with/without split, so "how many 30 point games did maxey have without embiid" is his count over the games Embiid missed (`CHANGES.md`).
+- **Evidence:** "most 0 point games in nba team history" answers the teams' points per game, "0" and "games" unread: the lines tagger reads no line at 0 points, so the row sees no line, and "team history" holds a team word besides. "most 30 point triple doubles in the last 3 years" ranks single games with a triple-double by points (top 3), the 30 unread: a line beside a boolean stat is no line the tagger reads. (The third the entry named, "nba most fga with 0 fgm single game", is #266's.)
+- **User sees:** the teams' points per game for a count of scoreless games; three single games for a count of 30-point triple-doubles.
+- **Next step:** the lines tagger (lane L's `line.py`) reads a line at 0 ("0 point games") and a line beside a boolean stat ("30 point triple doubles" - a count of triple-doubles with 30+ points); then the parent row and the count's child read them as they read "40 point games". A test per wording, the feed's moves enumerated.
+- **Priority:** P1 - 2 of the 2,082 answered as a different question.
 - **Source:** ours.
 - **GitHub:** #394
 

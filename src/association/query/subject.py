@@ -176,7 +176,11 @@ _CHILD_GRAMMARS: tuple[tuple[PointShape, lexicon.Ask, frozenset[str], frozenset[
         frozenset({"player"}),
         frozenset({TEAM_RECORD, TEAM_LINE, TEAM_OUTLOOK, PRESENCE_SPLIT, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS,
     ),
-    (GAMES_COUNTED, lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    # Under the with/without split too: "how many 30 point games did maxey
+    # have without embiid" is his count over the games Embiid missed, which
+    # the count honors (the companion cell), not his line with and without
+    # him (ISSUES.md #394).
+    (GAMES_COUNTED, lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS | {PRESENCE_SPLIT}),
     (SEASON_HISTORY, lexicon.CHILD_PLAYER_HISTORY, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS),
     (
         PLAYER_SPLITS,
@@ -1577,7 +1581,12 @@ def _apply_own_team(subject: Subject, scope: Filtered, asked: PointShape | None)
     fifteen years into a Lakers career is not asking about this season."""
     if asked not in OWN_TEAM_RESTORABLE_ASKS or subject.own_team is None or not scope.who.players:
         return scope, []
-    if scope.who.team or scope.cuts.opponent or scope.cuts.tenure:
+    # Beside an opponent too, so long as it is another team: "d'angelo
+    # russell vs pistons as a laker" is his Lakers games against Detroit,
+    # where the opponent left "as a laker" unread and his 2026 games for
+    # Dallas answered (ISSUES.md #269). The team is the words', never the
+    # model's - which the noise above was.
+    if scope.who.team or scope.cuts.tenure or scope.cuts.opponent == subject.own_team:
         return scope, []
     out = replace(scope, cuts=replace(scope.cuts, tenure=subject.own_team))
     decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the router left it out")]
@@ -2338,7 +2347,7 @@ def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = 
     .. versionadded:: 4.4.0
     """
     for match in lexicon.FOR_TEAM_PHRASE.finditer(question):
-        span_text = match.group(1) or match.group(2) or ""
+        span_text = match.group(1) or match.group(2) or match.group(3) or ""
         words = _team_words(span_text)[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:

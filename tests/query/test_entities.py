@@ -1171,17 +1171,19 @@ def test_a_team_named_beside_a_player_with_no_season_is_his_tenure(scope_con: du
     assert unrestored.cuts.tenure is None
 
 
-def test_an_own_team_is_not_restored_with_no_player_or_over_an_existing_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
+def test_an_own_team_is_not_restored_with_no_player_and_stands_beside_an_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
     """A bare "for <team>" with no player at all is a team question, not
-    this one - and an `opponent` the question already names (a genuine "vs"
-    reading) is not overwritten by a coincidental "for" phrase elsewhere in
-    the question."""
+    this one - and beside an `opponent` the question names (a genuine "vs"
+    reading) the "for" phrase is the tenure, the opponent kept: "lebron vs
+    celtics stats for the lakers" is his Lakers games against Boston
+    (ISSUES.md #269, where "as a laker" beside an opponent was dropped and
+    another team's games answered)."""
     no_player = Reading(measure=Measure(key="points", as_typed="points"))
     no_player = _scope(scope_con, "points scored for the lakers this season", no_player, reads_player=True, restore_team=True).scope
     assert no_player.cuts.tenure is None
     has_opponent = Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(opponent="Boston Celtics"))
     has_opponent = _scope(scope_con, "lebron vs celtics stats for the lakers", has_opponent, reads_player=True, restore_team=True).scope
-    assert has_opponent.cuts.tenure is None and has_opponent.cuts.opponent == "Boston Celtics"
+    assert has_opponent.cuts.tenure == "Los Angeles Lakers" and has_opponent.cuts.opponent == "Boston Celtics"
 
 
 def test_a_router_supplied_team_is_not_trusted_as_a_tenure_narrowing(scope_con: duckdb.DuckDBPyConnection) -> None:

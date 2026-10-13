@@ -179,7 +179,14 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     (frozenset({"player"}), lexicon.ANY_WORDS_ROW, PLAYER_LINE),
     (frozenset({"position"}), lexicon.POSITION_LOG_ROW, PLAYER_LOG),
     (frozenset({"position"}), lexicon.ANY_WORDS_ROW, PLAYER_RANKING),
-    (frozenset({"everyone"}), lexicon.LEAGUE_TEAMS_RANKED_ROW, TEAM_RANKING),
+    # Not over games kept by a line, with no team word: "most 40 point games
+    # in nba history" is the players' count of 40-point games, which "nba"
+    # beside "most" read as the teams' ranking (ISSUES.md #394).
+    (
+        frozenset({"everyone"}),
+        lexicon.AllOf((lexicon.LEAGUE_TEAMS_RANKED_ROW, lexicon.AnyOf((lexicon.TEAM_WORD_ROW, lexicon.NoneOf((lexicon.LINE_OF_GAMES_ROW,)))))),
+        TEAM_RANKING,
+    ),
     # A record with no player in it is a team's: "worst record 2025-26" read
     # as the league's scorers, the everyone row below.
     (frozenset({"everyone"}), lexicon.LEAGUE_RECORD_ROW, TEAM_RANKING),

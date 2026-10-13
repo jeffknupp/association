@@ -3288,8 +3288,11 @@ AGAINST_PHRASE = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)"
 # the clippers" mean different things, but a bare "with" also introduces a
 # teammate ("stats with steph curry on the floor"), so only "with the" - which
 # a teammate's name never takes - is read as this shape.
-FOR_TEAM_PHRASE = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)", re.IGNORECASE)
-"""A "for"/"with the" and everything after it, a player's own team is read from.
+FOR_TEAM_PHRASE = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)|\bas\s+an?\s+(?=(.+))", re.IGNORECASE)
+"""A "for"/"with the"/"as a" and everything after it, a player's own team is
+read from. "as a laker", "as a spur" name his tenure by the team's singular
+(ISSUES.md #269); the words after "as a" are read without being consumed,
+so "as a starter for kings" still reads "for kings".
 
 .. versionadded:: 6.0.0
    ``subject._FOR_TEAM`` until Phase 3, step 2.
@@ -4174,6 +4177,20 @@ LEAGUE_TEAMS_RANKED_ROW = row(
     r"(?=.*\b(team|teams|franchise|nba)\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)"
 )
 """The league's teams ranked.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_WORD_ROW = row(r"\b(team|teams|franchise|franchises)\b")
+"""A word that names teams as what is ranked - which a count of N-point
+games with no subject needs before it is the teams' ranking (ISSUES.md
+#394: "most 40 point games in nba history" is the players' count).
+
+.. versionadded:: 6.0.0
+"""
+LINE_OF_GAMES_ROW = AllOf((Stands(LINE_NUMBERS), row(r"\bgames?\b")))
+"""Games kept by a line the lines tagger read - the count's words, which no
+ranking of teams holds (ISSUES.md #394). Not a line's number alone: "nba
+most 4 point plays" names no games, and reads no line a count keeps.
 
 .. versionadded:: 6.0.0
 """
