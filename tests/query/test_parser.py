@@ -1098,3 +1098,22 @@ def test_a_league_count_counts_the_games_past_every_bare_line(con: duckdb.DuckDB
     reading = _read(con, question)
     assert reading.point is not None and reading.point.predicates == predicates
     assert reading.measure is not None and reading.measure.key == "points"
+
+
+@pytest.mark.parametrize(
+    ("question", "direction"),
+    [
+        ("who has the worst fg% with atleast 1000 fg attempted", "asc"),
+        ("who has the lowest fg% with atleast 1000 fg attempted", "asc"),
+        ("who has the worst turnovers per game", "desc"),
+        ("worst win percentage", "desc"),
+        ("who has the most points per game", "desc"),
+    ],
+)
+def test_worst_ranks_from_the_worse_end_of_a_stat_the_words_name(con: duckdb.DuckDBPyConnection, question: str, direction: str) -> None:
+    """ISSUES.md #350: "worst" was no ranking word, so "who has the worst
+    fg% ..." answered the best; it ranks from the bottom of a stat a player
+    wants more of and from the top of one he wants less of (turnovers), and
+    a ranking whose stat the words do not name keeps its order."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.direction == direction

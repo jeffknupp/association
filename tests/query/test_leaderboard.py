@@ -375,3 +375,10 @@ def test_players_are_ranked_by_how_many_of_their_seasons_a_season_line_holds(tmp
     assert [(row["display_name"], row["value"]) for row in found.rows] == [("Stephen Curry", 2)] and found.pool == 1 and found.min_games == 20
     totals = rank_seasons_counted(connect_read_only(str(path)), (Line(measure="points", op=">=", value=1500, as_typed="seasons with 1500 points", per="total"),), season_type=2, limit=10)
     assert [(row["display_name"], row["value"]) for row in totals.rows] == [("Stephen Curry", 2), ("Klay Thompson", 1)] and totals.min_games is None
+
+
+def test_a_ranking_from_the_bottom_orders_the_lowest_first(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #350: the season ranking ordered by the figure, highest
+    first, whatever the words asked - "the lowest" answered the leaders."""
+    assert [row["display_name"] for row in run_leaderboard(con, "avg_points", season=2026, min_sample=1, ascending=True).rows] == ["Klay Thompson", "Stephen Curry"]
+    assert [row["display_name"] for row in run_leaderboard(con, "avg_points", season=2026, min_sample=1).rows] == ["Stephen Curry", "Klay Thompson"]

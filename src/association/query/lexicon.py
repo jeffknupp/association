@@ -2991,10 +2991,10 @@ RATE_WORDS = re.compile(r"\badjusted\b|\bper\s+(?:100\s+)?poss?ess?ions?\b|\bper
 """
 
 # A rate per N minutes (ISSUES.md #388): "per 36 minutes", "per 36",
-# "per36" - a unit the measure reads (the ``rate`` cell), never a floor of
+# "per36", "per minute" - a unit the measure reads (the ``rate`` cell), never a floor of
 # minutes (ABOVE reads no number after "per"); not per 90 (PER_90's) nor
 # per 100 (RATE_WORDS').
-PER_MINUTES = re.compile(r"\bper[\s-]*(?!90\b)\d{2}\b(?:\s*(?:minutes|mins?)\b)?", re.IGNORECASE)
+PER_MINUTES = re.compile(r"\bper[\s-]*(?!90\b)\d{2}\b(?:\s*(?:minutes|mins?)\b)?|\bper\s+(?:minute|min)\b", re.IGNORECASE)
 """A rate per a number of minutes named.
 
 .. versionadded:: 6.0.0
@@ -4281,6 +4281,20 @@ FEWEST_WORDS = re.compile(r"\b(fewest|lowest)\b|(?<!at )\bleast\b", re.IGNORECAS
 .. versionadded:: 6.0.0
    ``point._FEWEST`` until Phase 4, step 6.
 """
+# "worst" ranks from the bottom of a stat a player wants more of - the worst
+# field-goal percentage is the lowest - and from the top of one he wants
+# less of (:data:`WORST_IS_MOST`): the worst turnovers are the most
+# (ISSUES.md #350, where "worst" was unread and the best answered).
+WORST_WORD = re.compile(r"\bworst\b", re.IGNORECASE)
+"""A ranking from the worse end: "worst".
+
+.. versionadded:: 6.0.0
+"""
+WORST_IS_MOST: frozenset[str] = frozenset({"turnovers", "fouls", "fouled_out"})
+"""The measures whose worst is the most of them.
+
+.. versionadded:: 6.0.0
+"""
 TOTAL_WORD = re.compile(r"\btotal\b", re.IGNORECASE)
 """A total asked where a ranking would average: "total points".
 
@@ -4294,8 +4308,8 @@ needs one before what follows it).
 .. versionadded:: 6.0.0
    ``point._VS`` until Phase 4, step 6.
 """
-RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.IGNORECASE)
-"""A ranking asked in words: "leaders", "most", "top", "fewest".
+RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|worst|fewest|least|lowest)\b", re.IGNORECASE)
+"""A ranking asked in words: "leaders", "most", "top", "worst", "fewest".
 
 .. versionadded:: 6.0.0
    ``point._RANKING`` until Phase 4, step 6.

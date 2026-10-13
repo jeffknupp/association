@@ -591,7 +591,8 @@ class RankingFacts:
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 6.0.0
-       ``stated_minimum`` (ISSUES.md #377); ``lines`` and ``pool`` (ISSUES.md #390).
+       ``stated_minimum`` (ISSUES.md #377); ``lines`` and ``pool`` (ISSUES.md
+       #390); ``ascending`` (ISSUES.md #350).
     """
 
     label: str
@@ -610,6 +611,9 @@ class RankingFacts:
     #: qualified player.
     lines: tuple[tuple[str, str, int | float, str], ...] = ()
     pool: int | None = None
+    #: Whether the ranking runs from the bottom ("fewest", "lowest",
+    #: "worst": ISSUES.md #350), the lowest figure first.
+    ascending: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)

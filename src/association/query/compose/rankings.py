@@ -309,6 +309,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
             limit=limit,
             min_sample=q.minimum.count if q.minimum is not None else None,
             lines=lines,
+            ascending=q.direction == "asc",
         )
     except LeaderboardError as exc:
         # An ambiguous team, an unknown metric, a team column with no season
@@ -325,6 +326,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
         stated_minimum=stated,
         lines=tuple((str(line.measure), line.op, line.value, line.per) for line in lines),
         pool=found.pool,
+        ascending=q.direction == "asc",
     )
     if isinstance(found, CareerLeaderboardResult):
         pool = found.pool_first_season
