@@ -734,6 +734,16 @@ def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -
         word, text = match.group(1).lower(), match.group(2)
         predicate, line, role_end = _condition_role(word, text)
         names = _companion_names(text, players, scope, predicate)
+        at = _conditions_read_name_at(text, names)
+        if at and lexicon.COMPANION_CLAUSE_BREAK.search(text[:at]):
+            # The role is read from the companion's own words on where a
+            # clause break stands right before his name: the line before it
+            # is somebody else's - "when they score 120 points when embiid
+            # starts" is the team's 120 and Embiid's start, never Embiid's
+            # 120 points (ISSUES.md #246).
+            predicate, line, role_end = _condition_role(word, text[at:])
+            role_end = None if role_end is None else at + role_end
+            names = _companion_names(text, players, scope, predicate)
         new = [Companion(player=name, predicate=predicate, line=line) for name in names if not any(_same_person(name, [c.player]) for c in found)]
         if new:
             found.extend(new)
@@ -745,6 +755,16 @@ def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -
     claims.extend(versus_claims)
     phrases.extend((claim.start, claim.end, "played") for claim in versus_claims)
     return tuple(found), tuple(claims), tuple(phrases)
+
+
+def _conditions_read_name_at(text: str, names: list[str]) -> int:
+    """Where in a companion phrase's words the first of ``names`` stands -
+    the name as the text spells it, or the earliest of its words the text
+    holds - or 0 where none stands in it (a carried name the phrase
+    misspells)."""
+    low = text.casefold()
+    found = [at for name in names for part in (name, *name.split()) if len(part) >= 3 and (at := low.find(part.casefold())) >= 0]
+    return min(found) if found else 0
 
 
 def _read_to(text: str, names: list[str], role_end: int | None) -> int:
@@ -1561,7 +1581,12 @@ def _apply_restored_player(subject: Subject, scope: Filtered, asked: PointShape 
     so nothing is restored there."""
     if asked not in PLAYER_REQUIRED_ASKS | SUBJECT_RESTORABLE_ASKS or scope.who.players:
         return scope, []
-    named = list(dict.fromkeys((*subject.players, *subject.companions)))
+    # A companion who only played, started or came off the bench is the
+    # condition on the team's games, never the record's player: "76ers record when they score
+    # 120 points when embiid starts" is the team's line with Embiid starting
+    # (ISSUES.md #246), where the restored Embiid keyed the record on his 120.
+    roles = {c.player: c.predicate for c in subject.conditions}
+    named = list(dict.fromkeys((*subject.players, *(p for p in subject.companions if roles.get(p) not in ("started", "bench", "played")))))
     if len(named) != 1:
         return scope, []
     return replace(scope, who=replace(scope.who, players=(named[0],))), [Decision("subject", "player", None, named[0], "from the question; the router left it out")]

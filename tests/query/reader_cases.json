@@ -103783,5 +103783,810 @@
    "point_declined": null,
    "point_refusal": null
   }
+ },
+ {
+  "name": "issue_246_a_team_line_beside_a_start",
+  "why": "ISSUES.md #246: \"they score 120 points\" is the team's own line and \"when embiid starts\" a start - two facts, where both were folded into Embiid's 120 points and his record answered; the team's line beside a start is refused, not read as his.",
+  "question": "76ers record when they score 120 points when embiid starts",
+  "names": [
+   "76ers",
+   "embiid"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "line"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Joel Embiid",
+     "side": "own",
+     "predicate": "started",
+     "line": null
+    }
+   ],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 120,
+     "period": null,
+     "as_typed": "120 points",
+     "keyed": true,
+     "narrows": false,
+     "per": "game"
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": "starter",
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "record"
+   ],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "asked_reason": "a team's record in the games a player named beside it reached a line",
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['embiid']; question spells 'embiid' as 'Joel Embiid'; team word 'Philadelphia 76ers'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Philadelphia 76ers"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_games/split/presence",
+     "after": "player_games/split/line",
+     "reason": "the stages settle it from the question's words"
+    },
+    {
+     "stage": "subject",
+     "field": "conditions",
+     "before": null,
+     "after": [
+      {
+       "player": "Joel Embiid",
+       "side": "own",
+       "predicate": "started"
+      }
+     ],
+     "reason": "the role the question gives each player named beside the subject"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "split",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "started",
+      "line": null
+     }
+    ],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 120,
+      "period": null,
+      "as_typed": "120 points",
+      "keyed": true,
+      "narrows": false,
+      "per": "game"
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": "starter",
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_246_a_team_line_beside_a_teammate_who_played",
+  "why": "ISSUES.md #246: \"they score 120 and tatum plays\" - the 120 is the team's, never Tatum's.",
+  "question": "celtics record when they score 120 and tatum plays",
+  "names": [
+   "celtics",
+   "tatum"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "line"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Boston Celtics"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Jayson Tatum",
+     "side": "own",
+     "predicate": "played",
+     "line": null
+    }
+   ],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 120,
+     "period": null,
+     "as_typed": "score 120",
+     "keyed": true,
+     "narrows": false,
+     "per": "game"
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "record",
+    "plays"
+   ],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Boston Celtics"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Jayson Tatum"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "asked_reason": "a team's record in the games a player named beside it reached a line",
+    "conditions": [
+     {
+      "player": "Jayson Tatum",
+      "side": "own",
+      "predicate": "played",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "question names players ['Jayson Tatum']; router players the question supports ['tatum']; question spells 'tatum' as 'Jayson Tatum'; team word 'Boston Celtics'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Boston Celtics"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Jayson Tatum"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_games/split/presence",
+     "after": "player_games/split/line",
+     "reason": "the stages settle it from the question's words"
+    },
+    {
+     "stage": "subject",
+     "field": "conditions",
+     "before": null,
+     "after": [
+      {
+       "player": "Jayson Tatum",
+       "side": "own",
+       "predicate": "played"
+      }
+     ],
+     "reason": "the role the question gives each player named beside the subject"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "split",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Boston Celtics"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Jayson Tatum",
+      "side": "own",
+      "predicate": "played",
+      "line": null
+     }
+    ],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 120,
+      "period": null,
+      "as_typed": "score 120",
+      "keyed": true,
+      "narrows": false,
+      "per": "game"
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_246_a_line_before_the_name_with_no_break_is_his",
+  "why": "ISSUES.md #246: \"when 30 points from embiid\" has no clause break before the name, and the line is his.",
+  "question": "sixers record when 30 points from embiid",
+  "names": [
+   "sixers",
+   "embiid"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "line"
+   },
+   "who": {
+    "kind": "team",
+    "players": [
+     "Joel Embiid"
+    ],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 30,
+     "period": null,
+     "as_typed": "30 points",
+     "keyed": true,
+     "narrows": false,
+     "per": "game"
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "record"
+   ],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Joel Embiid"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "asked_reason": "a team's record in the games a player named beside it reached a line",
+    "conditions": [
+     {
+      "player": "Joel Embiid",
+      "side": "own",
+      "predicate": "reached",
+      "line": {
+       "measure": "points",
+       "op": ">=",
+       "value": 30,
+       "period": null,
+       "as_typed": "30 points",
+       "keyed": false,
+       "narrows": false,
+       "per": "game"
+      }
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "question names players ['Joel Embiid']; router players the question supports ['embiid']; question spells 'embiid' as 'Joel Embiid'; team word 'Philadelphia 76ers'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Philadelphia 76ers"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Joel Embiid"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "team_games/split/presence",
+     "after": "player_games/split/line",
+     "reason": "a team's record in the games a player named beside it reached a line"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "line"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "split",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "aggregate": "record",
+    "group": "none",
+    "predicates": [
+     [
+      "points",
+      ">=",
+      30
+     ]
+    ],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [
+      "Joel Embiid"
+     ],
+     "teams": [
+      "Philadelphia 76ers"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 30,
+      "period": null,
+      "as_typed": "30 points",
+      "keyed": true,
+      "narrows": false,
+      "per": "game"
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
  }
 ]

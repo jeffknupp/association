@@ -429,7 +429,7 @@ _PLAYER_RANKING_ASKS = frozenset({PLAYER_RANKING, GAME_HIGHS, GAMES_COUNTED})
 #: What a "<team> when <player> reaches N" question can arrive as, each of
 #: which would answer the player's own line instead of the team's record
 #: under the condition.
-_WHEN_REACHES_REROUTABLE = frozenset({PLAYER_LINE, GAMES_COUNTED, PLAYER_LOG, TEAM_LINE, TEAM_RECORD, None})
+_WHEN_REACHES_REROUTABLE = frozenset({PLAYER_LINE, GAMES_COUNTED, PLAYER_LOG, TEAM_LINE, TEAM_RECORD, PRESENCE_SPLIT, None})
 #: What the fingerprint's own name moves to the fingerprint.
 _FINGERPRINT_REROUTABLE = frozenset({PLAYER_COMPARISON, PLAYER_LINE, NETPOINTS_RATINGS, None, PLAYER_LOG})
 
@@ -444,15 +444,7 @@ def _team_and_player(working: _Working, question: str, companions: tuple[Compani
         working.asked = TEAM_RANKING if working.asked == PLAYER_RANKING else None
     if working.asked == GAMES_COUNTED and lexicon.RECORD_WORD.search(question):
         working.asked = LINE_RECORD
-    reached = working.reached_when or (lexicon.WHEN_REACHES.search(question) is not None and not any(c.predicate == "reached" for c in companions))
-    if working.asked in _WHEN_REACHES_REROUTABLE and reached and working.lines.threshold is not None:
-        # "stats for sixers when maxey scored 20+ points" (yardstick-v2
-        # F087): a team's games divided by a NUMBER a player reached is the
-        # record over a line whatever was named first - it was answered as
-        # Maxey's own average, then his career average with the 76ers. Two
-        # readers agree before it moves: the "when <someone> scores/has/gets"
-        # clause and a threshold in the text.
-        working.asked = LINE_RECORD
+    _team_and_player_when_reaches(working, question, companions)
     if working.asked == NETPOINTS_FINGERPRINT and not lexicon.FINGERPRINT_WORDS.search(question):
         working.asked = SHOT_CHART if lexicon.SHOT_WORDS.search(question) else None
     if working.asked in _FINGERPRINT_REROUTABLE and lexicon.FINGERPRINT_NAMED.search(question):
@@ -470,6 +462,26 @@ def _team_and_player(working: _Working, question: str, companions: tuple[Compani
         working.asked = PLAYER_LINE
     _one_player(working, question, listed)
     _matchup_against_team(working, question, listed)
+
+
+def _team_and_player_when_reaches(working: _Working, question: str, companions: tuple[Companion, ...]) -> None:
+    """A team's games divided by a NUMBER someone reached ("stats for
+    sixers when maxey scored 20+ points") is the record over a line,
+    whatever was named first - :func:`_team_and_player`'s step for it."""
+    reached = working.reached_when or (lexicon.WHEN_REACHES.search(question) is not None and not any(c.predicate == "reached" for c in companions))
+    # The with/without split only where nobody beside the subject reached a
+    # line himself: "76ers record when they score 120 points when embiid
+    # starts" is the team's line (ISSUES.md #246), "maxey points when
+    # embiid scores 30" the split over Embiid's 30.
+    split_held = working.asked == PRESENCE_SPLIT and any(c.predicate == "reached" for c in companions)
+    if working.asked in _WHEN_REACHES_REROUTABLE and reached and working.lines.threshold is not None and not split_held:
+        # "stats for sixers when maxey scored 20+ points" (yardstick-v2
+        # F087): a team's games divided by a NUMBER a player reached is the
+        # record over a line whatever was named first - it was answered as
+        # Maxey's own average, then his career average with the 76ers. Two
+        # readers agree before it moves: the "when <someone> scores/has/gets"
+        # clause and a threshold in the text.
+        working.asked = LINE_RECORD
 
 
 def _pair_over_seasons(working: _Working, question: str, listed: list[str]) -> None:
