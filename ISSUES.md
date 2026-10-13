@@ -501,15 +501,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #394
 
-### "vs top 3 seed teams" is read as a window of the last 3 games: "luka dončić stats vs top 3 seed teams in the 2026 season" answers his last 3 games
-- **Found:** 2026-10-12, Phase 4, step 1 (lane B), the one answer whose page rendering moved: drawn as a log table where it was prose, which showed what it answered.
-- **Evidence:** on `aaa0a8a`, feed run (`scripts/stage_snapshots.py run --feed`, no names, no stat): the reading's window is `count 3, of games` from "top 3", `Reading.unread` is `stats, seed, teams, season`, no cut is set, and the answer is "Luka Doncic, last 3 of 64 games of the 2026 regular season:" with those three games. 1 of the 2,082 feed questions; "seed" occurs in no other.
-- **User sees:** a wrong answer - his last three games, fluently, where his line against the top-three seeds was asked.
-- **Next step:** the window tagger reads "top N" as a window only where the words rank (a ranking's "top 5"); "vs top N seed teams" is an opponent alignment nothing reads, so refused by a cause naming it (the situation's unread words) until a cut of opponents by seed exists - the reader seam's (lane A's) files, `query/window.py` and the lexicon.
-- **Priority:** P1 - a different question answered fluently.
-- **Source:** ours.
-- **GitHub:** #396
-
 ## P2: misleading or incomplete
 
 ### A matchup of two players who did not play this season answers "<player> has no games in the 2026 regular season"

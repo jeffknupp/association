@@ -1305,6 +1305,11 @@ SITUATION = re.compile(
     # relation - which answers the phrase - refused the bare word. The bare
     # forms stay as the last resort, still refused honestly by name.
     r"\b(?:vs\.?|against|in)\s+(?:the\s+)?(?:east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|southwest|pacific|midwest)(?:\s+(?:conference|division))?(?:\s+teams?)?\b|"
+    # The opponents by their seeding ("vs top 3 seed teams", "against top
+    # seeds"): an alignment nothing reads - no table holds a seeding - kept
+    # whole so it is refused by name rather than its "top 3" read as a
+    # window of games (ISSUES.md #396: his last 3 games answered).
+    r"\b(?:vs\.?|versus|against)\s+(?:the\s+)?(?:top[\s-]+(?:\d+[\s-]+)?)?seed(?:s|ed)?(?:\s+teams?)?\b|"
     r"\b(?:atlantic|central|southeast|northwest|southwest|pacific|midwest)\s+division\b|"
     r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bdivision\b|\ball[- ]star\s+break\b|"
     # A day of the week: 8 of the 14, and the most common shape in the feed.

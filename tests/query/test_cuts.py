@@ -98,6 +98,10 @@ def _situation(text: str) -> Situation:
         ("Ayton stats in game 4 playoff games", PLAYER_LOG, Cuts(game_n=4)),
         ("his 18th season", PLAYER_LINE, Cuts(season_n=18)),
         ("most points in 15th season played", PLAYER_RANKING, Cuts(season_n=15)),
+        # The opponents by their seeding: an alignment nothing reads, read whole so it is refused by
+        # name - its "top 3" was a window of his last 3 games (ISSUES.md #396, fixed in Phase 4, step 6).
+        ("luka doncic stats vs top 3 seed teams in the 2026 season", PLAYER_LINE, Cuts(situation=_situation("vs top 3 seed teams"))),
+        ("tatum points against top seeds", PLAYER_LINE, Cuts(situation=_situation("against top seeds"))),
         # A day, and no month of its own beside it (ISSUES.md #354, fixed in Phase 4, step 6).
         ("nba Anthony Davis most offensive rebound in march 24 2018", GAME_HIGHS, Cuts(date="2018-03-24")),
     ],
