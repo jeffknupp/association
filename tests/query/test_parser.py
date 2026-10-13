@@ -1117,3 +1117,24 @@ def test_worst_ranks_from_the_worse_end_of_a_stat_the_words_name(con: duckdb.Duc
     a ranking whose stat the words do not name keeps its order."""
     reading = _read(con, question)
     assert reading.point is not None and reading.point.direction == direction
+
+
+@pytest.mark.parametrize(
+    ("question", "line"),
+    [
+        ("celtics' record last season when committing 10 or fewer turnovers", ("turnovers", "<=", 10)),
+        ("celtics record last season when committing 11 or fewer turnovers", ("turnovers", "<=", 11)),
+        ("celtics record last season when they had under 12 turnovers", ("turnovers", "<", 12)),
+        ("celtics record last season with less than 12 turnovers", ("turnovers", "<", 12)),
+    ],
+)
+def test_a_teams_record_under_a_number_is_keyed_on_that_line(con: duckdb.DuckDBPyConnection, question: str, line: tuple[str, str, int]) -> None:
+    """ISSUES.md #325: "celtics' record when committing 10 or fewer
+    turnovers" answered the season's record, the line unread; "under 12
+    turnovers" read a narrowing beside a keyed 12+ and was refused. The
+    team's record is keyed on the line with its comparison, which the team's
+    record reader reads (lane T's ``compile_team_line(op=)``)."""
+    reading = _read(con, question, ["celtics"], "turnovers")
+    assert reading.asked == LINE_RECORD and reading.point is not None and reading.point.on == "team_games"
+    keyed = [each for each in reading.point.lines if each.keyed]
+    assert [(each.measure, each.op, each.value) for each in keyed] == [line] and not any(each.narrows for each in reading.point.lines)

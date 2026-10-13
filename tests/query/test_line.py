@@ -158,6 +158,9 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
         # A rate per N minutes, and the last minutes of a game, are no floor of minutes (ISSUES.md #388).
         ("jayson tatum per 36 minutes stats", PLAYER_LINE, [], None),
         ("field goal percentage last 5 minutes of a nba game", PLAYER_LOG, [], None),
+        # "N or fewer"/"N or less" is a line at or under the number (ISSUES.md #325).
+        ("warriors' record last season when committing 10 or fewer turnovers", PLAYER_LOG, [("turnovers", "<=", 10, "10 or fewer turnovers", False, True)], None),
+        ("lebron games with 12 or less fga", PLAYER_LOG, [("fieldGoalsAttempted", "<=", 12, "12 or less fga", False, True)], None),
         ("jokic stats", PLAYER_LINE, [], None),
     ],
 )

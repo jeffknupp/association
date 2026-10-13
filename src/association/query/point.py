@@ -1623,6 +1623,24 @@ def _leaderboard_declines(scope: Filtered, subject: Subject) -> None:
         raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.who.player!r})")
 
 
+def _team_record_own_line(scope: Filtered) -> Filtered:
+    """A team's record over a line under a number - "warriors' record when
+    committing 10 or fewer turnovers", "... when they had under 12
+    turnovers" (ISSUES.md #325) - keyed on that line with its comparison,
+    where the tagger read it as a narrowing beside a keyed bare "12
+    turnovers" (or beside no keyed line at all): the record splits the
+    team's games at the line, as it does at "120 points", and the team's
+    record reader reads the comparison (``compose.team.compile_team_line``'s
+    ``op``). One line under a number on a stat, and no other keyed line
+    than its own number's."""
+    below = [line for line in scope.lines if line.below and line.narrows and line.period is None and line.measure is not None]
+    keyed = [line for line in scope.lines if line.keyed]
+    if len(below) != 1 or any(line.as_typed not in below[0].as_typed for line in keyed):
+        return scope
+    own = replace(below[0], keyed=True, narrows=False)
+    return replace(scope, lines=tuple(own if line is below[0] else line for line in scope.lines if not line.keyed))
+
+
 def _team_line_measure(scope: Filtered) -> Measure:
     """The measure a team's record over its own line is said by: the one
     the words named, by its catalog key, or points (``compose.records``
@@ -1683,6 +1701,7 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
         # record when they scored 120 points" (ISSUES.md #144) - is neither the
         # season sum nor the window sum the team subject otherwise reads: it is
         # record_when's team reader's (compose.records.read_team_record_when).
+        scope = _team_record_own_line(scope)
         return Reading(**scope.filters(), shape="split", by="line", on="team_games", measures=(_team_line_measure(scope),), aggregate=Aggregate.RECORD, relation="team")
     if asked == PLAYER_LOG:
         # A team's log, before the team's sums: "knicks last 5 games" lists
