@@ -384,6 +384,7 @@ those were found.
 - **Next step:** a "last" one edit off ("lat", "lasst") read as the window's end beside a count and "games" - excluding the words one edit from "last" that are words of their own ("east", "least", "lost", "list", "fast"; "at least 5 games" is a line) - and "last N" before a venue or "stats" with nothing after it read as N games; each measured on both corpora first, a test per wording.
 - **Priority:** P1 - a different question answered fluently; 9 of the 2,082.
 - **Source:** ours.
+- **GitHub:** #411
 
 ### "who scored 40 points the most times" is a ranking by points per game, not a count of 40-point games
 - **Found:** 2026-10-10, Phase 3, step 3, re-measuring #345's examples once a range of bare years was read.
@@ -447,6 +448,7 @@ those were found.
 - **Next step:** the log row reads a month or a slashed day only where no line word ("average(s)", "avg", "ppg", "per game") stands beside it, so the line's row takes the question with the cut on it; measure the 2,710 readings and both answer populations first, every moved answer enumerated. The row is the grammar family's (lane N's), not the cuts'.
 - **Priority:** P1 - a different shape answered fluently; 3 of the 2,082 (#267's own question among them: since #267 it lists the right November's 9 games, as a log).
 - **Source:** ours.
+- **GitHub:** #412
 
 ## P2: misleading or incomplete
 
@@ -2279,6 +2281,7 @@ those were found.
 - **Next step:** the coverage check reads a range's seasons: refuse by the floor's sentence where the range's last season is under the floor, and say the seasons it could not read (a `floor` note) where only its first is - `coverage.py`, the answer side's (lane T's in the sweep).
 - **Priority:** P2 - a refusal naming the wrong cause, or a narrower answer with the cut shown only in the heading.
 - **Source:** ours.
+- **GitHub:** #413
 
 ## P3: refusal or gap
 
@@ -2948,6 +2951,7 @@ those were found.
 - **Next step:** an `until_date` calendar kind (`eastern_date < day`, `calendar_clause`) with the span closed at the season the day falls in and opened at the career's first season - which the span cannot state today (an `until` with no `since` is no range `Span` reads) - a test per wording.
 - **Priority:** P3 - a refusal.
 - **Source:** ours.
+- **GitHub:** #414
 
 ## P4: tooling, docs, low impact
 
@@ -2958,6 +2962,7 @@ those were found.
 - **Next step:** the sayer drops the span's "since <season>" where a `since_date` or `date_range` calendar cut opened it, as the log's heading does (`compose/say.py`, the answer side's).
 - **Priority:** P4 - wording only.
 - **Source:** ours.
+- **GitHub:** #415
 
 ### "1 of these game has no box score from ESPN": the plural sits on the wrong word
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 6).
