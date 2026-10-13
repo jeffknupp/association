@@ -567,7 +567,8 @@ gets turned off.
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py` and the
-    standings' reads beside it, `standings.py`, and the two declared
+    standings beside it, `standings.py`, which builds and runs the four
+    statements a team's record reads, and the two declared
     relations' own since Phase 4, step 5: `netpoints.py`, the NetPoints
     relation, which builds and runs every statement the NetPoints reader
     and the fingerprint read and a comparison's NetPoints rows, and
@@ -1730,7 +1731,8 @@ a shape:
     as missing (`team_games.unnarrowed_games`). The standings', a module
     of their own (`query/standings.py`, the team-season relation's reads
     of ESPN's `standings` and the season totals they are checked against:
-    `season_row`, `career_rows`, `first_season`, `season_games`), which
+    `season_row`, `career_rows`, `first_season`, `season_games`, with the
+    four statements they run, built there since the step's close), which
     `compose/standings.py` reads. The season line's (`season_line.season_row`
     and the four beside it; `compose/seasons.py` executes nothing, and
     takes a comparison's NetPoints rows from the NetPoints relation,
