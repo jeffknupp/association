@@ -150,25 +150,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - a different figure answered, one feed question (and the class beside it).
 - **GitHub:** #409
 
-### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
-- **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);
-  re-verified offline the same day at `011091f`.
-- **Evidence:** "jokic assists per game after a big first quarter"
-  (normalizer reply `jokic` / `assists`) reads `period_split` with
-  `period: 1` and answers "Nikola Jokic had 240 assists in the 1st quarter
-  over 65 games of the 2026 regular season, averaging 3.7." The question
-  asks for his whole-game assists in games whose first quarter was "big".
-  `parse.read_period_condition` reads a condition only where a number
-  names the line ("after making one three in the first quarter"), and
-  `refusals._period_as_condition` did not fire: "big" names no line.
-- **User sees:** a fluent answer to a different question.
-- **Next step:** "after|following|when ... <quarter>" with no line is a
-  condition nothing can hold: refuse it naming the missing number, rather
-  than read the quarter as the period. A reader fix; goes with the read
-  stage's work (`ROADMAP.md`, Phase 1) unless it shows up in the wild
-  first.
-- **GitHub:** #291
-
 ### "single game" before a boolean stat is read as a single-game high: "who has the most single game triple doubles" answers a single-game high, never the triple-double leaderboard
 - **Found:** 2026-09-28, a probe the #260 fix agent invented (in no corpus) and reported; re-measured by the lead on the merged tree (`95c8a21`, the main warehouse, the parser with no model).
 - **Evidence:** `parse.read_route` reads "who has the most single game triple doubles" (and "... this season") as parent `leaderboard`, then the `single_game_high` child (`subject._CHILD_GRAMMARS`, the `\bsingle[- ]game\b` alternative #260 added): `intent=single_game_high kind=everyone slots={'stat': 'triple_double', 'season_type': 2}`, reason "the words 'single game' name single_game_high". "who has the most triple doubles" and "most triple doubles in a single season" stay `leaderboard`. A triple-double is a boolean measure (`compose.core.BOOLEAN_MEASURES`): "single game" here modifies the stat - every triple-double is one game's - not the question's shape, and a league-wide single-game high of a boolean has nothing to rank by. Through the agent with the route as read (answered_by=fast intent=single_game_high): "every player, 2026 regular season with a triple-double - top 3 by points:   2025-12-25  Nikola Jokic     vs MIN  W  points 56  minutes 43  rebounds 16  assists 15   2025-11-10  Cade Cunningham  vs WSH  W  points 46  minutes 45  rebounds 12  assists 11   2025-12-18  Luka Doncic      @ UTAH W  points ".
@@ -375,6 +356,7 @@ those were found.
 - **Next step:** a "last" one edit off ("lat", "lasst") read as the window's end beside a count and "games" - excluding the words one edit from "last" that are words of their own ("east", "least", "lost", "list", "fast"; "at least 5 games" is a line) - and "last N" before a venue or "stats" with nothing after it read as N games; each measured on both corpora first, a test per wording.
 - **Priority:** P1 - a different question answered fluently; 9 of the 2,082.
 - **Source:** ours.
+- **GitHub:** #411
 
 ### "who scored 40 points the most times" is a ranking by points per game, not a count of 40-point games
 - **Found:** 2026-10-10, Phase 3, step 3, re-measuring #345's examples once a range of bare years was read.
@@ -447,6 +429,7 @@ those were found.
 - **Next step:** the log row reads a month or a slashed day only where no line word ("average(s)", "avg", "ppg", "per game") stands beside it, so the line's row takes the question with the cut on it; measure the 2,710 readings and both answer populations first, every moved answer enumerated. The row is the grammar family's (lane N's), not the cuts'.
 - **Priority:** P1 - a different shape answered fluently; 3 of the 2,082 (#267's own question among them: since #267 it lists the right November's 9 games, as a log).
 - **Source:** ours.
+- **GitHub:** #412
 
 ## P2: misleading or incomplete
 
@@ -475,15 +458,13 @@ those were found.
 - **Priority:** P2 - a different figure than asked, visibly.
 - **GitHub:** #401
 
-### "for each game" and "every game" are read as the log's default window of the newest 10: "show the 76ers pace for each game last season" lists the last 10 games' scores
-- **Found:** 2026-10-13, Jeff's queries on `a5a4e68` (`--verbose`), reported after the Phase 4 live run.
-- **Evidence:** "show the 76ers pace for each game last season" and "show the 76ers 3pt% for each game last season" both read `asked=player_games/rows/date` with `window=date/desc/10` and answer "Philadelphia 76ers, last 10 games of the 2025 regular season (1-9)"; "each" and "game" are read by no window rule, so the log's rule for a bare log (the newest N, `DEFAULT` 10) stands. The same wording on a player ("show luka's points for each game last season") is the same window.
+### The team log drops the stat it was asked for and shows the score: "show the 76ers 3pt% for each game last season" lists W/L and the score, no 3pt%
+- **Found:** 2026-10-13, Jeff's queries on `a5a4e68`.
+- **Evidence:** the reading carries `measure={'key': 'threePointFieldGoalPct'}` and the compiled team log executes `measures=['points']` - the team-games relation has no box-score join (`AGENTS.md`, "A team can be the subject"), so a team log can show the score and the result and nothing else, and nothing says the asked stat was dropped. The same question with "pace" reads the model's `points` over the words' "pace" (`measures=['points']`, `measure.key` `points`), where the season-line form of the question ("the 76ers game with the highest pace") reads `pace` from the words: the log row's measure on a team keeps the model's key. The team compiler's TOTAL refuses a box-score count narrowed to a window for the same want of a join; the log does not.
+- **User sees:** a log of scores where a per-game shooting figure was asked, with no sentence saying so.
+- **Next step:** a team log asked with a box-score stat refuses by a cause naming the stat (as the team total does) until the team-games relation joins `team_box_stats`, which would let it show the column; and the measure tagger reads the words over the key on the team log as it does on the season line.
 - **User sees:** ten games where the season's every game was asked. Since the P1 sweep's lane T (2026-10-13) a team's log says the count it cut from - "last 10 of 82 games of the 2025 regular season" - as a player's had (F149), so the narrowing is stated; the window is still the newest 10.
 - **Next step:** (the window tagger's, lane S) "for each game", "every game", "game by game", "per game" (on a log) read as the whole span - a window of no count, or the log's window set to the span's games; a test per wording; the 2,710 readings and the feed measured for the wordings' reach before the rule lands.
-- **Source:** ours.
-- **Priority:** P2 - a narrower answer than asked, the narrowing stated only as "last 10".
-- **GitHub:** #402
-
 ### A team log's measure keeps the model's key over the words: "show the 76ers pace for each game last season" reads `points`
 - **Found:** 2026-10-13, Jeff's queries on `a5a4e68`; rewritten 2026-10-13 by the P1 sweep's lane T, which fixed the answer side.
 - **Evidence:** the team-games relation joins `team_box_stats` since lane T (`compose.team.team_figure`): a team's log asked for a box-score figure shows it beside each game and over them all ("Philadelphia 76ers, last 10 of 82 games ...  3P% 27.3% (12-44) ... 3-point percentage: ..."), and a figure no team game carries is refused by name (`team_figure_unread`: "A team's games carry no pace game by game ..."). What is left is the reading: "show the 76ers pace for each game last season" with the model's `points` reads `measure.key` `points` (the words' "pace" unread), where the season-line form ("the 76ers game with the highest pace") reads `pace` from the words; with the model's `pace` the measure reads None. So the log shows the scores and its total points, and the pace refusal is never reached. Two teams' meetings read the same way since #326 (2026-10-13, lane T): "knicks vs celtics pace" with the model's `pace` reads no measure and answers the series record alone, where a hand-built reading's `pace` is refused by name (`team_figure_unread`, tested).
@@ -2313,6 +2294,7 @@ those were found.
 - **Next step:** the coverage check reads a range's seasons: refuse by the floor's sentence where the range's last season is under the floor, and say the seasons it could not read (a `floor` note) where only its first is - `coverage.py`, the answer side's (lane T's in the sweep).
 - **Priority:** P2 - a refusal naming the wrong cause, or a narrower answer with the cut shown only in the heading.
 - **Source:** ours.
+- **GitHub:** #413
 
 ## P3: refusal or gap
 
@@ -2977,6 +2959,7 @@ those were found.
 - **Next step:** an `until_date` calendar kind (`eastern_date < day`, `calendar_clause`) with the span closed at the season the day falls in and opened at the career's first season - which the span cannot state today (an `until` with no `since` is no range `Span` reads) - a test per wording.
 - **Priority:** P3 - a refusal.
 - **Source:** ours.
+- **GitHub:** #414
 
 ## P4: tooling, docs, low impact
 
@@ -2987,6 +2970,7 @@ those were found.
 - **Next step:** the sayer drops the span's "since <season>" where a `since_date` or `date_range` calendar cut opened it, as the log's heading does (`compose/say.py`, the answer side's).
 - **Priority:** P4 - wording only.
 - **Source:** ours.
+- **GitHub:** #415
 
 ### "1 of these game has no box score from ESPN": the plural sits on the wrong word
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 6).

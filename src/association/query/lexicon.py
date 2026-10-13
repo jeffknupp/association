@@ -966,6 +966,17 @@ winning; a ``limit`` of 0 is the count the words hold.
    In the lexicon, compiled (``parse.WINDOW_GRAMMAR`` until Phase 3, step 2).
 """
 
+EVERY_GAME = re.compile(
+    r"\b(?:for\s+)?(?:each|every)\s+(?:single\s+)?game\b|\bgame[\s-]+by[\s-]+game\b|\ball\s+(?:of\s+)?(?:his|her|their|the)?\s*games\b",
+    re.IGNORECASE,
+)
+"""Every game of the span asked for one by one: "for each game", "every
+game", "game by game", "all his games" - on a log, the whole span from the
+newest, never its default ten (ISSUES.md #402).
+
+.. versionadded:: 6.0.0
+"""
+
 # Which end of the span a window reads from, said with "games": the two
 # forms the router's model emitted (``recent``, ``first``). Tighter than the
 # grammar's rows (no venue or season type between the count and "games": "his
@@ -1552,6 +1563,14 @@ SITUATION = re.compile(
     # slot the relation filters on.
     # A window defined by an event rather than a date.
     r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
+    # A quarter or half named as a vague condition on which games count -
+    # "after a big first quarter", "when he has a hot second half" - with no
+    # line a game could be kept past (ISSUES.md #291): a circumstance
+    # nothing narrows by, refused by value, never the period asked about.
+    # A condition with a line ("after making one three in the first
+    # quarter") is the line family's (`line.read_period_line`), read first.
+    r"\b(?:after|following|coming\s+off)\s+(?:a|an|his|her|their)\s+(?:[a-z]+\s+){1,2}(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|qtr|half)\b|"
+    r"\b(?:when|if)\s+(?:he|she|they)\s+(?:has|have|had|gets?|got)\s+(?:a|an)\s+(?:[a-z]+\s+){1,2}(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|qtr|half)\b|"
     # Games after a result ("after a playoff loss", "coming off a win"): a
     # circumstance nothing narrows by - the games carry no "the game before"
     # - so it is refused by value rather than the whole span answered

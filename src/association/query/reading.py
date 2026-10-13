@@ -325,7 +325,9 @@ class Window:
     #: Which end of the span the rows are taken from, where the words said:
     #: the newest ("last 10 games", "his last game") or the oldest ("first
     #: 5 games", "the season opener"). None for a bare count ("top 5") and
-    #: for a count of seasons - never a default.
+    #: for a count of seasons - never a default. An end with no count is
+    #: every row of the span from that end ("for each game" on a log,
+    #: ISSUES.md #402), up to the readers' one cap.
     order: Literal["recent", "first"] | None = None
     #: How many rows the words asked for: games, or seasons for a history
     #: (``of``). None where none was named; never below 1.

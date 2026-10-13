@@ -88,6 +88,10 @@ class WindowCandidates:
     order_words: tuple[tuple[str, Claim], ...]
     rank: tuple[Literal["most", "fewest", "best", "worst"], Claim] | None
     ranked_by: tuple[str, tuple[Claim, ...]] | None
+    #: Where the words ask for every game one by one ("for each game",
+    #: :data:`~association.query.lexicon.EVERY_GAME`), which a log reads as
+    #: the whole span (ISSUES.md #402).
+    every: Claim | None = None
 
     def of_games(self) -> tuple[Claim, ...]:
         """Where a window of GAMES is read from - the grammar's end and count,
@@ -142,6 +146,7 @@ def read_window(question: str, context: WindowContext) -> WindowCandidates:
         order_words=order_words,
         rank=_rank(question),
         ranked_by=_ranked_by(question, context),
+        every=Claim(every.start(), every.end(), "window") if (every := lexicon.EVERY_GAME.search(question)) is not None else None,
     )
 
 

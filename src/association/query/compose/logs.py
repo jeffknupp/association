@@ -35,7 +35,8 @@ from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import Narrowed
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, log_total, no_narrowed_games, scoped_games, span_of
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Filtered, Measure, Unsupported, _clamp_limit
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, MAX_LIMIT, Cuts, Filtered, Measure, Unsupported, _clamp_limit
+from association.query.reading import Window as ReadWindow
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
 from association.query.team_games import TeamNarrowed, unnarrowed_games
 from association.query.team_relation import team_games
@@ -189,6 +190,17 @@ def _player_narrowing(narrowed: Narrowed) -> Narrowing:
     )
 
 
+def _log_limit(window: ReadWindow) -> int:
+    """How many games a log lists: the count asked, its default ten where
+    none was - or, where an end stands with no count ("for each game",
+    ISSUES.md #402), every game of the span up to the one cap
+    (:data:`~association.query.reading.MAX_LIMIT`); the heading says how
+    many of how many it shows."""
+    if window.order is not None and window.count is None:
+        return MAX_LIMIT
+    return _clamp_limit(window.count, DEFAULT_GAME_LOG_LIMIT)
+
+
 def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int, ascending: bool) -> Result:
     """The listing over one season type - the compiled statement's rows -
     and the per-game averages over exactly the rows in it."""
@@ -316,7 +328,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unansw
     if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.measure)]):
         return None
     headers, needed = _player_log_columns(extras)
-    limit = _clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT)
+    limit = _log_limit(scope.window)
     # The log's point, with the columns it shows as the measures: the rebuilt
     # rule (core._rebuilt_for) is read over the columns shown, as the log's own was.
     log_point = replace(q, measures=[LOG_COLUMNS[h] for h in needed], limit=limit)
@@ -533,7 +545,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     if refused is not None:
         return refused
     season_type = scope.span.season_type or 2
-    limit = _clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT)
+    limit = _log_limit(scope.window)
     ascending = scope.window.order == "first"
     date = scope.cuts.date
     opponent, venue, without = scope.cuts.opponent, scope.cuts.venue, tuple(c.player for c in scope.companions if c.absent)

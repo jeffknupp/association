@@ -463,3 +463,21 @@ def test_the_opponents_by_their_standing_are_a_situation_nothing_reads(question:
     situation = read.cuts.situation
     assert situation is not None and situation.text == text and not situation.read
     assert [question[c.start : c.end] for c in read.unread_situation()] == [text]
+
+
+@pytest.mark.parametrize(
+    ("question", "text"),
+    [
+        # ISSUES.md #291: a quarter named as a vague condition, with no line.
+        ("jokic assists per game after a big first quarter", "after a big first quarter"),
+        ("jokic assists when he has a big first quarter", "when he has a big first quarter"),
+        ("tatum points following a cold 2nd half", "following a cold 2nd half"),
+    ],
+)
+def test_a_quarter_as_a_vague_condition_is_a_situation_nothing_reads(question: str, text: str) -> None:
+    situation = read_cuts(question, CutsContext()).cuts.situation
+    assert situation is not None and situation.text == text and not situation.read
+
+
+def test_a_quarter_as_a_condition_with_a_line_is_no_situation() -> None:
+    assert read_cuts("jokic assists after making 3 threes in the first quarter", CutsContext()).cuts.situation is None

@@ -1961,6 +1961,12 @@ def window_under(asked: PointShape | None, read: WindowCandidates) -> WindowRead
     order, order_claim, single = _window_order(asked, read, order, count)
     if order_claim is not None:
         claims.append(order_claim)
+    if asked == PLAYER_LOG and order is None and count is None and read.every is not None:
+        # "for each game", "every game": a log of the whole span, newest
+        # first - an end with no count, never the log's default ten
+        # (ISSUES.md #402).
+        order = "recent"
+        claims.append(read.every)
     if single:
         # One game of a player's line: the end and a count of one together.
         count, of = 1, "games"
