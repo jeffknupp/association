@@ -6,7 +6,7 @@ closed 2026-10-01, Phase 1 closed 2026-10-03, Phase 2 closed 2026-10-05**
 families 156/166, every answer identical to the run before - and an Opus
 review of the phase whose findings are fixed or filed; `ROADMAP-HISTORY.md`,
 the working log, entries 12 and 20-21; Phase 2's cleanup landed
-2026-10-06). Phase 3 opened 2026-10-09 and closed 2026-10-11 (`live_parser29`, an Opus review and its cleanup landed 2026-10-12; "Phase 3, reviewed"). Phase 4 opened 2026-10-12 and its steps 0-6 closed the same day in three parallel lanes, each merge re-proved by the lead; step 7's documents and live run landed 2026-10-13 (`live_parser30`: 167/175, 156/166, parser29's score) and its review closed the phase the same day ("Phase 4, reviewed"). **Phase 4 closed 2026-10-13.** Next, Jeff's call the same day: the P1 sweep, four agents along the files' seams ("After Phase 4: the P1 sweep"), the reviewer's positions on the open calls assumed held and not decided. The reviews corrected the
+2026-10-06). Phase 3 opened 2026-10-09 and closed 2026-10-11 (`live_parser29`, an Opus review and its cleanup landed 2026-10-12; "Phase 3, reviewed"). Phase 4 opened 2026-10-12 and its steps 0-6 closed the same day in three parallel lanes, each merge re-proved by the lead; step 7's documents and live run landed 2026-10-13 (`live_parser30`: 167/175, 156/166, parser29's score) and its review closed the phase the same day ("Phase 4, reviewed"). **Phase 4 closed 2026-10-13.** Next, Jeff's call the same day: the P1 sweep, four agents along the files' seams ("After Phase 4: the P1 sweep"), the reviewer's positions on the open calls assumed held and not decided; Phase 5's rows drafted 2026-10-13 for Jeff ("Phase 5 - Coverage"), the sweep its step 0. The reviews corrected the
 measurements below and changed the phases. Jeff's decisions are recorded
 under "Decisions"; one is still open (the season type a question that names
 none reads) and does not block Phase 1.
@@ -804,6 +804,47 @@ compiler's files, about 2 feed answers and the "by a thunder player"
 family. Still a refusal by name until decided: #392's remainder (a
 player's first or last N seasons resolved over his seasons on record, 3),
 which is the relation's, not a shape.
+
+**Phase 5 - Coverage: refuse rather than approximate, enforced (drafted
+2026-10-13 by the lead, for Jeff to accept or cut; each row is re-planned
+in its own row as it lands, as Phases 2-4's were).** The sweep found what
+the done table never measured: how much of what people type is read, and
+how much of what is not read becomes a fluent wrong answer. The goal's
+first clause ("a correct answer ... or an honest refusal that names what
+is missing") is enforced for names and for a relation's cells and for
+nothing else; where a stat, a number, a window or a date is left unread,
+the reading defaults - the players' ranking to points per game, the
+model's stat key where the words name none, the log to its newest ten -
+and the answer is fluent and wrong, the project's worst shape. The P1
+list is that gap filed one wording at a time; the sweep closed 14 of 45
+entries and narrowed 15 in a day, filed 9 more, and moved about 300 feed
+answers, which says the queue is a measure, not a list. Measured on
+`c7a5803` (2026-10-13, the lead's harness over the merged tree's records):
+of the 1,844 feed questions answered through a reader, 137 carry an
+unread word that names a number (62), a stat (58), a window (29) or a date
+(2); of the 628's 603, 52 (stat 43, number 7, window 2) - an upper bound,
+since "record" in "Lakers vs Celtics record this season" restates the
+shape and "top" in "tops the league" is no window; the ledger holds 96
+feed questions with an unread number and 3,165 unread content words
+("stats" 464, "games" 174, "most" 162 restating the shape). Every row
+keeps the standing proof: the four populations against a fresh
+before-tree run, every move enumerated, the ledger lowered by fixes and
+raised only by a named overcount exposed (Jeff's rulings of 2026-10-11
+and -13), the ratchets shrinking, one commit per fix, D4's successor
+("what a new shape brings") for a shape.
+
+| Step | What | Deletes | Proof |
+| --- | --- | --- | --- |
+| 0 | **The sweep's lanes finish.** Lane L's list (12 entries and the two measure P1s it was handed), lane N's (4 and the #364 shape on `sweep-N-team`), and the unowned remainders assigned: #387 (a history with no stat), #411 (a misspelled "last"), #412 ("average" beside a date), and the relation-side reads lane T's seam owes (#372's team line over seasons, #392's own-seasons window, #339's own-alignment pool). The lead merges each push on the merged tree as the sweep's rule has it | nothing | every one of the 45 closed, or narrowed to a named remainder with an owner or a decision; counted by feed answers moved, not entries. **Today:** 14 closed, 15 narrowed, 16 untouched (lanes L and N hold them) |
+| 1 | **Refuse where a word that carries meaning is unread.** The parser's last step says a cause where `Reading.unread` holds a stat word, a number, a window word or a date word AND the family's own value did not come from the words (the measure the model's key or the ranking's default, the window the log's default, the span the default season) - one cause per class (`unread_stat`, `unread_number`, `unread_window`, `unread_date`) with the words as facts, said by the planner where the answer side would otherwise answer, as `Reading.unsupported` is; the lexicon's word classes are the ones the taggers read by (`STAT_WORDS`, the number forms, the window and calendar words), so a word the taggers could have read and did not is the trigger, and a word that restates the shape is not. The lead's, after lane N's last merge (it touches the seam's five files); the measurement first, as a harness in the research repo | the silent defaults' reach: the players' ranking falling to points, the model's stat key standing over unread stat words, the log's ten over "each game" | the harness's count at 0 on both populations, or each remaining question held by text with its reason, as `HELD_DISAGREEMENTS` are; the feed's unread-number questions 96 -> 0 or held; every moved answer enumerated (fluent wrong -> refusal by name, expected in the hundreds); the ledger not grown but by named overcounts |
+| 2 | **A grammar row reads a typed value where one applies.** A harness over the 2,710 readings records, per parent and child row that fired, which typed values stood in the question (a line, a window, an opponent, a companion, a date) and whether the row's predicate read one; a row that decided a shape on words alone with a typed value it ignored is listed with its reach (the team-ranking row reading "nba", the log row reading a month ahead of "average", "last N seasons" as a log were three). The lead measures; the rows are lane N's files, so the fixes are lane N's while it runs and the lead's after | the rows' reads of marks-era words; `lexicon.*_ROW` predicates that take no typed input where their shape needs one | the list at 0, or each exception held with its reason; the 2,710 readings identical but the enumerated row fixes. **Today:** unmeasured; the harness's first output is the number |
+| 3 | **The lifted shapes landed.** The season ranking's three pieces (`ffd14a2` the ranking past a season line, 17 feed answers; `6052c23` the 26th key, the players counted; `6634777` the ranking by seasons, 8) and the team's games by a figure (#364, `sweep-N-team`, about 2 and the "by a thunder player" family) | the `season_line_unread`, `seasons_counted` and `team_game_high` causes where the shapes read, kept where they do not | all merged and re-proved; the frozen keys at 27 with each lifting recorded beside it; `coverage.SOURCES` and the cell tables one row each |
+| 4 | **The assumed-held calls decided** (the Phase 4 review's five and its two rule suggestions, "Phase 4, reviewed"): the aggregate derived from the shape with a yes/no-stat fact on the catalog (1 reading moves, measured by the reviewer; `_ROWS_BY` and `_COUNT_SHAPES` go), the ratchet door rule kept or reverted at `47c03e9`, the ask's spelling alphabet, `conditions` on the SQL list, the `PointShape` derived, the proof rules made standing, D4 replaced by "what a new shape brings" - each a line under "Decisions" with its measured cost, Jeff's | `_ROWS_BY`, `_COUNT_SHAPES` if the aggregate is derived; the "assumed held" wording | nothing "assumed held" left in the roadmap; the aggregate's one enumerated move |
+| 5 | **The planner's worded declines are causes.** 267 planner declines (8 of the 628, 259 of the 2,082, the review's count) still carry a worded sentence (`cannot_honor`'s cell row reason, the shapes' `declined="plan"` sentences); each class becomes a `reading.Cause` with facts said by `say.refusal_phrase`, one enumerated commit per class under the decline rule, the sentence identical or the change named | the reason sentences on the cell-table rows (`ShapeCells` reasons become facts); `Planned`-era wording | 267 -> 0 worded declines, measured by a harness over the records; the 628 and 2,082 with every reworded decline enumerated |
+| 6 | **The P1 list to zero known fluent wrong answers on the recorded populations.** The standing queue after step 1 makes the rest visible as refusals: each entry whose evidence is a recorded question is fixed or refused by name, counted by feed answers moved; the ledger's unread words by class and reach are the order ("per" 54, "rating" 42, "ppg" 38, "percentage" 31, "defensive" 29 first), the restating words excluded | the entries, as they close | no P1 entry whose evidence is a recorded question still answers wrong; the unread-number questions at 0 or held; the feed's unread content words reported by class with the restating classes named |
+| 7 | **The close.** `live_parser31` graded blind against parser30 (167/175, 156/166 not lower; the moved answers graded against the key, the hundreds of refusals-by-name among them graded `refused_ok` only where the key says the question cannot be answered from the warehouse); an Opus review of the phase as Phases 1-4 had; AGENTS.md compacted under its rules (2,923 lines, the review's finding: every rule and measured lesson kept, the dated provenance folded into ROADMAP-HISTORY where a reader of today's code meets no name from it); the done table gains a coverage row (answered questions with an unread meaning word, by population) at its measured value | AGENTS.md's dated provenance paragraphs | the score not lower; the review's findings filed or fixed; the done table at measured values |
+
+**How the steps run.** Step 0 is running. Steps 1 and 2 are measured now by the lead, read-only beside the lanes; step 1's code lands after lane N's last merge and before lane L's measure entries, whose fixes then turn refusals into answers rather than wrong answers into right ones; step 2's row fixes go to lane N while it runs. Step 3 is in flight. Step 4 is Jeff's, at any time. Step 5 is one agent after step 1, on the planner and the sayer. Step 6 is the standing queue the ledger orders. Step 7 is last and alone.
 
 Three rules hold throughout, Phase 3's: a decline or a refusal reworded
 is ONE enumerated commit; a boundary that moves is recorded in
