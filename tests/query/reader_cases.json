@@ -109655,5 +109655,103 @@
     }
    }
   }
+ },
+ {
+  "name": "issue_367_the_opponents_nickname_is_never_the_team",
+  "why": "ISSUES.md #367: \"vs clippers\" is the opponent; the grammar's rule filed its nickname as the team whose quarter was asked, and the Clippers were refused as their own opponent.",
+  "question": "1st q log sabonis vs clippers",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": null,
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": "LA Clippers",
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "log",
+    "sabonis"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": "LA Clippers",
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": null,
+    "asked_reason": "a team's record in the games a player named beside it reached a line",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": "team word 'LA Clippers'; against 'LA Clippers'"
+    },
+    {
+     "stage": "subject",
+     "field": "opponent",
+     "before": null,
+     "after": "LA Clippers",
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/ranking/player",
+     "after": "none",
+     "reason": "the stages settle it from the question's words"
+    }
+   ],
+   "point": null,
+   "point_declined": null,
+   "point_refusal": {
+    "kind": "period_relations_question",
+    "facts": {
+     "shape": null
+    }
+   }
+  }
  }
 ]

@@ -850,7 +850,9 @@ def test_the_grammars_read_the_companions_the_windows_and_the_dates_as_the_tagge
         ("What was the sixers record this season when maxey scored 20+ points?", ["sixers", "maxey"], LINE_RECORD, ("when maxey", "companion")),
         ("randle last 10 game log vs lakers", ["randle", "lakers"], PLAYER_LOG, ("last 10 game", "window")),
         ("since 1/26/20, what are the towns home records including playoffs against the spurs?", ["towns", "spurs"], PLAYER_LOG, ("since 1/26/20", "situation")),
-        ("miles bridges stats vs raptors second half", ["raptors"], TEAM_PERIOD_TOTAL, ("vs raptors", "opponent")),
+        # The opponent's nickname is no team whose half is asked (ISSUES.md
+        # #367): with no player read, the words ask for no shape.
+        ("miles bridges stats vs raptors second half", ["raptors"], None, ("vs raptors", "opponent")),
     ):
         r = _read(con, question, names=names, stat="")
         read = {question[c.start : c.end]: c.what for c in r.claims}

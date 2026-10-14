@@ -365,15 +365,6 @@ those were found.
 - **Priority:** P2 - a sentence short of the question, 14 feed answers.
 - **GitHub:** #366
 
-### The quarter stage files the opponent's nickname as the team: "1st q log sabonis vs clippers" is refused "a team cannot be its own opponent"
-- **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the stages' name writes.
-- **Evidence:** `router._team_slot_or_word` (a quarter or half question, or one with a ranking word, where no team is handed) files the one team nickname the words hold as the subject's team - on 27 of the 2,710 readings at `054d9e9`: 24 a nickname the subject reading had already read as the OPPONENT ("vs clippers", "vs cavs"), 3 the "76ers" the reading did not read until `b1daa88`. Where no player is read (the words-only feed, an ambiguous surname or a dictionary word: "1st q log sabonis vs clippers", "Al horfird first quarter stats against hawks", "Brunson 1st half log vs Celtics 23-24 season", "Josh hart first half game log vs Celtics", "miles bridges stats vs raptors second half" and its "last game" wording) the stage then chooses `team_quarter_points` for that team against itself, and the 6 answers are "Nothing here answers this question as a team's quarter or half: the LA Clippers are named as both the team and its opponent - name the team they played." (since Phase 5, step 5; "a team cannot be its own opponent" before, ISSUES.md #277 closed) Where a player is read ("luka highest scoring games vs bucks", 21 more) the extra team changes no answer. With the model's span the player is read and the stage does not fire. <!-- codespell:ignore hart - Josh Hart's surname -->
-- **User sees:** a refusal naming a cause the question never gave.
-- **Next step:** the stage files no nickname the hand-off already holds as the opponent (`router.Named.opponent`); the 6 answers move from the false cause to the question's own refusal or answer, enumerated. Step 4 deletes the stage.
-- **Source:** ours.
-- **Priority:** P2 - a refusal naming the wrong cause, 6 feed questions.
-- **GitHub:** #367
-
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
 - **Found:** 2026-10-05, the Phase 2 review
 - **Evidence:** read as `player_stat` on both trees; "free throw shot chart" reads as `shot_chart` and refuses correctly (no free-throw chart).
