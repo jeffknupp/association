@@ -2775,6 +2775,7 @@ those were found.
 - **Next step:** read each site, delete the unreachable, and make each reachable one a cause (`ShapeDeclined` with a kind at the end of `reading.CAUSES` and its phrase in `say.refusal_phrase`), one enumerated commit per class as step 5 did; `~/association-research/stages/worded_declines.py --zero` over the populations is the check, and a new recorded wording that reaches one fails it.
 - **Source:** ours.
 - **Priority:** P4 - no recorded question reaches one.
+- **GitHub:** #438
 
 ### A line said over a since-date states the date and the span's opening season both: "... in 141 games since December 11, 2023 since 2024 (2024-2026 regular seasons)"
 - **Found:** 2026-10-13, the P1 sweep (lane S), reading #353's moved answer.
