@@ -163,6 +163,13 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
         ("warriors' record last season when committing 10 or fewer turnovers", PLAYER_LOG, [("turnovers", "<=", 10, "10 or fewer turnovers", False, True)], None),
         ("lebron games with 12 or less fga", PLAYER_LOG, [("fieldGoalsAttempted", "<=", 12, "12 or less fga", False, True)], None),
         ("jokic stats", PLAYER_LINE, [], None),
+        # "2pt", "2-point", "2 point" name the two-point shot, as "3 pt" does the three, and a number after "top" is a
+        # ranking's count: no line, even under a shape that is one (Phase 5, step 2: 25 readings typed them as lines).
+        ("sga 2pt percentage this season", GAMES_COUNTED, [], None),
+        ("display lebron's 2-point shooting percentage over the last 5 years", GAMES_COUNTED, [], None),
+        ("Damian Lillard 2 point attempts", GAMES_COUNTED, [], None),
+        ("top 20 rebound leaders this season", GAMES_COUNTED, [], None),
+        ("how many games with 2 points did he have", GAMES_COUNTED, [("points", ">=", 2, "2 points", True, False)], None),
     ],
 )
 def test_the_words_read_as_lines(question: str, shape: PointShape | None, expected: list[tuple[Any, ...]], stat: str | None) -> None:

@@ -2747,17 +2747,35 @@ NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "&", "+", ","})
 """
 
 
+#: The word that makes the number right after it a ranking's count ("top 20
+#: rebound leaders"), which no line is read from (Phase 5, step 2).
+_RANKED_COUNT_LEAD = re.compile(r"\b(?:top|bottom)[\s-]*$", re.IGNORECASE)
+
+
 def threshold_pairs(text: str) -> list[re.Match[str]]:
     """Every line :data:`THRESHOLD` reads in ``text``, in order, that is a
     line and not a shot type - "3 point" and "3 pt" name the shot, not three
-    points - and holds a number of one or more.
+    points, as "2 point" and "2pt" do - nor a ranking's count ("top 20
+    rebound leaders"), and holds a number of one or more.
+
+    .. versionchanged:: 6.0.0
+       "2 point"/"2pt" and a number after "top" are no line (Phase 5,
+       step 2).
 
     .. versionadded:: 6.0.0
     """
     found: list[re.Match[str]] = []
     for match in THRESHOLD.finditer(text):
         number = int(match.group(1))
-        if number == 3 and match.group(2).casefold().startswith(("point", "pt")):
+        word = match.group(2).casefold()
+        if number == 3 and word.startswith(("point", "pt")):
+            continue
+        # "2pt percentage", "2-point shooting", "2 point attempts": the shot,
+        # as "3 pt" is - a line of two points is "2 points" (Phase 5, step 2).
+        if number == 2 and word in ("point", "pt"):
+            continue
+        # "top 20 rebound leaders": the ranking's count, never a line.
+        if _RANKED_COUNT_LEAD.search(text, 0, match.start()) is not None:
             continue
         if number >= 1:
             found.append(match)
