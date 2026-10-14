@@ -78,15 +78,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #424
 
-### A team's log asked "including playoffs" shows the regular season alone: "sixers last 10 games against bos including playoffs" lists ten regular-season meetings
-- **Found:** 2026-10-13, Jeff's queries on master; re-measured by the lead on four trees with the same reply (`v5.0.0`, `4de1801` Phase 3's close, `aaa0a8a` Phase 4's open, master `867b604`): the same ten regular-season games every time, so it is not a regression of the rewrite's phases or the sweep - the team log has never honored both season types.
-- **Evidence:** the reading carries `span: {season_type: 2, both: True, career: True}` and `window: {order: recent, count: 10}` (the span tagger read "including playoffs" as `both`), and the team log executes the team compiler's rows read over `team_relation.team_span_clause`, which reads `season_type` and not `both`; the heading says "(all-time, 2024-2026 regular seasons)". The player log honors `both` ("lebron last 10 games vs celtics including playoffs" lists postseason games), so the same words answer differently by subject. Sibling: the team total ignoring "no season type named" (the entry above, "total points by the raptors in the last 10 games").
-- **User sees:** ten regular-season games where the playoffs were asked for by name, the omission stated only as "regular seasons" in the heading.
-- **Next step:** `team_relation.team_span_clause` honors `Span.both` as the player relation's `span_of` does (both season types in one read, the postseason selected by the calendar year it was played in), the heading saying "regular season and playoffs"; a test on the team fixture with a postseason meeting; the feed measured for the class first (every team log or team total with "including playoffs", "regular season and playoffs", "playoffs included").
-- **Source:** ours.
-- **Priority:** P1 - a different set of games than asked, the words that asked for them ignored.
-- **GitHub:** #416
-
 ### A coach named by "under <name>" is read by nothing: "Name the top 10 players by games played under Lon Kruger" ranks the whole league's 2026 season
 - **Found:** 2026-10-13, the P1 sweep's lane L2, fixing #408 (the ranking by games played).
 - **Evidence:** on sweep-L2 (feed, no model names), "Name the top 10 players by games played under Lon Kruger in NBa" reads `Reading.unread` `under`, `lon`, `kruger` and answers "every player, 2026 regular season, by player (games played): Julian Champagnie 83 G ..." (the points-per-game ranking before #408's fix). The coach cause (`no_coach_table`) is read from the word "coach" alone (`lexicon` coach words, `point._read_point`), and nothing reads "under <a name that is no player>" as a coach; Lon Kruger coached the Hawks 2000-03. 1 of the 2,082.
