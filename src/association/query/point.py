@@ -500,6 +500,25 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
     seasons = _leaderboard_season_line(asked, scope, question, measure, predicates)
     if seasons is not None:
         return seasons
+    if scope.measure is not None and scope.measure.key == "games_played":
+        # Players ranked by their games (ISSUES.md #408): a count of each
+        # one's games over the narrowed span, ordered by it - the count a
+        # ranking of boolean games orders by, with no predicate. No
+        # default qualifier: the games ARE the measure.
+        return Reading(
+            **scope.filters(),
+            shape="ranking",
+            by="player",
+            measures=(),
+            aggregate=Aggregate.COUNT,
+            group="player",
+            predicates=predicates,
+            order="measure",
+            direction=_asc_or_desc(question),
+            limit=_clamp_limit(scope.window.count, 10),
+            minimum_games=_games_played_minimum(scope),
+            relation="everyone",
+        )
     if measure is None:
         stat = _named_stat(scope)
         if scope.measure is not None and scope.measure.key == "shot_distance":
@@ -534,6 +553,17 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
         minimum_games=minimum_games,
         relation="everyone",
     )
+
+
+def _games_played_minimum(scope: Filtered) -> int | None:
+    """A ranking by games played's qualifier: the games the words state, or
+    none - a floor in another unit refused by name, as every game-level
+    ranking refuses it."""
+    if scope.minimum is None:
+        return None
+    if scope.minimum.unit != "games":
+        raise PointRefused(Cause(kind="ranking_floor_unit", facts={"unit": scope.minimum.word, "count": scope.minimum.count}))
+    return scope.minimum.count
 
 
 def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> Reading | None:
@@ -2379,9 +2409,8 @@ def _measure_key_by_words(asked: PointShape | None, words: MeasureWords, context
     if asked in _MEASURE_TWO_POINT_PCT and words.two_point is not None:
         key = "twoPointFieldGoalPct"
         claims.append(Claim(words.two_point.start(), words.two_point.end(), "measure"))
-    if asked == PLAYER_RANKING and words.shot_distance is not None:
-        key = "shot_distance"
-        claims.append(Claim(words.shot_distance.start(), words.shot_distance.end(), "measure"))
+    if asked == PLAYER_RANKING:
+        key = _measure_key_ranked(words, key, claims)
     if key in MADE_TO_ATTEMPTED and words.attempted is not None and not words.made:
         key = MADE_TO_ATTEMPTED[key]
         claims.append(Claim(words.attempted.start(), words.attempted.end(), "measure"))
@@ -2392,6 +2421,20 @@ def _measure_key_by_words(asked: PointShape | None, words: MeasureWords, context
         return "losses" if words.games_won.group(1).lower().startswith("los") else "wins"
     if context.line_stat is not None:
         key = context.line_stat
+    return key
+
+
+def _measure_key_ranked(words: MeasureWords, key: str | None, claims: list[Claim]) -> str | None:
+    """The key a ranking of players reads beyond the grammar: games played,
+    where the words name no other measure and the model's key none (ISSUES.md
+    #408: the ranking's count of games), and a ranking by shot distance (the
+    sentinel the ranking refuses by name)."""
+    if words.games_played is not None and words.worded is None and key is None:
+        key = "games_played"
+        claims.append(Claim(words.games_played.start(), words.games_played.end(), "measure"))
+    if words.shot_distance is not None:
+        key = "shot_distance"
+        claims.append(Claim(words.shot_distance.start(), words.shot_distance.end(), "measure"))
     return key
 
 

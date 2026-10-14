@@ -1241,3 +1241,27 @@ def test_a_win_percentage_is_the_teams_standings_or_a_players_record(con: duckdb
     if asked == PLAYER_RANKING:
         assert reading.point_refusal is not None and reading.point_refusal.facts["fact"] == "player win percentage"
         assert "No ranking of players by win percentage is read here" in refusal_phrase(reading.point_refusal.kind, reading.point_refusal.facts)
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "asked", "key"),
+    [
+        ("most games played by a player this season", [], PLAYER_RANKING, "games_played"),
+        ("player with most gp since 2020", [], PLAYER_RANKING, "games_played"),
+        ("least games played with lakers", [], PLAYER_RANKING, "games_played"),
+        ("most games played for the celtics in the 2010s", [], PLAYER_RANKING, "games_played"),
+        # A player's own games played is his line, which says his games.
+        ("maxey games played last season", ["Tyrese Maxey"], PLAYER_LINE, None),
+    ],
+)
+def test_a_ranking_by_games_played_is_read_as_games_played(con: duckdb.DuckDBPyConnection, question: str, names: list[str], asked: PointShape, key: str | None) -> None:
+    """ISSUES.md #408: "most games played by a player denver nuggets"
+    ranked the Nuggets by points per game - "games played" was read by
+    nothing. On a ranking of players, the league's or a team's, it is the
+    measure, and the point counts each player's games."""
+    reading = _read(con, question, names)
+    assert reading.asked == asked
+    assert (reading.measure.key if reading.measure is not None else None) == key
+    if key is not None:
+        point = reading.point
+        assert point is not None and point.aggregate == "count" and point.measures == () and point.predicates == [] and point.order == "measure"

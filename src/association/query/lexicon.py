@@ -2935,6 +2935,16 @@ GAME_SCORE = re.compile(r"\bgame\s*scores?\b", re.IGNORECASE)
    ``router._GAME_SCORE`` until Phase 3, step 2.
 """
 
+GAMES_PLAYED = re.compile(r"\bgames?\s+played\b|\bgp\b", re.IGNORECASE)
+"""Games played, named: what a ranking of players orders them by where the
+words name it and no other measure - "most games played by a player denver
+nuggets" ranked the Nuggets by points per game (ISSUES.md #408). Read on a
+ranking of players alone (``point.measure_under``): a player's own "games
+played" is his line, which says his games.
+
+.. versionadded:: 6.0.0
+"""
+
 # Two-point field-goal percentage (ISSUES.md #114): "2pt", "2-pt", "2 point",
 # "two point" and "2p", each read against percentage/pct/% (optionally with
 # "field goal(s)" between) - and nothing shorter, so "3 point percentage"
@@ -4617,6 +4627,13 @@ TEAM_OUTLOOK_ROW = row(r"\b(outlook|projections?|projected|on pace|schedule|odds
 # the players' ranking reads under the team - not a team box-score total.
 TEAM_DOUBLES_ROW = row(r"\b(triple|double)[ -]?doubles?\b")
 """A team's triple-doubles or double-doubles - its players'.
+
+.. versionadded:: 6.0.0
+"""
+TEAM_GAMES_PLAYED_ROW = row(r"(?=.*\b(most|least|fewest|top|leaders?)\b)(?=.*(\bgames?\s+played\b|\bgp\b))")
+"""A team's players ranked by games played - "most games played for the
+knicks in the 2010s", "least games played with lakers" - its players' (ISSUES.md
+#408), as its triple-doubles are; never the team's own count of games.
 
 .. versionadded:: 6.0.0
 """

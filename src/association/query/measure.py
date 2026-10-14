@@ -625,7 +625,7 @@ class MeasureWords:
     words name (:func:`named`) and each pattern a rule of the key's reading
     turns on (:func:`~association.query.point.measure_under`) - fouling out,
     "how many" and a stat word, a team stat word, "td3", an advanced
-    metric, game score, a 2-point percentage, a ranking by shot distance,
+    metric, game score, games played, a 2-point percentage, a ranking by shot distance,
     "attempted" and "made", a team metric's alias, games won or lost, the
     sides of the ball, per 90 and the rate words, a team's total and "per
     game", a log's and a quarter's games words, a losing streak, the shot
@@ -642,6 +642,7 @@ class MeasureWords:
     td3: bool
     advanced: tuple[str, re.Match[str]] | None
     game_score: re.Match[str] | None
+    games_played: re.Match[str] | None
     two_point: re.Match[str] | None
     shot_distance: re.Match[str] | None
     attempted: re.Match[str] | None
@@ -686,6 +687,7 @@ def read_measure(question: str) -> MeasureWords:
         td3=lexicon.TRIPLE_DOUBLE_ABBREVIATION.search(question) is not None,
         advanced=advanced,
         game_score=lexicon.GAME_SCORE.search(question),
+        games_played=lexicon.GAMES_PLAYED.search(question),
         two_point=lexicon.TWO_POINT_PCT.search(question),
         shot_distance=lexicon.SHOT_DISTANCE_RANKED.search(question),
         attempted=lexicon.ATTEMPTED.search(question),
