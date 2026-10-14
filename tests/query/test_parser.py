@@ -1286,3 +1286,21 @@ def test_a_line_reached_the_most_times_is_a_count_of_games_over_it(con: duckdb.D
     assert reading.asked == GAMES_COUNTED
     assert [(each.measure, each.op, each.value) for each in reading.lines] == [line]
     assert "40" not in reading.unread and "50" not in reading.unread and "15" not in reading.unread
+
+
+def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #114: "game score nba leader" arrived with the model's
+    ``stat='points'`` (a required key over a closed enum that holds no game
+    score) and answered the points-per-game leaders. The words win over the
+    key: the measure is game score, ranked per game on the season line by
+    ``avg_game_score`` - "Nikola Jokic led the league in game score in the
+    2026 regular season (minimum 20 games), at 28.68" on the warehouse."""
+    from association.query.compose.core import Query
+    from association.query.compose.rankings import _leaderboard_metric
+
+    reading = _read(con, "game score nba leader", [], "points")
+    assert reading.asked == PLAYER_RANKING
+    assert reading.measure is not None and reading.measure.key == "game_score"
+    planned = plan_point(reading)
+    assert isinstance(planned, Query) and planned.source == "seasons"
+    assert _leaderboard_metric(planned, career=False) == "avg_game_score"

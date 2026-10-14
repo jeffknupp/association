@@ -137,6 +137,11 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P2 - (2) answers a broader question on 6 of the 2,082; (1) and (3) are refusals or #390's.
 - **GitHub:** #371
 
+The 391 date-only games printed a day early (#76), 2008's team rebound columns
+(#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
+to this section, re-read the P2s against the P1 definition: that is how both of
+those were found.
+
 ### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
 - **Evidence:** `live_day10.jsonl` (bcf30a8): the router files `head_to_head` (team PHI, opponent BOS); the reading's rule "a player's record against a team, not two teams meeting" (`subject._decide_intent`) reroutes to `with_without` with `without=[Joel Embiid]`, and the template answers "Philadelphia 76ers with and without Joel Embiid vs the Boston Celtics, 2026 regular season: out 2 1-1, played 2 1-1". The key (blind, reading a, dominant): the 76ers went 4-2 in the 6 games Embiid played vs Boston in 2025-26 - 2 regular-season meetings and playoff Games 4-7 (he has no box row for Games 1-3). Two faults: the SHAPE (a split with an "out" row nobody asked for, where the question is his games and their record - dates, outcomes, and reasonably his line in each), and the SCOPE ("this year" narrowed to the regular season by the unstated-season-type default, `_validate_season_type`; `season_type_unstated` widens only "last N games" and "including playoffs" wordings today).
@@ -145,84 +150,6 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** two decisions for the parser (ROADMAP: the consolidation). Shape: a player set against a team is his games narrowed by opponent - the player-games relation, rows with W/L and his line plus the tally - never the team's with/without split (the reroute rule goes; the compiler's rows shape with a record summary is the nearest thing today). Scope: "this year" / "this season" with no type named reads both types and says so, the way `season_type_unstated` already does for "last N games" - a policy for every question, to confirm with Jeff, since the regular-season default is what every per-game average answers under today.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
-
-### "game score" is answered with points per game, because the router substitutes a stat it knows
-- **Found:** 2026-09-18, while making the computed advanced stats lookup-able
-- **Evidence:** in the StatMuse replay corpus
-  (`~/association-research/statmuse-2026-09/fastpath_after_rows_graded.jsonl`),
-  "game score nba leader" arrives at `leaderboard` with `stat: 'points'` - not
-  with an unknown stat, and not with no stat. `stat` is a REQUIRED slot in
-  `ROUTER_SCHEMA`, so the decoder fills it with the nearest value it knows, and
-  "game score" is not one of them. The answer is "Luka Doncic led the league in
-  points per game in the 2026 regular season (minimum 20 games), at 33.5" -
-  correct about points, and not what was asked. Game Score is Hollinger's
-  single-game composite and it is a different ranking (`avg_game_score` for
-  2026: Jokic 28.7, Doncic 26.4, Gilgeous-Alexander 26.4).
-- **User sees:** a fluently wrong answer, with no sign anything was
-  substituted. This is the failure shape at the top of `AGENTS.md`, arriving
-  through a required slot rather than through a template.
-- **Next step:** the metric half is done - `avg_game_score` is in
-  `LEADERBOARD_METRICS` with its games qualifiers, and `game_score` is in
-  `season_line.ADVANCED_STATS` so `player_stat` can look it up too. The
-  routing half is now also in code: `router._route_game_score` reads the
-  two-word phrase off the question text (anchored `\bgame\s*scores?\b`, so
-  "score" alone - which means points everywhere else - is not swept in) and
-  sets the spelling each template expects (`avg_game_score` for `leaderboard`,
-  `game_score` for `player_stat`; every other intent is left alone, since
-  neither `player_compare` nor `player_history` nor `game_log` reads
-  `ADVANCED_STATS`). `ROUTER_PROMPT` and `ROUTER_SCHEMA` are untouched -
-  confirmed by hashing both before and after the change and by `git diff`
-  reporting no change to `router_prompt.py`. Unit tests cover the positive
-  case for both intents, the negative controls ("pacers score", "what was the
-  score of the game", "Total points scored by the toronto raptors", "least
-  points scored by the wizards", and the "scored" boundary case), a question
-  genuinely about points, and that the value is left alone outside
-  `leaderboard`/`player_stat`; both the intent-spelling table and the regex
-  anchor were perturbed with `scripts/perturb.py` and CAUGHT.
-  **The confirming measurement ran on 2026-09-20** against the live router
-  (`scripts/check_routing.py`, 104 cases, qwen2.5:3b): 104 routed as expected,
-  including the five cases added for the 2-point-percentage and shot-distance
-  fixes below. The `fastpath_feed.py` replay over all 261 is still not re-run
-  against ollama; the offline `reroute_recorded.py` replay stands in for it and
-  reports no corpus row moved.
-- **Note:** the same substitution is worth checking for every stat name the
-  router does not know. "ats okc" and "players with the highest scoring triple
-  doubles" are graded `wrong metric` in the same corpus.
-  Another, found 2026-09-19 re-scoring the corpus after the B4 port:
-  "Jabari smith defensive rebounds vs lakers last 5 games" arrives with
-  `stat: 'rebounds'` - the enum has no defensive rebounds, so the log would
-  show total rebounds under a question that asked for one kind.
-  Two more from the 2026-09-20 web session (build `178c21f-dirty`, 45
-  questions), **fixed 2026-09-20** (see `CHANGES.md`): "show me sga's 2pt
-  percentage for the past 5 years" arrived as `player_history` with
-  `stat: 'fieldGoalPct'` and answered overall FG% by season where 2-point
-  percentage was asked for - `route()` now reads "2pt"/"2-pt"/"2 point"/"two
-  point"/"2p" against percentage/pct/% and sets `stat` to
-  `twoPointFieldGoalPct`, which `player_history` and `player_stat` now
-  compute from field goals less the three-point columns (there is no stored
-  2-point make/attempt column). And "who lead the league in avg 3 point
-  distance" arrived as `leaderboard` with `stat: 'threePointFieldGoalPct'`
-  and named Luke Kennard's 47.8%, while the "shot distance" phrasing arrived
-  with a filler `player: 'player'` and was refused for naming a player it
-  does not mention - `route()` now reads "shot distance"/"3 point
-  distance"/"distance for 3 point" on `leaderboard` questions into a
-  sentinel `stat` and drops the filler player, and `leaderboard` refuses on
-  the sentinel, naming the real cause and pointing at `shot_distance` for one
-  named player, before either wrong-cause path can run.
-- **Parser path (5.0.0, the router gone):** "game score nba leader" answers
-  the game-score leaderboard (Jokic 28.68), read from the words by
-  `parse.MEASURE_GRAMMAR` before the model's key, and "defensive rebounds" is
-  `MEASURE_WORDS`' own key. The shape stays possible: the normalizer's `stat`
-  is required over a closed enum (`NORMALIZER_STATS`), so a stat word neither
-  the measure grammar nor the enum holds can still get the nearest key the
-  model knows - unmeasured on the normalizer; "ats okc" and "players with the
-  highest scoring triple doubles" are the cases to check.
-
-The 391 date-only games printed a day early (#76), 2008's team rebound columns
-(#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
-to this section, re-read the P2s against the P1 definition: that is how both of
-those were found.
-- **GitHub:** #114
 
 ### A team's players' single-game high is answered for this season only: "most points in a game in cavs history"
 - **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`); re-measured 2026-09-27 on the compiler; the sentence half fixed 2026-10-13 (the P1 sweep's lane T).
