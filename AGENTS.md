@@ -291,11 +291,12 @@ this tree:
   step 4's slice (c) (2026-10-11; the same at Phase 4's close, 2026-10-13): twelve words a window read as the typed
   window no longer needs ("games" after "last 10 ..."), left unread by
   Jeff's ruling to keep that slice's moves; on the 2,082 feed questions
-  (`claims_ledger.py run --feed`) 3,658 words are unread (3,660 until
-  Phase 4, step 6 read #396's "seed teams"; 2026-10-13), 177 questions
-  hold an unread number (191 at the Phase 3 review; read one by one in
-  the cleanup's (b)5, six fixed and the rest filed by shape) and 91 disagree
-  between the Reading's list and the deletion. Since the review's cleanup
+  (`claims_ledger.py run --feed`) 2,879 words are unread (3,658 at Phase
+  4's close, 3,023 after the P1 sweep, 2,879 since Phase 5, step 1's
+  refusals claim the words they name; 2026-10-14), 25 questions
+  hold an unread number (177 at Phase 4's close, 86 after the sweep; 191 at the Phase 3 review; read one by one in
+  the cleanup's (b)5, six fixed and the rest filed by shape) and 74 disagree
+  between the Reading's list and the deletion (91 until the sweep). The 628's: 690 words, 5 numbers. Since the review's cleanup
   (b)5 (2026-10-12) both populations are HELD, in
   `scripts/ledger_held.json`, as the ratchets are: the unread words by
   count and the questions holding an unread number by question, each
@@ -1855,9 +1856,32 @@ a shape:
   nothing reads (`Reading.unsupported` - a playoff round, an age, a
   quarter's stat nothing rebuilds, bench points, ...), said by the planner
   only where the answer side declined, so a question the compiler answers
-  is answered. Both are read by the parser (`parse.read_route`'s last step)
-  and said through `refusal_phrase`; nothing after the parser re-reads
-  the question for them.
+  is answered; and, since Phase 5, step 1 (2026-10-14), a word that
+  carries a meaning the reading defaulted past (`Reading.defaulted`, one
+  `Cause` with the words by class: an unread number that is no rate's
+  unit, no season the span read and no read line's or period's value,
+  `unread_number`; an unread stat word the measure tagger reads to a key
+  other than the one taken, `unread_stat`; an unread window word where no
+  window was read, `unread_window`; an unread month, or a slashed day
+  after a word that leads a date, where no calendar narrowing was,
+  `unread_date` - the lexicon's `MEANING_*` classes), read in the parser's
+  last step after the unread words are known
+  (`parse._reading_from_route_defaulted`), claiming its words so the ledger
+  reads them, and said by the planner only where the planning produced a
+  query (`plan.plan_point`), so a decline or a refusal the words came to
+  otherwise keeps its own sentence and a question that would have been
+  answered fluently past the word - "aaron gorodn lat 5 games" as his
+  season averages, "anthony davis 2020 playoff first 3 rounds" as his
+  whole postseason - is refused by name. A word that restates the shape ("record", "stats",
+  "most") is in no class, a leftover of the read measure's own words
+  ("point" of "point differential") names no other stat, and a figure
+  written with a slash ("went 7/14 from three") is no day. The rule's
+  harness is `~/association-research/stages/unread_meaning.py`, which
+  classifies by the same guards; it read 86 of the 1,807 feed questions
+  answered through a reader and 8 of the 628's 603 before the step, and
+  0 and 0 after. All three are read by the parser (`parse.read_route`'s
+  last step) and said through `refusal_phrase`; nothing after the parser
+  re-reads the question for them.
   Nothing in the package may reach ollama - it is a compiler, not a
   model - and it narrows the relation only through the shared steps
   (`query/player_relation.py`, `query/team_relation.py`; see "A reader on

@@ -23518,9 +23518,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "201"
-   ],
+   "unread": [],
    "subject": {
     "kind": "everyone",
     "players": [],
@@ -23631,7 +23629,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "team_seasons",
+      "shape": "ranking",
+      "by": "team"
+     },
+     "words": [
+      "201"
+     ],
+     "classes": {
+      "number": [
+       "201"
+      ]
+     }
+    }
+   }
   }
  },
  {
@@ -40556,9 +40572,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "2"
-   ],
+   "unread": [],
    "subject": {
     "kind": "player",
     "players": [
@@ -40706,7 +40720,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "scalar",
+      "by": "line"
+     },
+     "words": [
+      "2"
+     ],
+     "classes": {
+      "number": [
+       "2"
+      ]
+     }
+    }
+   }
   }
  },
  {
@@ -77813,7 +77845,6 @@
    "unread": [
     "record",
     "all-time",
-    "december",
     "road"
    ],
    "subject": {
@@ -77851,6 +77882,24 @@
     "kind": "no_coach_table",
     "facts": {
      "unanswerable": "coach"
+    }
+   },
+   "defaulted": {
+    "kind": "unread_date",
+    "facts": {
+     "shape": {
+      "relation": "team_seasons",
+      "shape": "scalar",
+      "by": "coach"
+     },
+     "words": [
+      "december"
+     ],
+     "classes": {
+      "date": [
+       "december"
+      ]
+     }
     }
    }
   }
@@ -81063,8 +81112,7 @@
    },
    "minimum": null,
    "unread": [
-    "scored",
-    "20"
+    "scored"
    ],
    "subject": {
     "kind": "player",
@@ -81203,7 +81251,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_periods",
+      "shape": "rows",
+      "by": "date"
+     },
+     "words": [
+      "20"
+     ],
+     "classes": {
+      "number": [
+       "20"
+      ]
+     }
+    }
+   }
   }
  },
  {
@@ -81982,8 +82048,6 @@
     "lead",
     "league",
     "shot",
-    "3",
-    "point",
     "shots"
    ],
    "subject": {
@@ -82020,6 +82084,27 @@
    "point_refusal": {
     "kind": "shot_distance_ranking",
     "facts": {}
+   },
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "3"
+     ],
+     "classes": {
+      "number": [
+       "3"
+      ],
+      "stat": [
+       "point"
+      ]
+     }
+    }
    }
   }
  },

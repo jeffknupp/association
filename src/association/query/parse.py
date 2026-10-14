@@ -25,10 +25,10 @@ a span that is no player's and no team's is dropped, never made a subject
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
-from association.query import lexicon, names
+from association.query import lexicon, measure, names
 from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
@@ -1064,15 +1064,23 @@ def _reading(
         lambda probed: (_reading_from_route_refused(players, teams, probed, pointed), _reading_from_route_unsupported(probed, pointed), _reading_from_route_left_out(players, probed, pointed)),
     )
     found = list(claimed_once(found))
+    # Phase 5, step 1: an unread word that carries a meaning the reading
+    # defaulted past is a refusal by name, and the refusal claims its words
+    # (so the ledger reads them, and the deletion probe agrees: without the
+    # word there is no refusal).
+    read_by_model = (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked))
+    defaulted, defaulted_claims = _reading_from_route_defaulted(asked, pointed, [(c.start, c.end) for c in found], read_by_model, model_stat)
+    found = list(claimed_once([*found, *defaulted_claims]))
     return replace(
         pointed,
         refused=refused,
         unsupported=unsupported,
         left_out=left_out,
+        defaulted=defaulted,
         claims=tuple(found),
         # The words nothing claimed, by the claims ledger's rule, over the
         # question as it was asked (the fold keeps every position).
-        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked)), model_stat),
+        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], read_by_model, model_stat),
     )
 
 
@@ -1260,6 +1268,133 @@ def _reading_from_route_denied(question: str, reading: Reading) -> Cause | None:
             return Cause(
                 kind="denied_role", facts={"player": player, "words": question[match.start() : match.end()].strip(), "role": "start" if predicate == "started" else "bench", "shape": reading.asked}
             )
+    return None
+
+
+_DEFAULTED_ORDER: tuple[str, ...] = ("number", "stat", "window", "date")
+"""The classes of a word the reading defaulted past, in the order one is
+said where a question holds more than one: a number first (the sharpest
+loss - "last 5 games" read as the season), then a stat, a window word, a
+date (Phase 5, step 1)."""
+
+
+def _reading_from_route_defaulted(question: str, reading: Reading, claimed: list[tuple[int, int]], names: tuple[str, ...], stat: str) -> tuple[Cause | None, list[Claim]]:
+    """A word of ``question`` that carries a meaning the reading defaulted
+    past (Phase 5, step 1; :attr:`~association.query.reading.Reading.defaulted`):
+    among the content words nothing ``claimed`` (the ledger's own rule,
+    :func:`~association.query.lexicon.content_words`), a number that is no
+    rate's unit, no season the span read and no read line's or period's
+    value (``unread_number``); a stat word the measure tagger reads to a key
+    other than the one the reading took (``unread_stat``); a window word
+    where the window read no count and no end (``unread_window``); a month,
+    or a slashed day after a word that leads a date, where the cuts hold no
+    calendar narrowing and no date (``unread_date``). One cause, the first
+    class by :data:`_DEFAULTED_ORDER`, its facts the words of every class
+    found, and a claim over each such word, since the refusal reads them.
+    A word that restates the shape ("record", "stats", "most") is in no
+    class and stays unread. Measured before the step on the four
+    populations (``~/association-research/stages/unread_meaning.py``, on
+    ``520a94b``): 86 of the 1,807 feed questions answered through a reader
+    and 8 of the 628's 603 carried one; 0 and 0 after."""
+    unread = [(start, end, word) for start, end, word in lexicon.content_words(question, names, stat) if not any(first < end and last > start for first, last in claimed)]
+    context = _DefaultedContext.of(reading)
+    classes: dict[str, list[str]] = {}
+    claims: list[Claim] = []
+    names_read: dict[str, str] = {}
+    for start, end, word in unread:
+        lower = word.lower()
+        before = question[:start].split()[-1].lower() if question[:start].split() else ""
+        which = _defaulted_class(lower, before, context, names_read)
+        if which is None:
+            continue
+        classes.setdefault(which, []).append(word)
+        claims.append(Claim(start, end, "defaulted"))
+    cause = _defaulted_cause(reading, classes, names_read, context.key)
+    return cause, (claims if cause is not None else [])
+
+
+@dataclass(frozen=True)
+class _DefaultedContext:
+    """What the reading read, against which an unread word is classed
+    (:func:`_reading_from_route_defaulted`): the measure's key and its own
+    words, the seasons the span read, the values the lines and the period
+    read, the window and the cuts."""
+
+    key: str | None
+    read_words: frozenset[str]
+    years: frozenset[str]
+    values: frozenset[str]
+    window: Window
+    cuts: Cuts
+
+    @classmethod
+    def of(cls, reading: Reading) -> _DefaultedContext:
+        """The context ``reading`` gives."""
+        key = reading.measure.key if reading.measure is not None else None
+        # The read measure's own words - its catalog label and the words it
+        # was typed as - so a leftover of it ("point" of "point differential",
+        # read whole by the model) names no other stat.
+        typed = (reading.measure.as_typed or "") if reading.measure is not None else ""
+        label = measure.CATALOG[key].label if key in measure.CATALOG else ""
+        read_words = frozenset(word.rstrip("s") for word in f"{typed} {label}".lower().replace("_", " ").split())
+        span = reading.span
+        years = frozenset(str(year) for year in (span.season, span.since, span.until) if year is not None)
+        values = {str(line.value).removesuffix(".0") for line in reading.lines}
+        if reading.period is not None and reading.period.number is not None:
+            # "4th quarter stats 4th quarter": the second names the period read.
+            values |= {str(reading.period.number), *lexicon.ordinal_forms(reading.period.number)}
+        return cls(key, read_words, years, frozenset(values), reading.window, reading.cuts)
+
+
+def _defaulted_class(lower: str, before: str, context: _DefaultedContext, names_read: dict[str, str]) -> str | None:
+    """Which class one unread word falls in (:func:`_reading_from_route_defaulted`),
+    or None where it carries no meaning the reading defaulted past."""
+    named = measure.named(lower)
+    if named is not None and named[0] != context.key and lower.rstrip("s") not in context.read_words:
+        names_read[lower] = measure.CATALOG[named[0]].label if named[0] in measure.CATALOG else named[0]
+        return "stat"
+    if lexicon.MEANING_NUMBER.fullmatch(lower):
+        return "number" if _defaulted_number(lower, before, context) else None
+    if lower in lexicon.MEANING_WINDOW_WORDS and context.window.count is None and context.window.order is None:
+        return "window"
+    if _defaulted_date(lower, before, context):
+        return "date"
+    return None
+
+
+def _defaulted_number(lower: str, before: str, context: _DefaultedContext) -> bool:
+    """Whether a number the reading did not read counts: not a rate's unit,
+    not a season the span read, not a read line's or period's value, not
+    a year, and not the day of a date after a month ("september 11th")."""
+    number = lower.rstrip("%").replace(",", "")
+    if number in lexicon.MEANING_UNIT_NUMBERS or number in context.years or lower in context.values or number in context.values:
+        return False
+    if len(number) == 4 and number.isdigit() and 1946 <= int(number) <= 2030:
+        return False
+    return before not in lexicon.MEANING_MONTH_WORDS
+
+
+def _defaulted_date(lower: str, before: str, context: _DefaultedContext) -> bool:
+    """Whether an unread word is a month or a day the cuts did not narrow
+    by: a month's name, or a slashed pair after a word that leads a date
+    ("on 1/26", "since 7/14"; "went 7/14 from three" is a figure)."""
+    if context.cuts.situation is not None or context.cuts.date is not None:
+        return False
+    return lower in lexicon.MEANING_MONTH_WORDS or bool(lexicon.MEANING_SLASHED_DAY.fullmatch(lower) and before in lexicon.MEANING_DATE_LEADS)
+
+
+def _defaulted_cause(reading: Reading, classes: dict[str, list[str]], names_read: dict[str, str], key: str | None) -> Cause | None:
+    """The one cause the classes found give, the first by :data:`_DEFAULTED_ORDER`,
+    its facts the words by class; a stat's names what the word names and
+    what was read instead."""
+    for which in _DEFAULTED_ORDER:
+        if which not in classes:
+            continue
+        facts: dict[str, Any] = {"shape": reading.asked, "words": tuple(classes[which]), "classes": {name: tuple(words) for name, words in classes.items()}}
+        if which == "stat":
+            facts["names"] = names_read.get(classes["stat"][0].lower(), classes["stat"][0])
+            facts["read"] = measure.CATALOG[key].label if key in measure.CATALOG else None
+        return Cause(kind=f"unread_{which}", facts=facts)
     return None
 
 

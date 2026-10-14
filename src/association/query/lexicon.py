@@ -4179,6 +4179,69 @@ def unread_words(question: str, claimed: list[tuple[int, int]], names: tuple[str
     return tuple(word for start, end, word in content_words(question, names, stat) if not any(first < end and last > start for first, last in claimed))
 
 
+# --- Step 1 (Phase 5): the unread words that carry a meaning ----------------
+#
+# An unread content word of one of four classes, where the family's own
+# value did not come from the words, is a default the reading took past
+# what was asked - said as a refusal by name (``parse._reading_from_route_defaulted``)
+# rather than answered fluently. The classes are the taggers' own words,
+# so a word a tagger could have read and did not is the trigger; a word
+# that restates the shape ("record", "stats") is in no class.
+
+MEANING_WINDOW_WORDS: frozenset[str] = frozenset({"last", "past", "first", "final", "top", "bottom", "latest", "recent", "previous", "opener", "finale"})
+"""The window words a reading defaulted past where it read no window: "aaron
+gorodn lat 5 games" read no window and answered his season averages.
+
+.. versionadded:: 6.0.0
+"""
+
+MEANING_UNIT_NUMBERS: frozenset[str] = frozenset({"100", "36", "48"})
+"""The numbers that are a rate's unit, never a count ("per 100 possessions",
+"per 36 minutes"), left out of the unread-number class.
+
+.. versionadded:: 6.0.0
+"""
+
+MEANING_NUMBER = re.compile(r"\d[\d,.]*%?|\d+(?:st|nd|rd|th)", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+"""A number as a question writes one - "5", "1,000", "50%", "1st" - matched
+whole against one unread word.
+
+.. versionadded:: 6.0.0
+"""
+
+MEANING_MONTH_WORDS: frozenset[str] = frozenset({"january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"}) | MONTH_ABBREVIATIONS
+"""A month's name or abbreviation, which a reading with no calendar
+narrowing and no date defaulted past.
+
+.. versionadded:: 6.0.0
+"""
+
+MEANING_SLASHED_DAY = re.compile(r"\d{1,2}/\d{1,2}(?:/\d{2,4})?")
+"""A day written with slashes ("1/26", "1/26/20"), matched whole against one
+unread word.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def ordinal_forms(number: int) -> tuple[str, ...]:
+    """The ordinal spellings of ``number`` as a question writes them ("4th",
+    "1st", "2nd", "3rd"), for a word that restates a read period.
+
+    .. versionadded:: 6.0.0
+    """
+    suffix = "th" if 10 <= number % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")  # codespell:ignore nd - an ordinal suffix
+    return (f"{number}{suffix}",)
+
+
+MEANING_DATE_LEADS: frozenset[str] = frozenset({"on", "since", "from", "after", "before", "until", "till", "through", "thru", "between", "and", "to", "in"})
+"""The words a slashed day stands after to be one ("on 1/26", "since 7/14");
+after any other word it is a figure ("went 7/14 from three").
+
+.. versionadded:: 6.0.0
+"""
+
+
 # --- The grammar's words: what moves the key the words ask --------------------
 #
 # Phase 3, step 4, slice (b): the rules that move what the words ask on the

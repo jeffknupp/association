@@ -4770,6 +4770,50 @@ def _say_fact_not_read(facts: Mapping[str, Any]) -> str:
     return _FACT_NOT_READ[facts["fact"]].format(words=facts["words"])
 
 
+def _unread_words(facts: Mapping[str, Any]) -> str:
+    """The words a ``defaulted`` cause names, quoted and joined."""
+    return " and ".join(f"'{word}'" for word in facts["words"])
+
+
+def _say_unread_number(facts: Mapping[str, Any]) -> str:
+    """A number the reading did not use (Phase 5, step 1): what it counts is
+    the question's to say."""
+    words = _unread_words(facts)
+    first = facts["words"][0]
+    if first[-1:].isalpha():
+        # An ordinal: a place or a period, not a count.
+        return (
+            f'{words} names a place or a period this reading did not use, so the answer would have ignored it - say what it is ("{first} quarter", "{first} season", "{first} round") or leave it out.'
+        )
+    return (
+        f'{words} is a number this reading did not use, so the answer would have ignored it - say what it counts ("last {first} games", "{first}+ points", "at least {first} games") or leave it out.'
+    )
+
+
+def _say_unread_stat(facts: Mapping[str, Any]) -> str:
+    """A stat word naming a measure other than the one read (Phase 5, step
+    1): the question is asked about one stat."""
+    words = _unread_words(facts)
+    read = facts.get("read")
+    instead = f" and read {read} instead" if read else ", which this reading did not take"
+    return f"{words} names {facts['names']}{instead} - ask about one stat, or spell out the one you mean."
+
+
+def _say_unread_window(facts: Mapping[str, Any]) -> str:
+    """A window word where no window was read (Phase 5, step 1)."""
+    words = _unread_words(facts)
+    first = facts["words"][0]
+    return f'{words} asks for a stretch of games this reading did not count - say how many ("{first} 5 games") or which one ("{first} game").'
+
+
+def _say_unread_date(facts: Mapping[str, Any]) -> str:
+    """A month or a slashed day where no calendar narrowing was read (Phase
+    5, step 1)."""
+    words = _unread_words(facts)
+    first = facts["words"][0]
+    return f'{words} names a day or a month this reading did not narrow by - say it as "in {first}" or "on {first}", or leave it out.'
+
+
 def _say_non_calendar_situation(facts: Mapping[str, Any]) -> str:
     """A situation nothing reads, by what the reader recognized in it: an
     age (no birth dates on record), a conference or division word in a
@@ -4809,6 +4853,10 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
     "fact_not_read": _say_fact_not_read,
+    "unread_number": _say_unread_number,
+    "unread_stat": _say_unread_stat,
+    "unread_window": _say_unread_window,
+    "unread_date": _say_unread_date,
     "opponent_not_read": lambda facts: (
         f"'{facts['words']}' after the versus word names no team or player on record, so the games against it cannot be picked out - spell the team or the player as the warehouse has them."
     ),

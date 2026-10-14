@@ -221,6 +221,7 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         **({"refused": plain(reading.refused, mask=mask)} if reading.refused is not None else {}),
         **({"unsupported": plain(reading.unsupported, mask=mask)} if reading.unsupported else {}),
         **({"left_out": plain(reading.left_out, mask=mask)} if reading.left_out is not None else {}),
+        **({"defaulted": plain(reading.defaulted, mask=mask)} if reading.defaulted is not None else {}),
     }
 
 

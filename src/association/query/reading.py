@@ -1447,6 +1447,12 @@ CAUSES: frozenset[str] = frozenset(
         "team_boolean_count",
         "cannot_honor",
         "no_reading_of_point",
+        # Phase 5, step 1: a word of meaning the reading defaulted past
+        # (:attr:`Reading.defaulted`), one kind per class.
+        "unread_number",
+        "unread_stat",
+        "unread_window",
+        "unread_date",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -2023,6 +2029,23 @@ class Reading(Filtered):
     #:
     #: .. versionadded:: 6.0.0
     left_out: LeftOut | None = None
+    #: A word that carries a meaning the reading defaulted past (Phase 5,
+    #: step 1): an unread number that is no unit, season or read line
+    #: (``unread_number``), an unread stat word naming a measure other than
+    #: the one read (``unread_stat``), an unread window word where no window
+    #: was read (``unread_window``), an unread month or slashed day where no
+    #: calendar narrowing was (``unread_date``) - one :class:`Cause`, the
+    #: first class by that order, its facts the words by class and what was
+    #: read instead. Read by the parser's last step after the unread words
+    #: are known (``parse._reading_from_route_defaulted``), which then claims
+    #: them; said by the planner only where the planning produced a query
+    #: (:func:`~association.query.compose.plan.plan_point`), so a decline or
+    #: a refusal the words came to otherwise keeps its own sentence, and a
+    #: question that would have been answered fluently past the word is
+    #: refused by name instead - the project's worst shape, closed.
+    #:
+    #: .. versionadded:: 6.0.0
+    defaulted: Cause | None = None
 
     def describe(self) -> str:
         """The one trace line: every field that decides the answer, the

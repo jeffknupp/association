@@ -1359,3 +1359,63 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
     planned = plan_point(reading)
     assert isinstance(planned, Query) and planned.source == "seasons"
     assert _leaderboard_metric(planned, career=False) == "avg_game_score"
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "stat", "kind", "words"),
+    [
+        ("aaron gorodn lat 5 games", ["Aaron Gordon"], "points", "unread_number", ("5",)),
+        ("Bam adeboyo 1st quater average", ["Bam Adebayo"], "points", "unread_number", ("1st",)),  # codespell:ignore quater - the feed's own spelling
+        ("sga scored 20 points in the 2nd quarter", ["Shai Gilgeous-Alexander"], "points", "unread_number", ("20",)),
+        ("anthony davis last 1st quarter stats vs pistons", ["Anthony Davis"], "points", "unread_window", ("last",)),
+        ("curry stats november", ["Stephen Curry"], "points", "unread_date", ("november",)),
+    ],
+)
+def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, kind: str, words: tuple[str, ...]) -> None:
+    """Phase 5, step 1: an unread number, window word or month the reading
+    took a default past is a ``defaulted`` cause naming the words, which the
+    planner says where it would otherwise answer - "aaron gorodn lat 5
+    games" answered his season averages with the 5 unread, "Bam adeboyo 1st
+    quater average" the season with the quarter unread. The cause claims  # codespell:ignore quater - the feed's own spelling
+    its words, so they leave ``Reading.unread``."""
+    reading = _read(con, question, names, stat)
+    assert reading.defaulted is not None and reading.defaulted.kind == kind and reading.defaulted.facts["words"] == words
+    assert not any(word in reading.unread for word in words)
+    assert reading.defaulted.facts["shape"] == reading.asked
+    planned = plan_point(reading)
+    assert isinstance(planned, Refusal) and planned.kind == kind
+
+
+def test_an_unread_stat_word_naming_another_measure_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 5, step 1: a stat word the measure tagger reads to a key other
+    than the one the reading took is the ``unread_stat`` cause, naming both."""
+    reading = _read(con, "who lead the league in field goal percentage for 3 point shots", [], "fieldGoalPct")
+    assert reading.defaulted is not None and reading.defaulted.kind == "unread_number" and reading.defaulted.facts["words"] == ("3",)
+    reading = _read(con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", ["LeBron James"], "threePointFieldGoalsMade")
+    assert reading.defaulted is not None and reading.defaulted.kind == "unread_number" and reading.defaulted.facts["words"] == ("2",)
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "stat"),
+    [
+        # A rate's unit is no count; the season year the span read is no number.
+        ("jokic points per 100 possessions in 2024", ["Nikola Jokic"], "points"),
+        # A read line's value is read, and its stat word is the line's.
+        ("how many games did curry score 30 points", ["Stephen Curry"], "points"),
+        # A slashed pair after a verb is a figure, not a day.
+        ("curry games where he went 7/14 from three", ["Stephen Curry"], "threePointFieldGoalsMade"),
+        # A leftover word of the measure the model read whole names no other stat.
+        ("KNICKS point differential over the last 7 games", ["New York Knicks"], "points_differential"),
+        # A word that restates the shape is in no class.
+        ("Lakers vs Celtics record this season", ["Los Angeles Lakers", "Boston Celtics"], "points"),
+        # A window the tagger read is no unread window word.
+        ("curry last 5 games", ["Stephen Curry"], "points"),
+    ],
+)
+def test_a_word_the_reading_read_or_that_restates_the_shape_is_no_defaulted_word(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str) -> None:
+    """Phase 5, step 1's guards: the classes are the taggers' own words, so a
+    unit, a season, a read line's value, a figure written with a slash, a
+    leftover of the read measure and a word that restates the shape carry
+    no meaning the reading defaulted past."""
+    reading = _read(con, question, names, stat)
+    assert reading.defaulted is None, reading.defaulted

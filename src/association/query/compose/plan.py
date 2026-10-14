@@ -557,7 +557,7 @@ def plan_point(reading: Reading) -> Verdict:
     if reading.point is None:
         return Unsupported(reading.point_declined or NO_READING)
     try:
-        return plan(reading.point)
+        query = plan(reading.point)
     except Unsupported as exc:
         # A decline, with its sentence - by its cause where the planner says
         # one (ShapeDeclined: the answering loop puts the key the words ask
@@ -566,6 +566,14 @@ def plan_point(reading: Reading) -> Verdict:
         return exc.with_traceback(None)
     except Refused as exc:
         return exc.result
+    if reading.defaulted is not None:
+        # Phase 5, step 1: the planning would answer, past a word that
+        # carries a meaning the reading never read - a number, a stat, a
+        # window, a date - and the answer would be fluent and wrong. Said
+        # here and nowhere earlier, so a decline or a refusal above keeps
+        # its own sentence.
+        return refusal_of(reading.defaulted)
+    return query
 
 
 def planned_shape(reading: Reading, planned: Verdict) -> PointShape | None:
