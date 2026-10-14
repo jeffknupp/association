@@ -3515,7 +3515,10 @@ CHILD_THRESHOLD_COUNT = ask(
     # between the line and "games" ("how many 40 point playoff games does
     # kobe have", ISSUES.md #375: refused "no 2026 postseason numbers" as a
     # player's line over a defaulted season).
-    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away)[\s-]+)?games?\b"
+    # A playoff round there too ("how many 40 point finals games does kobe
+    # have", Phase 5, step 2): the count, whose round the planner refuses by
+    # name, where a player's line refused the "40" as unread.
+    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away|(?:(?:nba|conference|conf)[\s-]+)?finals|semi[\s-]?finals|(?:first|second)[\s-]+round)[\s-]+)?games?\b"
     # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
     # 30+ point games", "how many games did he score 30 points or more in".
     rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*{LINE_NUMBER_NO_PLUS}\s+(?:\w+|{typed('line_stat')}+)\s+or more\b"

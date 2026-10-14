@@ -615,6 +615,10 @@ def test_a_count_of_games_over_a_threshold_is_assigned_under_its_parents(con: du
         con, "how many games in 2005-2006 did kobe score under 25 points", PLAYER_LOG, scope=Reading(who=Who(kind="player", players=("Kobe Bryant",)), measure=Measure(key="points", as_typed="points"))
     )
     assert asked == GAMES_COUNTED and _below(reading) == ["under 25 points"]
+    # A playoff round between the line and "games" (Phase 5, step 2): the count, its round refused by name - where a
+    # player's line refused the "40" as a number it did not use.
+    asked, reading = _assigned(con, "how many 40 point finals games does kobe have", PLAYER_LINE, scope=Reading(who=Who(kind="player", players=("Kobe Bryant",))))
+    assert asked == GAMES_COUNTED and _threshold(reading) == 40
 
 
 def test_a_count_with_no_threshold_in_the_text_stays_the_routers_question(con: duckdb.DuckDBPyConnection) -> None:
