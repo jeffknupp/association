@@ -1692,9 +1692,9 @@ those were found.
   "Western Conference standings").** Re-measured 2026-10-09: "who leads the
   east" is no longer refused - it answers the whole league (P1, "A conference
   or division the players or teams belong to is answered as the whole
-  league"), and `team_record` does NOT read the opponent narrowing this entry
-  lists it under (P2, "A team's record against a conference or division is
-  refused as 'no calendar narrowing'"). Unchanged by this fix: `_conference_refusal`
+  league"), and `team_record` reads the opponent narrowing this entry lists it under
+  since 2026-10-14 (#341, closed: tallied from the team's games through
+  `TeamNarrowed.narrow_alignment`). Unchanged by this fix: `_conference_refusal`
   (`templates/teams.py` then; `calendar.conference_named` and the sayer's `conference_named` phrase, from `compose/team_records.py` and `team_stats.py`, now - its sentence said "no conference or division membership" until 2026-10-09 and names the tally that is missing now; no reading of the 2,710 puts a conference in a team slot, measured that day) still refuses a `team`/`opponent` slot that names a
   conference or division, and "Western Conference standings" was still handed
   to an agent with no conference data grounded for it either, because
@@ -2115,13 +2115,6 @@ those were found.
 - **Next step:** find what writes the words "first quarter" into `player` (the parser's last step restores "the one player the question names" for a player-required intent); a team subject with a quarter is `team_quarter_points`, never `period_split`. A case in `tests/query/test_parser.py`.
 - **GitHub:** #314
 
-### A team's record against a conference or division is refused as "no calendar narrowing"
-- **Found:** 2026-10-09, Phase 3 step 0, probing `conference_named`
-- **Evidence:** on `4b9c254`: "celtics record vs the west", "celtics record against western conference teams this season" and "celtics wins vs the southeast division" are refused "Nothing here answers this question: team_record: no calendar narrowing in situation 'vs the west' - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not" (`compose/team_records.py`, `_team_record_month_and_split`). The relations read the same words as an alignment narrowing ("tatum points per game vs the west" answers 18.9 in 7 games), and #25 lists `team_record` among the shapes that read it - it does not.
-- **User sees:** a refusal saying a conference is not read, about a narrowing the team relation applies.
-- **Next step:** let `read_team_record` take an alignment `situation` through the team relation's tally (`TeamNarrowed.narrow_alignment`) rather than the standings line; until then the refusal says the record reader's own gap, not that conferences are unread. Correct #25's list in the same change.
-- **GitHub:** #341
-
 ### The team-only player check reads a month or an ordinary word as a player
 - **Found:** 2026-10-09, Phase 3 step 0 (`~/association-research/stages/refusal_sites.py`)
 - **Evidence:** 3 of the 2,082 feed answers (no names, no stat, as `run --feed` asks them): "curry playoff stats from may 10th 2019 to april 30th 2023 including record and ts% ..." and its "may 13th" twin are refused "This was read as a question about Sean May, a player, but team leaderboard has no reading for one ..."; "Nba curry most 3PM in Jan 3 2019" names Jan Vesely. `subject.player_named_on_a_team_only_question` reads `players_named_in` raw ("may" and "jan" are whole surnames) while the subject reading drops a dictionary word nobody routed (`subject._question_players`, `_dictionary()`), so two readers of "who the words name" disagree; `_named_only_by_a_common_word` knows only "best" and "head". With the normalizer's names ("curry") production reads these as Curry questions, so the names-less population is where it shows.
@@ -2157,6 +2150,14 @@ those were found.
 - **GitHub:** #413
 
 ## P3: refusal or gap
+
+### A dated "since" beside a conference is read as a single season and a career at once: "celtics all-time record vs eastern conference including playoffs since september 11th 2001"
+- **Found:** 2026-10-14, the P1 sweep's lane T3, fixing #341 (the record against a conference).
+- **Evidence:** on `48a0c45` the cuts tagger keeps the alignment as the situation ("vs eastern conference") and lets the worded since-date go (`tests/query/test_cuts.py`, `test_a_worded_since_beside_another_circumstance_keeps_that_one`: a `Situation` holds one circumstance), and the span then reads the date's year as the season with "all-time" as a career: `span` `{career: true, season: 2001, both: true}`. The record refuses it "a career span and a single season at once" (it said "no calendar narrowing ... a conference or a division is not" until #341 closed). 1 of the 2,082 feed questions; none of the 628.
+- **User sees:** a refusal naming a contradiction the user did not write; the record since that day against the East is answerable (both narrowings are the team relation's).
+- **Next step:** the span tagger reads a worded since-date the cuts tagger set aside as `since` (the season its day falls in) rather than as a season, or the situation carries both circumstances (lane S's files: `cuts.py`, `span.py`).
+- **Source:** ours.
+- **Priority:** P3 - a refusal naming the wrong cause.
 
 ### "most ppg without free throws" is refused as if "free throws" were a teammate: "games without free throws cannot be read here"
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 3).

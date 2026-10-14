@@ -1,6 +1,7 @@
 """A team's win-loss record: for a season, at home or on the road, against
 one team, in a postseason, since a season, in game N of each playoff
-series, in one calendar month or on a weekday or holiday, broken out by
+series, in one calendar month or on a weekday or holiday, against a
+conference or a division, broken out by
 month, both season types together, or across every season the warehouse
 holds - ``team_record``'s point, read into a
 :class:`~association.query.result.Result`. Phase 2's slice (iv): the
@@ -13,7 +14,8 @@ its statements into the relations, its sentences to the sayer
 A plain regular season's record (and its home/road split, and a career of
 them) is ESPN's standings' (:mod:`~association.query.compose.standings`).
 A record against one team, in a postseason, since a season, in game N of
-each series, in a calendar narrowing or broken out by month has no
+each series, in a calendar narrowing, against a conference or a division
+or broken out by month has no
 standings column, and is tallied from the team-games relation instead -
 the team compiler's ``rows`` read
 (:func:`~association.query.compose.team.compile_team_over`) over the
@@ -40,7 +42,7 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
 from association.query import reading
-from association.query.calendar import CalendarNarrowing, bare_month
+from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, bare_month
 from association.query.conditions import _season_month_order
 from association.query.coverage import coverage_refusal, floor_refusal
 from association.query.entities import Entity, resolved_team, slot_season
@@ -58,31 +60,47 @@ from .standings import read_standings_career, read_standings_season
 from .team import TeamQuery, compile_team_over
 
 
-def _team_record_month_and_split(split: str | None, situation: Situation | None, limit: int | None) -> tuple[str | None, int | None, CalendarNarrowing | None]:
+@dataclass(frozen=True)
+class _RecordCut:
+    """What a record's ``split`` and ``situation`` settle to: the validated
+    split, the bare calendar month, the fuller calendar narrowing (a
+    weekday, a fixed holiday, "since <month day>") and the conference or
+    division the opponent is in."""
+
+    split: str | None = None
+    month: int | None = None
+    calendar: CalendarNarrowing | None = None
+    alignment: AlignmentNarrowing | None = None
+
+
+def _team_record_month_and_split(split: str | None, situation: Situation | None, limit: int | None) -> _RecordCut:
     """The validated ``split``, the bare calendar month a question narrows
-    to, and the fuller calendar narrowing (a weekday, a fixed holiday,
-    "since <month day>") ``situation`` names when it is not a bare month -
-    or the refusal for a ``split`` that is not "month", a ``situation``
-    naming no calendar narrowing (an alignment is one here: the standings
-    hold no opponent), a non-month narrowing beside a month split, or a
-    bare ``limit`` with none of the three ("last 10 games" is a game log's
-    question: standings hold only the full season)."""
+    to, the fuller calendar narrowing (a weekday, a fixed holiday, "since
+    <month day>") ``situation`` names when it is not a bare month, and the
+    conference or division it names the opponent to be in ("vs the west",
+    tallied from the team's games, since the standings hold no opponent,
+    ISSUES.md #341) - or the refusal for a ``split`` that is not "month", a
+    ``situation`` naming neither (an age, overtime), a non-month calendar
+    narrowing beside a month split, or a bare ``limit`` with none of them
+    ("last 10 games" is a game log's question: standings hold only the
+    full season)."""
     if split is not None and split != "month":
         raise Unsupported(f"no split named {split!r}")
     month = bare_month(situation.text if situation is not None else None)
     narrowing = None
+    alignment = None
     if situation is not None and month is None:
-        narrowing = situation.calendar
-        if narrowing is None:
-            raise Unsupported(f'no calendar narrowing in situation {situation.text!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
-        if split == "month":
+        narrowing, alignment = situation.calendar, situation.alignment
+        if narrowing is None and alignment is None:
+            raise Unsupported(f'no calendar narrowing in situation {situation.text!r} - a weekday, a month, a holiday, "since <day>" or a conference or division is read; an age is not')
+        if split == "month" and narrowing is not None:
             raise Unsupported("a month split already covers every month; narrowing it further to one weekday or holiday is not built")
-    if limit and split is None and month is None and narrowing is None:
+    if limit and split is None and month is None and narrowing is None and alignment is None:
         # Measured over the corpus, a month narrowing or a by-month split
         # never carried a real limit of its own (the router filled a default),
         # so only a bare limit is read as "last N games".
         raise Unsupported("a record over a limited set of games is a game_log question")
-    return split, month, narrowing
+    return _RecordCut(split=split, month=month, calendar=narrowing, alignment=alignment)
 
 
 def _team_record_since(since: int | None, career: bool, season: int | None) -> int | None:
@@ -148,7 +166,8 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
     named = conference_named(scope)
     if named is not None:
         return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named})
-    split, month, calendar = _team_record_month_and_split(scope.split, scope.cuts.situation, scope.window.count)
+    cut = _team_record_month_and_split(scope.split, scope.cuts.situation, scope.window.count)
+    split = cut.split
     teams = _team_record_teams(con, scope)
     if isinstance(teams, Unanswered):
         return teams
@@ -160,7 +179,18 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
         # "all-time ... in 2020" is either a slip or a range this cannot read.
         raise Unsupported("a career span and a single season at once")
     since = _team_record_since(scope.span.since, career, season)
-    asked = _Asked(team=team, opponent=opponent, month=month, venue=scope.cuts.venue, career=career, season=season, since=since, until=validated_until(scope.span.until, since), calendar=calendar)
+    asked = _Asked(
+        team=team,
+        opponent=opponent,
+        month=cut.month,
+        venue=scope.cuts.venue,
+        career=career,
+        season=season,
+        since=since,
+        until=validated_until(scope.span.until, since),
+        calendar=cut.calendar,
+        alignment=cut.alignment,
+    )
     if scope.span.both:
         # "including the playoffs": checked before the game_n/season_type
         # conflict below, which assumes one named type.
@@ -188,6 +218,7 @@ class _Asked:
     since: int | None
     until: int | None
     calendar: CalendarNarrowing | None
+    alignment: AlignmentNarrowing | None = None
     game_n: int | None = None
     split: str | None = None
 
@@ -203,7 +234,7 @@ def _route(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season_t
         return _by_month(con, q, asked, None if asked.career else (asked.season or current_season()), season_type)
     if asked.since is not None:
         return _games_record(con, q, asked, None, season_type)
-    if asked.opponent is None and season_type == 2 and asked.month is None and not asked.game_n and asked.calendar is None:
+    if asked.opponent is None and season_type == 2 and asked.month is None and not asked.game_n and asked.calendar is None and asked.alignment is None:
         if asked.career:
             return read_standings_career(con, asked.team, asked.venue)
         return read_standings_season(con, asked.team, asked.season or current_season(), asked.venue)
@@ -236,6 +267,9 @@ def _record_games(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, s
         narrowed.narrow("tg.opponent_id = ?", asked.opponent.id)
         # Read by TeamNarrowed.filters()' series-game phrase ("of THE series").
         narrowed.opponent = asked.opponent
+    if asked.alignment is not None:
+        # Which opponents count, as the opponent does: a table by month reads it too.
+        narrowed.narrow_alignment(asked.alignment)
     if narrowed_by and asked.month is not None:
         narrowed.narrow("month(tg.eastern_date) = ?", asked.month)
     if narrowed_by and asked.calendar is not None:
@@ -313,6 +347,8 @@ def _cup_finals(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, sea
     assert asked.opponent is not None
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = 2", "tg.cup_final"], base_params=[asked.team.id], team=asked.team)
     narrowed.narrow("tg.opponent_id = ?", asked.opponent.id)
+    if asked.alignment is not None:
+        narrowed.narrow_alignment(asked.alignment)
     if season is not None:
         narrowed.narrow("tg.season = ?", season)
     elif asked.since is not None:
@@ -366,8 +402,11 @@ def _record_cells(asked: _Asked) -> tuple[Cell, ...]:
     """A tally's calendar cut (a month, or a situation as the reading named
     it) and the game of a series, as the Result's cells."""
     cells: list[Cell] = []
-    if asked.month is not None or asked.calendar is not None:
-        cells.append(Calendar(month=asked.month, situation=asked.calendar.label if asked.calendar else None))
+    if asked.month is not None or asked.calendar is not None or asked.alignment is not None:
+        # An alignment is the situation the words named, said where a tally
+        # found nothing ("played no games against Eastern Conference teams").
+        situation = asked.calendar.label if asked.calendar else (asked.alignment.label if asked.alignment else None)
+        cells.append(Calendar(month=asked.month, situation=situation))
     if asked.game_n:
         cells.append(GameOfSeries(n=asked.game_n))
     return tuple(cells)
@@ -391,7 +430,7 @@ def _games_record_remarks(
     # A tally narrowed to some of a season's games (an opponent, a venue, a
     # month, a weekday, a game of a series) may or may not hold the games
     # the list is short by; the note says which claim it can make.
-    partial = any(x is not None for x in (asked.opponent, asked.venue, asked.month, asked.calendar, asked.game_n))
+    partial = any(x is not None for x in (asked.opponent, asked.venue, asked.month, asked.calendar, asked.alignment, asked.game_n))
     return notes + _game_list_gaps(con, asked.team, season_type, season, since=asked.since, until=asked.until, partial=partial)
 
 
@@ -409,6 +448,12 @@ def _month_rows(games: list[dict[str, Any]], season: int | None) -> list[dict[st
     return rows
 
 
+def _aligned(asked: _Asked) -> str:
+    """How a table by month says the conference or division its opponents
+    were in: the one narrowing it reads beside the opponent and the venue."""
+    return f" {asked.alignment.label}" if asked.alignment is not None else ""
+
+
 def _by_month(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | Unanswered:
     """The team's record broken out by calendar month, for one season or
     every season it holds: the standings have no game-level date to group a
@@ -424,7 +469,7 @@ def _by_month(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, seaso
         subject=asked.team.name,
         relation="team",
         span=Span(season=season, season_type=season_type, career=season is None),
-        narrowing=Narrowing(opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
+        narrowing=Narrowing(phrase=_aligned(asked), opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
         parts=(Part(body=Grouped(by="month", rows=tuple(_month_rows(shown, season)))),),
         notes=tuple(_span_floor(season, None, season_type)) if shown else (),
         facts=facts,
@@ -455,7 +500,7 @@ def _by_month_span(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, 
         subject=asked.team.name,
         relation="team",
         span=Span(season_type=season_type, career=True, since=since, until=asked.until),
-        narrowing=Narrowing(opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
+        narrowing=Narrowing(phrase=_aligned(asked), opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
         parts=(Part(body=Grouped(by="month", rows=tuple(rows))),),
         notes=tuple(notes),
         facts=TeamRecordFacts(),
@@ -474,6 +519,12 @@ def _half(read: Result | Unanswered) -> tuple[int, int, Any, tuple[Note, ...], s
     line = read.scalar
     values = line.values if line is not None else {}
     first = read.span.first if read.span.career else (read.span.season if read.span.source == "games" else None)
+    if read.span.career and read.span.source == "games" and read.span.season_type == 2 and read.span.since is None and line is not None and line.games:
+        # A tally of every regular season covers them from the first the game
+        # list holds whole, which its floor's words name ("from 1993-94 - the
+        # first the warehouse holds every game of"); a narrowing whose first
+        # game came later (the Northwest Division, from 2004-05) is no floor.
+        first = FIRST_FULL_REGULAR_SEASON
     # Where the half's own answer places its neutral-site games.
     placed = "tally" if read.span.source == "games" else ("career" if read.span.career else "season")
     return int(values.get("wins") or 0), int(values.get("losses") or 0), first, read.notes, placed
@@ -491,7 +542,12 @@ def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Re
     single-type question about the same span reads, and summed: the
     combined total AND each type's own record and first season, never one
     type alone."""
-    halves = [_half(_route(con, q, asked, season_type)) for season_type in (2, 3)]
+    reads = [_route(con, q, asked, season_type) for season_type in (2, 3)]
+    halves = [_half(read) for read in reads]
+    # What each half was narrowed to beyond the opponent and the venue (a
+    # month, a calendar cut, a conference): one narrowing, read twice, and
+    # said once - a combined record that dropped it read as the whole span's.
+    narrowed = next((read.narrowing for read in reads if isinstance(read, Result) and read.span.source == "games"), Narrowing())
     (r_wins, r_losses, r_first, r_notes, r_placed), (p_wins, p_losses, p_first, p_notes, p_placed) = halves
     if asked.venue is None:
         # A half's neutral-site count explains a home/road figure the half's
@@ -507,7 +563,7 @@ def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Re
         subject=asked.team.name,
         relation="team",
         span=Span(season=asked.season, career=asked.season is None),
-        narrowing=Narrowing(opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
+        narrowing=Narrowing(phrase=narrowed.phrase, opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue, cells=narrowed.cells),
         parts=(Part(body=total), Part(role="detail", body=Grouped(by="season_type", rows=rows))),
         notes=(*r_notes, *p_notes),
     )

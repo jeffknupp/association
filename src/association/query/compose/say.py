@@ -4077,8 +4077,10 @@ def _say_combined_record(result: Result, line: Scalar) -> Answer:
     where_played = f" {_VENUE_WORDS[venue]}" if venue else ""
     r_from = _combined_from(regular["first_season"], playoff=False) + inline[0]
     p_from = _combined_from(playoff["first_season"], playoff=True) + inline[1]
+    cut = result.narrowing.cell(Calendar)
+    month = f" in {MONTH_NAMES[cut.month - 1]}" if cut is not None and cut.month is not None else ""
     answer = (
-        f"The {team} are {tally(wins, losses)} combined{where_played}{against}, including the playoffs "
+        f"The {team} are {tally(wins, losses)} combined{month}{where_played}{against}{result.narrowing.phrase}, including the playoffs "
         f"({tally(regular['wins'], regular['losses'])} regular season{r_from}, {tally(playoff['wins'], playoff['losses'])} playoffs{p_from})." + "".join(after)
     )
     if tails:
@@ -4141,7 +4143,7 @@ def say_team_record_by_month(result: Result) -> Answer:
     tables = []
     for season, rows in by_season.items():
         span_words = f"the {season_phrase(season, season_type)}" if since is not None else _record_span_words(result, floor)
-        title = f"The {team}, record by month{where_played}{against}, {span_words}:"
+        title = f"The {team}, record by month{where_played}{against}{result.narrowing.phrase}, {span_words}:"
         tables.append(_table(title, ["G", "W-L"], [(row["month"], [str(row["games"]), f"{row['wins']}-{row['losses']}"]) for row in rows]))
     answer = "\n\n".join(tables)
     if since is not None and floor:

@@ -47,6 +47,7 @@ from association.query.reading import (
     situation_of,
 )
 from association.query.reading import Subject as Who
+from association.query.season_text import season_phrase
 from association.query.standings import career_rows, first_season, season_games, season_row
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
@@ -213,6 +214,20 @@ def team_ctx(tmp_path: Path) -> AnswerContext:
         (2024, 2, "2024-04-14T00:00Z", "18", 3.0, 1.0, 2.0, 50, 32, 50, 32, 100.0, 10.0, 5.0, 2.0, 0.5, 12),
     ]
     c.executemany(f"INSERT INTO team_power_index VALUES ({', '.join('?' for _ in range(17))})", [(r[0], r[1], r[3], r[2], *r[4:]) for r in bpi])
+    # Each team's conference and division in the current season, which "vs the
+    # west" narrows the opponents by (ISSUES.md #341).
+    c.execute("CREATE TABLE team_alignment (season INTEGER, team_id VARCHAR, conference VARCHAR, division VARCHAR)")
+    c.executemany(
+        "INSERT INTO team_alignment VALUES (?, ?, ?, ?)",
+        [
+            (S, "18", "Eastern Conference", "Atlantic"),
+            (S, "2", "Eastern Conference", "Atlantic"),
+            (S, "24", "Western Conference", "Southwest"),
+            (S, "25", "Western Conference", "Northwest"),
+            (S, "27", "Eastern Conference", "Southeast"),
+            (S, "30", "Eastern Conference", "Southeast"),
+        ],
+    )
     # The shared filtered list TEAM_GAMES_SQL is built on: "ghost" and the
     # second event id for g1 are dropped by it, and "ph" - one game under two
     # SEASON labels - is deliberately NOT, so TEAM_GAMES_SQL's own QUALIFY
@@ -427,6 +442,52 @@ def test_a_conference_is_refused_by_name(team_ctx: AnswerContext) -> None:
         "and nothing adds up a conference's or a division's teams yet. Name a team instead."
     )
     assert "membership" not in answer and "53-29" not in answer
+
+
+# ---------------- team_record: against a conference or a division ----------------
+
+
+def test_a_record_against_a_conference_is_tallied_from_the_games(team_ctx: AnswerContext) -> None:
+    """ISSUES.md #341: "celtics record vs the west" was refused as "no
+    calendar narrowing" - the standings hold no opponent, but the team's
+    games do, and the relation narrows them to opponents in that conference
+    in that game's own season. The Cup final against the Spurs counts in no
+    standings and is left out as a plain record leaves it out."""
+    result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("vs the west"))))
+    assert result.text.startswith(f"The New York Knicks went 1-1 (.500) against Western Conference teams in the {S} regular season.")
+    division = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("vs the atlantic division"))))
+    assert division.text.startswith(f"The New York Knicks went 1-0 (1.000) against the Atlantic Division in the {S} regular season.")
+
+
+def test_a_record_against_a_conference_including_the_playoffs_says_the_conference(team_ctx: AnswerContext) -> None:
+    """Both season types summed say what each half was narrowed to: a
+    combined record that dropped "against Eastern Conference teams" read as
+    the whole span's."""
+    result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("vs the east")), span=Span(both=True)))
+    assert result.text.startswith(
+        f"The New York Knicks are 4-1 (.800) combined against Eastern Conference teams, including the playoffs (1-0 (1.000) regular season from {LAST}, 3-1 (.750) playoffs from {S})."
+    )
+
+
+def test_an_all_time_record_including_the_playoffs_names_the_game_lists_floor_not_the_first_game_found(team_ctx: AnswerContext) -> None:
+    """The regular-season half of every season is tallied from the first
+    season the game list holds whole, as a single type's record says it; a
+    narrowing whose first game came later (the Northwest Division, from
+    2004-05) said "from 2004-05 - the first the warehouse holds every game
+    of", which is false."""
+    result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("vs the west")), span=Span(career=True, both=True)))
+    assert "1-1 (.500) regular season from 1993-94 - the first the warehouse holds every game of" in result.text
+
+
+def test_a_record_by_month_against_a_conference_names_it(team_ctx: AnswerContext) -> None:
+    result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("vs the west")), split="month"))
+    assert result.text.split("\n")[0] == f"The New York Knicks, record by month against Western Conference teams, the {season_phrase(S, 2)}:"
+    assert [(row["month"], row["games"], row["wins"]) for row in result.data["months"]] == [("November", 1, 1), ("December", 1, 0)]
+
+
+def test_a_situation_no_table_narrows_by_is_still_refused(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported, match="a conference or division is read; an age is not"):
+        team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("as an 18 year old"))))
 
 
 def test_a_career_span_and_a_single_season_at_once_falls_through(team_ctx: AnswerContext) -> None:
