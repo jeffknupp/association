@@ -417,9 +417,13 @@ def _team_named(working: _Working) -> bool:
     subject, and file nothing."""
     if working.subject.team is not None:
         return True
-    if len(set(working.team_words)) != 1:
+    # The opponent's nickname is never the subject's team: "1st q log
+    # sabonis vs clippers" filed the Clippers as the team whose quarter
+    # was asked, against themselves (ISSUES.md #367).
+    words = [word for word in working.team_words if not (working.opponent and team_named_in_text(word, working.opponent))]
+    if len(set(words)) != 1:
         return False
-    working.subject = replace(working.subject, teams=working.team_words[:1])
+    working.subject = replace(working.subject, teams=tuple(words[:1]))
     return True
 
 
