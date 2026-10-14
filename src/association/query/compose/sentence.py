@@ -246,6 +246,17 @@ def _grouped_minimum(q: Query, scaled: tuple[int, int, int] | None = None) -> st
     return said if q.minimum is not None else decided("minimum", said, field="minimum", chose=q.minimum_games, of="games")
 
 
+def _grouped_head(q: Query, out: dict[str, Any], head: str) -> str:
+    """A grouped read's heading with what it is ranked by: the measure and
+    how it is reduced, with the qualifier; or, for players ranked by their
+    games with no line on them, "games played" (ISSUES.md #408)."""
+    if q.aggregate == Aggregate.COUNT and q.group == "player" and not q.predicates and not q.measures:
+        head += " (games played" + (f", minimum {_games(q.minimum_games)}" if q.minimum_games else "") + ")"
+    if q.measures:
+        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == Aggregate.PER_GAME else q.aggregate}" + _grouped_minimum(q, out.get("minimum_scaled")) + ")"
+    return head
+
+
 def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     """A ``grouped`` read: a split by venue or starter/bench, or a ranking of players."""
     rows = out["rows"]
@@ -254,9 +265,7 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     span = _span_phrase(out["span"], out.get("player_seasons"))
     if not rows:
         return _grouped_empty(q, who, where, span)
-    head = f"{who}{where}, {span}{_predicates(q)}, by {q.group}"
-    if q.measures:
-        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == Aggregate.PER_GAME else q.aggregate}" + _grouped_minimum(q, out.get("minimum_scaled")) + ")"
+    head = _grouped_head(q, out, f"{who}{where}, {span}{_predicates(q)}, by {q.group}")
     if q.group == "season" and q.limit and len(rows) >= q.limit:
         # The span names the whole career; the rows are its newest N (the
         # limit cut them - core._compile_grouped), which the heading says.

@@ -158,6 +158,8 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     # A team's triple-doubles are its PLAYERS' (a boolean player line), which
     # the players' ranking reads under the team - not a team box-score total.
     (frozenset({"team"}), lexicon.TEAM_DOUBLES_ROW, PLAYER_RANKING),
+    # A team's players ranked by games played (ISSUES.md #408).
+    (frozenset({"team"}), lexicon.TEAM_GAMES_PLAYED_ROW, PLAYER_RANKING),
     (frozenset({"team"}), lexicon.ANY_WORDS_ROW, TEAM_LINE),
     (frozenset({"player"}), lexicon.NETPOINTS_ROW, NETPOINTS_RATINGS),
     # A player's own record is the W-L of HIS games, which player_splits

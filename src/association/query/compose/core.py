@@ -1268,7 +1268,9 @@ def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: 
     all-time triple doubles" lists ten players and is asked for the 193,
     not the ten rows' 176. Read by re-running the grouped read with no
     limit and summing; None for any other point."""
-    if q.skeleton != "grouped" or q.aggregate != Aggregate.COUNT or q.group != "player":
+    if q.skeleton != "grouped" or q.aggregate != Aggregate.COUNT or q.group != "player" or not q.predicates:
+        # A count with no line is the players' games played (ISSUES.md
+        # #408), whose sum over players is no figure anyone asked.
         return None
     if not q.limit or len(rows) < q.limit:
         return sum(int(r.get("games") or 0) for r in rows)

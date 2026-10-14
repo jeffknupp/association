@@ -1480,6 +1480,16 @@ def test_a_default_minimum_no_player_met_is_scaled_to_the_pool_and_said_as_a_dec
     assert sentence(nobody, run(cx_ctx.con, nobody)).startswith("No games for every player vs the Los Angeles Lakers in the ")
 
 
+def test_a_ranking_by_games_played_counts_each_players_games(cx_ctx: AnswerContext) -> None:
+    """ISSUES.md #408: a ranking by games played ranked by points per game.
+    It counts each player's games, says so, and adds no total of them."""
+    q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="games_played", as_typed="games played"), span=Span(season_type=2)), "most games played this season")
+    assert isinstance(q, Query) and q.aggregate == "count" and q.measures == [] and q.minimum_games is None
+    said = sentence(q, run(cx_ctx.con, q))
+    assert said.startswith("every player, ") and ", by player (games played):" in said and "Total" not in said
+    assert [line.split()[-2] for line in said.splitlines()[1:]] == ["22", "22", "4", "4", "2", "2"]
+
+
 def test_a_stated_minimum_on_a_point_that_ranks_no_players_is_refused_by_name(cx_ctx: AnswerContext) -> None:
     """A qualifier keeps the players a ranking ranks: under a single game's
     high it keeps nothing, so it is refused by a cause naming the floor
