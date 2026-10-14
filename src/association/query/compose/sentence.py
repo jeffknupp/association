@@ -18,7 +18,7 @@ from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.reading import Aggregate, period_label
 
 from .core import Query
-from .team import TeamQuery, TeamResult
+from .team import TeamQuery, TeamResult, opponent_figure
 
 #: A measure name, as an answer prints it.
 LABELS: dict[str, str] = {
@@ -313,7 +313,13 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     # narrowed the read (TeamNarrowed.filters()) - saying the count again
     # here would read as "over 10 games over their last 10 games".
     games_phrase = "" if "game" in result.narrowed_text else f" over {result.games} games"
-    said = f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}."
+    # A sum over every game of the span says which span (ISSUES.md #425):
+    # the season line's sentence names it, and this stands in for it.
+    in_span = f" in the {span}" if result.whole_span else ""
+    if opponent_figure(q):
+        said = _team_opponents_sentence(result, label, f"{games_phrase}{result.narrowed_text}{in_span}{record}")
+    else:
+        said = f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{in_span}{record}."
     if result.blank:
         # A box-score count summed over the narrowed games (ISSUES.md #403)
         # is short by the games with no team box row: said, through the
@@ -325,6 +331,18 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
         blank = Note("stat_blank", {"games": result.blank, "stat": q.measure.key if q.measure is not None else q.metric, "whose": "team_log"})
         said += " " + note(blank.kind, note_phrase(blank), **blank.facts)
     return said
+
+
+def _team_opponents_sentence(result: TeamResult, label: str, over: str) -> str:
+    """What a team's opponents had of a box-score count, over the games
+    ``over`` says - theirs, never the team's own (ISSUES.md #425) - with
+    its figure per game over the games that have one."""
+    from association.query.compose.say import possessive
+
+    assert result.team is not None and result.value is not None
+    counted = result.games - result.blank
+    each = f", {result.value / counted:.1f} per game" if counted else ""
+    return f"The {possessive(result.team.name)} opponents had {result.value:,.0f} {label} against them{over}{each}."
 
 
 def _team_run_sentence(q: TeamQuery, result: TeamResult, span: str) -> str:

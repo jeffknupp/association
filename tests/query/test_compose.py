@@ -999,6 +999,41 @@ def test_a_box_stat_count_narrowed_to_a_window_is_summed_over_the_games_box_rows
         run_team(team_cx_ctx.con, pct)
 
 
+def test_a_figure_the_teams_opponents_had_is_summed_over_their_rows_of_its_games(team_cx_ctx: AnswerContext) -> None:
+    """ISSUES.md #425: "assists allowed by the mavericks this season" answered
+    the team's OWN season total from ``team_season_stats``, which holds no row
+    of what its opponents had. The typed measure says whose figure it is
+    (``Measure.whose``), and the team compiler sums the opponents' box rows of
+    the span's games - the planner's point names the stat as the team's own
+    key, the measure beside it the opponent's - and says it as theirs, per
+    game too, with the games that have no box row said. A total of points
+    allowed, which the season line has no total of either, is the games'
+    opponent scores (it was declined with the season line's reason)."""
+    team_cx_ctx.con.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, team_id VARCHAR, threePointFieldGoalsMade INTEGER, threePointFieldGoalsAttempted INTEGER)")
+    # Cleveland's rows of Toronto's games r1-r4 (r5 has none), and Toronto's
+    # own, which an opponent's figure must not read.
+    rows = [(e, _TS, "2", n, 30) for e, n in (("r1", 10), ("r2", 11), ("r3", 12), ("r4", 13))]
+    insert_rows(team_cx_ctx.con, "team_box_stats", [*rows, ("r1", _TS, "3", 40, 50)])
+    who, span = Who(kind="team", teams=("Toronto Raptors",)), Span(season=_TS, season_type=2)
+    given_up = Measure(key="threePointFieldGoalsMade", as_typed="threes allowed", whose="opponent")
+    q = TeamQuery(who=who, span=span, measure=given_up, metric="threePointFieldGoalsMade")
+    result = run_team(team_cx_ctx.con, q)
+    assert (result.value, result.games, result.blank, result.wins, result.losses) == (46.0, 5, 1, 4, 1)
+    said = team_sentence(q, result)
+    assert said.startswith(f"The Toronto Raptors' opponents had 46 3-pointers made against them over 5 games in the {_TS} regular season (4-1), 11.5 per game."), said
+    assert said.endswith("(1 of these games has no 3-pointers on record; the figure is over the rest.)"), said
+    allowed = TeamQuery(who=who, span=span, measure=Measure(key="points", as_typed="points allowed", whose="opponent", unit="total"), metric="points_allowed")
+    result = run_team(team_cx_ctx.con, allowed)
+    assert (result.value, result.games) == (513, 5)
+    assert team_sentence(allowed, result) == f"The Toronto Raptors had 513 points allowed over 5 games in the {_TS} regular season (4-1)."
+    # "steals allowed": the catalog holds no opponent's steals, so the
+    # words' measure has no key, and the point read the team's own "steals"
+    # beside it - answered, that is the team's own season total.
+    unread = TeamQuery(who=Who(kind="team", teams=("Orlando Magic",)), span=span, measure=Measure(as_typed="steals allowed"), metric="threePointFieldGoalsMade")
+    with pytest.raises(Unsupported, match="steals allowed"):
+        run_team(team_cx_ctx.con, unread)
+
+
 def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
     """ISSUES.md P1 (2026-09-30): the planner checked a team point against
     the PLAYER relation's cells, so one only a player's games carry passed

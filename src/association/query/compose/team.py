@@ -342,6 +342,11 @@ class TeamResult:
     #: How many of a narrowed box-score total's games have no figure for
     #: it (no team box row on record), which the total is short by.
     blank: int = 0
+    #: Whether the sum is over every game of the span, no narrowing - a
+    #: figure the season line has no row for (the points or a box-score
+    #: count the team's opponents had, :func:`season_read_from_games`),
+    #: which the sentence says the span of.
+    whole_span: bool = False
 
 
 def _team_narrowed(scope: Filtered) -> bool:
@@ -440,6 +445,33 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     if isinstance(narrowed, Unanswered):
         raise Refused(narrowed)
     return narrowed, team, span
+
+
+def opponent_figure(q: TeamQuery) -> bool:
+    """Whether ``q`` asks what a team's OPPONENTS had of a box-score count
+    ("assists allowed by the mavericks": the typed measure's ``whose`` is
+    ``opponent``) - read on the opponents' rows of the team's games
+    (:func:`team_figure`) and said as theirs. Points allowed are the
+    relation's own column (``points_allowed``), not this.
+
+    .. versionadded:: 6.0.0
+       ISSUES.md #425: the team's own season total answered for it.
+    """
+    return q.metric != "points_allowed" and q.measure is not None and q.measure.whose == "opponent" and q.measure.key == q.metric
+
+
+def season_read_from_games(q: TeamQuery) -> bool:
+    """Whether an unnarrowed total is read over the span's games rather
+    than the season line: ``team_season_stats`` holds the team's own
+    totals and no row of what its opponents had - points allowed, or a
+    box-score count given up (:func:`opponent_figure`) - so the games
+    are summed, their opponents' scores or box rows.
+
+    .. versionadded:: 6.0.0
+       ISSUES.md #425: a total of points allowed was declined with the
+       season line's reason, and a count given up answered as the team's own.
+    """
+    return q.metric == "points_allowed" or opponent_figure(q)
 
 
 def _team_mixed(scope: Filtered) -> bool:
@@ -564,6 +596,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
         losses=int(losses or 0),
         narrowed_text=narrowed.filters(),
         blank=int(games or 0) - int(counted or 0),
+        whole_span=not _team_narrowed(q),
     )
 
 
@@ -952,7 +985,7 @@ def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
         # A teammate's presence is read off the box scores (his row, or
         # none), so the split reaches only as far as they do.
         return _PLAYER_GAME_TABLES
-    return ("games",) if _team_narrowed(q) else ("team_season_stats",)
+    return ("games",) if _team_narrowed(q) or season_read_from_games(q) else ("team_season_stats",)
 
 
 def team_coverage_refusal(q: TeamQuery) -> Refusal | None:
@@ -1029,8 +1062,16 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     refusal = team_coverage_refusal(q)
     if refusal is not None:
         raise Refused(refusal)
+    if q.measure is not None and q.measure.key is None and q.measure.as_typed and q.metric in SEASON_MEASURES:
+        # The words named a figure no measure holds ("steals allowed": the
+        # catalog has no opponent's steals) and the point read the team's
+        # own stat beside it: answering that is a different figure, so it
+        # is declined by the words' own name (ISSUES.md #425).
+        raise Unsupported(f"no team total of {q.measure.as_typed!r}")
     try:
-        if _team_narrowed(q):
+        if _team_narrowed(q) or season_read_from_games(q):
+            # The season line holds no row of what the opponents had, so a
+            # total of it is read over the span's games (ISSUES.md #425).
             result = _compile_team_games_total(con, q)
         else:
             team = _resolved_team_subject(con, q)
