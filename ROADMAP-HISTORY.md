@@ -1591,6 +1591,16 @@ agents' reports named here are in `~/association-research/stages/`.
     42-47), 21 feed answers moved; open P1s 21 of 195, every lane's list
     done and the remainders unowned, which is Phase 5's step 6 to own.
 
+43. **Phase 5 opened (2026-10-14): the rows accepted.** Jeff accepted the
+    eight rows drafted at the sweep's start, with the figures re-measured
+    on `520a94b` (87 of 1,807 answered feed questions and 9 of 603 carry an
+    unread word of meaning; the ledger at 3,023 and 86, 700 and 7) and the
+    stale lane assignments rewritten, and decided the review's five calls
+    the same morning (D5-D11): the aggregate derived and the point's
+    `PointShape` one field, dispatched as one agent; the rest kept as the
+    reviewer left them. Order: step 1 (the lead, alone), then 2 and 5 in
+    parallel, 6 by reach, 7 last. Open P1s 21 of 195 at the open.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
