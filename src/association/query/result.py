@@ -585,6 +585,9 @@ class TeamPeriodFacts:
     measure: str
     rank: str | None
     dateless: str
+    #: Whose figure ``measure`` is: the team's own, or its opponents' in
+    #: the same games (``"points allowed in the 4th quarter"``).
+    whose: str = "own"
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -2971,19 +2971,27 @@ def test_team_quarter_points_refuses_a_stat_no_period_splits_and_one_it_cannot_r
 @pytest.mark.parametrize(
     ("measure", "named"),
     [
-        (Measure(key="points", as_typed="points", whose="opponent"), "opponents' points"),
-        (Measure(key="fieldGoalPct", as_typed="fieldGoalPct", whose="opponent"), "opponents' fieldGoalPct"),
-        (Measure(key="points", as_typed="points allowed", whose="opponent"), "points allowed"),
+        (Measure(key="minutes", as_typed="minutes", whose="opponent"), "opponents' minutes"),
+        (Measure(key="plusMinus", as_typed="plusMinus", whose="opponent"), "opponents' plusMinus"),
     ],
 )
 def test_team_quarter_points_names_the_opponents_figure_it_refuses(tq_con: AnswerContext, measure: Measure, named: str) -> None:
     """The opponent's figure read by "opp" before the stat (ISSUES.md #409)
-    or the verb after it (#348) is refused by quarter naming it as theirs:
-    "- not points." beside a list that holds points said nothing; a spelling
-    that already says so ("points allowed") is printed as typed."""
+    or the verb after it (#348) is refused by quarter, where the team's own
+    is, naming it as theirs: "- not minutes." beside the team's own list
+    said nothing about whose."""
     result = team_quarter_points(tq_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=measure, span=Span(season=current_season()), period=Period(number=1)))
     assert (result.text or "").endswith(f"- not {named}."), result.text
     assert "total" not in result.data
+
+
+def test_team_quarter_points_answers_the_opponents_points_from_their_linescore(tq_con: AnswerContext) -> None:
+    """ISSUES.md #427: the opponent's points in a quarter ("opp points",
+    "points allowed") were refused as not on record; the linescore holds
+    both sides', and they are read from the other one."""
+    for measure in (Measure(key="points", as_typed="points", whose="opponent"), Measure(key="points", as_typed="points allowed", whose="opponent")):
+        result = team_quarter_points(tq_con, Reading(who=Who(kind="team", teams=("Knicks",)), measure=measure, span=Span(season=current_season()), period=Period(number=1)))
+        assert "total" in result.data and (result.text or "").startswith("The New York Knicks' opponents"), result.text
 
 
 def test_team_quarter_points_refuses_a_missing_period(tq_con: AnswerContext) -> None:
