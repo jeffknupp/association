@@ -1465,6 +1465,12 @@ CAUSES: frozenset[str] = frozenset(
         "own_opponent",
         # Phase 5, step 5: a read that needs a name the reading has none of.
         "name_missing",
+        # Phase 5, step 5: a reader's declines the "relation:" wrapper said.
+        "span_and_season",
+        "no_season_column",
+        "franchise_career_ranking",
+        # Phase 5, step 5: words that ask for no shape a reader reads.
+        "no_shape",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -1567,7 +1573,13 @@ missing thing, never only the slot"):
   own opponent (``own_opponent``: ``team``); a read that needs a name the
   reading has none of (``name_missing``: ``needs`` - ``player``, ``team``
   or ``teammate``), which each reader said naming its retired template
-  ("shot_chart needs a player name").
+  ("shot_chart needs a player name"); a career or a since-bounded span and
+  a named season at once (``span_and_season``: ``season``, ``since``), a
+  stat the season line has no column of (``no_season_column``: ``stat``),
+  a team's own career ranking (``franchise_career_ranking``) -
+  each said headed "relation:" until then; words that ask for no shape
+  a reader reads, and name nothing that nothing reads (``no_shape``:
+  ``shape``, None), which the answering loop gave the question up with.
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.

@@ -697,12 +697,15 @@ def planned_shape(reading: Reading, planned: Verdict) -> PointShape | None:
     refusal alike, so the answering loop's declined path checks the floor of
     that point; the planned query's where there is one (a season-line point
     planned at the game level is on the player-games relation). None where
-    the words came to a refusal before any point, or to no point.
+    the words came to a refusal before any point, or to no point - or asked
+    no shape at all (``Reading.asked`` None: a reader's fallback point is no
+    shape the answer was read as, and the refusal carried its key until
+    Phase 5, step 5).
 
     .. versionadded:: 6.0.0
        ``Planned.shape``, carried beside the query on the planning until
        Phase 4, step 4.
     """
-    if reading.refused is not None or reading.point_refusal is not None or reading.point is None:
+    if reading.refused is not None or reading.point_refusal is not None or reading.point is None or reading.asked is None:
         return None
     return point_shape(reading.point, planned if isinstance(planned, Query) else None)

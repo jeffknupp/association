@@ -41,7 +41,7 @@ from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, qualifies_by
 from association.query.notes import Note
-from association.query.reading import MAX_LIMIT, Filtered, Unsupported, _clamp_limit
+from association.query.reading import MAX_LIMIT, Filtered, ShapeDeclined, Unsupported, _clamp_limit
 from association.query.result import Decided, Grouped, Part, RankingFacts, Refusal, Result, Scalar, Span, Unanswered
 from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, LeaderboardResult, rank_season_line, rank_seasons_counted
 
@@ -369,4 +369,4 @@ def _leaderboard_career_refusals(scope: Filtered, fields: list[str]) -> None:
     if fields:
         raise Unsupported("a career leaderboard cannot add per-game columns")
     if scope.who.team is not None:
-        raise Unsupported("franchise career leaderboards are not supported")
+        raise ShapeDeclined("franchise_career_ranking", {}, "franchise career leaderboards are not supported")

@@ -387,7 +387,9 @@ class Agent:
         words ask for no shape a reader reads, the first thing they name that
         nothing reads (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`
         - "most opponent bench points allowed ..."), said by the planner.
-        With no reader and no named refusal, records why and returns None.
+        With no reader and no named refusal, the ``no_shape`` cause, said by
+        the planner ("what its words ask has no reader"; recorded as why the
+        question was refused until Phase 5, step 5).
 
         Until Phase 3, step 0 this re-read the question
         (``refusals.by_question``, ``refusals.unanswerable``) and the team-only
@@ -404,8 +406,8 @@ class Agent:
             refusal = refusal_result(reading.unsupported[0])
             history.log(f"  -> (refusal) {reading.unsupported[0].kind}: nothing here reads that shape")
             return refusal
-        self.unanswered = "what its words ask has no reader"
-        return None
+        history.log("  -> (refusal) no_shape: what its words ask has no reader")
+        return refusal_result(Cause(kind="no_shape", facts={"shape": None}))
 
     def _run_compiled(self, reading: Reading, history: RunHistory) -> Answer | None:
         """A shape the words ask, which the compiler alone answers (every

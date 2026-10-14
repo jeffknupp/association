@@ -2592,6 +2592,10 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "since_record_unsplit": {"shape": TEAM_RANKING},
     "own_opponent": {"shape": TEAM_PERIOD_TOTAL, "team": "Boston Celtics"},
     "name_missing": {"shape": PointShape("shots", "chart", "shots"), "needs": "player"},
+    "span_and_season": {"shape": PLAYER_LOG, "season": 2001, "since": None},
+    "no_season_column": {"shape": PLAYER_LINE, "stat": "netpoints"},
+    "franchise_career_ranking": {"shape": PLAYER_RANKING},
+    "no_shape": {"shape": None},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
 }
@@ -2695,3 +2699,30 @@ def test_an_unread_number_with_its_plus_is_said_with_examples_of_the_number() ->
 
     text = refusal_phrase("unread_number", {"shape": PLAYER_LINE, "words": ("20+",), "classes": {"number": ("20+",)}})
     assert "'20+'" in text and '"last 20 games", "20+ points", "at least 20 games"' in text
+
+
+def test_a_readers_decline_by_a_cause_is_not_headed_relation() -> None:
+    """Phase 5, step 5: a reader that steps aside (``compose._read_log``)
+    keeps a decline's cause - a shape's own, or a point reading's a shared
+    step raised - where every decline it passed on was a sentence headed
+    "relation:"; a decline with no cause keeps the old sentence."""
+    from association.query import compose
+    from association.query.reading import PointRefused, ShapeDeclined, Unsupported
+
+    def season_and_career() -> None:
+        raise ShapeDeclined("span_and_season", {"season": 2001, "since": None}, "a career span and the 2001 season at once")
+
+    def no_stat() -> None:
+        raise PointRefused(Cause(kind="line_names_no_stat", facts={"phrase": "below 8000", "side": "under"}), "'below 8000' names no box-score stat")
+
+    def plain() -> None:
+        raise Unsupported("a plain decline")
+
+    with pytest.raises(ShapeDeclined) as kept:
+        compose._read_log(season_and_career)
+    assert refusal_result(ShapeDeclined.under(kept.value.cause, PLAYER_LOG)).text == "Nothing here answers this question as a game log: a career span and the 2001 season at once."
+    with pytest.raises(ShapeDeclined) as caused:
+        compose._read_log(no_stat)
+    assert caused.value.cause == Cause(kind="line_names_no_stat", facts={"phrase": "below 8000", "side": "under"})
+    with pytest.raises(Unsupported, match=r"^relation: a plain decline$"):
+        compose._read_log(plain)
