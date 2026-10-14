@@ -4857,15 +4857,6 @@ LEAGUE_TEAMS_RANKED_ROW = row(
 
 .. versionadded:: 6.0.0
 """
-LEAGUE_NBA_RANKED_ROW = row(r"(?=.*\bnba\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)")
-"""The league's teams ranked, named by "nba" alone - which the parser reads
-as the teams' only where the words name no measure the players' ranking
-reads (``parse.parent_asked``): "most steals in nba in 2025" is the players'
-ranking, "nba best shooting percentages 2023", whose measure nothing reads,
-stays the teams' refusal it was rather than the players' points per game.
-
-.. versionadded:: 6.0.0
-"""
 TEAM_WORD_ROW = row(r"\b(team|teams|franchise|franchises)\b")
 """A word that names teams as what is ranked - which a count of N-point
 games with no subject needs before it is the teams' ranking (ISSUES.md

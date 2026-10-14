@@ -1484,3 +1484,38 @@ def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.D
     reading = _read(con, question, [], "assists" if "assist" in question else "points")
     assert reading.point is not None and reading.point.read_as == PLAYER_RANKING
     assert reading.point.measure is not None and reading.point.measure.how == how
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["best shooting percentages 2023", "list nba players most wins in a career", "Cousins player efficiency rating by year", "most career wins"],
+)
+def test_a_players_ranking_with_no_measure_read_is_refused_naming_the_stat(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ISSUES.md #421: the players' ranking answered "every player ... by
+    player (points per game ...)" where the words named a measure nothing
+    reads and the model none - "best shooting percentages", "most wins",
+    "efficiency rating". The ranking's points default is a cause the
+    planner says where the ranking would answer."""
+    reading = _read(con, question)
+    assert reading.defaulted is not None and reading.defaulted.kind == "ranking_needs_stat"
+
+
+@pytest.mark.parametrize("question", ["nba players who averaged 25 ppg in 2001", "most ppg in the 2024 playoffs", "top 10 scorers in 2024", "who led the league in assists in 2019"])
+def test_a_players_ranking_whose_words_name_its_stat_is_no_default(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """A season's line, a per-game abbreviation and a stat word each name
+    the ranking's stat: no cause, and "ppg" reads points per game."""
+    reading = _read(con, question)
+    assert reading.defaulted is None
+    assert reading.point is not None and reading.point.measure is not None and reading.point.measure.key is not None
+
+
+@pytest.mark.parametrize(("question", "stat"), [("most triple doubles since 2020", "triple_double"), ("most double doubles 2020-2023", "double_double")])
+def test_a_yes_no_measure_over_a_range_of_seasons_ranks_each_players_count(con: duckdb.DuckDBPyConnection, question: str, stat: str) -> None:
+    """ISSUES.md #421: "most triple doubles since 2020" ranked points per
+    game - the season line counts one season or a whole career, and the
+    planner's game-level re-plan dropped the predicate. It is each player's
+    count of the games that hold it."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "count")
+    assert reading.point.predicates == [(stat, "=", True)]
+    assert reading.defaulted is None

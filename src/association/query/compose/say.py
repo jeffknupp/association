@@ -5315,7 +5315,15 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "own_alignment": lambda facts: _own_alignment(facts["alignment"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
+    "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
 }
+
+
+def _ranking_needs_stat() -> str:
+    """The refusal for a ranking of players whose words name no stat it
+    reads (ISSUES.md #421): the stat is the missing fact, and the sentence
+    says how to name one rather than ranking by points unasked."""
+    return "A ranking of players needs a stat to rank them by, and the words name none read here - name one ('most points', 'best 3pt%', 'most triple-doubles')."
 
 
 def _single_season_ranking(words: str) -> str:

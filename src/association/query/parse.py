@@ -126,8 +126,10 @@ _PLAYER_LOG: lexicon.GrammarRow = lexicon.AnyOf(
 
 _LEAGUE_TEAMS_RANKED = lexicon.AllOf((lexicon.LEAGUE_TEAMS_RANKED_ROW, lexicon.AnyOf((lexicon.TEAM_WORD_ROW, lexicon.NoneOf((lexicon.LINE_OF_GAMES_ROW,))))))
 """The league's teams ranked: a team word, or "nba" beside wins or losses,
-with no games kept by a line unless a team word is written (ISSUES.md #394)
-- and "nba" alone where no measure is named (:func:`parent_asked`)."""
+with no games kept by a line unless a team word is written (ISSUES.md #394).
+"nba" alone names the players' ranking: where the words name no measure it
+reads, the ranking refuses by name (``ranking_needs_stat``, ISSUES.md #421),
+where it was held the teams' refusal for fear of the points default."""
 
 PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...] = (
     # (kinds the row applies to, the row's predicate over the grammar's
@@ -257,25 +259,9 @@ def parent_asked(question: str | lexicon.GrammarText, kind: str, companions: boo
     """
     text = lexicon.GrammarText.of(question)
     for kinds, predicate, parent in PARENT_GRAMMAR:
-        if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and (predicate.holds(text) or (predicate is _LEAGUE_TEAMS_RANKED and _parent_asked_nba_unmeasured(text))):
+        if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and predicate.holds(text):
             return parent
     return None
-
-
-def _parent_asked_nba_unmeasured(text: lexicon.GrammarText) -> bool:
-    """Whether "nba" alone names the teams' ranking here: the league's
-    words ranked (:data:`~association.query.lexicon.LEAGUE_NBA_RANKED_ROW`),
-    no games kept by a line, and no measure the words name that the
-    players' ranking reads. "most steals in nba in 2025" names steals and is
-    the players' ranking; "nba best shooting percentages 2023" names no
-    measure, and a yes/no one ("triple doubles") ranks by points over a span
-    of seasons - read as the players', each would answer their points per
-    game fluently where the teams' reading refuses (the players' ranking's
-    default measure, ISSUES.md), so each stays the teams'."""
-    if not lexicon.AllOf((lexicon.LEAGUE_NBA_RANKED_ROW, lexicon.NoneOf((lexicon.LINE_OF_GAMES_ROW,)))).holds(text):
-        return False
-    measured = named(text.source)
-    return measured is None or measured[0] in BOOLEAN_KEYS
 
 
 def classify_span(index: names.NameIndex, text: str) -> str | None:
@@ -1070,6 +1056,10 @@ def _reading(
     # word there is no refusal).
     read_by_model = (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked))
     defaulted, defaulted_claims = _reading_from_route_defaulted(asked, pointed, [(c.start, c.end) for c in found], read_by_model, model_stat)
+    if defaulted is not None and defaulted.kind == "ranking_needs_stat" and unsupported:
+        # What the words name that nothing reads (an age) is the refusal the
+        # answering loop says where the ranking declines; it is the cause.
+        defaulted = None
     found = list(claimed_once([*found, *defaulted_claims]))
     return replace(
         pointed,
@@ -1310,7 +1300,25 @@ def _reading_from_route_defaulted(question: str, reading: Reading, claimed: list
         classes.setdefault(which, []).append(word)
         claims.append(Claim(start, end, "defaulted"))
     cause = _defaulted_cause(reading, classes, names_read, context.key)
-    return cause, (claims if cause is not None else [])
+    if cause is None:
+        return _defaulted_ranking(reading), []
+    return cause, claims
+
+
+def _defaulted_ranking(reading: Reading) -> Cause | None:
+    """The players' ranking by points per game where neither the words nor
+    the model named any measure (ISSUES.md #421): the ranking's default
+    answered "best shooting percentages", "most wins" and "efficiency
+    rating by year" as the league's scorers, fluently. A cause the planner
+    says where the ranking would answer, as every defaulted class is - so a
+    decline or a refusal the planning comes to first keeps its sentence."""
+    point = reading.point
+    if point is None or point.read_as not in (PLAYER_RANKING, PointShape("player_games", "ranking", "player")) or point.predicates or reading.lines:
+        # (A line names the ranking's stat: "players who averaged 25 ppg".)
+        return None
+    if reading.measure is not None and reading.measure.key is not None:
+        return None
+    return Cause(kind="ranking_needs_stat", facts={"shape": PLAYER_RANKING})
 
 
 @dataclass(frozen=True)
