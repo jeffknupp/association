@@ -133,6 +133,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** in the parser's last step, a team the subject reading read and the reading put nowhere on a player's question is a cause naming it (a reading cause of its own, `team_not_read`, beside `opponent_not_read`), then the readers one at a time: "with <team>"/"<team> <player>"/"during <team>" as the tenure, "at <team>" as the opponent (a venue: away), "vs t wolves" through the opponent reader's team words; each wording enumerated.
 - **Priority:** P1 - a fluent wrong answer; 0 of the 628, about 20 of the 2,082.
 - **Source:** ours.
+- **GitHub:** #436
 
 ### A count of triple-doubles over a line is read without the line: "most 30+ point triple doubles" lists three single games
 - **Found:** 2026-10-14, Phase 5, step 2, trying "most 30 point triple doubles in the last 3 years" (feed, refused by name since step 1) as a count.
@@ -141,6 +142,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** a count of games over a yes/no measure AND a line (the measure the count's predicate, the line a second predicate on the same game: `lines.threshold_line` beside `measure.yes_no`), then the count's child grammar reads "N stat triple doubles" as its games; until then the league's ranking refuses a line beside a yes/no measure by name. Each wording a reader case.
 - **Priority:** P1 - a fluent wrong answer; 0 of the 628, 0 of the 2,082 answered (the one feed wording is refused by name).
 - **Source:** ours.
+- **GitHub:** #437
 
 ### A single bare "N stat" line on a reader whose shape is not a line is read by nothing: "2 threes in games Jamal Murray played including playoffs" answers his 3.2 threes per game
 - **Found:** 2026-10-09, Phase 3 step 2's line slice (`~/association-research/stages/line_family.py`); the stated forms fixed and the rest re-measured 2026-10-10, Phase 3, step 3, where the Reading's own unread words name each number.
