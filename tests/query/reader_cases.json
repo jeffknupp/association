@@ -4656,16 +4656,16 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_periods",
-    "shape": "rows",
-    "by": "date"
+    "relation": "team_periods",
+    "shape": "scalar",
+    "by": "total"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "ers"
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
     ],
-    "teams": [],
     "position": null
    },
    "cuts": {
@@ -4717,10 +4717,8 @@
     "score"
    ],
    "subject": {
-    "kind": "player",
-    "players": [
-     "ers"
-    ],
+    "kind": "team",
+    "players": [],
     "teams": [
      "Philadelphia 76ers"
     ],
@@ -4731,9 +4729,9 @@
     "invented": [],
     "named_season": 2026,
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
     "asked_reason": null,
     "conditions": [],
@@ -4745,17 +4743,8 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "router players the question supports ['ers']; team word 'Philadelphia 76ers'; against 'Boston Celtics'"
-    },
-    {
-     "stage": "subject",
-     "field": "players",
-     "before": null,
-     "after": [
-      "ers"
-     ],
-     "reason": "from the question's own words"
+     "after": "team",
+     "reason": "team word 'Philadelphia 76ers'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -4776,14 +4765,14 @@
    ],
    "point": {
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
-    "relation": "player",
-    "on": "player_periods",
-    "shape": "rows",
-    "by": "date",
+    "relation": "team",
+    "on": "team_periods",
+    "shape": "scalar",
+    "by": "total",
     "measures": [
      {
       "key": "points",
@@ -4798,29 +4787,20 @@
       "beside": []
      }
     ],
-    "group": "none",
+    "group": "period",
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
-    "available": {
-     "table": "shot_chart"
-    },
-    "subject_span": {
-     "season": 2026,
-     "season_type": 2,
-     "both": false,
-     "career": false,
-     "since": null,
-     "until": null
-    },
+    "available": null,
+    "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "ers"
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
      ],
-     "teams": [],
      "position": null
     },
     "cuts": {
@@ -5316,16 +5296,16 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_periods",
-    "shape": "rows",
-    "by": "date"
+    "relation": "team_periods",
+    "shape": "scalar",
+    "by": "total"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "ers"
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
     ],
-    "teams": [],
     "position": null
    },
    "cuts": {
@@ -5377,10 +5357,8 @@
     "score"
    ],
    "subject": {
-    "kind": "player",
-    "players": [
-     "ers"
-    ],
+    "kind": "team",
+    "players": [],
     "teams": [
      "Philadelphia 76ers"
     ],
@@ -5391,9 +5369,9 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
     "asked_reason": null,
     "conditions": [],
@@ -5405,17 +5383,8 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "router players the question supports ['ers']; team word 'Philadelphia 76ers'; against 'Boston Celtics'"
-    },
-    {
-     "stage": "subject",
-     "field": "players",
-     "before": null,
-     "after": [
-      "ers"
-     ],
-     "reason": "from the question's own words"
+     "after": "team",
+     "reason": "team word 'Philadelphia 76ers'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -5436,14 +5405,14 @@
    ],
    "point": {
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
-    "relation": "player",
-    "on": "player_periods",
-    "shape": "rows",
-    "by": "date",
+    "relation": "team",
+    "on": "team_periods",
+    "shape": "scalar",
+    "by": "total",
     "measures": [
      {
       "key": "points",
@@ -5458,29 +5427,20 @@
       "beside": []
      }
     ],
-    "group": "none",
+    "group": "period",
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
-    "available": {
-     "table": "shot_chart"
-    },
-    "subject_span": {
-     "season": null,
-     "season_type": 2,
-     "both": false,
-     "career": false,
-     "since": null,
-     "until": null
-    },
+    "available": null,
+    "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "ers"
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
      ],
-     "teams": [],
      "position": null
     },
     "cuts": {
@@ -20815,16 +20775,16 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_periods",
-    "shape": "rows",
-    "by": "date"
+    "relation": "team_periods",
+    "shape": "scalar",
+    "by": "total"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "ers"
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
     ],
-    "teams": [],
     "position": null
    },
    "cuts": {
@@ -20874,10 +20834,8 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "player",
-    "players": [
-     "ers"
-    ],
+    "kind": "team",
+    "players": [],
     "teams": [
      "Philadelphia 76ers"
     ],
@@ -20888,9 +20846,9 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
     "asked_reason": "a team's record in the games a player named beside it reached a line",
     "conditions": [],
@@ -20902,17 +20860,8 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "router players the question supports ['ers']; team word 'Philadelphia 76ers'; against 'Boston Celtics'"
-    },
-    {
-     "stage": "subject",
-     "field": "players",
-     "before": null,
-     "after": [
-      "ers"
-     ],
-     "reason": "from the question's own words"
+     "after": "team",
+     "reason": "team word 'Philadelphia 76ers'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -20933,21 +20882,21 @@
     {
      "stage": "parser",
      "field": "asked",
-     "before": "player_seasons/scalar/line",
-     "after": "player_periods/rows/date",
+     "before": "team_games/comparison/opponent",
+     "after": "team_periods/scalar/total",
      "reason": "the stages settle it from the question's words"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
-    "relation": "player",
-    "on": "player_periods",
-    "shape": "rows",
-    "by": "date",
+    "relation": "team",
+    "on": "team_periods",
+    "shape": "scalar",
+    "by": "total",
     "measures": [
      {
       "key": "points",
@@ -20962,29 +20911,20 @@
       "beside": []
      }
     ],
-    "group": "none",
+    "group": "period",
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
-    "available": {
-     "table": "shot_chart"
-    },
-    "subject_span": {
-     "season": null,
-     "season_type": 2,
-     "both": false,
-     "career": false,
-     "since": null,
-     "until": null
-    },
+    "available": null,
+    "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "ers"
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
      ],
-     "teams": [],
      "position": null
     },
     "cuts": {
@@ -75126,16 +75066,16 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_periods",
-    "shape": "rows",
-    "by": "date"
+    "relation": "team_periods",
+    "shape": "scalar",
+    "by": "total"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "ers"
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
     ],
-    "teams": [],
     "position": null
    },
    "cuts": {
@@ -75187,10 +75127,8 @@
     "score"
    ],
    "subject": {
-    "kind": "player",
-    "players": [
-     "ers"
-    ],
+    "kind": "team",
+    "players": [],
     "teams": [
      "Philadelphia 76ers"
     ],
@@ -75201,9 +75139,9 @@
     "invented": [],
     "named_season": 2026,
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
     "asked_reason": null,
     "conditions": [],
@@ -75215,17 +75153,8 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "router players the question supports ['ers']; team word 'Philadelphia 76ers'; against 'Boston Celtics'"
-    },
-    {
-     "stage": "subject",
-     "field": "players",
-     "before": null,
-     "after": [
-      "ers"
-     ],
-     "reason": "from the question's own words"
+     "after": "team",
+     "reason": "team word 'Philadelphia 76ers'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -75246,14 +75175,14 @@
    ],
    "point": {
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "team_periods",
+     "shape": "scalar",
+     "by": "total"
     },
-    "relation": "player",
-    "on": "player_periods",
-    "shape": "rows",
-    "by": "date",
+    "relation": "team",
+    "on": "team_periods",
+    "shape": "scalar",
+    "by": "total",
     "measures": [
      {
       "key": "points",
@@ -75268,29 +75197,20 @@
       "beside": []
      }
     ],
-    "group": "none",
+    "group": "period",
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
-    "available": {
-     "table": "shot_chart"
-    },
-    "subject_span": {
-     "season": 2026,
-     "season_type": 2,
-     "both": false,
-     "career": false,
-     "since": null,
-     "until": null
-    },
+    "available": null,
+    "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "ers"
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
      ],
-     "teams": [],
      "position": null
     },
     "cuts": {
@@ -82933,16 +82853,16 @@
   "stat": "wins",
   "expected": {
    "asked": {
-    "relation": "player_games",
+    "relation": "team_games",
     "shape": "split",
-    "by": "splits"
+    "by": "presence"
    },
    "who": {
-    "kind": "player",
-    "players": [
-     "ers"
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Philadelphia 76ers"
     ],
-    "teams": [],
     "position": null
    },
    "cuts": {
@@ -83001,16 +82921,13 @@
    },
    "minimum": null,
    "unread": [
+    "record",
     "both",
-    "paul",
-    "george",
     "played"
    ],
    "subject": {
-    "kind": "player",
-    "players": [
-     "ers"
-    ],
+    "kind": "team",
+    "players": [],
     "teams": [
      "Philadelphia 76ers"
     ],
@@ -83024,9 +82941,9 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_games",
+     "relation": "team_games",
      "shape": "split",
-     "by": "splits"
+     "by": "presence"
     },
     "asked_reason": null,
     "conditions": [
@@ -83051,17 +82968,8 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "question names players ['Joel Embiid', 'Paul George']; router players the question supports ['ers']; team word 'Philadelphia 76ers'"
-    },
-    {
-     "stage": "subject",
-     "field": "players",
-     "before": null,
-     "after": [
-      "ers"
-     ],
-     "reason": "from the question's own words"
+     "after": "team",
+     "reason": "question names players ['Joel Embiid', 'Paul George']; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -83081,39 +82989,21 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "conditions",
-     "before": null,
-     "after": [
-      {
-       "player": "Joel Embiid",
-       "side": "own",
-       "predicate": "played"
-      },
-      {
-       "player": "Paul George",
-       "side": "own",
-       "predicate": "played"
-      }
-     ],
-     "reason": "the role the question gives each player named beside the subject"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_games",
+     "relation": "team_games",
      "shape": "split",
-     "by": "splits"
+     "by": "presence"
     },
-    "relation": "player",
-    "on": "player_games",
+    "relation": "team",
+    "on": "team_games",
     "shape": "split",
-    "by": "splits",
+    "by": "presence",
     "measures": [
      {
-      "key": "wins",
+      "key": "record",
       "as_typed": null,
       "how": null,
       "unit": null,
@@ -83125,22 +83015,20 @@
       "beside": []
      }
     ],
-    "group": "venue",
+    "group": "presence",
     "predicates": [],
     "order": "date",
     "direction": "desc",
     "limit": null,
     "minimum_games": null,
-    "available": {
-     "table": "player_box_stats"
-    },
+    "available": null,
     "subject_span": null,
     "who": {
-     "kind": "player",
-     "players": [
-      "ers"
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Philadelphia 76ers"
      ],
-     "teams": [],
      "position": null
     },
     "cuts": {
@@ -90949,14 +90837,7 @@
     "game_n": null,
     "season_n": null
    },
-   "companions": [
-    {
-     "player": "ers",
-     "side": "opponent",
-     "predicate": "played",
-     "line": null
-    }
-   ],
+   "companions": [],
    "lines": [],
    "measure": {
     "key": "points",
@@ -91001,9 +90882,7 @@
     "position": null,
     "opponent": "Philadelphia 76ers",
     "own_team": null,
-    "companions": [
-     "ers"
-    ],
+    "companions": [],
     "invented": [],
     "named_season": null,
     "asked": {
@@ -91012,14 +90891,7 @@
      "by": "date"
     },
     "asked_reason": null,
-    "conditions": [
-     {
-      "player": "ers",
-      "side": "opponent",
-      "predicate": "played",
-      "line": null
-     }
-    ],
+    "conditions": [],
     "filler": []
    },
    "misread": [],
@@ -91029,7 +90901,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Payton Prichard']; router players the question supports ['Payton Prichard', 'ers']; question spells 'Payton Prichard' as 'Payton Pritchard'; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
+     "reason": "question names players ['Payton Prichard']; router players the question supports ['Payton Prichard']; question spells 'Payton Prichard' as 'Payton Pritchard'; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -91045,15 +90917,6 @@
      "field": "opponent",
      "before": null,
      "after": "Philadelphia 76ers",
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "companions",
-     "before": null,
-     "after": [
-      "ers"
-     ],
      "reason": "from the question's own words"
     }
    ],
@@ -91150,14 +91013,7 @@
      "game_n": null,
      "season_n": null
     },
-    "companions": [
-     {
-      "player": "ers",
-      "side": "opponent",
-      "predicate": "played",
-      "line": null
-     }
-    ],
+    "companions": [],
     "lines": [],
     "measure": {
      "key": "points",
@@ -91227,14 +91083,7 @@
     "game_n": null,
     "season_n": null
    },
-   "companions": [
-    {
-     "player": "ers",
-     "side": "opponent",
-     "predicate": "played",
-     "line": null
-    }
-   ],
+   "companions": [],
    "lines": [],
    "measure": null,
    "span": {
@@ -91267,9 +91116,7 @@
     "position": null,
     "opponent": "Philadelphia 76ers",
     "own_team": null,
-    "companions": [
-     "ers"
-    ],
+    "companions": [],
     "invented": [],
     "named_season": 2026,
     "asked": {
@@ -91278,14 +91125,7 @@
      "by": "date"
     },
     "asked_reason": null,
-    "conditions": [
-     {
-      "player": "ers",
-      "side": "opponent",
-      "predicate": "played",
-      "line": null
-     }
-    ],
+    "conditions": [],
     "filler": []
    },
    "misread": [],
@@ -91295,7 +91135,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Payton Pritchard']; router players the question supports ['Payton Pritchard', 'ers']; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
+     "reason": "question names players ['Payton Pritchard']; router players the question supports ['Payton Pritchard']; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -91311,15 +91151,6 @@
      "field": "opponent",
      "before": null,
      "after": "Philadelphia 76ers",
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "companions",
-     "before": null,
-     "after": [
-      "ers"
-     ],
      "reason": "from the question's own words"
     }
    ],
@@ -91416,14 +91247,7 @@
      "game_n": null,
      "season_n": null
     },
-    "companions": [
-     {
-      "player": "ers",
-      "side": "opponent",
-      "predicate": "played",
-      "line": null
-     }
-    ],
+    "companions": [],
     "lines": [],
     "measure": null,
     "span": {

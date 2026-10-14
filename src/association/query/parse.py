@@ -85,6 +85,7 @@ from association.query.subject import (
     apply_subject,
     child_named,
     compared_but_unmatched,
+    is_team_name,
     nicknames_in,
     opponent_read,
     player_named_on_a_team_only_question,
@@ -369,7 +370,10 @@ def _as_typed_part(players: names.PlayerIndex, question: str, name: str) -> str:
     words = _words(name)
     asked = {word.casefold() for word in _words(question)}
     held = [word for word in words if word.casefold() in asked]
-    if not held or len(held) == len(words) or name in nicknames_in(question):
+    if not held or len(held) == len(words) or name in nicknames_in(question) or is_team_name(name):
+        # A team's name the model copied is no player's completion: cut,
+        # "Philadelphia 76ers" (whose "76ers" splits to "ers") read as a
+        # player named "ers".
         return name
     derived = question_derived_player(players, question, name)
     if derived is not None and derived.name.casefold() == name.casefold():

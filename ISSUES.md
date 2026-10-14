@@ -259,15 +259,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #392
 
-### The team after a versus word is read from a span that only ends in a team: "zach lavine vs magic on bulls" is his games against the Bulls
-- **Found:** 2026-10-13, lane N of the P1 sweep, enumerating #346's moves ("zach lavigne vs magic on bulls" moved from the Magic-Bulls meetings to LaVine's games vs the Bulls).
-- **Evidence:** `subject._team_after_versus` tries the words after "vs" as spans of three, two and one, and `_team_named` reads "magic on bulls" (three words) as the Chicago Bulls - a span holding a team's word anywhere - before the one word "magic" is tried. On `be033d7`'s tree, through the whole agent with no names, "zach lavine vs magic on bulls" answers "Zach LaVine averaged 30 points ... in 1 game vs the Chicago Bulls in the 2026 regular season"; "zach lavine vs magic for the bulls" reads Orlando as the opponent and the Bulls as his tenure, rightly. 1 of the 2,082 feed questions (the typo'd twin, since #346).
-- **User sees:** a different opponent - his games against a team he was asked about playing FOR.
-- **Next step:** a span after a versus word names a team only where its FIRST word is a trace of that team (the shorter spans then reach "magic"), and "on <team>" after the opponent is the tenure as "for <team>" is (`lexicon.FOR_TEAM_PHRASE`). Measure on the 2,710 readings; a case per wording.
-- **Priority:** P1 - a different question answered.
-- **Source:** ours.
-- **GitHub:** #419
-
 ### A team's former name with no season is read by nothing, so its players' question is the league's: "highest scoring games of supersonics players" answers the league's 2026 high
 - **Found:** 2026-10-13, lane N of the P1 sweep, enumerating the "best/highest scoring games" fix (the question moved from the league's points per game to the league's single-game high; it was the league's question both times).
 - **Evidence:** on the feed's no-names reading at sweep-N `8c84100`+, "highest scoring games of supersonics players" reads `who.kind == 'everyone'`, no team, "supersonics" and "players" unread. A former name IS read where a season of its era is named ("kevin durant points per game for the sonics in 2008" is his SuperSonics tenure, "kobe points against the supersonics in 2006" the opponent): the team words are resolved over the season the question names, and with none named, over the current one, which no SuperSonics play in. 1 of the 2,082.
