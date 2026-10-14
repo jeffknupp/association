@@ -42,7 +42,7 @@ from association.nba.coverage import COVERAGE
 from association.query import reading
 from association.query.conditions import box_source
 from association.query.court import render_court_html
-from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, names_of, unmatched
+from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, name_missing, names_of, unmatched
 from association.query.game_label import game_label
 from association.query.lines import MeasureFilter, measure_filters
 from association.query.measure import keyed
@@ -251,7 +251,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result |
     if q.shape != "scalar":
         return None
     measures = measure_filters(scope)
-    subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY)
+    subject = scoped_player(con, scope, "player", table="player_game_log", available=SHOT_AVAILABILITY)
     if isinstance(subject, Unanswered):
         return subject
     player, span = subject
@@ -527,7 +527,7 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result | Un
         return None
     name = scope.who.player
     if name is None or not name.strip():
-        raise Unsupported("shot_chart needs a player name")
+        raise name_missing("player")
     measures = measure_filters(scope)
     subject = _shot_chart_settle_player(con, name, scope)
     if isinstance(subject, Unanswered):

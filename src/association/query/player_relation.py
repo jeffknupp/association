@@ -789,7 +789,7 @@ def player_relation_season_type(scope: Filtered) -> int:
 def scoped_player(
     con: duckdb.DuckDBPyConnection,
     scope: Filtered,
-    missing: str,
+    needs: str,
     *,
     table: str,
     available: Availability | tuple[Availability, ...],
@@ -822,7 +822,7 @@ def scoped_player(
     season_n = scope.cuts.season_n
     asked = span if span is not None else scope.span
     seasons = span_of(asked.over_career() if season_n else asked, table, season_type=player_relation_season_type(scope))
-    player = resolved_player(con, scope.who.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
+    player = resolved_player(con, scope.who.player, needs, available=available, season=seasons.season, through=career_end(seasons.season))
     if isinstance(player, Unanswered):
         return player
     settled = settle_ordinal_season(con, player, season_n, seasons)
@@ -1161,7 +1161,7 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Filt
 def condition_player(
     con: duckdb.DuckDBPyConnection,
     scope: Filtered,
-    missing: str,
+    needs: str,
     condition_scope: _Scope,
     *,
     team: Entity | None = None,
@@ -1198,7 +1198,7 @@ def condition_player(
     # The name is narrowed over the games the condition covers: the one
     # season it settled on, or the career (the range and the type the
     # scope's own).
-    subject = scoped_player(con, scope, missing, table="player_game_log", available=BOX_SCORES, span=replace(scope.span, career=condition_scope.season is None, season=condition_scope.season))
+    subject = scoped_player(con, scope, needs, table="player_game_log", available=BOX_SCORES, span=replace(scope.span, career=condition_scope.season is None, season=condition_scope.season))
     if isinstance(subject, Unanswered):
         return subject
     player, span = subject
@@ -1280,7 +1280,7 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Companion, playe
         if predicate == "absent" and isinstance(found, Entity):
             return _absence_condition(con, found, player, span, opponent)
     else:
-        found = resolved_player(con, entry.player, f"no player named {entry.player!r}", available=BOX_SCORES, season=span.season, through=career_end(span.season))
+        found = resolved_player(con, entry.player, "player", available=BOX_SCORES, season=span.season, through=career_end(span.season))
     if isinstance(found, Unanswered):
         return found
     line: tuple[str, str, int, str] | None = None

@@ -4893,6 +4893,7 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "team_seasons_unsummed": lambda facts: _shape_declined(facts, f"team season stats have no way to sum {facts['metric']} across a span of seasons yet"),
     "team_venue_unsplit": lambda facts: _shape_declined(facts, f"team season stats have no {facts['venue']} split for {facts['metric']}"),
     "since_record_unsplit": lambda facts: _shape_declined(facts, "a since-bounded record has no home/road split yet"),
+    "name_missing": lambda facts: _shape_declined(facts, f"it needs a {facts['needs']}'s name, and none was read"),
     "own_opponent": lambda facts: _shape_declined(facts, f"the {facts['team']} are named as both the team and its opponent - name the team they played"),
 }
 

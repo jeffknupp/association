@@ -1463,6 +1463,8 @@ CAUSES: frozenset[str] = frozenset(
         "since_record_unsplit",
         # Phase 5, step 5: a team named as its own opponent (ISSUES.md #277).
         "own_opponent",
+        # Phase 5, step 5: a read that needs a name the reading has none of.
+        "name_missing",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -1562,7 +1564,10 @@ missing thing, never only the slot"):
   (``team_seasons_unsummed``: ``metric``) or split by venue
   (``team_venue_unsplit``: ``metric``, ``venue``), and a since-bounded
   record split by venue (``since_record_unsplit``); a team named as its
-  own opponent (``own_opponent``: ``team``).
+  own opponent (``own_opponent``: ``team``); a read that needs a name the
+  reading has none of (``name_missing``: ``needs`` - ``player``, ``team``
+  or ``teammate``), which each reader said naming its retired template
+  ("shot_chart needs a player name").
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.

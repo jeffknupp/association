@@ -369,8 +369,10 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     # nobody (the compiler's since Phase 2's slice (v); with_without,
     # head_to_head and the fingerprint's template, which this used, are gone).
     answer = ask_routed(agent, "a question nothing reads", Routed(NETPOINTS_FINGERPRINT))
-    assert answer.answered_by == "refused" and "as a NetPoints fingerprint: fingerprint needs a player" in answer.text
-    assert (agent.unanswered, agent.unanswered_as) == ("fingerprint needs a player name", NETPOINTS_FINGERPRINT)
+    # A cause the planner says since Phase 5, step 5, naming what the read
+    # needs a name of, where the sentence named the retired template.
+    assert answer.answered_by == "fast" and agent.unanswered is None
+    assert answer.text == "Nothing here answers this question as a NetPoints fingerprint: it needs a player's name, and none was read."
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
     # refused with the compiler's reason where it has no reading: a log of

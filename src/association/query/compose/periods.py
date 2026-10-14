@@ -460,7 +460,7 @@ def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Fi
             return team
         return team, ResolvedSpan(None, scope.span.season_type or 2)
     scoped = TeamQuery(who=reading.Subject(kind="team", teams=(scope.who.team,)) if scope.who.team is not None else reading.Subject(), span=scope.span)
-    return scoped_team(con, scoped, "team_quarter_points needs a team")
+    return scoped_team(con, scoped, "team")
 
 
 def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, measure: str) -> tuple[list[dict[str, Any]], list[int]]:

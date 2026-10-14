@@ -2591,6 +2591,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_venue_unsplit": {"shape": TEAM_RANKING, "metric": "pace", "venue": "home"},
     "since_record_unsplit": {"shape": TEAM_RANKING},
     "own_opponent": {"shape": TEAM_PERIOD_TOTAL, "team": "Boston Celtics"},
+    "name_missing": {"shape": PointShape("shots", "chart", "shots"), "needs": "player"},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
 }

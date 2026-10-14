@@ -619,7 +619,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     subject = scoped_player(
         con,
         scope,
-        "no player named",
+        "player",
         table="player_game_log",
         available=q.available or GAME_LOGS,
         span=scope.span.over_career() if dated else q.subject_span,

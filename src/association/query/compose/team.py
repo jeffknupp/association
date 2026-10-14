@@ -63,7 +63,7 @@ from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql, box_source, presence_games_sql
 from association.query.coverage import floor_refusal
-from association.query.entities import Entity, resolved_team
+from association.query.entities import Entity, name_missing, resolved_team
 from association.query.lines import threshold_of
 from association.query.measure import won
 from association.query.player_games import BOTH_SEASON_TYPES
@@ -386,7 +386,7 @@ def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> E
     """The team a question names, or the refusal wrapped as :class:`~association.query.compose.core.Refused`."""
     team_text = scope.who.team
     if team_text is None or not team_text.strip():
-        raise Unsupported("no team named")
+        raise name_missing("team")
     season: int = scope.span.season if scope.span.season is not None else current_season()
     team = resolved_team(con, team_text, season=season)
     if isinstance(team, Unanswered):
@@ -445,7 +445,7 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, both: 
     together - the same order every team reader keeps."""
     scope = q
     # The shared steps take the typed filters: the query itself.
-    settled = scoped_team(con, scope, "no team named")
+    settled = scoped_team(con, scope, "team")
     if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled
@@ -528,7 +528,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     scope = q
     # One season's window over both types: the span less its career (a
     # career has no single season to read both types within, refused below).
-    settled = scoped_team(con, scope, "no team named", span=replace(scope.span, career=False))
+    settled = scoped_team(con, scope, "team", span=replace(scope.span, career=False))
     if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled

@@ -21,7 +21,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
-from association.query.entities import Entity, resolved_team
+from association.query.entities import Entity, name_missing, resolved_team
 from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, ResolvedSpan, apply_situation, has_table, relation_window, span_of
 from association.query.reading import Cuts, DeclineReason, Filtered, Measure, Period, PointShape, ShapeCells, ShapeDeclined, Span, Unsupported, period_narrowing
@@ -315,7 +315,7 @@ what the planner does about a cell it does not state
 """
 
 
-def scoped_team(con: duckdb.DuckDBPyConnection, scope: Filtered, missing: str, *, span: Span | None = None) -> tuple[Entity, ResolvedSpan] | Unanswered:
+def scoped_team(con: duckdb.DuckDBPyConnection, scope: Filtered, needs: str, *, span: Span | None = None) -> tuple[Entity, ResolvedSpan] | Unanswered:
     """The team a question is about and the seasons it covers - the team
     counterpart of :func:`scoped_player`. A franchise's name is a fact about a
     season (see :func:`resolved_team`: "Hornets" is New Orleans in 2008 and
@@ -325,8 +325,9 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Filtered, missing: str, *
     span to disambiguate it.
 
     Takes: ``con``; ``scope`` (read here for ``team`` and its typed span);
-    ``missing`` (the :class:`Unsupported` message when no team was
-    named); ``span`` (a :class:`~association.query.reading.Span` overriding
+    ``needs`` (what the read needs a name of, ``"team"``: the
+    ``name_missing`` decline, :func:`~association.query.entities.name_missing`,
+    when no team was named); ``span`` (a :class:`~association.query.reading.Span` overriding
     the scope's own, the same as ``scoped_player``'s, so a caller with a
     reason to override it can).
 
@@ -346,7 +347,7 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Filtered, missing: str, *
     """
     seasons = span_of(span if span is not None else scope.span, "games")
     if scope.who.team is None:
-        raise Unsupported(missing)
+        raise name_missing(needs)
     team = resolved_team(con, scope.who.team, season=seasons.season)
     if isinstance(team, Unanswered):
         return team

@@ -51,7 +51,7 @@ import duckdb
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_PARTITION
 from association.nba.season import current_season, eastern_date
-from association.query.entities import Ambiguous, Availability, Entity, names_of, resolved_player, unmatched
+from association.query.entities import Ambiguous, Availability, Entity, name_missing, names_of, resolved_player, unmatched
 from association.query.fingerprint import (
     FINGERPRINT_AVAILABILITY,
     FINGERPRINT_MIN_GAME_POSSESSIONS,
@@ -157,7 +157,7 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> 
     season_type = scope.span.season_type or 2
     # A named order ("recent", "first") is one game.
     order = scope.window.order
-    player = resolved_player(con, scope.who.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
+    player = resolved_player(con, scope.who.player, "player", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
     if isinstance(player, Unanswered):
         return player
     # "NetPoints from his LAST regular season game" was answered with the
@@ -364,7 +364,7 @@ def _fingerprint_names(players: tuple[str, ...]) -> list[str]:
     """The player name(s) asked for - two or more a comparison, one a
     polygon of his own - no more than one radar draws."""
     if not players:
-        raise Unsupported("fingerprint needs a player name")
+        raise name_missing("player")
     return list(players[:MAX_FINGERPRINT_PLAYERS])
 
 
