@@ -4593,7 +4593,7 @@ championship.
 # height ("6'10"), "how tall" or "height"; "4 ft" alone is a shot's
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
-ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots"], re.Pattern[str]], ...] = (
+ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "death", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots"], re.Pattern[str]], ...] = (
     (
         "draft",
         re.compile(
@@ -4617,6 +4617,9 @@ ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey",
         ),
     ),
     ("birth", re.compile(r"\bborn\b|\bbirth(?:\s?(?:days?|dates?|places?|years?))?\b", re.IGNORECASE)),
+    # A player's death (Phase 5, step 2): "when did brandon clarke die" read
+    # "when ... brandon clarke" as a teammate's games and answered his line.
+    ("death", re.compile(r"\b(?:die|dies|died|death|deceased|passed\s+away)\b", re.IGNORECASE)),
     (
         "height",
         re.compile(

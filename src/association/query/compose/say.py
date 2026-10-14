@@ -4746,6 +4746,7 @@ _FACT_NOT_READ: dict[str, str] = {
         "(his record, or with and without a teammate) - so {words!r} cannot be ranked. Ask for the teams' best record, or one player's record, instead."
     ),
     "birth": "No birth date is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by season, team or position instead.",
+    "death": "No date of death is on file here - the player records carry none - so {words!r} cannot be read. Ask for a player's seasons or games instead.",
     "height": "No height is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by position instead (centers, forwards or guards).",
     "jersey": (
         "A jersey number is not read here: the player records hold only the number each player wore on the day he was first fetched, with no date, "

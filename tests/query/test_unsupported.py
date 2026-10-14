@@ -343,6 +343,7 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
         ("who won 6th man of the year in 2015", "award", "6th man"),
         ("did tracy mcgrady ever win most improved player", "award", "most improved player"),
         ("NBA players born on August 1", "birth", "born"),
+        ("when did brandon clarke die", "death", "die"),
         ("NBA players with birth date 8/1", "birth", "birth date"),
         ("6 ft 6 inches nba players", "height", "6 ft 6 inches"),
         ("6'10 chicago bulls forwards 2010-2019", "height", "6'10"),
