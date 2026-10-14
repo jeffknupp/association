@@ -92860,7 +92860,7 @@
  },
  {
   "name": "issue_377_at_least_gp",
-  "why": "\"at least 300 gp\" is a games floor (ISSUES.md #377); it was refused as a floor no ranking applies.",
+  "why": "\"at least 300 gp\" is a games floor (ISSUES.md #377); it was refused as a floor no ranking applies. Since #428 the players' win% refuses the ranking by name before the floor is read.",
   "question": "nba pg highest win% games at least 300 gp",
   "names": [],
   "stat": "",
@@ -92913,9 +92913,7 @@
     "word": "gp"
    },
    "unread": [
-    "pg",
     "highest",
-    "win%",
     "games"
    ],
    "subject": {
@@ -92947,84 +92945,15 @@
      "reason": ""
     }
    ],
-   "point": {
-    "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
-    },
-    "relation": "everyone",
-    "on": "player_games",
-    "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
-    "aggregate": "per_game",
-    "group": "player",
-    "predicates": [],
-    "order": "measure",
-    "direction": "desc",
-    "limit": 10,
-    "minimum_games": 300,
-    "available": null,
-    "subject_span": null,
-    "who": {
-     "kind": "everyone",
-     "players": [],
-     "teams": [],
-     "position": null
-    },
-    "cuts": {
-     "opponent": null,
-     "tenure": null,
-     "venue": null,
-     "date": null,
-     "situation": null,
-     "round": null,
-     "game_n": null,
-     "season_n": null
-    },
-    "companions": [],
-    "lines": [],
-    "measure": null,
-    "span": {
-     "season": null,
-     "season_type": 2,
-     "both": false,
-     "career": false,
-     "since": null,
-     "until": null
-    },
-    "split": null,
-    "period": null,
-    "window": {
-     "order": null,
-     "count": null,
-     "of": "games",
-     "rank": null,
-     "by": null
-    },
-    "minimum": {
-     "count": 300,
-     "unit": "games",
-     "of": null,
-     "word": "gp"
-    }
-   },
+   "point": null,
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": {
+    "kind": "fact_not_read",
+    "facts": {
+     "fact": "player win percentage",
+     "words": "win%"
+    }
+   }
   }
  },
  {

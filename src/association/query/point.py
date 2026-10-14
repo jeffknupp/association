@@ -1581,6 +1581,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     # built by hand with a subject of its own gets the same here.
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
     _player_rating_refused(reading.asked, question)
+    _player_win_pct_refused(reading.asked, question)
     scope = _season_lines_refused(reading.asked, question, scope)
     try:
         point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _seasons_counted(_read_point(reading.asked, scope, question, subject), reading.asked, question)
@@ -1662,6 +1663,20 @@ def _player_rating_refused(asked: PointShape | None, question: str) -> None:
     rating = lexicon.PLAYER_RATING.search(question)
     if rating is not None and lexicon.TEAM_WORD_HERE.search(question) is None:
         raise PointRefused(Cause(kind="fact_not_read", facts={"fact": "player rating", "words": rating.group(0)}), f"{rating.group(0)!r} is a team's figure")
+
+
+def _player_win_pct_refused(asked: PointShape | None, question: str) -> None:
+    """Refuse a ranking of players by win percentage by name - "player with
+    worst win percentage" ranked the league's scorers (ISSUES.md #428): a
+    player's record is his team's in the games he played, read for one
+    player (his record, his splits, with and without a teammate), and no
+    ranking of players reads it. With no player in the words it is the
+    teams' standings (``lexicon.LEAGUE_WIN_PCT_ROW``), never asked here."""
+    if asked != PLAYER_RANKING:
+        return
+    named = lexicon.WIN_PCT.search(question)
+    if named is not None:
+        raise PointRefused(Cause(kind="fact_not_read", facts={"fact": "player win percentage", "words": named.group(0)}), f"{named.group(0)!r} ranks no players")
 
 
 def _seasons_counted(point: Reading, asked: PointShape | None, question: str) -> Reading:

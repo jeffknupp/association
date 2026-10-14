@@ -63,15 +63,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **Priority:** P1 - a different question answered fluently (0 of the 2,710; natural wordings).
 - **GitHub:** #426
-### "win percentage" asked of the league's players reads no measure, and the points ranking answers: "player with worst win percentage" lists the 2026 scorers
-- **Found:** 2026-10-13, the P1 sweep's lane L, fixing #350 ("worst" a ranking word).
-- **Evidence:** on sweep-L, "worst win percentage" and "player with worst win percentage" (2 of the 2,082 feed questions) read no measure (`Reading.measure` None; "win percentage" in no measure word), so the players' ranking defaults to points per game, descending - "every player, 2026 regular season, by player (points per game, minimum 20 games): Luka Doncic 64 G points 33.5 ...". A player's win percentage is his team's record in his games (the with/without split and `player_splits` read it per player); no ranking of players reads it, and the bare "worst win percentage" is as likely the teams' standings.
-- **User sees:** a fluent points ranking where a win-percentage one was asked.
-- **Next step:** read "win percentage"/"win %" as a measure word; with no player word, the teams' ranking by win percentage (`TEAM_RANKING`, the standings' `win_pct`); with "player(s)", a refusal naming the figure until a ranking of players by their games' record exists.
-- **Priority:** P1 - a different figure answered fluently; 2 of the 2,082.
-- **Source:** ours.
-- **GitHub:** #428
-
 ### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
 - **Evidence:** `fe806a6` and `d4f04b9`, recorded-reply probes (the review's `data/adhoc.txt`): "luka stats vs top 3 teams this season" -> "Luka Doncic, last 3 of 64 games of the 2026 regular season: ...", `Reading.window.count` 3, unread `stats`, `teams`; "luka stats against top 5 defenses" -> his last 5 games, unread `stats`, `against`, `defenses`. #396's fix (`76c4e6a`, `lexicon.SITUATION`) reads only the seeding words ("seed", "seeds", "seeded"); "luka stats vs the top 4 seeds" is refused now but its Reading still carries `window.count` 4, its claim folded inside the situation's. No population question holds the class besides #396's own.

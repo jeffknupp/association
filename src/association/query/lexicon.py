@@ -3205,7 +3205,7 @@ BOOLEAN_RANK_WORDS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
 # `measures._ALIASES` (Phase 3, step 2), where the router imported it; the
 # catalog keys each alias to the measure it names (``measure.ALIASES``).
 TEAM_METRIC_WORDS: dict[str, tuple[str, ...]] = {
-    "record": ("record", "records", "wins", "win", "win pct", "win percentage", "winning percentage", "win percent", "standings", "win loss", "win loss record"),
+    "record": ("record", "records", "wins", "win", "win pct", "win percentage", "winning percentage", "win percent", "win%", "win %", "standings", "win loss", "win loss record"),
     "losses": ("losses", "loss", "losing record"),
     "points": ("points", "point", "ppg", "points per game", "scoring", "points scored", "avg points"),
     "opponent_points": (
@@ -4625,7 +4625,7 @@ NETPOINTS_ROW = row(r"\bnet ?po?i?nts?\b|\bnetpts\b")
 
 .. versionadded:: 6.0.0
 """
-RECORD_ROW = row(r"\b(record|rec|w-?l|win.loss|splits?)\b")
+RECORD_ROW = row(r"\b(record|rec|w-?l|win.loss|splits?)\b|\bwin(?:ning)?\s*(?:%|pct\b|percent(?:age)?\b)")
 """A player's own record or splits.
 
 .. versionadded:: 6.0.0
@@ -4711,6 +4711,21 @@ most 4 point plays" names no games, and reads no line a count keeps.
 # as the league's scorers, the everyone row below.
 LEAGUE_RECORD_ROW = row(r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)")
 """A record with no player in it: the teams' standings.
+
+.. versionadded:: 6.0.0
+"""
+WIN_PCT = re.compile(r"\bwin(?:ning)?\s*(?:%|pct\b|percent(?:age)?\b)", re.IGNORECASE)
+"""A win percentage named: "win percentage", "winning pct", "win%" - a
+team's record as a rate, which no ranking of players reads (ISSUES.md
+#428).
+
+.. versionadded:: 6.0.0
+"""
+LEAGUE_WIN_PCT_ROW = row(r"(?=.*\bwin(?:ning)?\s*(?:%|pct\b|percent(?:age)?\b))(?!.*\b(players?|duos?|teammates?|pairs?|guards?|forwards?|centers?|pg|sg|sf|pf|who scored|scorers?)\b)")
+"""A win percentage with no player in it - no "player", no group of players,
+no position: the teams' standings, as a record is ("worst win percentage"
+read as the league's scorers, ISSUES.md #428). Its own row, since a pair or
+a position before a record is the record row's as it stands.
 
 .. versionadded:: 6.0.0
 """

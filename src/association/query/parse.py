@@ -193,6 +193,9 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     # A record with no player in it is a team's: "worst record 2025-26" read
     # as the league's scorers, the everyone row below.
     (frozenset({"everyone"}), lexicon.LEAGUE_RECORD_ROW, TEAM_RANKING),
+    # A win percentage with no player in it is the teams' too: "worst win
+    # percentage" ranked the league's scorers (ISSUES.md #428).
+    (frozenset({"everyone"}), lexicon.LEAGUE_WIN_PCT_ROW, TEAM_RANKING),
     (frozenset({"everyone"}), lexicon.STREAK_ROW, TEAM_RECORD),
     # "game log", or a log after a window of games as the window tagger typed it ("last game log").
     (frozenset({"everyone"}), lexicon.AnyOf((lexicon.LEAGUE_LOG_ROW, lexicon.StandsBefore(frozenset({"window"}), lexicon.LOG_AFTER_A_VALUE))), PLAYER_LOG),
