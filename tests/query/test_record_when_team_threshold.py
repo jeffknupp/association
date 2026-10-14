@@ -149,3 +149,33 @@ def test_a_teams_line_under_a_number_splits_the_games_by_its_own_comparison(tmp_
     assert (answer.data["reached"]["games"], answer.data["reached"]["wins"]) == reached
     assert (answer.data["fell_short"]["games"], answer.data["fell_short"]["wins"]) == short
     assert answer.data["op"] == op
+
+
+def test_a_teams_record_over_its_opponents_line_splits_the_games_by_their_score(tmp_path: Path) -> None:
+    """ISSUES.md #426: "celtics record when allowing 100+ points" answered
+    the Celtics' record when THEY scored 100+ - the line read on their own
+    points. A line on the opponents' figure (``Line.whose``) splits the
+    games by the opponents' score: at 110+, g1 (allowed 110, W) and g2
+    (135, L) reach it (1-1, margins +15 and -5), g3 (100, W) and g4 (105,
+    L) do not (1-1, +10 and -10) - where the Celtics' own score put g1 and
+    g3 (125, 110) on one side and g4 (95) on the other."""
+    agent = _agent_with_a_team_threshold_split(tmp_path)
+    answer = ask_routed(
+        agent,
+        "celtics record when allowing 110+ points",
+        Routed(
+            LINE_RECORD,
+            Reading(
+                who=Who(kind="team", teams=("Boston Celtics",)),
+                lines=(Line(measure="points", value=110, as_typed="110+ points", keyed=True, whose="opponent"),),
+                measure=Measure(key="points", as_typed="points"),
+                span=Span(season_type=2),
+            ),
+        ),
+    )
+    assert answer.shape == PointShape("team_games", "split", "line")
+    assert answer.text.startswith("Boston Celtics record when their opponents had 110+ points"), answer.text
+    assert answer.data is not None
+    assert answer.data["reached"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(5.0)}
+    assert answer.data["fell_short"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(0.0)}
+    assert answer.data["whose"] == "opponent"

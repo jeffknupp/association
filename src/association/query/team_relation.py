@@ -25,6 +25,7 @@ from association.query.entities import Entity, resolved_team
 from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, ResolvedSpan, apply_situation, has_table, relation_window, span_of
 from association.query.reading import Cuts, Filtered, Measure, Period, PointShape, ShapeCells, Span, Unsupported, period_narrowing
+from association.query.reading import Line as ReadLine
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate_sql, game_list_gaps_sql, season_game_counts_sql
@@ -136,9 +137,12 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "split", "splits")].unstated,
         taken=frozenset({"companion", "line", "season_n", "split"}),
     ),
+    # A team's record over a line reads the line on its opponents' figure
+    # too (`Line.whose`, ISSUES.md #426): the other side of each game, which
+    # no other shape of either relation reads - it refuses the cell.
     PointShape("team_games", "split", "line"): ShapeCells(
         unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "split", "line")].unstated,
-        taken=frozenset({"companion", "line", "season_n"}),
+        taken=frozenset({"companion", "line", "season_n"}) | ReadLine.OPPONENT_CELLS,
     ),
     # A team's or the league's run of wins: the player relation's run, and its
     # two refusals for a run no named player's games make (a team's, the

@@ -37,7 +37,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -159,7 +160,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -420,7 +422,8 @@
      "as_typed": "20+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -489,7 +492,8 @@
        "as_typed": "20+ points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -601,7 +605,8 @@
       "as_typed": "20+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -1610,7 +1615,8 @@
      "as_typed": "40+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -1760,7 +1766,8 @@
       "as_typed": "40+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -5989,7 +5996,8 @@
      "as_typed": "fouled out",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -6141,7 +6149,8 @@
       "as_typed": "fouled out",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -6219,7 +6228,8 @@
      "as_typed": "foul out",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -6371,7 +6381,8 @@
       "as_typed": "foul out",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -6449,7 +6460,8 @@
      "as_typed": "fouled out",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -6599,7 +6611,8 @@
       "as_typed": "fouled out",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -9941,7 +9954,8 @@
      "as_typed": "36 plus points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -10091,7 +10105,8 @@
       "as_typed": "36 plus points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -24101,7 +24116,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -24259,7 +24275,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -25626,7 +25643,8 @@
      "as_typed": "20+ point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -25776,7 +25794,8 @@
       "as_typed": "20+ point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -26048,7 +26067,8 @@
      "as_typed": "33 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "rebounds",
@@ -26058,7 +26078,8 @@
      "as_typed": "13 rebound",
      "keyed": false,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "assists",
@@ -26068,7 +26089,8 @@
      "as_typed": "10 assist",
      "keyed": false,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "blocks",
@@ -26078,7 +26100,8 @@
      "as_typed": "2 blocks",
      "keyed": false,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "steals",
@@ -26088,7 +26111,8 @@
      "as_typed": "2 steals",
      "keyed": false,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -26293,7 +26317,8 @@
       "as_typed": "33 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "rebounds",
@@ -26303,7 +26328,8 @@
       "as_typed": "13 rebound",
       "keyed": false,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "assists",
@@ -26313,7 +26339,8 @@
       "as_typed": "10 assist",
       "keyed": false,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "blocks",
@@ -26323,7 +26350,8 @@
       "as_typed": "2 blocks",
       "keyed": false,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "steals",
@@ -26333,7 +26361,8 @@
       "as_typed": "2 steals",
       "keyed": false,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -27483,7 +27512,8 @@
      "as_typed": "20+ point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -27633,7 +27663,8 @@
       "as_typed": "20+ point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -32658,7 +32689,8 @@
      "as_typed": "30 points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -32727,7 +32759,8 @@
        "as_typed": "30 points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -32839,7 +32872,8 @@
       "as_typed": "30 points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -32915,7 +32949,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -33039,7 +33074,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -33913,7 +33949,8 @@
      "as_typed": "30 points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -33982,7 +34019,8 @@
        "as_typed": "30 points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -34094,7 +34132,8 @@
       "as_typed": "30 points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -34172,7 +34211,8 @@
      "as_typed": "36 plus points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -34322,7 +34362,8 @@
       "as_typed": "36 plus points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -34398,7 +34439,8 @@
      "as_typed": "40 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -34523,7 +34565,8 @@
       "as_typed": "40 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -35011,7 +35054,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -35135,7 +35179,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -35414,7 +35459,8 @@
      "as_typed": "under 14 fta",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -35560,7 +35606,8 @@
       "as_typed": "under 14 fta",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -35636,7 +35683,8 @@
      "as_typed": "less than 20 points",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "points",
@@ -35646,7 +35694,8 @@
      "as_typed": "20 points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -35768,7 +35817,8 @@
       "as_typed": "less than 20 points",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "points",
@@ -35778,7 +35828,8 @@
       "as_typed": "20 points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -35854,7 +35905,8 @@
      "as_typed": "fewer than 5 turnovers",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "turnovers",
@@ -35864,7 +35916,8 @@
      "as_typed": "5 turnovers",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -35988,7 +36041,8 @@
       "as_typed": "fewer than 5 turnovers",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "turnovers",
@@ -35998,7 +36052,8 @@
       "as_typed": "5 turnovers",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -36076,7 +36131,8 @@
      "as_typed": "under 14 fta",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -36222,7 +36278,8 @@
       "as_typed": "under 14 fta",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -36302,7 +36359,8 @@
      "as_typed": "less than 15 fga",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "minutes",
@@ -36312,7 +36370,8 @@
      "as_typed": "less than 35 minutes",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -36492,7 +36551,8 @@
       "as_typed": "less than 15 fga",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "minutes",
@@ -36502,7 +36562,8 @@
       "as_typed": "less than 35 minutes",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -36582,7 +36643,8 @@
      "as_typed": "30 minutes or less",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -36726,7 +36788,8 @@
       "as_typed": "30 minutes or less",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -36806,7 +36869,8 @@
      "as_typed": "with 25 minutes",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -36984,7 +37048,8 @@
       "as_typed": "with 25 minutes",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -37496,7 +37561,8 @@
      "as_typed": "with 25 minutes",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -37674,7 +37740,8 @@
       "as_typed": "with 25 minutes",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -37752,7 +37819,8 @@
      "as_typed": "with 20+ mins",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -37928,7 +37996,8 @@
       "as_typed": "with 20+ mins",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -38008,7 +38077,8 @@
      "as_typed": "with at least 30 minutes played",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -49528,7 +49598,8 @@
      "as_typed": "30+ point",
      "keyed": true,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "rebounds",
@@ -49538,7 +49609,8 @@
      "as_typed": "10+ rebound",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -49660,7 +49732,8 @@
       "as_typed": "30+ point",
       "keyed": true,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "rebounds",
@@ -49670,7 +49743,8 @@
       "as_typed": "10+ rebound",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -52379,7 +52453,8 @@
      "as_typed": "30+ point",
      "keyed": true,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "rebounds",
@@ -52389,7 +52464,8 @@
      "as_typed": "10+ rebound",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -52511,7 +52587,8 @@
       "as_typed": "30+ point",
       "keyed": true,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "rebounds",
@@ -52521,7 +52598,8 @@
       "as_typed": "10+ rebound",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -52599,7 +52677,8 @@
      "as_typed": "20+ point",
      "keyed": true,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "assists",
@@ -52609,7 +52688,8 @@
      "as_typed": "5+ assist",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -52753,7 +52833,8 @@
       "as_typed": "20+ point",
       "keyed": true,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "assists",
@@ -52763,7 +52844,8 @@
       "as_typed": "5+ assist",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -52841,7 +52923,8 @@
      "as_typed": "20+ points",
      "keyed": true,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "assists",
@@ -52851,7 +52934,8 @@
      "as_typed": "5+ assists",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -52995,7 +53079,8 @@
       "as_typed": "20+ points",
       "keyed": true,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "assists",
@@ -53005,7 +53090,8 @@
       "as_typed": "5+ assists",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -53081,7 +53167,8 @@
      "as_typed": "30+ point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -53203,7 +53290,8 @@
       "as_typed": "30+ point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -53842,7 +53930,8 @@
      "as_typed": "fouled out",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -53992,7 +54081,8 @@
       "as_typed": "fouled out",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -54070,7 +54160,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -54220,7 +54311,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -54298,7 +54390,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -54448,7 +54541,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -54526,7 +54620,8 @@
      "as_typed": "40+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -54676,7 +54771,8 @@
       "as_typed": "40+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -54752,7 +54848,8 @@
      "as_typed": "50 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -54876,7 +54973,8 @@
       "as_typed": "50 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -54954,7 +55052,8 @@
      "as_typed": "40+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -55104,7 +55203,8 @@
       "as_typed": "40+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -55182,7 +55282,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -55332,7 +55433,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -55410,7 +55512,8 @@
      "as_typed": "5+ blocks",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -55475,7 +55578,8 @@
        "as_typed": "5+ blocks",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -55576,7 +55680,8 @@
       "as_typed": "5+ blocks",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -55652,7 +55757,8 @@
      "as_typed": "50 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -55776,7 +55882,8 @@
       "as_typed": "50 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -56298,7 +56405,8 @@
      "as_typed": "40+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -56448,7 +56556,8 @@
       "as_typed": "40+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -63315,7 +63424,8 @@
      "as_typed": "40 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -63440,7 +63550,8 @@
       "as_typed": "40 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -69162,7 +69273,8 @@
      "as_typed": "fouled out",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -69312,7 +69424,8 @@
       "as_typed": "fouled out",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -69394,7 +69507,8 @@
      "as_typed": "15+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -69463,7 +69577,8 @@
        "as_typed": "15+ points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -69575,7 +69690,8 @@
       "as_typed": "15+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -69657,7 +69773,8 @@
      "as_typed": "20+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -69726,7 +69843,8 @@
        "as_typed": "20+ points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -69838,7 +69956,8 @@
       "as_typed": "20+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -69920,7 +70039,8 @@
      "as_typed": "12+ boards",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -69989,7 +70109,8 @@
        "as_typed": "12+ boards",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -70101,7 +70222,8 @@
       "as_typed": "12+ boards",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -70183,7 +70305,8 @@
      "as_typed": "20+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -70252,7 +70375,8 @@
        "as_typed": "20+ points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -70364,7 +70488,8 @@
       "as_typed": "20+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -70444,7 +70569,8 @@
      "as_typed": "120 points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -70586,7 +70712,8 @@
       "as_typed": "120 points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -70666,7 +70793,8 @@
      "as_typed": "fouled out",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -70816,7 +70944,8 @@
       "as_typed": "fouled out",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -70892,7 +71021,8 @@
      "as_typed": "30+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -71014,7 +71144,8 @@
       "as_typed": "30+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -71092,7 +71223,8 @@
      "as_typed": "2 threes",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -71242,7 +71374,8 @@
       "as_typed": "2 threes",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -71320,7 +71453,8 @@
      "as_typed": "under 14 fta",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -71466,7 +71600,8 @@
       "as_typed": "under 14 fta",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -71542,7 +71677,8 @@
      "as_typed": "30+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -71664,7 +71800,8 @@
       "as_typed": "30+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -71972,7 +72109,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -72111,7 +72249,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -81107,7 +81246,8 @@
      "as_typed": "42 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -81257,7 +81397,8 @@
       "as_typed": "42 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -84097,7 +84238,8 @@
      "as_typed": "30 points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -84166,7 +84308,8 @@
        "as_typed": "30 points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -84278,7 +84421,8 @@
       "as_typed": "30 points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -84360,7 +84504,8 @@
      "as_typed": "20+ points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -84429,7 +84574,8 @@
        "as_typed": "20+ points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -84541,7 +84687,8 @@
       "as_typed": "20+ points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -84621,7 +84768,8 @@
      "as_typed": "20+ points",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -84801,7 +84949,8 @@
       "as_typed": "20+ points",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -90614,7 +90763,8 @@
      "as_typed": "30+ point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -90764,7 +90914,8 @@
       "as_typed": "30+ point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -92485,7 +92636,8 @@
      "as_typed": "playing 20 or more minutes",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -92630,7 +92782,8 @@
       "as_typed": "playing 20 or more minutes",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -93443,7 +93596,8 @@
      "as_typed": "40 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -93593,7 +93747,8 @@
       "as_typed": "40 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -93673,7 +93828,8 @@
      "as_typed": "40 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -93823,7 +93979,8 @@
       "as_typed": "40 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -94535,7 +94692,8 @@
      "as_typed": "playing 30 or more minutes",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -94685,7 +94843,8 @@
       "as_typed": "playing 30 or more minutes",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -96821,7 +96980,8 @@
      "as_typed": "40 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -96945,7 +97105,8 @@
       "as_typed": "40 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -97021,7 +97182,8 @@
      "as_typed": "2+ block",
      "keyed": true,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     },
     {
      "measure": "steals",
@@ -97031,7 +97193,8 @@
      "as_typed": "2+ steals",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -97153,7 +97316,8 @@
       "as_typed": "2+ block",
       "keyed": true,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      },
      {
       "measure": "steals",
@@ -97163,7 +97327,8 @@
       "as_typed": "2+ steals",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -97436,7 +97601,8 @@
      "as_typed": "30 point",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -97611,7 +97777,8 @@
       "as_typed": "30 point",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -102864,7 +103031,8 @@
       "as_typed": "20+ points",
       "keyed": false,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     }
    ],
@@ -102933,7 +103101,8 @@
        "as_typed": "20+ points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -103834,7 +104003,8 @@
      "as_typed": "120 points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -104016,7 +104186,8 @@
       "as_typed": "120 points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -104104,7 +104275,8 @@
      "as_typed": "score 120",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -104287,7 +104459,8 @@
       "as_typed": "score 120",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -104370,7 +104543,8 @@
      "as_typed": "30 points",
      "keyed": true,
      "narrows": false,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -104439,7 +104613,8 @@
        "as_typed": "30 points",
        "keyed": false,
        "narrows": false,
-       "per": "game"
+       "per": "game",
+       "whose": "own"
       }
      }
     ],
@@ -104551,7 +104726,8 @@
       "as_typed": "30 points",
       "keyed": true,
       "narrows": false,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {
@@ -104634,7 +104810,8 @@
      "as_typed": "with 34 minutes",
      "keyed": false,
      "narrows": true,
-     "per": "game"
+     "per": "game",
+     "whose": "own"
     }
    ],
    "measure": {
@@ -104824,7 +105001,8 @@
       "as_typed": "with 34 minutes",
       "keyed": false,
       "narrows": true,
-      "per": "game"
+      "per": "game",
+      "whose": "own"
      }
     ],
     "measure": {

@@ -891,7 +891,7 @@ def team_figure(measure: Measure) -> tuple[str, str, str | None] | None:
     return join, figure.format(b="b"), attempts.format(b="b") if attempts is not None else None
 
 
-def compile_team_count(narrowed: TeamNarrowed, team: Entity | None, span: Any, *, blank: str | None = None) -> TeamCompiled:
+def compile_team_count(narrowed: TeamNarrowed, team: Entity | None, span: Any, *, blank: str | None = None, whose: str = "own") -> TeamCompiled:
     """How many of the narrowed games there are (``games``) - or, with
     ``blank`` (a key of :data:`TEAM_BOX_COLUMNS` but ``points``), how many
     have a team box row with no figure for that stat: the games a line on
@@ -899,7 +899,9 @@ def compile_team_count(narrowed: TeamNarrowed, team: Entity | None, span: Any, *
 
     .. versionadded:: 5.0.0
     """
-    join = "" if blank is None else f"{_TEAM_BOX_JOIN} AND ({TEAM_BOX_COLUMNS[blank]}) IS NULL"
+    # ``whose``: the blanks of the opponents' rows, for a line on theirs (ISSUES.md #426).
+    box = _TEAM_BOX_JOIN if whose == "own" else _TEAM_BOX_JOIN.replace("tbs.team_id = tg.team_id", "tbs.team_id = tg.opponent_id")
+    join = "" if blank is None else f"{box} AND ({TEAM_BOX_COLUMNS[blank]}) IS NULL"
     sql, params = team_aggregate_sql(narrowed, ["COUNT(*) AS games"], join=join)
     return TeamCompiled(sql, params, team, span, narrowed)
 
@@ -910,7 +912,7 @@ def compile_team_count(narrowed: TeamNarrowed, team: Entity | None, span: Any, *
 _TEAM_LINE_OPS: dict[str, str] = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}
 
 
-def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, stat: str, threshold: int, op: str = ">=") -> TeamCompiled:
+def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, stat: str, threshold: int, op: str = ">=", *, whose: str = "own") -> TeamCompiled:
     """The team's own games divided by whether its figure for ``stat``
     held the line ``op threshold`` (``reached``, true or false: "18+
     turnovers" is ``>=``, "10 or fewer" ``<=``) - a game with no figure is
@@ -924,15 +926,22 @@ def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, st
     .. versionchanged:: 6.0.0
        ``op``: the line's comparison, where only ``>=`` was read (ISSUES.md
        #325).
+
+    .. versionchanged:: 6.0.0
+       ``whose``: a line on the OPPONENTS' figure - their score, or their
+       box row of the game - for "when allowing 100+ points" (ISSUES.md
+       #426), which read the team's own.
     """
     if op not in _TEAM_LINE_OPS:  # ops are written in code (reading.LineOp), so this is a programming error, not a refusal
         raise ValueError(f"no comparison called {op!r}")
     column = TEAM_BOX_COLUMNS[stat]
+    side = "tg.opponent_id" if whose == "opponent" else "tg.team_id"
     if stat == "points":
-        select, join = ["tg.event_id", "tg.season", "tg.eastern_date AS day", "tg.team_score AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"], ""
+        score = "tg.opponent_score" if whose == "opponent" else "tg.team_score"
+        select, join = ["tg.event_id", "tg.season", "tg.eastern_date AS day", f"{score} AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"], ""
     else:
         select = ["tg.event_id", "tg.season", "tg.eastern_date AS day", f"{column} AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"]
-        join = f"{_TEAM_BOX_JOIN} AND ({column}) IS NOT NULL"
+        join = f"{_TEAM_BOX_JOIN.replace('tbs.team_id = tg.team_id', f'tbs.team_id = {side}')} AND ({column}) IS NOT NULL"
     base, params = team_named(*team_aggregate_sql(narrowed, select, join=join))
     season = "year(t.day)" if span.season_type == 3 else "t.season"
     sql = (

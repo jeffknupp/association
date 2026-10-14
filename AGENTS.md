@@ -1248,8 +1248,12 @@ a shape:
   how the words state it (`LineCandidate.how`), and `point.lines_under`
   writes the subject's `reading.Line` values on `Reading.lines` (the measure as the game
   column's key, `op`, `value`, `as_typed`, `keyed` for the shape's own
-  line, `narrows` for one the relation filters by, and `period` for a line
-  in a quarter) and claims each line's characters once; a reader whose
+  line, `narrows` for one the relation filters by, `period` for a line
+  in a quarter, and `whose` for a line on the opponents' figure - after a
+  given-up verb or "opponents", `lexicon.GIVEN_UP_LINE_LEAD`, its claim
+  taking those words: the `opponent_line` cell, which a team's record over
+  a line takes and every other shape refuses, ISSUES.md #426) and claims
+  each line's characters once; a reader whose
   shape is a line (`point.THRESHOLD_ASKS`: the count, the record, the
   streak, the high) reads a bare "N stat" as its own, every other reader
   only what the words say outright - a floor of minutes ("with 25

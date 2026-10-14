@@ -1343,7 +1343,9 @@ def _say_team_record_when(result: Result, groups: Grouped) -> Answer:
     by_key = {row["key"]: {k: v for k, v in row.items() if k != "key"} for row in groups.rows}
     reached, short, every = by_key["reached"], by_key["short"], by_key["all"]
     held, missed = _TEAM_LINE_SIDES[line.op]
-    title = f"{result.subject} record when they had {held.format(n=threshold, unit=unit)}{result.narrowing.phrase}, {result.span.phrase}:"
+    # A line on the opponents' figure is theirs (ISSUES.md #426).
+    who = "their opponents" if line.whose == "opponent" else "they"
+    title = f"{result.subject} record when {who} had {held.format(n=threshold, unit=unit)}{result.narrowing.phrase}, {result.span.phrase}:"
     rows = [(held.format(n=threshold, unit=unit), reached), (missed.format(n=threshold, unit=unit), short), ("all their games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
     # Recorded in the Result's order (the template wrote the caveat first),
@@ -1353,6 +1355,8 @@ def _say_team_record_when(result: Result, groups: Grouped) -> Answer:
     data = {"team": result.subject, "stat": stat, "threshold": threshold, "span": result.span.phrase, "reached": reached, "fell_short": short, "headline": title.rstrip(":"), "notes": [trailer]}
     if line.op != ">=":
         data["op"] = line.op
+    if line.whose != "own":
+        data["whose"] = line.whose
     return Answer(data=data, text=f"{table}\n{trailer}")
 
 
@@ -4878,6 +4882,7 @@ def cell_phrase(facts: Mapping[str, Any]) -> str:
         "line": lambda: _joined_phrases([_line_phrase(line) for line in facts["lines"]]),
         "period_line": lambda: _joined_phrases([f"{_line_phrase(line)} in {_period_phrase(*_line_period(line))}" for line in facts["lines"]]),
         "season_line": lambda: f"players who {season_lines_phrase([(line['measure'], line['op'], line['value'], line['per']) for line in facts['lines']])}",
+        "opponent_line": lambda: _joined_phrases([_opponent_line_phrase(line) for line in facts["lines"]]),
         "companion": lambda: _joined_phrases([_companion_phrase(companion) for companion in facts["companions"]]),
         "split": lambda: _SPLIT_PHRASES.get(str(facts["split"]), f"a split by {facts['split']}"),
         "rate": lambda: _rate_phrase(facts.get("unit")),
@@ -4937,6 +4942,13 @@ def _line_phrase(line: Mapping[str, Any]) -> str:
     if line.get("op") in ("<", "<=") and not words.startswith(_WAY_WORDS):
         words = f"{'under' if line.get('op') == '<' else 'at most'} {words}"
     return f"games with {words}" if words[:1].isdigit() or words.startswith(_WAY_WORDS) else f"the games '{words}'"
+
+
+def _opponent_line_phrase(line: Mapping[str, Any]) -> str:
+    """The games a line on the opponents' figure keeps ("games where the
+    opponents had 100+ points", ISSUES.md #426)."""
+    phrase = _line_phrase(line)
+    return f"games where the opponents had {phrase.removeprefix('games with ')}" if phrase.startswith("games with ") else f"{phrase}, on the opponents' figure"
 
 
 #: How a companion's role reads in a decline, by side and predicate.
