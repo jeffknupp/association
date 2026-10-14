@@ -2231,6 +2231,16 @@ SCORED = re.compile(
 .. versionadded:: 6.0.0
    ``router._SCORED`` until Phase 3, step 2.
 """
+GIVEN_UP_LINE_LEAD = re.compile(r"\b(?:allow(?:ed|s|ing)?|gave\s+up|give[sn]?\s+up|giving\s+up|conced(?:e|ed|es|ing)|opponents?|opp)\s+$", re.IGNORECASE)
+"""The words that make the line right after them a line on the OPPONENTS'
+figure - a figure given up ("allowing 100+ points", "when they gave up 120
+points", "allow less than 100 points") or the opponents' own ("when
+opponents score 120+") - searched over the words before the line
+(:func:`~association.query.line.read_lines`, ISSUES.md #426).
+
+.. versionadded:: 6.0.0
+"""
+
 # A comparison BELOW a number. No slot ever said "under", so without this
 # "games with under 14 FTA" reached the count as 14 and was answered as 14
 # or MORE - the inverse question. The words after the number are kept: they
@@ -2240,6 +2250,7 @@ SCORED = re.compile(
 # connective or the next comparison, so "under 14 fta in his whole career"
 # carries "under 14 fta" and "less than 15 fga and with less than 35 minutes"
 # is two lines, not one.
+
 BELOW = re.compile(
     r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
     r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b"

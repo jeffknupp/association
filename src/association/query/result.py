@@ -118,6 +118,11 @@ class Line:
     op: str = ">="
     value: Any = None
     label: str = ""
+    #: Whose figure the line is on: the subject's own, or its opponents'
+    #: (a team's record "when allowing 100+ points", ISSUES.md #426).
+    #:
+    #: .. versionadded:: 6.0.0
+    whose: str = "own"
 
 
 @dataclass(frozen=True)

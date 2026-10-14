@@ -686,6 +686,12 @@ class Line:
     #: line is neither keyed nor narrowing, and holds a decimal ("3.5
     #: assists").
     per: LinePer = "game"
+    #: Whose figure the line is on (:data:`MeasureWhose`): the subject's
+    #: own, or what its opponents had - "allowing 100+ points", "when they
+    #: gave up 120 points", "when opponents score 120+" (ISSUES.md #426),
+    #: a line one game's figure only. A relation that reads none sets the
+    #: ``opponent_line`` cell, which it refuses.
+    whose: MeasureWhose = "own"
 
     #: The family's two cells on the subject's own lines, the ones a
     #: relation's cell table declares (``player_relation.RELATION_SCOPING``)
@@ -702,6 +708,10 @@ class Line:
     #: (``player_relation.RELATION_SCOPING_EXCLUDED``), and no reader of the
     #: games relation honors it.
     SEASON_CELLS: ClassVar[frozenset[str]] = frozenset({"season_line"})
+    #: The cell a line on the opponents' figure sets (:attr:`whose`): the
+    #: team relation's alone, which reads the other side of each game; a
+    #: player's games have no opponents' figure to keep (ISSUES.md #426).
+    OPPONENT_CELLS: ClassVar[frozenset[str]] = frozenset({"opponent_line"})
 
     def __post_init__(self) -> None:
         if self.op not in (">=", ">", "<=", "<", "="):
@@ -709,7 +719,7 @@ class Line:
         if isinstance(self.value, bool):
             return
         if self.per != "game":
-            if not isinstance(self.value, (int, float)) or self.keyed or self.narrows or self.period is not None:
+            if not isinstance(self.value, (int, float)) or self.keyed or self.narrows or self.period is not None or self.whose != "own":
                 raise ScopeError(f"a season line ({self.as_typed!r}) is a number on the season's figure, keyed on nothing and narrowing no games")
             return
         if not isinstance(self.value, int):
@@ -1246,7 +1256,7 @@ class Filtered:
     #: family's, whose value (:data:`Split`, a closed set of names) is not
     #: typed yet; a subject is no cell (:attr:`Subject.CELLS`). What the two
     #: relation tables and each shape's row speak of, and nothing else.
-    CELLS: ClassVar[frozenset[str]] = Span.CELLS | Window.CELLS | Cuts.CELLS | Period.CELLS | Line.CELLS | Line.SEASON_CELLS | Companion.CELLS | Measure.CELLS | {"split"}
+    CELLS: ClassVar[frozenset[str]] = Span.CELLS | Window.CELLS | Cuts.CELLS | Period.CELLS | Line.CELLS | Line.SEASON_CELLS | Line.OPPONENT_CELLS | Companion.CELLS | Measure.CELLS | {"split"}
 
     def filters(self) -> dict[str, Any]:
         """The ten typed values by field name - what a Reading hands the
@@ -1306,6 +1316,8 @@ class Filtered:
             held.add("period_line")
         if any(line.per != "game" for line in self.lines):
             held.add("season_line")
+        if any(line.whose == "opponent" for line in self.lines):
+            held.add("opponent_line")
         if self.companions:
             held.add("companion")
         return frozenset(held)
@@ -1313,7 +1325,7 @@ class Filtered:
 
 #: The order a decline names a point's cells in: the span, the window, the
 #: cuts, the period, the lines, the companions, the split, the unit.
-CELL_ORDER: tuple[str, ...] = ("career", "range", "both", "window", "ranked_by", *_CUT_ORDER, "period", "line", "period_line", "season_line", "companion", "split", "rate")
+CELL_ORDER: tuple[str, ...] = ("career", "range", "both", "window", "ranked_by", *_CUT_ORDER, "period", "line", "period_line", "season_line", "opponent_line", "companion", "split", "rate")
 """Every cell a point can set (:meth:`Filtered.cells`), in the order a
 decline names them (:func:`cell_facts`).
 
@@ -1347,7 +1359,7 @@ def cell_facts(scope: Filtered, cell: str) -> dict[str, Any]:
         facts.update(value=getattr(cuts, cell))
     elif cell == "period" and scope.period is not None:
         facts.update(number=scope.period.number, half=scope.period.half)
-    elif cell in ("line", "period_line", "season_line"):
+    elif cell in ("line", "period_line", "season_line", "opponent_line"):
         facts.update(lines=_cell_lines(scope, cell))
     elif cell == "companion":
         facts.update(companions=[{"player": c.player, "side": c.side, "predicate": c.predicate} for c in scope.companions])
@@ -1364,6 +1376,8 @@ def _cell_lines(scope: Filtered, cell: str) -> list[dict[str, Any]]:
     (``period_line``), or on the season's figure (``season_line``)."""
     if cell == "season_line":
         return [_line_facts(line) for line in scope.lines if line.per != "game"]
+    if cell == "opponent_line":
+        return [_line_facts(line) for line in scope.lines if line.whose == "opponent"]
     return [_line_facts(line) for line in scope.lines if (line.period is not None) == (cell == "period_line") and (line.narrows or cell == "period_line")]
 
 
@@ -1372,6 +1386,8 @@ def _line_facts(line: Line) -> dict[str, Any]:
     stat, way and number, and the period it stands in."""
     period = None if line.period is None else {"number": line.period.number, "half": line.period.half}
     facts = {"as_typed": line.as_typed, "measure": line.measure, "op": line.op, "value": line.value, "period": period}
+    if line.whose != "own":
+        facts["whose"] = line.whose
     return facts if line.per == "game" else {**facts, "per": line.per}
 
 

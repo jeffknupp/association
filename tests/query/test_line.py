@@ -13,6 +13,7 @@ result.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import duckdb
@@ -177,6 +178,43 @@ def test_the_tagger_claims_the_characters_of_each_line_once() -> None:
     assert len(read.claims) == len(read.lines) == 3
     assert all(claim.what == "line" and question[claim.start : claim.end].casefold() == line.as_typed for claim, line in zip(read.claims, read.lines, strict=True))
     assert [c.start for c in read.claims] == sorted(c.start for c in read.claims)
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("celtics record when allowing 100+ points", [("100+ points", "opponent", "allowing 100+ points")]),
+        ("celtics record when they allow less than 100 points", [("less than 100 points", "opponent", "allow less than 100 points"), ("100 points", "opponent", "100 points")]),
+        ("celtics record when they allow more than 110 points", [("more than 110 points", "opponent", "allow more than 110 points")]),
+        ("celtics record when giving up 15+ threes", [("15+ threes", "opponent", "giving up 15+ threes")]),
+        ("celtics record when opponents score 120+", [("score 120+", "opponent", "opponents score 120+")]),
+        ("celtics record when they score 120+ points", [("120+ points", "own", "120+ points")]),
+    ],
+)
+def test_a_line_after_a_given_up_verb_is_on_the_opponents_figure(question: str, expected: list[tuple[str, str, str]]) -> None:
+    """ISSUES.md #426: "celtics record when allowing 100+ points" read the
+    line on the Celtics' own points - nothing read "allowing". A line right
+    after a given-up verb or "opponents" is on the opponents' figure
+    (``Line.whose``), and its claim takes the words that make it so; a pair
+    read inside such a line is theirs too."""
+    read = lines_under(LINE_RECORD, read_lines(question))
+    found = sorted(((line.as_typed, line.whose, question[claim.start : claim.end]) for line, claim in zip(read.lines, read.claims, strict=True)), key=lambda each: question.index(each[2]))
+    assert found == sorted(expected, key=lambda each: question.index(each[2]))
+
+
+def test_a_line_on_the_opponents_figure_is_a_cell_only_a_teams_record_over_a_line_reads() -> None:
+    """ISSUES.md #426: a line on the opponents' figure sets the
+    ``opponent_line`` cell, which the team's record over a line takes and
+    no other shape of either relation honors - so it is refused, never read
+    as the subject's own line."""
+    line = Line(measure="points", value=100, as_typed="100+ points", keyed=True, whose="opponent")
+    scope = Filtered(lines=(line,))
+    assert cell_set(scope, "opponent_line") and not cell_set(Filtered(lines=(replace(line, whose="own"),)), "opponent_line")
+    assert "opponent_line" not in RELATION_SCOPING and "opponent_line" not in TEAM_RELATION_SCOPING
+    assert "opponent_line" in TEAM_RELATION_SCOPING_EXCLUDED[PointShape("team_games", "split", "line")].taken
+    assert cell_facts(scope, "opponent_line")["lines"] == [{"as_typed": "100+ points", "measure": "points", "op": ">=", "value": 100, "period": None, "whose": "opponent"}]
+    with pytest.raises(ScopeError):
+        Line(measure="points", value=30, per="season", whose="opponent")
 
 
 def test_threshold_named_is_what_the_intent_stages_ask() -> None:

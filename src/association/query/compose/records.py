@@ -31,6 +31,7 @@ from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
 from association.query.reading import CELL_ORDER, Aggregate, Filtered, PointShape, Unsupported, cell_facts, cell_set
+from association.query.reading import Line as ReadLine
 from association.query.result import Grouped, Line, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import TEAM_RELATION_SCOPING_EXCLUDED, condition_team_no_games, team_games, team_span_label, team_where_in
@@ -167,7 +168,8 @@ def _team_record_when_needs_player(scope: Filtered) -> None:
     planner so this sentence, naming the missing player, is the refusal
     (``conditions.condition_needs_player_refusal`` until Phase 3, step 2's
     closing slice)."""
-    taken = TEAM_RELATION_SCOPING_EXCLUDED[_TEAM_RECORD_LINE_SHAPE].taken
+    # A line on the opponents' figure is the team's own reading (ISSUES.md #426).
+    taken = TEAM_RELATION_SCOPING_EXCLUDED[_TEAM_RECORD_LINE_SHAPE].taken - ReadLine.OPPONENT_CELLS
     claimed = [cell for cell in CELL_ORDER if cell in taken and cell_set(scope, cell)]
     if claimed:
         # The sayer's one decline phrase (a call-time import: compose.say reads the readers).
@@ -217,6 +219,9 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Resul
     # or under 10 from the rest, never as "10+" (ISSUES.md #325).
     keyed = threshold_line(scope)
     op = keyed.op if keyed is not None else ">="
+    # Whose figure the line is on: "when allowing 100+ points" is the
+    # opponents' (ISSUES.md #426).
+    whose = keyed.whose if keyed is not None else "own"
     span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=scope.cuts.opponent)
     if isinstance(narrowed, Unanswered):
@@ -229,10 +234,10 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Resul
     (matched,) = rows_of(con, compile_team_count(narrowed, team, span))
     if not matched["games"]:
         return condition_team_no_games(con, team, span, narrowed)
-    found = rows_of(con, compile_team_line(narrowed, team, span, stat, threshold, op))
+    found = rows_of(con, compile_team_line(narrowed, team, span, stat, threshold, op, whose=whose))
     if not found:
         return _record_when_team_no_stat(team, span, narrowed, stat, int(matched["games"]))
-    return _record_when_team_result(con, span, team, narrowed, stat, threshold, found, op)
+    return _record_when_team_result(con, span, team, narrowed, stat, threshold, found, op, whose=whose)
 
 
 def _record_when_team_stat(stat: str | None, threshold: int | None) -> tuple[str, int]:
@@ -260,7 +265,9 @@ def _record_when_team_no_stat(team: Any, span: Any, narrowed: TeamNarrowed, stat
     return Refusal(kind="team_stat_unrecorded", facts=facts, shown={"team": team.name, "span": team_span_label(span), "games": 0}, under=())
 
 
-def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: Any, narrowed: TeamNarrowed, stat: str, threshold: int, found: list[dict[str, Any]], op: str = ">=") -> Result:
+def _record_when_team_result(
+    con: duckdb.DuckDBPyConnection, span: Any, team: Any, narrowed: TeamNarrowed, stat: str, threshold: int, found: list[dict[str, Any]], op: str = ">=", *, whose: str = "own"
+) -> Result:
     """The three rows - the line held (``reached``, by its ``op``), not
     held, every game with a figure - and
     the remarks in the order the template wrote them: the games with no
@@ -270,12 +277,12 @@ def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: An
     first, last = min(r["first_season"] for r in found), max(r["last_season"] for r in found)
     groups = Grouped(
         by="threshold",
-        of=Line(column=stat, op=op, value=threshold),
+        of=Line(column=stat, op=op, value=threshold, whose=whose),
         rows=({"key": "reached", **_group(by_hit, "reached")}, {"key": "short", **_group(by_hit, "short")}, {"key": "all", **_group(by_hit, "reached", "short")}),
     )
     notes: list[Note] = []
     if stat != "points":
-        (blank,) = rows_of(con, compile_team_count(narrowed, team, span, blank=stat))
+        (blank,) = rows_of(con, compile_team_count(narrowed, team, span, blank=stat, whose=whose))
         if blank["games"]:
             notes.append(Note("stat_blank", {"games": int(blank["games"]), "stat": stat, "whose": "team"}))
     notes.append(Note("definition", {"term": "pool", "games": groups.rows[2]["games"], "what": "games_with_a_result"}))

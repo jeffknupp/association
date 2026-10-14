@@ -46,7 +46,7 @@ counted games with 20+ rebounds).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from association.query import lexicon
@@ -265,7 +265,33 @@ def read_lines(question: str) -> LineCandidates:
     found.extend(_read_lines_phrases(question))
     found.extend(stated)
     found.extend(_read_season_lines(question))
-    return LineCandidates(tuple(found))
+    return LineCandidates(tuple(_read_lines_given_up(question, found)))
+
+
+def _read_lines_given_up(question: str, found: list[LineCandidate]) -> list[LineCandidate]:
+    """Each line the words put on the OPPONENTS' figure - right after a
+    given-up verb or "opponents" (:data:`~association.query.lexicon.GIVEN_UP_LINE_LEAD`:
+    "allowing 100+ points", "when opponents score 120+") - with ``whose``
+    the opponent's and its claim taking the words that make it so, and a
+    pair read inside such a line ("100 points" of "allow less than 100
+    points") the same (ISSUES.md #426). A game's line only: a season's
+    figure is a player's own."""
+    given_up: list[tuple[int, int]] = []
+    marked: list[LineCandidate] = []
+    for candidate in found:
+        lead = lexicon.GIVEN_UP_LINE_LEAD.search(question[: candidate.claim.start]) if candidate.how not in ("fouled", "season") else None
+        if lead is None:
+            marked.append(candidate)
+            continue
+        given_up.append((candidate.claim.start, candidate.claim.end))
+        claim = Claim(lead.start(), candidate.claim.end, candidate.claim.what)
+        marked.append(replace(candidate, line=replace(candidate.line, whose="opponent"), claim=claim))
+    return [
+        replace(candidate, line=replace(candidate.line, whose="opponent"))
+        if candidate.line.whose == "own" and candidate.how not in ("fouled", "season") and any(start <= candidate.claim.start and candidate.claim.end <= end for start, end in given_up)
+        else candidate
+        for candidate in marked
+    ]
 
 
 #: Which way a season line's lead keeps the players (ISSUES.md #390).
