@@ -1455,6 +1455,20 @@ def test_a_ranking_by_games_played_counts_each_players_games(cx_ctx: AnswerConte
     assert [line.split()[-2] for line in said.splitlines()[1:]] == ["22", "22", "4", "4", "2", "2"]
 
 
+@pytest.mark.parametrize(("key", "label"), [("defensiveRebounds", "DREB"), ("offensiveRebounds", "OREB")])
+def test_a_rebound_side_is_said_by_its_abbreviation_not_its_column(cx_ctx: AnswerContext, key: str, label: str) -> None:
+    """Found in the P1 sweep's lane L2: the compiler's sentence printed the
+    column name ("by player (defensiveRebounds per game ...", "top 3 by
+    offensiveRebounds") where every other box-score measure is said by its
+    label - and a stated minimum of one game said in the singular
+    ("minimum 1 games" before)."""
+    scope = Reading(measure=Measure(key=key, as_typed=key), span=Span(season_type=2), cuts=Cuts(opponent="Boston Celtics"))
+    q = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most rebounds vs boston this season minimum 1 game")
+    assert isinstance(q, Query)
+    said = sentence(q, run(cx_ctx.con, q))
+    assert f"({label} per game, minimum 1 game)" in said and key not in said
+
+
 def test_a_stated_minimum_on_a_point_that_ranks_no_players_is_refused_by_name(cx_ctx: AnswerContext) -> None:
     """A qualifier keeps the players a ranking ranks: under a single game's
     high it keeps nothing, so it is refused by a cause naming the floor
