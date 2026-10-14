@@ -5531,6 +5531,15 @@ def test_team_game_log_career_says_all_time(gl_con: AnswerContext) -> None:
     assert f"(all-time, {current_season()} regular season) (1-1):" in result.text
 
 
+def test_team_game_log_over_a_range_names_the_range_not_all_time(gl_con: AnswerContext) -> None:
+    """ "hornets on the road vs magic last 2 seasons" read "last 4 games
+    (all-time, 2025-2026 regular seasons)" though the games were cut from
+    the seasons since 2025: a log over a range says the range."""
+    result = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=current_season())))
+    assert f"(since {current_season()}, {current_season()} regular season) (1-1):" in result.text
+    assert "all-time" not in result.text
+
+
 def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: AnswerContext) -> None:
     """The phantom 1993 shares every event id with 1994, and a join on event_id
     alone listed each of those games twice - 164 rows for the Celtics' 82."""

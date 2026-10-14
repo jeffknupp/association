@@ -46,6 +46,14 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "the first 15 games" of each of a team's last N seasons is read as the range's first 15: "warriors record in the first 15 games last 10 season" lists 2016-17's first 15 games
+- **Found:** 2026-10-14, the P1 sweep's lane T3, reading the team log's range label.
+- **Evidence:** on `e4226f2`, "warriors record in the first 15 games last 10 season" (1 of the 2,082 feed questions) is read as the team's log (`team_games/rows/date`) with the window `first 15` over the span since 2017, and answers "Golden State Warriors, first 15 of 793 games (since 2017, 2017 regular season) (13-2)" - the first 15 games of the whole range, all of them 2016-17's. The question asks the record in each season's first 15 games, the window per season the reader refuses by name elsewhere (`window.per_season_window`, a `Reading.refused` cause) - this wording, with "last 10 season" after the window, escapes it. (It said "all-time" until lane T3's label fix, which made the range visible.)
+- **User sees:** a fluent table of one season's first 15 games where ten seasons' were asked.
+- **Next step:** the window tagger reads "the first N games" followed by a count of seasons as a window per season (`window.per_season_window`, lane S's files) and the reader refuses it by that cause - or, better, a record over each season's first N games read by the team record's tally (D4's occasion if it needs a shape).
+- **Source:** ours.
+- **Priority:** P1 - a fluent wrong answer.
+
 ### "winningest franchises all-time" ranks the league's players by points per game
 - **Found:** 2026-10-14, the P1 sweep's lane T3, measuring #372's "winning percentage" class.
 - **Evidence:** on `eef7625`, "nba winningest percent franchises all-time" (1 of the 2,082 feed questions) is read `player_seasons/ranking/player` with `winningest`, `percent`, `franchises` unread, and answers "every player, regular season career (1994 on), by player (points per game, minimum 20 games): Luka Doncic 514 G points 29.2 ..."; "winningest franchises all-time" the same. Neither "winningest" nor "franchise(s)" is a team or record word to the parent grammar. Read as the teams' ranking by record ("best record all-time franchises"), it would still be refused - the teams' ranking declines a career ("every season of a career cannot be read here"), though it reads a range ("most wins nba 2020s" answers).

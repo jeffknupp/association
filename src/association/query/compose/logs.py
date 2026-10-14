@@ -449,7 +449,17 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
         return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=Rows()),), facts=LogFacts(stat=stat), empty=empty)
     games = _team_log_games(rows)
     seasons = [g["season"] for g in games]
-    about = Span(season=span.season, season_type=span.season_type, career=span.season is None, date=narrowed.date, first=min(seasons), last=max(seasons), years=span.years(min(seasons), max(seasons)))
+    about = Span(
+        season=span.season,
+        season_type=span.season_type,
+        career=span.season is None,
+        date=narrowed.date,
+        first=min(seasons),
+        last=max(seasons),
+        years=span.years(min(seasons), max(seasons)),
+        since=span.since,
+        until=span.until,
+    )
     # How many games the window cut these from, so the heading can say "last
     # 10 of 82 games" where the read kept fewer than the span holds - the
     # player log's rule (F149), and ISSUES.md #402: ten games listed where a
