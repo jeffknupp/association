@@ -1500,11 +1500,14 @@
       bodies: {
         compiled: { needs: ["skeleton", "rows"], draw: compiledBody },
         season: { needs: ["seasons", "stat", "player"], draw: seasonsBody },
+        team_season: { needs: ["seasons", "stat", "team"], draw: seasonsBody },
         splits: { needs: ["splits"], draw: splitsBody },
         presence: { needs: ["groups"], draw: presenceBody },
         line: { needs: ["reached", "fell_short"], draw: lineRecordBody },
       },
-      of: (d, shape) => (d.skeleton ? "compiled" : shape.by),
+      // A team's line season by season (team_seasons/split/season, ISSUES.md
+      // #372) is drawn as a player's history is, keyed by the team.
+      of: (d, shape) => (d.skeleton ? "compiled" : shape.relation === "team_seasons" && shape.by === "season" ? "team_season" : shape.by),
     },
     runs: {
       bodies: {

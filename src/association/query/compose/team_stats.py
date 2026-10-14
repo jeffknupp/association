@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 import duckdb
 
+from association.nba.coverage import COVERAGE
 from association.nba.season import current_season
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
@@ -25,6 +26,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     TEAM_LINE,
     TEAM_OUTLOOK,
     TEAM_RANKING,
+    TEAM_SEASON_HISTORY,
     Companion,
     Cuts,
     Filtered,
@@ -39,11 +41,12 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Window,
     _clamp_limit,
 )
-from association.query.result import Grouped, Narrowing, OutlookFacts, Part, Refusal, Result, Scalar, Span, TeamRankingFacts, TeamStatFacts, Unanswered
+from association.query.result import Grouped, Narrowing, OutlookFacts, Part, Refusal, Result, Scalar, Span, TeamHistoryFacts, TeamRankingFacts, TeamStatFacts, Unanswered
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
     BPI_CHANCES,
     BPI_SNAPSHOT_NAMES,
+    read_team_history_rows,
     read_team_lines,
     read_team_outlook_rows,
     read_team_outlook_snapshots,
@@ -295,6 +298,85 @@ def _team_stat_record(con: duckdb.DuckDBPyConnection, team: Entity, key: str, sp
     rank = next(r for r, t, _ in ranked({r.team: r.win_pct for r in records}, True) if t == team.name)
     line = Scalar(games=mine.wins + mine.losses, values={"wins": mine.wins, "losses": mine.losses, "rank": rank, "of": len(records)}, how="ranked")
     return Result(subject=team.name, relation="team", span=span, parts=(Part(body=line),), facts=TeamStatFacts(metric=key))
+
+
+#: The columns a team's history shows where the words name no stat: its
+#: scoring on both ends and the difference.
+_TEAM_HISTORY_COLUMNS: tuple[str, ...] = ("points", "opponent_points", "point_differential")
+
+#: How many seasons a team's history shows where the words name no range
+#: ("bulls ppg by season"): a player's history's default four.
+_TEAM_HISTORY_DEFAULT_SEASONS = 4
+
+
+def read_team_history(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result | Unanswered:
+    """A team's season line season by season - ``team_seasons/split/season``,
+    the team counterpart of a player's history (ISSUES.md #372; D4 lifted
+    for it, Jeff 2026-10-14) - from the team-season relation
+    (:func:`~association.query.team_seasons.read_team_history_rows`), as a
+    :class:`~association.query.result.Grouped` by ``season``, oldest first:
+    each season's games, its record and the metric named (or the default
+    columns, :data:`_TEAM_HISTORY_COLUMNS`), and a summary part over the
+    seasons shown - the games and the record summed, and each per-game
+    metric weighted by the games behind it; a percentage or a rating, which
+    games do not weight, is left out of the summary rather than averaged.
+    The seasons are the span's - a range, every season on record (from the
+    season line's first, 1993-94), or with none named the latest four.
+
+    .. versionadded:: 6.0.0
+    """
+    scope = q
+    team = _team_season_subject(con, TEAM_SEASON_HISTORY, scope)
+    if isinstance(team, Unanswered):
+        return team
+    key = _team_stat_metric(scope)
+    season_type = scope.span.season_type or 2
+    first, last = _team_history_seasons(scope)
+    if key is not None and TEAM_METRICS[key].expression is None:
+        columns: tuple[str, ...] = ()
+    else:
+        columns = (key,) if key is not None else _TEAM_HISTORY_COLUMNS
+    seasons = read_team_history_rows(con, team.id, season_type, first, last)
+    rows = tuple({"key": s["season"], "games": s["games"], "wins": s["wins"], "losses": s["losses"], **{c: s[c] for c in columns}} for s in seasons)
+    parts = [Part(body=Grouped(by="season", rows=rows))]
+    if rows:
+        parts.append(Part(role="summary", body=_team_history_summary(rows, columns)))
+    shown_first, shown_last = (rows[0]["key"], rows[-1]["key"]) if rows else (first, last)
+    span = Span(season_type=season_type, career=scope.span.career, first=shown_first, last=shown_last, since=first, until=last, source="team_seasons")
+    return Result(subject=team.name, relation="team", span=span, parts=tuple(parts), facts=TeamHistoryFacts(metric=key, columns=columns))
+
+
+def _team_history_seasons(scope: Filtered) -> tuple[int, int]:
+    """The first and last season a team's history reads: the span's range,
+    every season the season line holds for a career, the one season named,
+    or the latest four."""
+    latest = current_season()
+    if scope.span.since is not None:
+        return scope.span.since, scope.span.until if scope.span.until is not None else latest
+    if scope.span.career:
+        return COVERAGE["team_season_stats"].first_season, latest
+    if scope.span.season is not None:
+        return scope.span.season, scope.span.season
+    return latest - _TEAM_HISTORY_DEFAULT_SEASONS + 1, latest
+
+
+def _team_history_summary(rows: tuple[dict[str, Any], ...], columns: tuple[str, ...]) -> Scalar:
+    """The seasons shown summed: the games, the record where every season
+    has one, and each per-game metric weighted by its seasons' games - a
+    percentage or a rating left out, since games do not weight it."""
+    games = sum(row["games"] for row in rows)
+    values: dict[str, Any] = {}
+    if all(row["wins"] is not None for row in rows):
+        values["wins"] = sum(row["wins"] for row in rows)
+        values["losses"] = sum(row["losses"] for row in rows)
+    for column in columns:
+        metric = TEAM_METRICS[column]
+        held = [row for row in rows if row[column] is not None]
+        if metric.percent or "/ possessions" in (metric.expression or "") or not held:
+            continue
+        weight = sum(row["games"] for row in held)
+        values[column] = sum(row[column] * row["games"] for row in held) / weight if weight else None
+    return Scalar(games=games, values=values, how="season")
 
 
 def short_of_games(metric_key: str, lines: list[TeamLine], subject: str | None = None) -> dict[str, Any]:

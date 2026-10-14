@@ -459,3 +459,69 @@ def read_team_season_total(con: duckdb.DuckDBPyConnection, team_id: str, season:
     if row is None or row[0] is None:
         return None
     return float(row[0]), int(row[1] or 0)
+
+
+# --- one team's line season by season (team_seasons/split/season) ---------------------
+
+
+def team_history_statement(team_id: str, season_type: int, first: int, last: int) -> Statement:
+    """One team's line in each season from ``first`` through ``last``, from
+    ``team_season_stats`` with its record and opponent points beside it:
+    ``(season, gamesPlayed, listed_games, wins, losses, <each TEAM_METRICS
+    value that is not a record>)``, oldest first - :func:`team_lines_statement`'s
+    row for one team and many seasons (ISSUES.md #372). A regular season's
+    record is the standings', the authoritative source; a postseason's is a
+    tally of ``real_games`` by the calendar year it was played in, left NULL
+    where the tally does not number the season's games. Opponent points are
+    used only where the tally numbers them, as the line reads them.
+
+    .. versionadded:: 6.0.0
+    """
+    selected = ", ".join(f"{metric.expression} AS {key}" for key, metric in _line_metrics().items())
+    sql = f"""
+{TEAM_GAMES_SQL},
+opp AS (
+    SELECT CASE WHEN season_type = 3 THEN year(eastern_date) ELSE season END AS season, count(*) AS games, sum(opponent_score) AS opp_points,
+           sum(won::INT) AS wins, sum((NOT won)::INT) AS losses
+    FROM team_games WHERE team_id = ? AND season_type = ? AND (season_type = 3 OR NOT cup_final) GROUP BY 1
+),
+base AS (
+    SELECT ts.season, ts.gamesPlayed, o.games AS listed_games,
+           CASE WHEN ts.season_type = 2 THEN st.wins WHEN o.games = ts.gamesPlayed THEN o.wins END AS wins,
+           CASE WHEN ts.season_type = 2 THEN st.losses WHEN o.games = ts.gamesPlayed THEN o.losses END AS losses,
+           CASE WHEN o.games = ts.gamesPlayed THEN o.opp_points END AS opp_points,
+           ts.points, {POSSESSIONS} AS possessions, {TURNOVERS} AS turnovers_all,
+           ts.avgPoints, ts.fieldGoalPct, ts.threePointFieldGoalPct, ts.freeThrowPct, ts.trueShootingPct, ts.effectiveFGPct,
+           ts.avgRebounds, ts.avgOffensiveRebounds, ts.avgDefensiveRebounds, ts.avgAssists, ts.avgSteals, ts.avgBlocks, ts.avgFouls,
+           ts.avgThreePointFieldGoalsMade, ts.avgThreePointFieldGoalsAttempted, ts.avgFieldGoalsMade, ts.avgFreeThrowsMade, ts.avgFreeThrowsAttempted,
+           ts.pointsInPaint, ts.fastBreakPoints
+    FROM team_season_stats ts
+    LEFT JOIN opp o ON o.season = ts.season
+    LEFT JOIN standings st ON st.season = ts.season AND st.team_id = ts.team_id
+    WHERE ts.team_id = ? AND ts.season_type = ? AND ts.gamesPlayed > 0 AND ts.season BETWEEN ? AND ?
+)
+SELECT season, gamesPlayed, listed_games, wins, losses, {selected} FROM base ORDER BY season
+"""
+    return Statement(sql, [team_id, season_type, team_id, season_type, first, last])
+
+
+def read_team_history_rows(con: duckdb.DuckDBPyConnection, team_id: str, season_type: int, first: int, last: int) -> list[dict[str, Any]]:
+    """One team's line in each season from ``first`` through ``last``
+    (:func:`team_history_statement`), oldest first: each season's
+    ``season``, ``games``, ``listed_games``, ``wins``, ``losses`` and every
+    line metric by its key - None before the metric's own first season, as
+    :func:`team_lines` reads it.
+
+    .. versionadded:: 6.0.0
+    """
+    seasons = []
+    for row in _values(con, team_history_statement(team_id, season_type, first, last)):
+        season = int(row[0])
+        entry: dict[str, Any] = {"season": season, "games": int(row[1]), "listed_games": None if row[2] is None else int(row[2])}
+        entry["wins"] = None if row[3] is None else int(row[3])
+        entry["losses"] = None if row[4] is None else int(row[4])
+        for index, (key, metric) in enumerate(_line_metrics().items()):
+            value = row[5 + index]
+            entry[key] = None if value is None or season < metric.first_season else float(value)
+        seasons.append(entry)
+    return seasons

@@ -77,6 +77,9 @@ FROZEN = frozenset(
         # The 27th: D4 lifted (Jeff, 2026-10-13) for #364's remainder: a team's own
         # games, or every team's, ranked by one figure.
         ("team_games", "rows", "measure"),
+        # The 28th: D4 lifted (Jeff, 2026-10-14) for #372's remainder: a
+        # team's season line season by season over a range or every season.
+        ("team_seasons", "split", "season"),
     }
 )
 

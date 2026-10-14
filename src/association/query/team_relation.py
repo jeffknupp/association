@@ -241,6 +241,20 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         taken=Measure.CELLS,
         declined="read",
     ),
+    # A team's line season by season over a range or every season on record
+    # (ISSUES.md #372): the season line's rows, one per season, with the
+    # range's total - every cell the season line does not state but the span.
+    PointShape("team_seasons", "split", "season"): ShapeCells(
+        unstated={
+            "both": "a team's history is one season type's rows of its season lines",
+            **dict.fromkeys(sorted(TEAM_CUTS), "a team's history is its season lines' rows, each over every game of its season"),
+            "window": "a team's history is its season lines' rows, with no game to window",
+            "period": "a team's history is its season lines' rows, and no row is split by quarter or half",
+            "rate": "a team's history is its season lines' rows, per game; a total or another unit is not read season by season",
+        },
+        taken=Measure.CELLS,
+        declined="read",
+    ),
     PointShape("team_snapshots", "scalar", "projection"): ShapeCells(
         unstated={
             "career": "a projection is one season's snapshot",

@@ -86,6 +86,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    TEAM_SEASON_HISTORY,
     Aggregate,
     Cause,
     Claim,
@@ -1519,7 +1520,7 @@ def team_read_point(scope: Filtered, question: str, subject: Subject) -> Reading
     return Reading(**scope.filters(), shape="scalar", by="", on="team_games", measures=(measure,), aggregate=Aggregate.TOTAL, relation="team")
 
 
-TEAM_SEASON_POINTS: frozenset[PointShape] = frozenset({TEAM_LINE, TEAM_RANKING, TEAM_OUTLOOK})
+TEAM_SEASON_POINTS: frozenset[PointShape] = frozenset({TEAM_LINE, TEAM_SEASON_HISTORY, TEAM_RANKING, TEAM_OUTLOOK})
 """What the words ask that a team's own season answers - each key the shape of that point:
 one team's line on ``team_season_stats`` (``team_stat``), every team ranked
 by one metric of it or of the standings (``team_leaderboard``), and one
@@ -1539,6 +1540,25 @@ the retired template was tried before the compiler.
    until then. The grammar's keys themselves since Phase 3, step 4: what the
    words ask IS the point's shape.
 """
+
+
+def _team_season_key(reading: Reading, question: str) -> PointShape:
+    """The team-season shape a point is read and said as: what the words
+    ask, except a team's season line over more than one season - a range
+    or every season on record, the span the words name - which is its
+    history season by season (:data:`TEAM_SEASON_HISTORY`, ISSUES.md #372:
+    "how many games did miami heat play 2009 to 2023" refused the range a
+    season line reads one season of). Not where the words rank or keep a
+    line ("most points in the history of the 76ers" is a high, "games with
+    exactly 99 points since 2000" a count), which stay refused by the
+    season line's own cell."""
+    assert reading.asked is not None
+    if reading.asked != TEAM_LINE:
+        return reading.asked
+    ranged = reading.span.career or reading.span.since is not None
+    if ranged and not reading.lines and not lexicon.RANKING_WORDS.search(question):
+        return TEAM_SEASON_HISTORY
+    return TEAM_LINE
 
 
 def team_season_point(asked: PointShape, scope: Filtered) -> Reading:
@@ -1629,7 +1649,7 @@ def read_point(reading: Reading, question: str) -> Reading:
         # Whatever the words moved (a team's own total on the team relation),
         # the point is read and said as the team's own season's shape:
         # that reader first, the team compiler's sum where it declines.
-        key = reading.asked
+        key = _team_season_key(reading, question)
         point = replace(point, on=key.relation, shape=key.shape, by=key.by)
     return replace(point, asked=reading.asked, subject=subject, evidence=(*point.evidence, *subject.evidence))
 

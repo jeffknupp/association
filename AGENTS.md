@@ -73,13 +73,18 @@ this tree:
 
 - **New shapes are frozen** (decision D4). No new shape the words can ask,
   template, presenter, scoping table or renderer.
-  `tests/query/test_frozen_shapes.py` holds the 26 shapes the grammar can
+  `tests/query/test_frozen_shapes.py` holds the 28 shapes the grammar can
   name (the grammar's keys, `reading.PointShape` as relation, shape and
   `by`, since Phase 3, step 4 - the 25 intents' names until then, a freeze
   retired with the intent; the 26th and 27th, `reading.PLAYERS_COUNTED`, how many
   players a season line holds, and a team's best single game,
   `team_games/rows/measure`, both by Jeff's lifting of D4 on 2026-10-13,
-  ISSUES.md #390 and #364), the page's 7 renderers (one per
+  ISSUES.md #390 and #364; the 28th, `reading.TEAM_SEASON_HISTORY`, a
+  team's season line season by season over a range or every season,
+  `team_seasons/split/season`, by Jeff's lifting on 2026-10-14, ISSUES.md
+  #372 - named by a player's history's words under a team's line, and keyed
+  so by the point reader for a team's line whose span is more than one
+  season, `point._team_season_key`), the page's 7 renderers (one per
   `reading.Shape`, since Phase 4, step 1 - 22 keyed by the label until
   then) and the 4 scoping
   declarations left in `src` (by module and name, read from the source),
@@ -1860,7 +1865,10 @@ a shape:
   key the grammar names is the compiler's (`Reading.asked` set; "no
   shape", `None`, is refused with the reason "what its words ask has no
   reader"): the 25 keys the retired intents were and the count of players
-  a season line holds (`reading.PLAYERS_COUNTED`, 2026-10-13), whose names `ISSUES.md`,
+  a season line holds (`reading.PLAYERS_COUNTED`, 2026-10-13), a team's
+  best single game (`reading.TEAM_GAME_HIGHS`, 2026-10-13) and a team's
+  history season by season (`reading.TEAM_SEASON_HISTORY`, 2026-10-14,
+  read by `compose.team_stats.read_team_history`), whose names `ISSUES.md`,
   `CHANGES.md` and the history still use (`threshold_count`, `single_game_high`, `record_when`, `player_history`,
   `game_log`, `player_stat`, `player_splits`, `leaderboard`,
   `period_split`, `player_compare`, `streak`, `player_matchup`,

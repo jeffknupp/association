@@ -34,6 +34,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    TEAM_SEASON_HISTORY,
     Cuts,
     Line,
     Measure,
@@ -83,6 +84,7 @@ team_stat = _compiled(TEAM_LINE)
 team_leaderboard = _compiled(TEAM_RANKING)
 team_quarter_points = _compiled(TEAM_PERIOD_TOTAL)
 team_record = _compiled(TEAM_RECORD)
+team_history = _compiled(TEAM_SEASON_HISTORY)
 
 S = current_season()
 LAST = f"{S - 1}-{S % 100:02d}"
@@ -539,6 +541,34 @@ def test_team_record_honors_situation_and_split_at_the_declaration_level() -> No
     still refuses a `situation` that names no month and a `split` that is not
     "month" (see the tests above), the same way it always refused `order`."""
     assert [cell for cell, _ in cells_unhonored(Reading(cuts=Cuts(situation=situation_of("in october")), split="month"), TEAM_RECORD)] == []
+
+
+# ---------------- a team's line season by season ----------------
+
+
+def test_a_teams_history_is_its_season_lines_one_row_a_season(team_ctx: AnswerContext) -> None:
+    """ISSUES.md #372 (D4 lifted, Jeff 2026-10-14): "raptors last 5 season"
+    and "how many games did miami heat play 2009 to 2023" were refused - a
+    team's season line reads one season. Its history is the line season by
+    season, with the record (the standings' for a regular season) and the
+    seasons summed beneath: the games, the record where every season has
+    one, each per-game figure weighted by its games."""
+    result = team_history(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=2000)))
+    assert [(row["season"], row["games"], row["wins"], row["losses"]) for row in result.data["seasons"]] == [(2000, 82, 49, 31), (S, 3, 53, 29)]
+    assert result.text.startswith(f"The New York Knicks, season line by regular season, 1999-00 to {LAST} (2 seasons):")
+    assert f"Over 1999-00 to {LAST}, the New York Knicks: 85 games, 102-60 (.630), " in result.text
+    assert f"{(7790 + 378) / 85:.1f} points per game" in result.text
+
+
+def test_a_teams_history_of_one_stat_and_every_season(team_ctx: AnswerContext) -> None:
+    """A stat named is that column alone; every season on record starts at
+    the season line's first, 1993-94, and a season the standings do not hold
+    shows no record - and the seasons' record is summed only where each has
+    one."""
+    result = team_history(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True)))
+    assert [(row["season"], row["wins"]) for row in result.data["seasons"]] == [(1994, None), (2000, 49), (S, 53)]
+    assert result.text.startswith(f"The New York Knicks, points per game by regular season, 1993-94 to {LAST} (3 seasons):")
+    assert result.text.endswith(", the New York Knicks: 86 games, 96.1 points per game.")
 
 
 # ---------------- team_stat ----------------

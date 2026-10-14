@@ -695,6 +695,19 @@ class TeamStatFacts:
 
 
 @dataclass(frozen=True, kw_only=True)
+class TeamHistoryFacts:
+    """A team's line season by season, besides its rows: the metric named
+    (None for the default columns) and the columns each row shows, in
+    order - the team metrics' keys (``team_metrics.TEAM_METRICS``).
+
+    .. versionadded:: 6.0.0
+    """
+
+    metric: str | None
+    columns: tuple[str, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
 class TeamRankingFacts:
     """Every team ranked by one metric, besides the rows: the metric, the
     rank word asked, which end comes first, and how many teams were ranked.
@@ -764,6 +777,7 @@ Facts = (
     | PeriodFacts
     | PeriodRankingFacts
     | TeamPeriodFacts
+    | TeamHistoryFacts
     | RankingFacts
     | RecordFacts
     | MatchupFacts
