@@ -202,6 +202,10 @@ class TeamNarrowed:
     #: be in - or None. The team counterpart of
     #: :attr:`association.query.player_games.Narrowed.alignment`.
     alignment: AlignmentNarrowing | None = None
+    #: How many neutral-site games a venue narrowing left out - games on
+    #: the venue's side the rest of the narrowing kept, played on neither
+    #: team's floor (ISSUES.md #173); the phrase says them.
+    neutral_left_out: int = 0
     #: The periods a quarter or a half narrowed each game to - ``(1,)``,
     #: ``(3, 4)`` - or None for the whole game. Set by :meth:`narrow_periods`;
     #: every read then sees the period's own figures (:func:`_team_period_source`).
@@ -247,6 +251,10 @@ class TeamNarrowed:
             parts.append(f"vs the {self.opponent.name}")
         if self.venue:
             parts.append("at home" if self.venue == "home" else "on the road")
+            if self.neutral_left_out:
+                # A neutral-site game is neither (ISSUES.md #173), said where one was left out.
+                n = self.neutral_left_out
+                parts.append(f"({n} neutral-site game{'s' if n != 1 else ''} left out)")
         if self.series_game is not None:
             # "of the series" only where one series is in view: an opponent
             # names it. Across a postseason it is game 4 of each series.

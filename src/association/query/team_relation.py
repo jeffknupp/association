@@ -470,9 +470,6 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
             raise Unsupported("a team cannot be its own opponent")
         narrowed.opponent = rival
         narrowed.narrow("tg.opponent_id = ?", rival.id)
-    if scope.cuts.venue:
-        narrowed.venue = scope.cuts.venue
-        narrowed.narrow("tg.side = ?", scope.cuts.venue)
     if date:
         narrowed.narrow("tg.eastern_date = ?", date)
         narrowed.date = date
@@ -486,11 +483,30 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
         # calendar or a conference/division, refused BY VALUE (never
         # silently dropped) otherwise - see apply_situation.
         apply_situation(narrowed, scope.cuts.situation)
+    if scope.cuts.venue:
+        # Last of the row filters, so the neutral-site games it leaves out
+        # are counted over every other one.
+        _team_games_narrow_venue(con, narrowed, scope.cuts.venue)
     # The same window rule as the player relation's - a named order, or a
     # bare limit read as the newest N (see relation_window).
     narrowed.window = relation_window(scope)
     _team_games_apply_period(con, narrowed, scope)
     return narrowed
+
+
+def _team_games_narrow_venue(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, venue: str) -> None:
+    """Only the team's games on ``venue``'s side, never one played at a
+    neutral site - which counts as neither home nor away, as the record
+    and the league's venue ranking count it (ISSUES.md #173: the NBA Cup
+    final, where the Knicks were the designated home side, was one of
+    their "home" games in a log, a split, a streak and a quarter, and not
+    in their home record) - and how many such games the rule left out,
+    which the narrowing's phrase says."""
+    where, params = narrowed.clauses()
+    row = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*) FROM team_games tg WHERE {where} AND tg.side = ? AND tg.neutral", [*params, venue]).fetchone()
+    narrowed.neutral_left_out = int(row[0]) if row else 0
+    narrowed.venue = venue
+    narrowed.narrow("tg.side = ? AND NOT tg.neutral", venue)
 
 
 def _team_games_apply_period(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, scope: Filtered) -> None:

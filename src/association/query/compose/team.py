@@ -161,7 +161,9 @@ _TEAM_ROWS_JOIN = " JOIN teams o ON o.team_id = tg.opponent_id"
 #: splits show them - the player compiler's group names
 #: (:data:`~association.query.compose.core.GROUPS`) where it has one.
 TEAM_GROUPS: dict[str, str] = {
-    "venue": "t.home_away",
+    # A neutral-site game is neither home nor away (ISSUES.md #173), as the
+    # record counts it: a group of its own, shown beside the pair.
+    "venue": "CASE WHEN t.neutral THEN 'neutral' ELSE t.home_away END",
     "won": "CASE WHEN t.won THEN 'wins' ELSE 'losses' END",
     "month_of_year": "CAST(month(t.day) AS VARCHAR)",
 }
@@ -178,6 +180,7 @@ _TEAM_GROUPED_COLUMNS: tuple[str, ...] = (
     "tg.season",
     "tg.eastern_date AS day",
     "tg.side AS home_away",
+    "tg.neutral",
     "tg.won",
     "tg.team_score",
     "tg.opponent_score",

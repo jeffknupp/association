@@ -18,7 +18,7 @@ import duckdb
 import pytest
 from routed import Said
 from routed import planned_answer as compose_answer
-from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
+from test_templates import game_log, player_splits, streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -426,6 +426,34 @@ def test_an_all_time_home_record_counts_only_seasons_with_a_split(team_ctx: Answ
     assert result.data["headline"] + " " + result.data["notes"][0] == answer
     assert "as neither." in result.data["headline"]
     assert "2000 (80 of 82 games)" in result.data["notes"][0]
+
+
+# ---------------- a neutral site is neither home nor away ----------------
+
+
+def test_a_teams_home_games_leave_out_a_neutral_site_game_and_say_so(team_ctx: AnswerContext) -> None:
+    """ISSUES.md #173: the NBA Cup final, played in Las Vegas with the Knicks
+    the designated home side, was one of their "home" games in a log, a
+    split, a streak and a quarter - and not in their home record. A venue
+    narrows every team read to the games on that side NOT at a neutral site,
+    and the narrowing's phrase says how many it left out."""
+    home = game_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home")))
+    assert [g["date"] for g in home.data["games"]] == [f"{S - 1}-11-19"]
+    assert home.text.startswith("New York Knicks at home (1 neutral-site game left out), most recent game")
+    road = game_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="away")))
+    assert [g["date"] for g in road.data["games"]] == [f"{S - 1}-12-31"]
+    spurs = game_log(team_ctx, Reading(who=Who(kind="team", teams=("Spurs",)), cuts=Cuts(venue="home")))
+    assert "neutral-site" not in spurs.text
+
+
+def test_a_teams_home_and_road_split_shows_its_neutral_site_games_apart(team_ctx: AnswerContext) -> None:
+    team_ctx.con.execute(
+        "CREATE TABLE team_box_stats (event_id VARCHAR, season BIGINT, season_type BIGINT, team_id VARCHAR, offensiveRebounds DOUBLE, defensiveRebounds DOUBLE, "
+        "assists DOUBLE, threePointFieldGoalsMade DOUBLE, fieldGoalsMade DOUBLE, fieldGoalsAttempted DOUBLE)"
+    )
+    team_ctx.con.executemany("INSERT INTO team_box_stats VALUES (?, ?, 2, '18', 10, 30, 25, 12, 40, 88)", [(event, S) for event in ("g1", "g2", "g3", "g4")])
+    result = player_splits(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), split="home_away"))
+    assert [(row["group"], row["games"], row["wins"]) for row in result.data["splits"]["home_away"]] == [("home", 1, 1), ("away", 1, 0), ("neutral", 2, 2)]
 
 
 # ---------------- team_record: refusals ----------------
