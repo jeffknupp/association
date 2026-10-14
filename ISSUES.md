@@ -302,7 +302,7 @@ those were found.
 - **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), probing #348's neighbors; the record half fixed by lane T2 (`Line.whose`, the team's record over a line split by the opponents' score or box row); the log half by Phase 5, step 6's lane T (`p5s6-T`): a team's log keeps its games past a line on its own score or box row or its opponents' (`TeamNarrowed.narrow_line`, `compose.logs._team_log_lines`) - "celtics last 10 games when allowing 120+ points" lists the 7 games of 2026 the Celtics allowed 120+, where it was declined "relation: a line on a box-score stat keeps a PLAYER's games; a team's log has no such column".
 - **Evidence:** probed on `p5s6-T` with the main warehouse and no model: the log reads a line only where a window names the log ("celtics last 10 games when ..."). Without one, the grammar names the team's season line (`team_seasons/scalar/line`) and the point drops the line, so step 1's cause refuses the number: "celtics games where they gave up 120 points", "how many games did the celtics allow 130 points this season", "celtics games with 120+ points this season", "how many games did the celtics score 130 points this season", "celtics 120 point games this season", "how many 120 point games did the celtics have this season", "celtics record in games they allowed 130 points this season" (the line tagger reads no line from "allowed 130 points" there) - each "'120' is a number this reading did not use ...". And "celtics game log when they score 120+ points" is read as the team's record over the line (`team_games/split/line`) and answers "Boston Celtics record when they had 120+ points ..." - a log asked, a record answered, visibly. 0 of the 628 and 0 of the 2,082 hold the wordings.
 - **User sees:** a refusal naming the number for a team's games or count over a line; a record split where a log was asked ("game log when ...").
-- **Next step:** (the grammar and the line tagger, lanes N/L) name a team's log from "games where/with/when <a typed line>" and "game log when <line>" as the player's log is named, and a team's count of games over a line (the record over the line's G column, or a count key - what a new shape brings, D11, if the record is not taken as the count); read "in games they allowed N points" as an opponent's line. The relation reads the line on the log already.
+- **Next step:** (lane L's seam, the count's grammar and the line tagger, Phase 5, step 6) name a team's count from "how many games did X allow N" and its log from "games where they gave up N" as the scored form would be named; name a team's log from "games where/with/when <a typed line>" and "game log when <line>" as the player's log is named, and a team's count of games over a line (the record over the line's G column, or a count key - what a new shape brings, D11, if the record is not taken as the count); read "in games they allowed N points" as an opponent's line. The relation reads the line on the log already.
 - **Source:** ours.
 - **Priority:** P2 - a record answered where a log was asked (visible, its heading says "record"); the rest refusals by name.
 - **GitHub:** #430
@@ -2742,6 +2742,15 @@ those were found.
 - **GitHub:** #414
 
 ## P4: tooling, docs, low impact
+
+### The page's team log prints ESPN's side for a neutral-site game, where the sentence says "(neutral site)"
+- **Found:** 2026-10-14, Phase 5, step 6's lane T, fixing the team log's neutral-site label in the sentence.
+- **Evidence:** `compose.logs._team_log_games` marks a game played on neither team's floor (`neutral: True`, set only where true) and `say.say_team_log` says it "vs Orlando Magic (neutral site)"; `src/association/web/static/index.html`'s team log body (`g.home_away === "away" ? "at " : "vs "`, about line 1113) reads `home_away` alone, so the page's table still prints "at Orlando Magic" for the NBA Cup semifinal in Las Vegas. 0 recorded answers list a neutral-site game in a team's log.
+- **User sees:** on the web page only, a neutral-site game in a team's log labeled as ESPN's home or road side, beside a sentence that says it was neutral.
+- **Next step:** the renderer reads `g.neutral` and prints "vs ... (neutral site)" as the sentence does; `~/association-research/stages/page_renders.py` before and after.
+- **Source:** ours.
+- **Priority:** P4 - no recorded answer reaches it; the sentence is right.
+- **GitHub:** #439
 
 ### 116 plain declines no recorded question reaches are still sentences, not causes
 - **Found:** 2026-10-14, Phase 5, step 5, after its last class: the worded-declines harness reads 0 on both populations, and the source still holds `raise Unsupported("<sentence>")` at 116 sites outside `reading.py` (`compose/core.py` 21, `point.py` 15, `compose/team.py` 15, `compose/team_records.py` 12, `player_relation.py` 10, `compose/rankings.py` 7, `compose/splits.py` 6, `compose/logs.py` 6, and 13 more modules).

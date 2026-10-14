@@ -101,6 +101,28 @@ def test_a_teams_log_is_said_with_its_record_and_the_total_asked_for() -> None:
     assert said.data["wins"] == 1 and said.data["losses"] == 1 and said.data["differential"] == 6 and said.data["differential_per_game"] == 2.0
 
 
+def test_a_teams_log_says_a_neutral_site_game_as_neither_home_nor_road() -> None:
+    """ "knicks first 30 games this season" listed the NBA Cup semifinal in Las
+    Vegas as "at Orlando Magic" - ESPN's side, a label - where the record
+    counts it as neither home nor away (ISSUES.md #173). The game is said
+    "vs" with "(neutral site)", as a record's listed meetings say it."""
+    from association.query.compose.logs import _team_log_games
+
+    row = {"day": "2025-12-13", "side": "away", "opponent": "Orlando Magic", "team_score": 132, "opponent_score": 120, "won": True, "season": 2026, "neutral": True}
+    games = tuple(_team_log_games([row, {**row, "day": "2025-12-10", "side": "away", "neutral": False}]))
+    assert games[0]["neutral"] is True and "neutral" not in games[1]
+    result = Result(
+        subject="New York Knicks",
+        relation="team",
+        span=Span(season=2026, season_type=2, first=2026, last=2026),
+        window=Window(limit=2, ascending=False),
+        parts=(Part(body=Rows(rows=games, summary={"wins": 2, "losses": 0, "unknown": 0})),),
+        facts=LogFacts(stat=None),
+    )
+    lines = as_said(say_team_log(result)).text.split("\n")
+    assert lines[1] == "  2025-12-13  W 132-120  vs Orlando Magic (neutral site)" and lines[2] == "  2025-12-10  W 132-120  at Orlando Magic", lines
+
+
 def test_a_teams_log_names_the_games_its_window_cut_from() -> None:
     """ISSUES.md #402: the newest three of a season's 82 say so in the heading."""
     games = ({"date": "2026-04-10", "home_away": "home", "opponent": "Boston Celtics", "team_score": 110, "opponent_score": 100, "won": True, "season": 2026},)
