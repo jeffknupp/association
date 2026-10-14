@@ -4327,6 +4327,28 @@ could name. No player or team has "coach" anywhere in its name.
    ``router._COACH_WORDS`` until Phase 3, step 4.
 """
 
+COACH_UNDER = re.compile(r"\bunder\s+(?P<name>[A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){1,2})", re.IGNORECASE)
+"""A coach named by "under" and his name, with no "coach" said (ISSUES.md
+#431): "top 10 players by games played under Lon Kruger" ranked the whole
+league's season, "under", "lon" and "kruger" unread. Two or three
+name-shaped words after "under"; the parser keeps the words up to the first
+that no name holds (:data:`NAME_STOPWORDS`, :data:`UNDER_NOT_A_COACH`, a
+number word, a stat word, a team's word) and refuses by the coach cause
+only where two are left - "under 10 points" and "under 25 years old" are a
+line and an age, and are no match here at all (no name-shaped word after
+"under"). Measured on the 2,710 readings (Phase 5, step 6): "under" stands
+in 6 questions, five before a number and the one coach.
+
+.. versionadded:: 6.0.0
+"""
+UNDER_NOT_A_COACH: frozenset[str] = frozenset(
+    "age aged contract contracts rookie pressure par review way radar rim basket lights hoop average averages percent percentage minutes minute seconds second points point the".split()
+)
+"""Words after "under" that are no part of a coach's name (:data:`COACH_UNDER`).
+
+.. versionadded:: 6.0.0
+"""
+
 RECORD_WORD = re.compile(r"\brecord\b", re.IGNORECASE)
 """"record" asked with a counting shape means wins and losses, not a count of
 games: "Sixers record when Embiid scores 30 points this season" came back as

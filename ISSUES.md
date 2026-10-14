@@ -102,14 +102,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #424
 
-### A coach named by "under <name>" is read by nothing: "Name the top 10 players by games played under Lon Kruger" ranks the whole league's 2026 season
-- **Found:** 2026-10-13, the P1 sweep's lane L2, fixing #408 (the ranking by games played).
-- **Evidence:** on sweep-L2 (feed, no model names), "Name the top 10 players by games played under Lon Kruger in NBa" reads `Reading.unread` `under`, `lon`, `kruger` and answers "every player, 2026 regular season, by player (games played): Julian Champagnie 83 G ..." (the points-per-game ranking before #408's fix). The coach cause (`no_coach_table`) is read from the word "coach" alone (`lexicon` coach words, `point._read_point`), and nothing reads "under <a name that is no player>" as a coach; Lon Kruger coached the Hawks 2000-03. 1 of the 2,082.
-- **User sees:** the league's ranking over this season, fluently, where the players under one coach were asked.
-- **Next step:** read "under <words that name no player>" before a ranking or a line as a coach's tenure and refuse it by the coach cause naming the words ("no coach records are on file ..."), a test per wording; measure "under" on both corpora first ("under 10 points" is a line, `lexicon.BELOW`).
-- **Source:** ours.
-- **Priority:** P1 - a different question answered fluently; 1 of the 2,082.
-- **GitHub:** #431
 ### A player's "stats by season" or "every season" with no stat named answers one season's line: "james wiseman stats by season" answers his 2026 averages
 - **Found:** 2026-10-11, fixing #379 (the per-season window), probing "lebron stats every season".
 - **Evidence:** on `0c597b2`, feed run (no names, no stat): "james wiseman stats by season" -> "James Wiseman averaged 3.3 points, 2 rebounds and 0.8 assists per game in 4 games in the 2026 regular season." (unread: stats), "kevin love nba stats by year" -> his 2026 line, "ant games play each season" / "Jokic games play each season" / "lamelo games play each season" -> each one's 2026 line ("games", "play" unread); with the model's name, "lebron stats every season" -> "LeBron James averaged 20.9 points ... in 60 games in the 2026 regular season." The history child grammar names `player_history` from "by season"/"every season" (`lexicon.CHILD_PLAYER_HISTORY`), and the grammar's rule `grammar._line_and_record` turns a history with no stat named into the player's line ("Jokic career averages" is the whole line, not points by season) - the decision says "the words 'every season' name player_history, and the stages declined it", and the words are claimed by the child, so `Reading.unread` does not show them. 5 of the 2,082 feed questions, none of the 628.

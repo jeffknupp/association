@@ -422,3 +422,40 @@ def test_words_beside_an_absent_fact_are_not_refused(con: duckdb.DuckDBPyConnect
     it: "leads the league" is no lead, "4 ft" a shot's distance, "ft" a free
     throw, a pick only after "what", "which" or "overall"."""
     assert by_question(question, PLAYER_RANKING, con) is None
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("Name the top 10 players by games played under Lon Kruger in NBa", "under Lon Kruger"),
+        ("spurs record under gregg popovich since 2010", "under gregg popovich"),
+        ("lakers wins under phil jackson", "under phil jackson"),
+    ],
+)
+def test_a_coach_named_by_under_is_refused_by_the_coach_cause(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
+    """ISSUES.md #431: "under Lon Kruger" was read by nothing, and the
+    league's 2026 ranking answered; a coach's tenure is refused by the coach
+    cause, naming the words."""
+    refusal = by_question(question, PLAYER_RANKING, con)
+    assert refusal is not None, question
+    assert refusal.text.startswith(f"{words!r} reads as a coach's tenure. No table here holds a coach")
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Sga games with under 14 fta in his whole career",
+        "how many games in 2005-2006 did kobe score under 25 points",
+        "active players under 25 years old with spg+bpg gte 2",
+        "kobe bryant career games with under 40 field goal percentage",
+        "games under five minutes played by maxey",
+        "players under rookie contracts",
+        "lakers record under the lights",
+        "jokic under pressure",
+        "hawks record under lakers",
+    ],
+)
+def test_under_before_a_number_or_no_name_is_no_coach(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ISSUES.md #431: "under" before a number is a line or an age, and before
+    words that are no two-word name (a stopword, a team, one word) no coach."""
+    assert by_question(question, PLAYER_RANKING, con) is None

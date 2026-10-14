@@ -722,7 +722,7 @@ def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
         "needs_subject": lambda: f"{shape.capitalize()} needs a player or a team to read it for, and neither was named.",
         "team_streak_of_stat": lambda: f"A team's streak is of wins or losses - a run of games reaching a number of {_stat_words(facts['stat'])} is read for a player, not a team.",
         "matchup_needs_two": lambda: _matchup_needs_two(list(facts["names"])),
-        "no_coach_table": lambda: COACH_REFUSAL,
+        "no_coach_table": lambda: (f"{facts['words']!r} reads as a coach's tenure. " if facts.get("words") else "") + COACH_REFUSAL,
         "too_short": lambda: f"I couldn't understand your question, '{facts['asked']}'. Please try re-phrasing it.",
         "no_period_stat": lambda: (
             f"A quarter or half has no per-period {facts['stat']!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "

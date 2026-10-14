@@ -1188,6 +1188,11 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       default reading, the fact unread; and an award or an All-Star
       selection ("nba mvps in 2010's", "1999 sixth man of the year",
       ISSUES.md #146), answered as a points ranking.
+    - a coach named by "under" and his name, with no "coach" said
+      (``no_coach_table``, with the ``words``;
+      :data:`~association.query.lexicon.COACH_UNDER`): "Name the top 10
+      players by games played under Lon Kruger" ranked the league's 2026
+      season (ISSUES.md #431).
     - a window of games taken in each season (``window_per_season``):
       "warriors first 10 game record every season" answered the first 10
       games of 2026, "every season" unread (ISSUES.md #379) - nothing reads
@@ -1208,13 +1213,16 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       cause is said where the answer side declines, as before.
 
     The championship first, as the answering loop asked them, then a fact
-    nothing reads, then the window's ends, then a window per season, then a
+    nothing reads, then a coach named by "under", then the window's ends, then a window per season, then a
     career's own seasons, then a ranking's own conference."""
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
     fact = _refused_fact_not_read(question)
     if fact is not None:
         return fact
+    coach = _refused_coach_under(teams, question)
+    if coach is not None:
+        return coach
     ends = contradicting_ends(question)
     if ends:
         return Cause(kind="window_ends_contradict", facts={"ends": [question[claim.start : claim.end] for claim in ends]})
@@ -1250,6 +1258,36 @@ def _refused_fact_not_read(question: str) -> Cause | None:
         if match is not None:
             return Cause(kind="fact_not_read", facts={"fact": fact, "words": match.group(0)})
     return None
+
+
+def _refused_coach_under(teams: names.TeamIndex, question: str) -> Cause | None:
+    """A coach named by "under" and two or three words of a name, with no
+    "coach" said (:data:`~association.query.lexicon.COACH_UNDER`, ISSUES.md
+    #431): "Name the top 10 players by games played under Lon Kruger"
+    ranked the league's 2026 season. Refused by the coach cause, naming the
+    words - no table here holds a coach, so no tenure narrows anything. The
+    name ends at the first word no name holds - a stopword, a number or a
+    stat word, a team's word - and two words must be left."""
+    for match in lexicon.COACH_UNDER.finditer(question):
+        start = match.start("name")
+        end = start
+        kept = 0
+        for piece in lexicon.NAME_PIECES.finditer(match.group("name")):
+            word = piece.group(0).lower()
+            if _refused_coach_under_stops(teams, word):
+                break
+            kept += 1
+            end = start + piece.end()
+        if kept >= 2:
+            return Cause(kind="no_coach_table", facts={"unanswerable": "coach", "words": question[match.start() : end]})
+    return None
+
+
+def _refused_coach_under_stops(teams: names.TeamIndex, word: str) -> bool:
+    """Whether ``word`` ends a coach's name after "under" (:func:`_refused_coach_under`)."""
+    if word in lexicon.NAME_STOPWORDS or word in lexicon.UNDER_NOT_A_COACH or word in lexicon.COUNT_NUMBERS:
+        return True
+    return named(word) is not None or bool(find_teams(teams, word))
 
 
 def _reading_from_route_denied(question: str, reading: Reading) -> Cause | None:
