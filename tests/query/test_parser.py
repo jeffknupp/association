@@ -228,7 +228,7 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
     against = Companion(player="Jayson Tatum", side="opponent", predicate="played")
     high = _read(con, "most points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
     assert high.asked == PLAYER_LINE and high.who.player == "Tyrese Maxey" and high.companions == (against,)
-    assert high.point is not None and high.point.shape == "rows" and high.point.order == "measure" and high.point.direction == "desc"
+    assert high.point is not None and high.point.read_as.shape == "rows" and high.point.order == "measure" and high.point.direction == "desc"
     fewest = _read(con, "fewest points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
     assert fewest.point is not None and fewest.point.order == "measure" and fewest.point.direction == "asc"
     count = _read(con, "how many times did tyrese maxey score 30 vs tatum", ["tyrese maxey", "tatum"], "points")
@@ -1022,7 +1022,7 @@ def test_a_line_on_a_season_is_read_by_the_season_ranking(con: duckdb.DuckDBPyCo
     reading = _read(con, question)
     # "How many players ..." is the ranking counted (PLAYERS_COUNTED, the next key).
     counted = question.casefold().startswith("how many")
-    assert reading.point is not None and (reading.point.on, reading.point.shape, reading.point.by) == (("player_seasons", "scalar", "count") if counted else ("player_seasons", "ranking", "player"))
+    assert reading.point is not None and reading.point.read_as == (PointShape("player_seasons", "scalar", "count") if counted else PointShape("player_seasons", "ranking", "player"))
     assert reading.asked == (PLAYERS_COUNTED if counted else PLAYER_RANKING)
     assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
 
@@ -1043,7 +1043,7 @@ def test_a_count_of_seasons_over_a_season_line_ranks_the_players_by_it(con: duck
     2026-10-13) - asked as the ranking, as a count of games over a line
     ranks by ``games``."""
     reading = _read(con, question)
-    assert reading.asked == PLAYER_RANKING and reading.point is not None and (reading.point.on, reading.point.shape, reading.point.by) == ("player_seasons", "ranking", "seasons")
+    assert reading.asked == PLAYER_RANKING and reading.point is not None and reading.point.read_as == PointShape("player_seasons", "ranking", "seasons")
     assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
 
 
@@ -1135,7 +1135,7 @@ def test_a_teams_record_under_a_number_is_keyed_on_that_line(con: duckdb.DuckDBP
     team's record is keyed on the line with its comparison, which the team's
     record reader reads (lane T's ``compile_team_line(op=)``)."""
     reading = _read(con, question, ["celtics"], "turnovers")
-    assert reading.asked == LINE_RECORD and reading.point is not None and reading.point.on == "team_games"
+    assert reading.asked == LINE_RECORD and reading.point is not None and reading.point.read_as.relation == "team_games"
     keyed = [each for each in reading.point.lines if each.keyed]
     assert [(each.measure, each.op, each.value) for each in keyed] == [line] and not any(each.narrows for each in reading.point.lines)
 
@@ -1261,7 +1261,7 @@ def test_a_teams_line_over_more_than_one_season_is_its_history(con: duckdb.DuckD
     team's history season by season."""
     reading = _read(con, question, names)
     assert reading.point is not None
-    assert (reading.point.on, reading.point.shape, reading.point.by) == ("team_seasons", "split", "season")
+    assert reading.point.read_as == PointShape("team_seasons", "split", "season")
 
 
 @pytest.mark.parametrize(
@@ -1275,7 +1275,7 @@ def test_a_teams_line_over_more_than_one_season_is_its_history(con: duckdb.DuckD
 def test_a_teams_line_ranked_or_of_one_season_is_not_its_history(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> None:
     reading = _read(con, question, names)
     assert reading.point is not None
-    assert (reading.point.on, reading.point.shape, reading.point.by) != ("team_seasons", "split", "season")
+    assert reading.point.read_as != PointShape("team_seasons", "split", "season")
 
 
 @pytest.mark.parametrize(

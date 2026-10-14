@@ -13,7 +13,7 @@ from association.query.compose.core import Query, measure_names
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery, team_metric
 from association.query.point import default_point
-from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, Line, Measure, Period, Reading, Span, Unsupported, Window
+from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, Line, Measure, Period, PointShape, Reading, Span, Unsupported, Window
 from association.query.reading import Subject as Who
 
 
@@ -28,7 +28,7 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
     )
     reading = default_point(GAMES_COUNTED, scope)
     assert isinstance(reading, Reading)
-    assert (reading.relation, reading.shape, reading.aggregate, reading.predicates) == ("player", "scalar", "count", [("points", ">=", 30)])
+    assert (reading.relation, reading.read_as.shape, reading.aggregate, reading.predicates) == ("player", "scalar", "count", [("points", ">=", 30)])
     planned = plan(reading)
     assert isinstance(planned, Query)
     assert planned == planned_query(GAMES_COUNTED, scope)
@@ -38,13 +38,12 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
 
 def test_the_planner_copies_and_never_decides() -> None:
     """Every point field on the Reading lands on the Query under its own
-    name (``shape`` and ``by`` -> ``skeleton``, ``on`` -> ``source``,
+    name (``read_as`` -> ``skeleton`` and ``source``,
     ``relation`` -> ``subject``), and a field the Reading left unset is
     unset on the Query too."""
     reading = Reading(
         **(Reading(who=Who(kind="player", players=("X",)), span=Span(season=2025))).filters(),
-        shape="ranking",
-        by="player",
+        read_as=PointShape("player_games", "ranking", "player"),
         measures=(Measure(key="points"),),
         aggregate=Aggregate.PER_GAME,
         group="player",
@@ -65,9 +64,10 @@ def test_the_planner_copies_and_never_decides() -> None:
     assert q.available is None and q.subject_span is None
     # The two records mirror each other on purpose: a point field added to
     # one and not the other is a decision the planner would be making alone.
-    # The point's shape, by and on are the target's vocabulary, from which
-    # the planner derives the compiler's skeleton and source (plan.skeleton_of).
-    point = {"shape", "by", "on", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span"}
+    # What the point is read as (its shape, by and relation, one field
+    # since Phase 5, step 4) is the target's vocabulary, from which the
+    # planner derives the compiler's skeleton and source (plan.skeleton_of).
+    point = {"read_as", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span"}
     assert point <= {f.name for f in fields(Reading)}
     # The Query's ``position`` is the point's subject's position group
     # (``Reading.who.position``, a field of the point until Phase 3, step 2).
@@ -81,7 +81,7 @@ def test_the_planner_copies_and_never_decides() -> None:
 def test_a_team_reading_plans_to_the_team_relation() -> None:
     reading = Reading(
         **(Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026))).filters(),
-        shape="scalar",
+        read_as=PointShape("player_games", "scalar"),
         measures=(Measure(key="threePointFieldGoalsMade"),),
         aggregate=Aggregate.TOTAL,
         relation="team",
@@ -99,7 +99,7 @@ def test_the_planner_names_the_points_typed_measures_once() -> None:
     margin; a measure the player-games relation has no name for is refused,
     never dropped."""
     player = Reading(who=Who(kind="player", players=("X",)), span=Span(season=2025)).filters()
-    reading = Reading(**player, shape="scalar", by="line", measures=(Measure(key="fieldGoalPct"), Measure(key="points"), Measure(key="wins")), aggregate=Aggregate.PER_GAME)
+    reading = Reading(**player, read_as=PointShape("player_games", "scalar", "line"), measures=(Measure(key="fieldGoalPct"), Measure(key="points"), Measure(key="wins")), aggregate=Aggregate.PER_GAME)
     q = plan(reading)
     assert isinstance(q, Query) and q.measures == ["fg_pct", "points", "won"]
     assert measure_names(()) == []
@@ -113,7 +113,7 @@ def test_the_planner_names_the_points_typed_measures_once() -> None:
         (Measure(key="record"), "record"),
     ):
         assert team_metric(measure) == metric
-        q_team = plan(Reading(**team, shape="scalar", measures=(measure,), aggregate=Aggregate.TOTAL, relation="team"))
+        q_team = plan(Reading(**team, read_as=PointShape("player_games", "scalar"), measures=(measure,), aggregate=Aggregate.TOTAL, relation="team"))
         assert isinstance(q_team, TeamQuery) and q_team.metric == metric
 
 
@@ -133,7 +133,7 @@ def test_the_compilers_points_are_keyword_only() -> None:
 def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
     reading = Reading(
         **(Reading(who=Who(kind="player", players=("Joel Embiid",)), span=Span(season=2026))).filters(),
-        shape="scalar",
+        read_as=PointShape("player_games", "scalar"),
         measures=(),
         aggregate=Aggregate.COUNT,
         group="none",

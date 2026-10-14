@@ -149,11 +149,11 @@ def test_the_floor_follows_the_relation_the_point_reader_named() -> None:
         {"cuts": Cuts(game_n=3), "span": season},
     ):
         point = default_point(PLAYER_LINE, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), **narrowing))
-        assert point.on == "player_games", narrowing
+        assert point.read_as.relation == "player_games", narrowing
         refused = check_coverage(point_shape(point), point)
         assert refused is not None and refused.startswith("Player game logs only go back to 1994"), narrowing
     unnarrowed = default_point(PLAYER_LINE, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(season=1990, season_type=2)))
-    assert unnarrowed.on == "player_seasons" and check_coverage(point_shape(unnarrowed), unnarrowed) is None
+    assert unnarrowed.read_as.relation == "player_seasons" and check_coverage(point_shape(unnarrowed), unnarrowed) is None
 
 
 def test_a_game_level_ranking_is_floored_by_the_box_scores_it_reads() -> None:

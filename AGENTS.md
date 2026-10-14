@@ -1202,7 +1202,7 @@ a shape:
   subject nothing resolved, the point reader declining them by its guard);
   the key's reading keeps that (`point.PERIOD_ASKS`, the three keys, `point.period_under`) and claims nothing where
   it writes nothing. A "by quarter" question reads NO period (the
-  breakdown is the point's shape, `Reading.by="period"`), and a period as
+  breakdown is the point's shape, `by` `"period"`), and a period as
   a CONDITION on which games count is the line slice's value
   (`period_condition`), untouched. The two slots are gone, a model-era
   `period`/`half` key is no argument the parser takes, and the typed
@@ -1560,28 +1560,32 @@ a shape:
     values) and gives its reason as `Result.empty`, a `Refusal`.
   - **The answer side chooses by shape, never by intent, and the shape is
     the point reader's own.** Since Phase 3, step 1 (2026-10-09) the point
-    declares what it is read and said as on the Reading itself -
-    `Reading.shape` in the target's vocabulary (`scalar`, `rows`,
-    `ranking`, `comparison`, `split`, `runs`, `chart`), `Reading.by` (what
-    one row is, how a scalar is reduced or what a reader's rows are ordered
-    by; `""` where no reader takes the point and the compiler's own
-    sentence answers) and `Reading.on` (the relation, `reading.PointRelation`:
-    `player_games`, `player_periods`, `player_seasons`, `team_games`,
-    `team_periods`, `team_seasons`, `team_snapshots`, `netpoints`,
-    `shots`). Every `Reading(...)` in `query/point.py` names the three; a
-    shared move read under several shapes' words says `by` from what the
-    words asked (`point._ROWS_BY`, `_COUNT_SHAPES`, keyed by the grammar's
-    key since step 4), and a team-season shape's point on the team
-    relation is stamped its season's shape (`point.TEAM_SEASON_POINTS`,
-    the three keys, each the point's shape). The planner
-    builds `reading.PointShape(relation, shape, by)` from them
-    (`plan.point_shape`; its one move: a season-line point re-planned at
-    the game level is on `player_games`) on every verdict, and derives the
-    compiler's skeleton and source from them (`plan.skeleton_of`:
+    declares what it is read and said as on the Reading itself, as ONE
+    field since Phase 5, step 4 (D9; three, `shape`, `by` and `on`, until
+    then): `Reading.read_as`, a `reading.PointShape` - its `shape` in the
+    target's vocabulary (`scalar`, `rows`, `ranking`, `comparison`,
+    `split`, `runs`, `chart`), its `by` (what one row is, how a scalar is
+    reduced or what a reader's rows are ordered by; `""` where no reader
+    takes the point and the compiler's own sentence answers) and its
+    `relation` (`reading.PointRelation`: `player_games`, `player_periods`,
+    `player_seasons`, `team_games`, `team_periods`, `team_seasons`,
+    `team_snapshots`, `netpoints`, `shots`). Every `Reading(...)` in
+    `query/point.py` names it, by a key's constant where the value is one
+    of the grammar's keys (`reading.PLAYER_LOG`, ...) and as
+    `PointShape(...)` otherwise; a shared move read under several shapes'
+    words says what it is read as from what the words asked
+    (`point._ROWS_BY`, `_COUNT_SHAPES`, keyed by the grammar's key since
+    step 4), and a team-season shape's point on the team relation is
+    stamped its season's shape (`point.TEAM_SEASON_POINTS`, the three
+    keys, each the point's shape). The planner plans that key as it
+    stands (`plan.point_shape`; its one move: a season-line point
+    re-planned at the game level is on `player_games`, held by a test
+    over every reader case) on every verdict, and derives the
+    compiler's skeleton and source from it (`plan.skeleton_of`:
     `ranking`/`split` group, a `comparison` by `met` is the pair, a
     `split` by `line` compiles as the scalar record its reader says as a
     split, a team's total under its season's shape is the team compiler's
-    scalar; `Query.source` is `"seasons"` for `on="player_seasons"` -
+    scalar; `Query.source` is `"seasons"` for a point on `player_seasons` -
     `Reading.source` is gone). `compose.answer` picks the reader from
     `_ROUTES` by that key alone; the shapes' rows of the two relation
     tables are keyed by it (`RELATION_SCOPING_EXCLUDED`,

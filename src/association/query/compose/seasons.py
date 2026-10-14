@@ -99,7 +99,7 @@ def player_line_reads(q: Query) -> bool:
     except Unsupported:
         return False
     named = stat_measure(q.measure)
-    return own.on == "player_seasons" and (q.measures == measure_names(own.measures) or (named is not None and q.measures == [named]))
+    return own.read_as.relation == "player_seasons" and (q.measures == measure_names(own.measures) or (named is not None and q.measures == [named]))
 
 
 def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
