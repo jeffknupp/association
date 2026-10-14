@@ -69,6 +69,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Aggregate,
     Companion,
     Cuts,
+    DeclineReason,
     Filtered,
     Line,
     Measure,
@@ -527,7 +528,7 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
         # under each cell (a call-time import: compose.say reads the readers).
         from association.query.compose.say import decline_body
 
-        facts = {"cells": [cell_facts(scope, cell) for cell in unhonored], "over": "a team's games" if subject == "team" else None, "why": "it would answer for a different span than was asked"}
+        facts = {"cells": [cell_facts(scope, cell) for cell in unhonored], "over": "a team's games" if subject == "team" else None, "reason": DeclineReason.BEYOND_WORDS}
         raise Unsupported(decline_body(facts))
 
 

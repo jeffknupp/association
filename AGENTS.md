@@ -753,7 +753,11 @@ scoping dimension is one clause on `Narrowed` plus a warehouse-verified test
 per reader it turns on - never a slot taught to one reader at a time, which is
 how twelve slots ended up honored on `game_log` and one on `single_game_high`
 over the same relation when they were templates. An exclusion's reason is
-about the answer ("one game is not a run"), never about the code ("not wired").
+about the answer ("one game is not a run"), never about the code ("not wired"),
+and is a key, never a sentence: a `reading.DeclineReason` member, worded once
+by the sayer (`say.decline_reason_phrase`), which a row given a sentence
+refuses where it is built - so a decline's cause carries the key as its
+`reason` fact (Phase 5, step 5; the rows held the sentences until then).
 
 When adding a reader, prefer refusing to guessing. `resolve_*` in
 `query/entities.py` never guesses between candidate players; `leaderboard`

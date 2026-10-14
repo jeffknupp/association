@@ -1538,8 +1538,9 @@ missing thing, never only the slot"):
 - a narrowing the point's shape cannot honor beyond its relation's cells
   (``cannot_honor``: ``shape``, the ``cells`` it sets as the words
   asked them, ``without`` - ``player`` or ``team or player`` where the
-  cell needs a named subject the point has none of - and ``why``, the
-  reason its shape's row gives, as the row words it), and a point a
+  cell needs a named subject the point has none of - and ``reason``, the
+  :class:`DeclineReason` its shape's row gives, which the sayer words;
+  ``why``, the row's sentence, until Phase 5, step 5), and a point a
   shape's only reader reads nothing of (``no_reading_of_point``:
   ``shape``, ``planned``). Declines the user saw as "Nothing here answers
   this question: ..." until Phase 3, step 4; said in that sentence, and
@@ -1812,6 +1813,134 @@ def key_path(shape: PointShape | None) -> str:
     return "none" if shape is None else f"{shape.relation}/{shape.shape}/{shape.by}"
 
 
+class DeclineReason(StrEnum):
+    """Why a shape cannot honor a cell the point sets - the ``reason`` fact of
+    a ``cannot_honor`` :class:`Cause`, and the value of each cell a shape's
+    row does not state (:attr:`ShapeCells.unstated`): a closed set, each
+    member said by ONE phrase of the sayer's
+    (``compose.say.decline_reason_phrase``), a reason about the answer,
+    never about the code. A member is its own value as text, so a record
+    or a page reads the key, never a sentence.
+
+    .. versionadded:: 6.0.0
+       Phase 5, step 5: the rows' reasons were sentences on the rows, and a
+       decline carried the sentence as its ``why`` fact.
+    """
+
+    #: The planner's own: a cell the shape's words do not state, declined where
+    #: its reader is the point's only answer (``compose.plan.beyond_words``),
+    #: and the relation's check of a cell it does not carry.
+    BEYOND_WORDS = "beyond_words"
+    #: A cell the relation's table does not carry at all.
+    NOT_THE_RELATIONS = "not_the_relations"
+    #: The bare starter/bench category on a reader of one named half.
+    BOTH_HALVES = "both_halves"
+    #: A cell only a named player's games can be narrowed by (``ShapeCells.named_player``).
+    NEEDS_NAMED_PLAYER = "needs_named_player"
+    #: A cell the league's own run has no single subject for (``ShapeCells.named_subject``).
+    NO_SINGLE_SUBJECT = "no_single_subject"
+    #: The cell tables' rows (``RELATION_SCOPING_EXCLUDED``,
+    #: ``TEAM_RELATION_SCOPING_EXCLUDED``), one per sentence a row gave.
+    LOG_WHOLE_GAMES = "log_whole_games"
+    LINE_WHOLE_GAMES = "line_whole_games"
+    SPLITS_ONE_GAME = "splits_one_game"
+    SPLITS_RECENT_GAMES = "splits_recent_games"
+    SPLITS_WHOLE_GAMES = "splits_whole_games"
+    BOTH_TYPES_ASIDE = "both_types_aside"
+    RECORD_ONE_GAME = "record_one_game"
+    RECORD_RECENT_GAMES = "record_recent_games"
+    RECORD_WHOLE_GAMES = "record_whole_games"
+    RUN_ONE_GAME = "run_one_game"
+    RUN_EVERY_GAME = "run_every_game"
+    RUN_WHOLE_GAMES = "run_whole_games"
+    PERIOD_CAVEAT_CAREER = "period_caveat_career"
+    PERIOD_CAVEAT_RANGE = "period_caveat_range"
+    PERIOD_CAVEAT_BOTH = "period_caveat_both"
+    PERIOD_ONE_PERIOD = "period_one_period"
+    MEETINGS_NO_THIRD_TEAM = "meetings_no_third_team"
+    MEETINGS_AVERAGES = "meetings_averages"
+    MEETINGS_WHOSE_SEASON = "meetings_whose_season"
+    MEETINGS_PERIOD = "meetings_period"
+    MEETINGS_PERIOD_LINE = "meetings_period_line"
+    HIGH_RANGE_ASIDE = "high_range_aside"
+    HIGH_CUTS_ASIDE = "high_cuts_aside"
+    HIGH_NARROWINGS_ASIDE = "high_narrowings_aside"
+    COUNT_RANGE_ASIDE = "count_range_aside"
+    COUNT_CUTS_ASIDE = "count_cuts_aside"
+    COUNT_NARROWINGS_ASIDE = "count_narrowings_aside"
+    SEASON_RANKING_RANGE = "season_ranking_range"
+    SEASON_RANKING_BOTH = "season_ranking_both"
+    SEASON_LINE_CUTS_ASIDE = "season_line_cuts_aside"
+    SEASON_LINE_NARROWINGS_ASIDE = "season_line_narrowings_aside"
+    SEASONS_COUNTED_RANGE = "seasons_counted_range"
+    SEASON_COUNT_BOTH = "season_count_both"
+    SEASON_COUNT_RANGE = "season_count_range"
+    HISTORY_RANGE = "history_range"
+    HISTORY_BOTH = "history_both"
+    COMPARISON_SPAN = "comparison_span"
+    COMPARISON_NARROWINGS = "comparison_narrowings"
+    QUARTER_RANKING_SEASON = "quarter_ranking_season"
+    QUARTER_RANKING_TYPE = "quarter_ranking_type"
+    QUARTER_RANKING_CUTS = "quarter_ranking_cuts"
+    QUARTER_RANKING_NARROWINGS = "quarter_ranking_narrowings"
+    NETPOINTS_CAREER = "netpoints_career"
+    NETPOINTS_RANGE = "netpoints_range"
+    NETPOINTS_BOTH = "netpoints_both"
+    NETPOINTS_CUTS = "netpoints_cuts"
+    NETPOINTS_NARROWINGS = "netpoints_narrowings"
+    FINGERPRINT_SPAN = "fingerprint_span"
+    FINGERPRINT_BOTH = "fingerprint_both"
+    FINGERPRINT_CUTS = "fingerprint_cuts"
+    FINGERPRINT_NARROWINGS = "fingerprint_narrowings"
+    SHOT_CHART_PERIOD = "shot_chart_period"
+    SHOT_DISTANCE_PERIOD = "shot_distance_period"
+    PRESENCE_RANGE = "presence_range"
+    PRESENCE_BOTH = "presence_both"
+    PRESENCE_CUTS = "presence_cuts"
+    PRESENCE_WINDOW = "presence_window"
+    PRESENCE_PERIOD = "presence_period"
+    MEETINGS_TALLY_WINDOW = "meetings_tally_window"
+    MEETINGS_TALLY_GAME_N = "meetings_tally_game_n"
+    MEETINGS_TALLY_SITUATION = "meetings_tally_situation"
+    MEETINGS_TALLY_PERIOD = "meetings_tally_period"
+    MEETINGS_TALLY_BOTH = "meetings_tally_both"
+    TEAM_PERIOD_BOTH = "team_period_both"
+    TEAM_RECORD_ONE_GAME = "team_record_one_game"
+    TEAM_RECORD_RECENT_GAMES = "team_record_recent_games"
+    TEAM_RECORD_WHOLE_GAMES = "team_record_whole_games"
+    TEAM_HIGH_WINDOW = "team_high_window"
+    TEAM_HIGH_PERIOD = "team_high_period"
+    TEAM_HIGH_BOTH = "team_high_both"
+    TEAM_HIGH_ONE_GAME = "team_high_one_game"
+    TEAM_LINE_CAREER = "team_line_career"
+    TEAM_LINE_RANGE = "team_line_range"
+    TEAM_LINE_BOTH = "team_line_both"
+    TEAM_LINE_CUTS = "team_line_cuts"
+    TEAM_LINE_WINDOW = "team_line_window"
+    TEAM_LINE_PERIOD = "team_line_period"
+    TEAM_LINE_RATE = "team_line_rate"
+    TEAM_HISTORY_BOTH = "team_history_both"
+    TEAM_HISTORY_CUTS = "team_history_cuts"
+    TEAM_HISTORY_WINDOW = "team_history_window"
+    TEAM_HISTORY_PERIOD = "team_history_period"
+    TEAM_HISTORY_RATE = "team_history_rate"
+    PROJECTION_SPAN = "projection_span"
+    PROJECTION_BOTH = "projection_both"
+    PROJECTION_CUTS = "projection_cuts"
+    PROJECTION_WINDOW = "projection_window"
+    PROJECTION_PERIOD = "projection_period"
+    PROJECTION_RATE = "projection_rate"
+    TEAM_RANKING_OPPONENT = "team_ranking_opponent"
+    TEAM_RANKING_DATE = "team_ranking_date"
+    TEAM_RANKING_CAREER = "team_ranking_career"
+    TEAM_RANKING_BOTH = "team_ranking_both"
+    TEAM_RANKING_WINDOW = "team_ranking_window"
+    TEAM_RANKING_GAME_N = "team_ranking_game_n"
+    TEAM_RANKING_SITUATION = "team_ranking_situation"
+    TEAM_RANKING_PERIOD = "team_ranking_period"
+    TEAM_RANKING_RATE = "team_ranking_rate"
+
+
 @dataclass(frozen=True, kw_only=True)
 class ShapeCells:
     """One shape's row of its relation's cell table
@@ -1833,16 +1962,16 @@ class ShapeCells:
        and ``conditions._CONDITION_PLAYER_ONLY_CELLS`` stood.
     """
 
-    #: The cells this shape's words do not state, each with why - a reason
-    #: about the answer, never about the code - in the order a refusal lists
-    #: them. Where the relation's table carries the cell and the shape
-    #: neither refuses nor declines it, the reader steps aside and the
-    #: compiler's own sentence, which states every narrowing the relation
-    #: applied, answers.
-    unstated: Mapping[str, str] = field(default_factory=dict)
+    #: The cells this shape's words do not state, each with why - a
+    #: :class:`DeclineReason`, about the answer, never about the code - in
+    #: the order a refusal lists them. Where the relation's table carries the
+    #: cell and the shape neither refuses nor declines it, the reader steps
+    #: aside and the compiler's own sentence, which states every narrowing
+    #: the relation applied, answers.
+    unstated: Mapping[str, DeclineReason] = field(default_factory=dict)
     #: Of :attr:`unstated`, the cells nothing answers: the planner refuses
-    #: them outright, saying the first one's why ("streak cannot honor
-    #: ['date'] - one game is not a run").
+    #: them outright, saying the first one's reason ("the game on 2026-01-02
+    #: cannot be read here - one game is not a run").
     refused: frozenset[str] = frozenset()
     #: Cells beyond the relation's table the planner lets through to this
     #: shape: ones its reader reads (a season-line ranking's unit, a team
@@ -1867,6 +1996,13 @@ class ShapeCells:
     #: player: refused for the league's own run ("... without a named team
     #: or player - the league-wide streak has no single subject to narrow").
     named_subject: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        """A row's reasons are :class:`DeclineReason` members, never a
+        sentence: the sayer words each (Phase 5, step 5)."""
+        for cell, why in self.unstated.items():
+            if not isinstance(why, DeclineReason):
+                raise TypeError(f"the reason for {cell!r} is {why!r}, not a DeclineReason")
 
 
 @dataclass(frozen=True, kw_only=True)

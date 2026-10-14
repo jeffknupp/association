@@ -24,7 +24,7 @@ from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.query.entities import Entity, resolved_team
 from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, ResolvedSpan, apply_situation, has_table, relation_window, span_of
-from association.query.reading import Cuts, Filtered, Measure, Period, PointShape, ShapeCells, Span, Unsupported, period_narrowing
+from association.query.reading import Cuts, DeclineReason, Filtered, Measure, Period, PointShape, ShapeCells, Span, Unsupported, period_narrowing
 from association.query.reading import Line as ReadLine
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
@@ -126,8 +126,6 @@ refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 # PLAYER relation's rows until Phase 3, step 2's closing slice
 # (`relation_scoping("game_log")` and its kin) beside the planner's
 # `_TEAM_READER_REFUSES`; the reasons are those rows', read from them.
-_TEAM_SEASON_ROW = "a team's line is one season's row of the standings, with no game to cut"
-_PROJECTION = "a projection is one season's snapshot, with no game to cut"
 TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     PointShape("team_games", "rows", "date"): ShapeCells(
         unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "rows", "date")].unstated,
@@ -155,11 +153,11 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # answer: the team compiler has no reading of a split narrowed beyond it.
     PointShape("team_games", "split", "presence"): ShapeCells(
         unstated={
-            "range": "the split's words state a career or one season; a range of seasons would cut the teammates' stints without saying so",
-            "both": "the split reads one season type's games; both at once would join a teammate's regular-season and playoff absences as one",
-            **dict.fromkeys(sorted(TEAM_CUTS - {"opponent"}), "the split's words state one opponent; another cut would narrow the teammates' games without the sentence saying so"),
-            "window": "the split divides every game in the span by the teammates' presence; the last N games would cut both sides without the sentence saying so",
-            "period": "a record is won and lost over whole games; a quarter or half of each has no winner the split could count",
+            "range": DeclineReason.PRESENCE_RANGE,
+            "both": DeclineReason.PRESENCE_BOTH,
+            **dict.fromkeys(sorted(TEAM_CUTS - {"opponent"}), DeclineReason.PRESENCE_CUTS),
+            "window": DeclineReason.PRESENCE_WINDOW,
+            "period": DeclineReason.PRESENCE_PERIOD,
         },
         taken=frozenset({"companion"}),
         declined="plan",
@@ -173,21 +171,21 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # both season types together).
     PointShape("team_games", "comparison", "opponent"): ShapeCells(
         unstated={
-            "window": "head_to_head counts every meeting in the span; picking the last N of them is not built",
-            "game_n": "head_to_head counts every meeting; one numbered game of a series is not read here",
+            "window": DeclineReason.MEETINGS_TALLY_WINDOW,
+            "game_n": DeclineReason.MEETINGS_TALLY_GAME_N,
             # step 3, K1 wires the calendar narrowing into team_quarter_points
             # and team_record; head_to_head's own since/career span result
             # (_head_to_head_span_result) does not read it yet - a weekday or
             # holiday cut of an all-time series is a real question, just not
             # this step's.
-            "situation": "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
-            "period": "a series is won and lost in whole games; a quarter or half of each meeting has no winner to tally",
-            "both": "a series is tallied in one season type; both at once would count regular-season and playoff meetings as one series",
+            "situation": DeclineReason.MEETINGS_TALLY_SITUATION,
+            "period": DeclineReason.MEETINGS_TALLY_PERIOD,
+            "both": DeclineReason.MEETINGS_TALLY_BOTH,
         },
         declined="plan",
     ),
     PointShape("team_periods", "scalar", "total"): ShapeCells(
-        unstated={"both": "a quarter's figures are reconciled per season and per type; one read over both types would carry one caveat for two"},
+        unstated={"both": DeclineReason.TEAM_PERIOD_BOTH},
         declined="plan",
     ),
     # A record for one game is a single result, which game_log already
@@ -200,9 +198,9 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # `narrow_series_game` check (`_games_record_games`).
     PointShape("team_games", "scalar", "record"): ShapeCells(
         unstated={
-            "date": "a record for one calendar date is a single game, which game_log already answers directly",
-            "window": "a record over a limited set of games is a game_log question",
-            "period": "a record is won and lost over whole games; a quarter or half has no winner the record could count",
+            "date": DeclineReason.TEAM_RECORD_ONE_GAME,
+            "window": DeclineReason.TEAM_RECORD_RECENT_GAMES,
+            "period": DeclineReason.TEAM_RECORD_WHOLE_GAMES,
         },
         taken=frozenset({"split"}),
         declined="plan",
@@ -213,10 +211,10 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # a series - the point's only answer.
     PointShape("team_games", "rows", "measure"): ShapeCells(
         unstated={
-            "window": "a best game ranks every game in the span; the best of the last N games is not built",
-            "period": "a team's box row is a whole game's; a quarter or half of each has no figure to rank by",
-            "both": "a best game is read in one season type; both at once would rank regular-season and playoff games as one",
-            "date": "one calendar date is one game, which a game log answers directly",
+            "window": DeclineReason.TEAM_HIGH_WINDOW,
+            "period": DeclineReason.TEAM_HIGH_PERIOD,
+            "both": DeclineReason.TEAM_HIGH_BOTH,
+            "date": DeclineReason.TEAM_HIGH_ONE_GAME,
         },
         declined="plan",
     ),
@@ -230,13 +228,13 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # the season reader declines.
     PointShape("team_seasons", "scalar", "line"): ShapeCells(
         unstated={
-            "career": "a team's line is one season's row of the standings; there is no career row to read",
-            "range": "a team's line is one season's row of the standings; a range of seasons is not summed",
-            "both": "a team's line is one season type's row of the standings",
-            **dict.fromkeys(sorted(TEAM_CUTS), _TEAM_SEASON_ROW),
-            "window": "a team's line is one season's row of the standings, with no game to window",
-            "period": "a team's line is one season's row of the standings, and no row of the standings is split by quarter or half",
-            "rate": "a team's line is its season's row of the standings, per game; a total or another unit is the team compiler's sum, which reads one",
+            "career": DeclineReason.TEAM_LINE_CAREER,
+            "range": DeclineReason.TEAM_LINE_RANGE,
+            "both": DeclineReason.TEAM_LINE_BOTH,
+            **dict.fromkeys(sorted(TEAM_CUTS), DeclineReason.TEAM_LINE_CUTS),
+            "window": DeclineReason.TEAM_LINE_WINDOW,
+            "period": DeclineReason.TEAM_LINE_PERIOD,
+            "rate": DeclineReason.TEAM_LINE_RATE,
         },
         taken=Measure.CELLS,
         declined="read",
@@ -246,24 +244,24 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # range's total - every cell the season line does not state but the span.
     PointShape("team_seasons", "split", "season"): ShapeCells(
         unstated={
-            "both": "a team's history is one season type's rows of its season lines",
-            **dict.fromkeys(sorted(TEAM_CUTS), "a team's history is its season lines' rows, each over every game of its season"),
-            "window": "a team's history is its season lines' rows, with no game to window",
-            "period": "a team's history is its season lines' rows, and no row is split by quarter or half",
-            "rate": "a team's history is its season lines' rows, per game; a total or another unit is not read season by season",
+            "both": DeclineReason.TEAM_HISTORY_BOTH,
+            **dict.fromkeys(sorted(TEAM_CUTS), DeclineReason.TEAM_HISTORY_CUTS),
+            "window": DeclineReason.TEAM_HISTORY_WINDOW,
+            "period": DeclineReason.TEAM_HISTORY_PERIOD,
+            "rate": DeclineReason.TEAM_HISTORY_RATE,
         },
         taken=Measure.CELLS,
         declined="read",
     ),
     PointShape("team_snapshots", "scalar", "projection"): ShapeCells(
         unstated={
-            "career": "a projection is one season's snapshot",
-            "range": "a projection is one season's snapshot",
-            "both": "a projection is one season type's snapshot",
-            **dict.fromkeys(sorted(TEAM_CUTS), _PROJECTION),
-            "window": "a projection is one season's snapshot, with no game to window",
-            "period": "a projection is one season's snapshot, with no quarter or half",
-            "rate": "a projection is one season's snapshot, in the power index's own units",
+            "career": DeclineReason.PROJECTION_SPAN,
+            "range": DeclineReason.PROJECTION_SPAN,
+            "both": DeclineReason.PROJECTION_BOTH,
+            **dict.fromkeys(sorted(TEAM_CUTS), DeclineReason.PROJECTION_CUTS),
+            "window": DeclineReason.PROJECTION_WINDOW,
+            "period": DeclineReason.PROJECTION_PERIOD,
+            "rate": DeclineReason.PROJECTION_RATE,
         },
         taken=Measure.CELLS,
         declined="read",
@@ -274,18 +272,18 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # not built.
     PointShape("team_seasons", "ranking", "team"): ShapeCells(
         unstated={
-            "opponent": "a leaderboard ranks every team; it has no reading for one named opponent",
-            "date": "a leaderboard ranks a season, not one day's games",
-            "career": "a leaderboard ranks one season's teams; a career total across every season is not built",
-            "both": "a leaderboard ranks one season type's lines; the standings hold no row for both at once",
-            "window": "a leaderboard ranks a season, not a window of games",
-            "game_n": "a leaderboard ranks a season, not one game of a series",
+            "opponent": DeclineReason.TEAM_RANKING_OPPONENT,
+            "date": DeclineReason.TEAM_RANKING_DATE,
+            "career": DeclineReason.TEAM_RANKING_CAREER,
+            "both": DeclineReason.TEAM_RANKING_BOTH,
+            "window": DeclineReason.TEAM_RANKING_WINDOW,
+            "game_n": DeclineReason.TEAM_RANKING_GAME_N,
             # step 3, K1: a leaderboard ranks a season or a since/until-bounded
             # span of them; narrowing that pool to one weekday, month or holiday
             # within it is a different question from ranking the span itself.
-            "situation": "a leaderboard ranks a season, not the games in one weekday, month or holiday within it",
-            "period": "a leaderboard ranks teams' season lines, and no season line is split by quarter or half",
-            "rate": "a leaderboard ranks teams' season lines in the metric's own unit; a total or another unit is the team compiler's sum",
+            "situation": DeclineReason.TEAM_RANKING_SITUATION,
+            "period": DeclineReason.TEAM_RANKING_PERIOD,
+            "rate": DeclineReason.TEAM_RANKING_RATE,
         },
         taken=Measure.CELLS,
         declined="read",

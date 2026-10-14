@@ -506,3 +506,22 @@ def test_every_key_the_grammar_names_is_said_in_words() -> None:
     assert all(phrase.startswith(("a ", "an ", "two ")) for phrase in phrases.values()), phrases
     assert nothing_answers("no team metric for stat 'rebounds allowed'", TEAM_RANKING) == "Nothing here answers this question as a ranking of teams: no team metric for stat 'rebounds allowed'."
     assert nothing_answers("the normalizer returned no usable reply") == "Nothing here answers this question: the normalizer returned no usable reply."
+
+
+def test_every_decline_reason_is_said_by_one_phrase_and_a_row_holds_no_sentence() -> None:
+    """A shape's reason for a cell it cannot honor is a closed key
+    (``reading.DeclineReason``), worded once by the sayer, never a sentence
+    on a cell-table row (Phase 5, step 5): every member has its phrase, the
+    phrase table names nothing else, and a row given a sentence is refused
+    where it is built."""
+    import pytest
+
+    from association.query.compose.say import _DECLINE_REASONS, decline_reason_phrase
+    from association.query.reading import DeclineReason, ShapeCells
+
+    assert set(_DECLINE_REASONS) == set(DeclineReason)
+    assert all(phrase.strip() and not phrase.endswith(".") for phrase in _DECLINE_REASONS.values())
+    assert decline_reason_phrase("run_one_game") == "one game is not a run"
+    assert ShapeCells(unstated={"date": DeclineReason.RUN_ONE_GAME}).unstated == {"date": "run_one_game"}
+    with pytest.raises(TypeError, match="not a DeclineReason"):
+        ShapeCells(unstated={"date": "one game is not a run"})  # type: ignore[dict-item]
