@@ -4629,8 +4629,11 @@ seasons (ISSUES.md #372).
 
 .. versionadded:: 6.0.0
 """
-TEAM_RECORD_ROW = row(r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec)\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)")
-"""A team's record, not a ranking of records.
+TEAM_RECORD_ROW = row(r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec|winning (percentage|pct))\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)")
+"""A team's record, not a ranking of records - "winning percentage" among
+its words, as "win percentage" is by its "win" (ISSUES.md #372: "portland
+trailblazers winning percentage last 10 seasons" was the team's season
+line, which reads one season, and refused the range).
 
 .. versionadded:: 6.0.0
 """
