@@ -1265,3 +1265,24 @@ def test_a_ranking_by_games_played_is_read_as_games_played(con: duckdb.DuckDBPyC
     if key is not None:
         point = reading.point
         assert point is not None and point.aggregate == "count" and point.measures == () and point.predicates == [] and point.order == "measure"
+
+
+@pytest.mark.parametrize(
+    ("question", "line"),
+    [
+        ("who scored 40 points the most times from 2013 through 2018", ("points", ">=", 40)),
+        ("who scored 40 points the most times", ("points", ">=", 40)),
+        ("who had 15 assists the most times this season", ("assists", ">=", 15)),
+        ("who has scored 50 points the most", ("points", ">=", 50)),
+    ],
+)
+def test_a_line_reached_the_most_times_is_a_count_of_games_over_it(con: duckdb.DuckDBPyConnection, question: str, line: tuple[str, str, int]) -> None:
+    """ISSUES.md #370: "who scored 40 points the most times" ranked the
+    league's scorers by points per game, "40" unread - the count's child
+    grammar named a count for "most ... N+ stat" and "N stat games", and not
+    for a bare line followed by "the most times". It is the players' count
+    of games over the line."""
+    reading = _read(con, question)
+    assert reading.asked == GAMES_COUNTED
+    assert [(each.measure, each.op, each.value) for each in reading.lines] == [line]
+    assert "40" not in reading.unread and "50" not in reading.unread and "15" not in reading.unread

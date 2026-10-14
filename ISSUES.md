@@ -294,15 +294,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #411
 
-### "who scored 40 points the most times" is a ranking by points per game, not a count of 40-point games
-- **Found:** 2026-10-10, Phase 3, step 3, re-measuring #345's examples once a range of bare years was read.
-- **Evidence:** "who scored 40 points the most times from 2013 through 2018" now reads the range (2013-2018) and answers "every player, regular season career (2013-2018), by player (points per game, minimum 20 games): ..." - the count's child grammar (`lexicon.CHILD_THRESHOLD_COUNT`) names a count for "most ... N+ stat", "how many ... games ... N stat" and "N stat games", and not for "scored N points the most times" with a bare number after the verb, so the question stays the league's scoring ranking with "40" unread. "most 40 point games from 2013 to 2018" is the count. 0 of the 2,710 readings; a wording of #345's own evidence.
-- **User sees:** the scoring leaders where the most 40-point games were asked.
-- **Next step:** the count's grammar reads "scored N <stat> the most times" (and "N-point games the most") as a count over that line; a test per wording.
-- **Priority:** P1 - a different question answered fluently; 0 of the 2,710.
-- **Source:** ours.
-- **GitHub:** #370
-
 ### A player's first or last N seasons is read by nothing: "lebron james stats through their first 9 seasons" answers his 2026 line
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
 - **Evidence:** 3 of the 2,082 feed questions: "lebron james stats through their first 9 seasons" (his 2026 line), "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons" (their 2026 lines), "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?" (his line since 2018 - "last 9 seasons" read as the relative "past N seasons" of the league's calendar, `span._relative_since`, and "first 9" by nothing). The window tagger excludes a count of seasons from its own ends (`lexicon.COUNTED_END`'s `(?!\s+(?:seasons?|years?))`), and the span reads "last N seasons" as the calendar's, never the player's own.

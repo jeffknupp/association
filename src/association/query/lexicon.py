@@ -3473,7 +3473,12 @@ CHILD_THRESHOLD_COUNT = ask(
     # assists, 2 blocks, and 2 steals" (ISSUES.md #290): a count of games
     # over bare lines, as "players with 33 point and 13 rebound ... games" is
     # - until Phase 3, step 3 a rebounds ranking with the five numbers unread.
-    rf"|\bhow many\b.{{0,20}}\bgames?\b.*{LINE_NUMBER_NO_PLUS}\s+{typed('line_stat')}+",
+    rf"|\bhow many\b.{{0,20}}\bgames?\b.*{LINE_NUMBER_NO_PLUS}\s+{typed('line_stat')}+"
+    # "who scored 40 points the most times", "had 10 assists the most":
+    # the line, then the most times it was reached - the players' count of
+    # games over it (ISSUES.md #370: the scoring leaders answered, "40"
+    # unread).
+    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+\s+(?:the\s+)?most(?:\s+(?:times|often|games))?\b",
     re.IGNORECASE,
 )
 """A count of games over a line.
