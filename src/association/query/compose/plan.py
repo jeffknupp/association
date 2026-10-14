@@ -411,8 +411,26 @@ def _game_level(key: PointShape, q: Query) -> Query:
             raise Unsupported(decline_body({"cells": [cell_facts(q, "rate")], "why": _BEYOND_WORDS}))
         if q.measure is not None and q.measure.beside:
             raise Unsupported("the game-level ranking shows no columns beside its measure")
-        return replace(q, source="games")
+        return _game_level_minimum(replace(q, source="games"))
     raise Unsupported("an unnarrowed player line the season line's reader did not say")
+
+
+def _game_level_minimum(q: Query) -> Query:
+    """The game-level ranking's qualifier where the season line's point
+    carried the default: a minimum the question states in games is the
+    one it ranks by (the season-line point carries the season line's
+    default 20, which its own reader replaces by the stated one), and a
+    minimum in another unit is refused by name, as the game-level ranking
+    the point reader builds refuses it (``point._everyone_ranking``) -
+    before, "most points vs nuggets this season minimum 2 games" ranked at
+    20 games and said no player had played the 2 asked for, and a minimum
+    in attempts was dropped while the heading said "minimum 20 games" as
+    though asked."""
+    if q.minimum is None:
+        return q
+    if q.minimum.unit != "games":
+        raise Refused(refusal_of(Cause(kind="ranking_floor_unit", facts={"unit": q.minimum.word, "count": q.minimum.count})))
+    return replace(q, minimum_games=q.minimum.count)
 
 
 PlannedQuery = Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery

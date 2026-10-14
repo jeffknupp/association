@@ -31,7 +31,7 @@ from association.query import compose
 from association.query.answer import Answer, AnswerContext
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
-from association.query.compose.plan import plan, plan_point, refusal_result
+from association.query.compose.plan import plan, plan_point, refusal_of, refusal_result
 from association.query.compose.say import say
 from association.query.compose.sentence import sentence, team_sentence
 from association.query.compose.shots import ShotQuery
@@ -1430,6 +1430,29 @@ def test_a_stated_minimum_in_any_wording_is_the_rankings_qualifier_said_as_asked
     )
     assert isinstance(emptied, Query)
     assert sentence(emptied, run(cx_ctx.con, emptied)).startswith("No player played 5 games in the ")
+
+
+def test_a_stated_minimum_is_the_qualifier_where_the_season_lines_ranking_is_read_at_the_game_level(cx_ctx: AnswerContext) -> None:
+    """A ranking the season line cannot read (narrowed to one opponent) is
+    planned as the game-level ranking: a minimum the words state in games
+    is its qualifier there too, and one in another unit is refused by name.
+    "most points vs boston this season minimum 2 games" ranked at the season
+    line's default 20 and said "No player vs the Boston Celtics played 2
+    games ... the minimum asked for" over two players who had; an attempts
+    floor was dropped while the heading said "minimum 20 games"."""
+    scope = Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2), cuts=Cuts(opponent="Boston Celtics"))
+    q = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most points vs boston this season minimum 2 games")
+    assert isinstance(q, Query) and q.source == "games" and q.minimum_games == 2
+    with collect() as remarks:
+        said = sentence(q, run(cx_ctx.con, q))
+    assert said.startswith("every player vs the Boston Celtics, ") and ", minimum 2 games)" in said and not remarks.decisions
+    assert [line.split()[:2] for line in said.splitlines()[1:]] == [["Stephen", "Curry"], ["Brandin", "Podziemski"]]
+    # An attempts floor the season line qualifies 3-point percentage by, and
+    # the game-level ranking cannot apply.
+    threes = replace(scope, measure=Measure(key="threePointFieldGoalPct", as_typed="3pt%"))
+    with pytest.raises(Refused) as refused:
+        move_point(cx_ctx.con, PLAYER_RANKING, threes, "highest 3pt% vs boston this season minimum 20 attempts")
+    assert refused.value.result == refusal_of(Cause(kind="ranking_floor_unit", facts={"unit": "attempts", "count": 20}))
 
 
 def test_a_stated_minimum_on_a_point_that_ranks_no_players_is_refused_by_name(cx_ctx: AnswerContext) -> None:
