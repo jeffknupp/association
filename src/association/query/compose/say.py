@@ -4896,6 +4896,7 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "span_and_season": lambda facts: _shape_declined(facts, _span_and_season(facts.get("season"), facts.get("since"))),
     "no_season_column": lambda facts: _shape_declined(facts, f"no per-game column for stat {facts['stat']!r}"),
     "franchise_career_ranking": lambda facts: _shape_declined(facts, "franchise career leaderboards are not supported"),
+    "no_shape": lambda facts: _shape_declined(facts, "what its words ask has no reader"),
     "name_missing": lambda facts: _shape_declined(facts, f"it needs a {facts['needs']}'s name, and none was read"),
     "own_opponent": lambda facts: _shape_declined(facts, f"the {facts['team']} are named as both the team and its opponent - name the team they played"),
 }

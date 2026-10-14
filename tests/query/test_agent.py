@@ -360,10 +360,11 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     agent = _agent_with_players(tmp_path)
 
     answer = ask_routed(agent, "who had the most triple-doubles?", Routed(None))
-    assert answer.answered_by == "refused"
+    # The no_shape cause, said by the planner since Phase 5, step 5, in the
+    # sentence the plain refusal had.
+    assert answer.answered_by == "fast" and agent.unanswered is None
     assert answer.text == refusal_text("what its words ask has no reader")
-    assert answer.shape is None and answer.data is None
-    assert agent.unanswered == "what its words ask has no reader"
+    assert answer.shape is None and answer.data == {"message": answer.text}
 
     # A reader's own refusal while reading, with its reason: a fingerprint of
     # nobody (the compiler's since Phase 2's slice (v); with_without,
@@ -479,7 +480,8 @@ def test_words_that_ask_for_no_shape_are_refused_saying_so(tmp_path: Path) -> No
     seconds ("intent 'other' has no reader" until Phase 4, step 2)."""
 
     answer = ask_routed(_agent(tmp_path), "who had the most triple-doubles?", Routed(None))
-    assert answer.answered_by == "refused" and "what its words ask has no reader" in answer.text
+    # The no_shape cause, said by the planner since Phase 5, step 5.
+    assert answer.answered_by == "fast" and answer.text == "Nothing here answers this question: what its words ask has no reader."
 
 
 def test_a_reader_failure_is_refused_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

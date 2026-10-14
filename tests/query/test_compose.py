@@ -2595,6 +2595,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "span_and_season": {"shape": PLAYER_LOG, "season": 2001, "since": None},
     "no_season_column": {"shape": PLAYER_LINE, "stat": "netpoints"},
     "franchise_career_ranking": {"shape": PLAYER_RANKING},
+    "no_shape": {"shape": None},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
 }
