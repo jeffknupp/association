@@ -2351,41 +2351,6 @@ or more).
    ``SUBJECT_RESTORABLE_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """
 
-OWN_TEAM_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({PLAYER_LINE, GAME_HIGHS})
-"""What the words ask where a player's OWN team, named beside him and left
-out by the model, is worth restoring (``player_stat``) - narrower than :data:`PLAYER_ASKS` on
-purpose, since honoring the restored tenure (``Cuts.tenure``, the
-``own_team`` slot until Phase 3, step 2) needs the relation to narrow by it
-(``player_relation._narrow_player_games``), which only ``player_stat``'s
-readers do.
-
-"lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
-current (Lakers) season, "Miami" never read at all - not even as noise, since
-nothing on the relation could have narrowed to it either way.
-the subject reading reads "for <team>"/"with the <team>" beside an
-already-known player (``subject._apply_own_team``) and, with no season also
-named, defaults ``span`` to "career" too - a historical team names a
-tenure, not "now". Written to the tenure, never the model's team - see
-that function's docstring for the recorded case (``player_stat``'s golden
-snapshot) where a router-supplied ``team`` sitting beside a correct
-``opponent`` was noise, not a second fact to narrow by, the same shape
-:func:`~association.query.player_relation.team_slot_for_player` treats it
-as for ``game_log``.
-
-Deliberately not ``game_log``: its own ``team``/``opponent`` dance
-(:func:`~association.query.player_relation.team_slot_for_player`) already
-reads a team beside a player, and drops it outright when he actually played
-for that team ("his own team narrows nothing") - correct only because no
-tenure narrowing existed there. Reusing this flag for ``game_log`` without first reconciling
-the two readings would leave one of them silently wrong; filed in
-``ISSUES.md`` rather than done here.
-
-.. versionadded:: 4.4.0
-
-.. versionchanged:: 6.0.0
-   ``OWN_TEAM_RESTORABLE_INTENTS`` until Phase 3, step 4: the grammar's keys.
-"""
-
 TEAM_ONLY_ASKS: frozenset[PointShape] = frozenset({TEAM_RECORD, TEAM_RANKING, TEAM_LINE, TEAM_SEASON_HISTORY, TEAM_OUTLOOK})
 """What the words ask with no player-shaped reading at all (``team_record``,
 ``team_leaderboard``, ``team_stat``, ``team_outlook``) - absent from
@@ -2754,4 +2719,31 @@ PLAYER_ASKS: frozenset[PointShape] = frozenset(
 
 .. versionchanged:: 6.0.0
    ``PLAYER_INTENTS`` until Phase 3, step 4: the grammar's keys.
+"""
+
+OWN_TEAM_RESTORABLE_ASKS: frozenset[PointShape] = PLAYER_ASKS - {PLAYER_RANKING, PLAYER_COMPARISON, PLAYER_MEETINGS, TEAM_PERIOD_TOTAL}
+"""What the words ask where a player's OWN team, named beside him, is his
+tenure (``Cuts.tenure``, the ``own_team`` slot until Phase 3, step 2): every
+shape a reader reads one player by - never a ranking, a comparison or a
+pair's meetings, whose players are several. The relation narrows by it
+(``player_relation._narrow_player_games``), and a shape whose words do not
+state it is declined by the planner's one check by the cell
+(``compose.plan.cells_unhonored``), naming the team - never answered over
+every game.
+
+"lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
+current (Lakers) season, "Miami" never read at all. The subject reading
+reads "for <team>", "with <team>", "as a <team>", the team beside his name
+(``subject._team_after_for``, ``_team_beside_player``) and, with no season
+also named, defaults ``span`` to "career" too - a historical team names a
+tenure, not "now" (``subject._apply_own_team``). Written to the tenure,
+never the model's team, which a game log still reads its own way
+(:func:`~association.query.player_relation.team_slot_for_player`).
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   ``OWN_TEAM_RESTORABLE_INTENTS`` until Phase 3, step 4: the grammar's keys.
+   Every single player's shape since Phase 5, step 6 (ISSUES.md #436),
+   where it was ``player_stat``'s and the high's alone.
 """

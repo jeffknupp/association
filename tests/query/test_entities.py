@@ -1162,12 +1162,11 @@ def test_a_team_named_beside_a_player_with_no_season_is_his_tenure(scope_con: du
     assert named.cuts.tenure == "Los Angeles Lakers"
     assert not named.span.career
     assert named.span.season == 2026
-    # Off by default, same as restore_subject: a caller that does not ask
-    # for it (an intent outside OWN_TEAM_RESTORABLE_INTENTS) leaves
-    # `own_team` alone, since nothing on that relation could honor it either
-    # way.
+    # Off where the words ask for no single player's shape (a ranking, a
+    # comparison - OWN_TEAM_RESTORABLE_ASKS, every single player's shape
+    # since Phase 5, step 6, ISSUES.md #436): `own_team` is left alone.
     unrestored = Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))
-    unrestored = _scope(scope_con, "lebron stats as a starter for the lakers", unrestored, reads_player=True).scope
+    unrestored = _scope(scope_con, "lebron stats as a starter for the lakers", unrestored, reads_player=True, asked=PLAYER_RANKING).scope
     assert unrestored.cuts.tenure is None
 
 
