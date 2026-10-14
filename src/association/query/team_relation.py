@@ -24,7 +24,7 @@ from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.query.entities import Entity, resolved_team
 from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, ResolvedSpan, apply_situation, has_table, relation_window, span_of
-from association.query.reading import Cuts, DeclineReason, Filtered, Measure, Period, PointShape, ShapeCells, Span, Unsupported, period_narrowing
+from association.query.reading import Cuts, DeclineReason, Filtered, Measure, Period, PointShape, ShapeCells, ShapeDeclined, Span, Unsupported, period_narrowing
 from association.query.reading import Line as ReadLine
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
@@ -479,7 +479,10 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
         if isinstance(rival, Unanswered):
             return rival
         if team is not None and rival.id == team.id:
-            raise Unsupported("a team cannot be its own opponent")
+            # A cause the planner says, naming the team named twice (Phase 5,
+            # step 5; ISSUES.md #277): "a team cannot be its own opponent"
+            # named the rule and not the question's slip until then.
+            raise ShapeDeclined("own_opponent", {"team": rival.name}, f"the {rival.name} are named as both the team and its opponent - name the team they played")
         narrowed.opponent = rival
         narrowed.narrow("tg.opponent_id = ?", rival.id)
     if date:

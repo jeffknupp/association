@@ -1461,6 +1461,8 @@ CAUSES: frozenset[str] = frozenset(
         "team_seasons_unsummed",
         "team_venue_unsplit",
         "since_record_unsplit",
+        # Phase 5, step 5: a team named as its own opponent (ISSUES.md #277).
+        "own_opponent",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -1559,7 +1561,8 @@ missing thing, never only the slot"):
   (``no_team_metric``: ``stat``), a metric summed over a span of seasons
   (``team_seasons_unsummed``: ``metric``) or split by venue
   (``team_venue_unsplit``: ``metric``, ``venue``), and a since-bounded
-  record split by venue (``since_record_unsplit``).
+  record split by venue (``since_record_unsplit``); a team named as its
+  own opponent (``own_opponent``: ``team``).
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.

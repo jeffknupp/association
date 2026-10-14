@@ -2590,6 +2590,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_seasons_unsummed": {"shape": TEAM_RANKING, "metric": "free throw attempts per game"},
     "team_venue_unsplit": {"shape": TEAM_RANKING, "metric": "pace", "venue": "home"},
     "since_record_unsplit": {"shape": TEAM_RANKING},
+    "own_opponent": {"shape": TEAM_PERIOD_TOTAL, "team": "Boston Celtics"},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
 }
@@ -2675,4 +2676,12 @@ def test_a_team_season_readers_decline_is_a_cause_the_planner_says() -> None:
     assert said == "Nothing here answers this question as a ranking of teams: the words name no team metric."
     assert refusal_result(Cause(kind="no_team_metric", facts={"shape": TEAM_RANKING, "stat": "rebounds allowed"})).text == (
         "Nothing here answers this question as a ranking of teams: no team metric for stat 'rebounds allowed'."
+    )
+
+
+def test_a_team_named_as_its_own_opponent_is_said_by_name() -> None:
+    """ISSUES.md #277: the team named twice is the cause, said by name,
+    where "a team cannot be its own opponent" named only the rule."""
+    assert refusal_result(Cause(kind="own_opponent", facts={"shape": TEAM_PERIOD_TOTAL, "team": "Boston Celtics"})).text == (
+        "Nothing here answers this question as a team's quarter or half: the Boston Celtics are named as both the team and its opponent - name the team they played."
     )
