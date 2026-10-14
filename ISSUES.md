@@ -46,6 +46,14 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A team ranking asked of the best single season across years answers the current season: "Which team has made the most three pointers in a season" ranks 2026's teams
+- **Found:** 2026-10-14, Phase 5, step 6 (lane L), refusing the players' half (`point._everyone_single_season`, the `single_season_ranking` cause).
+- **Evidence:** on `98b22dd`'s feed run, "Which team has made the most three pointers in a season" answers "3-pointers made per game, 2026 regular season - highest first, of 30 teams: 1 Charlotte Hornets 16.4 ...", "which team has made the most three pointers in a season before 2015" the 2015 season's, and "highest ppg*ts% by a team in a season" 2026's points per game - each a per-game figure over one season where the most in any season was asked ("made", "season" unread). The players' ranking refuses the class by name since lane L's commit; the team ranking (`point.team_read_point`, the team-season relation) has no such check.
+- **User sees:** one season's per-game team table, fluently, where the best season of any year was asked.
+- **Next step:** the team ranking refuses `lexicon.SINGLE_SEASON_RANKED` where the span is no season the words name, as `point._everyone_single_season` does - or reads the team-seasons table ranked across seasons (a new by, D11's) - each wording enumerated.
+- **Source:** ours.
+- **Priority:** P1 - a narrower question answered fluently; 3 of the 2,082.
+
 ### "total" on the season ranking is read by nothing: "total points leader in 1998 season" answers the points-per-game leader
 - **Found:** 2026-10-14, Phase 5, step 4 (D5), measuring which wordings the point reader's `lexicon.TOTAL_WORD` reaches
 - **Evidence:** the word is read only on the game-level ranking (`point._everyone_ranking`'s last read: "most total points by a center this season" is a total, written on the point's `Measure.how` since this step); the season-line ranking (`point._leaderboard_season_line`, `player_seasons/ranking/player`) never reads it, and the measure tagger writes `how="total"` only where "total" stands as a unit. On the case warehouse (`tests/names`, no model) "total points leaders this season", "most total rebounds in 2024", "most total points vs boston this season" and "most total assists on mondays this season" each plan a per-game ranking with "total" in `Reading.unread`. Feed answers (2,082, `a984044`): "total points leader in 1998 season" -> "Michael Jordan led the league in points per game in the 1998 regular season ... at 28.7", "total rebound leader in 1996 season" and "... 1998 season" the same in rebounds per game (8 feed questions hold "total" beside "most"/"leader"; "most total points in nba history" is right, a career ranking being totals).

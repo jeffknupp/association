@@ -222,6 +222,24 @@ def _everyone_guard(asked: PointShape | None, question: str, position: str | Non
         raise PointRefused(Cause(kind="team_only_question", facts={"shape": asked}), "a team's own question is not the player relation's")
 
 
+def _everyone_single_season(asked: PointShape | None, scope: Filtered, question: str) -> None:
+    """A league-wide question asked of the best single season across years
+    ("highest single season 3pt percent", "most ppg in nba history playoff
+    in a single season", "most 60 point games in a single season") ranks
+    player-seasons from every year, which no reader ranks: the league's read
+    is over one season or pools careers, so it answered the current season
+    alone or the career list, fluently. Refused naming the words, unless the
+    words name the one season itself ("highest single season 3pt percent in
+    2016")."""
+    found = lexicon.SINGLE_SEASON_RANKED.search(question)
+    if found is None:
+        return
+    span = scope.span
+    if span.season is not None and span.since is None and span.until is None and not span.career:
+        return
+    raise PointRefused(Cause(kind="single_season_ranking", facts={"shape": asked, "words": found.group(0)}))
+
+
 def _everyone_opponent(scope: Filtered, question: str) -> Filtered:
     """A team beside no player, with "vs"/"against", is the opponent."""
     team = scope.who.team
@@ -658,6 +676,7 @@ def _everyone_point(asked: PointShape | None, scope: Filtered, question: str, me
        ``threshold_count``/ranking question than either of those.
     """
     _everyone_guard(asked, question, scope.who.position, period_is_condition=any(line.period is not None for line in scope.lines))
+    _everyone_single_season(asked, scope, question)
     scope = _everyone_opponent(scope, question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)

@@ -3147,6 +3147,16 @@ TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit
    ``router._TEAM_TOTAL`` until Phase 3, step 2.
 """
 
+SINGLE_SEASON_RANKED = re.compile(
+    r"\b(?:(?:in|on|for|during|of)\s+(?:a|one|1|any)\s+)?single[- ]season\b|\b(?:in|for|during|of)\s+(?:a|one|1|any)\s+(?:(?:regular|playoffs?)[- ])?season\b", re.IGNORECASE
+)
+"""The best single season across years ("highest single season 3pt
+percent", "most ppg ... in a single season", "most assists in a season"),
+which a league-wide read refuses unless the words name the season
+(``point._everyone_single_season``). "on a season" alone is no such phrase:
+"nba players who averaged 20 ppg ... on a season" is a season line's
+question (ISSUES.md #390)."""
+
 PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages?\b|\bavg\b", re.IGNORECASE)
 """A per-game figure asked for outright.
 

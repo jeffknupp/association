@@ -1476,6 +1476,9 @@ CAUSES: frozenset[str] = frozenset(
         "team_relations_question",
         "team_only_question",
         "no_subject_reading",
+        # Phase 5, step 6 (lane L): the best single season across years,
+        # which no league read ranks.
+        "single_season_ranking",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),

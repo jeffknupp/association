@@ -1435,3 +1435,31 @@ def test_a_total_asked_on_the_game_level_ranking_is_the_measures_own(con: duckdb
     reading = _read(con, question)
     assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "player")
     assert reading.point.measure is not None and reading.point.measure.how == how
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("Highest single season 3pt percent", "single season"),
+        ("most 60 points games on a single season", "on a single season"),
+        ("most assists in a season by a 76ers power forward in the 2000s", "in a season"),
+        ("most missed shots in a season", "in a season"),
+    ],
+)
+def test_the_best_single_season_across_years_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
+    """Phase 5, step 6 (lane L): the league's best single season across
+    years ranks player-seasons from every year, which no reader ranks - the
+    league's read answered the current season alone ("Highest single season
+    3pt percent": Luke Kennard's 2026) or the career list, fluently. It is
+    refused naming the words; a season named reads that season."""
+    reading = _read(con, question)
+    assert reading.point is None
+    assert reading.point_refusal is not None and reading.point_refusal.kind == "single_season_ranking"
+    assert reading.point_refusal.facts["words"] == words
+
+
+def test_the_best_single_season_of_a_named_season_reads_that_season(con: duckdb.DuckDBPyConnection) -> None:
+    """The words name the one season: no refusal, its leaders."""
+    reading = _read(con, "highest single season 3pt percent in 2016")
+    assert reading.point_refusal is None and reading.point is not None
+    assert reading.span.season == 2016

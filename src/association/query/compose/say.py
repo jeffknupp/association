@@ -5314,7 +5314,17 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "own_seasons_window": lambda facts: _own_seasons_window(facts["seasons"]),
     "own_alignment": lambda facts: _own_alignment(facts["alignment"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
+    "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
 }
+
+
+def _single_season_ranking(words: str) -> str:
+    """The refusal for the best single season across years: the league's
+    read ranks one season or careers, never player-seasons from every year."""
+    return (
+        f"The best single season across every year ({words!r}) is read by nothing here yet - the league's leaders are ranked within one season "
+        "or over careers. Name the season ('in 2016'), or ask for the career leaders."
+    )
 
 
 def refusal_phrase(kind: str, facts: Mapping[str, Any]) -> str:

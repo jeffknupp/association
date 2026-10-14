@@ -2608,6 +2608,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "no_subject_reading": {"shape": PLAYER_LOG},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
+    "single_season_ranking": {"shape": PLAYER_RANKING, "words": "in a single season"},
 }
 
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence
