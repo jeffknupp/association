@@ -193,8 +193,20 @@ this tree:
   `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the metric and measure
   aliases and `resolve_metric`/`stat_measure`). A new one fails; an
   ignore is not the way past it.
-- **A change to the pipeline is proven stage by stage, on four
-  populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
+- **A change to the pipeline is proven on the recorded populations -
+  since D12 (Jeff, 2026-10-14, Phase 5's step 6 on) one run per PUSH: the
+  feed (`scripts/stage_snapshots.py run --feed --workers 4`, about 80
+  seconds sharded) on the branch tip against a fresh run of the tip
+  before it, compared with nothing ignored but a field the push names,
+  every moved answer enumerated and attributed to the push; the corpus at
+  the lead's merge per batch; the unit-test calls only where a stage
+  boundary moves; the readings at the agent's option for a reader-only
+  change; the ledger report, the ratchets and the three Phase 5 harnesses
+  at every commit. The four-population proof per commit below was the
+  rewrite's rule (Phases 1-5 through step 5), and it is what the tools
+  still do when asked - the description stands as the tools' reference.**
+  Until D12: proven stage by stage, on four
+  populations. `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
   recorded questions through the whole agent with no model (the
   normalizer's recorded replies, the date pinned, DuckDB single-threaded,
   about two minutes) and writes what each stage produced: the reading

@@ -125,6 +125,16 @@ def run(args: argparse.Namespace) -> int:
 
     replies = _recorded_replies(args.recorded)
     questions = [q for q in replies if not args.match or any(word.lower() in q.lower() for word in args.match)]
+    if args.workers > 1 and not args.shard:
+        # D12 (2026-10-14): the feed run is the one proof per push, so it is
+        # sharded across processes - each question is answered on its own
+        # and every worker reads the warehouse read-only, so N workers give
+        # the same records as one, in the same order, in about 1/N the time
+        # (290s -> ~80s with 4 on the OVH box).
+        return _run_sharded(args, questions)
+    if args.shard:
+        which, of = (int(part) for part in args.shard.split("/"))
+        questions = questions[which::of]
 
     def recorded(_model: str, question: str) -> Any:
         out = replies.get(question)
@@ -150,6 +160,7 @@ def run(args: argparse.Namespace) -> int:
             "today": args.today,
             "threads": args.threads,
             "questions": len(questions),
+            **({"shard": args.shard} if args.shard else {}),
             "python": sys.version.split()[0],
             "duckdb": duckdb.__version__,
             "ollama": _ollama(DEFAULT_ROUTER_MODEL),
@@ -168,6 +179,52 @@ def run(args: argparse.Namespace) -> int:
                 if index % 100 == 0:
                     print(f"{index}/{len(questions)} {time.monotonic() - started:.0f}s", flush=True)
         print(f"wrote {len(questions)} questions to {args.out} in {time.monotonic() - started:.0f}s", flush=True)
+    return 0
+
+
+def _run_sharded(args: argparse.Namespace, questions: list[str]) -> int:
+    """``run`` over ``args.workers`` processes, each answering every
+    ``workers``-th question (``--shard K/N``) into its own file, then the
+    shards joined into ``args.out`` in the questions' own order under one
+    meta line - the file a single-process run would have written."""
+    import subprocess
+
+    started = time.monotonic()
+    shard_paths = [args.out.with_name(f"{args.out.name}.shard{which}") for which in range(args.workers)]
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "run",
+        "--db-path",
+        str(args.db_path),
+        "--today",
+        args.today,
+        "--threads",
+        str(args.threads),
+        "--recorded",
+        *(str(path) for path in args.recorded),
+    ]
+    for word in args.match or []:
+        command += ["--match", word]
+    procs = [subprocess.Popen([*command, "--shard", f"{which}/{args.workers}", str(path)], stdout=subprocess.DEVNULL) for which, path in enumerate(shard_paths)]
+    failed = [which for which, proc in enumerate(procs) if proc.wait() != 0]
+    if failed:
+        print(f"shard(s) {failed} failed", flush=True)
+        return 1
+    records: dict[str, dict[str, Any]] = {}
+    meta: dict[str, Any] = {}
+    for path in shard_paths:
+        shard_meta, shard_records = _load(path)
+        meta = meta or shard_meta
+        records.update(shard_records)
+        path.unlink()
+    meta = {**{key: value for key, value in meta.items() if key != "shard"}, "questions": len(questions), "workers": args.workers}
+    print(json.dumps(meta), flush=True)
+    with args.out.open("w") as out:
+        out.write(json.dumps({"meta": meta}) + "\n")
+        for question in questions:
+            out.write(json.dumps(records[question], sort_keys=True) + "\n")
+    print(f"wrote {len(questions)} questions to {args.out} in {time.monotonic() - started:.0f}s ({args.workers} workers)", flush=True)
     return 0
 
 
@@ -361,6 +418,10 @@ def main() -> int:
     run_parser.add_argument("--threads", type=int, default=1)
     run_parser.add_argument("--match", action="append", help="only questions containing this text (repeatable)")
     run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"answer the 2,082 feed questions instead ({FEED_RECORDED})")
+    run_parser.add_argument(
+        "--workers", type=int, default=1, help="answer in this many processes, each its own shard, joined into one file in the questions' order (D12; 4 cuts the feed from ~290s to ~80s)"
+    )
+    run_parser.add_argument("--shard", default="", metavar="K/N", help=argparse.SUPPRESS)
     run_parser.set_defaults(func=run)
     compare_parser = commands.add_parser("compare", help="report the first stage each question differs in between two runs")
     compare_parser.add_argument("before", type=Path)

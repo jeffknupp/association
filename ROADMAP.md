@@ -989,6 +989,26 @@ Line counts are reported against 33,556 at each phase, not gated.
   under them). **D11. D4 is "what a new shape brings"** from the first
   lifting on: the list under "D4 lifted for the season ranking's shapes",
   recorded with each lifting (three so far, 28 keys).
+- **D12. The proof rule relaxed: per push, one population (Jeff,
+  2026-10-14).** The four-population proof per commit, written for the
+  rewrite's stability, is replaced for Phase 5's step 6 and after by one
+  measurement per PUSH: the feed run (`scripts/stage_snapshots.py run
+  --feed --workers 4`, sharded, 77 seconds measured on the OVH box, identical to the single-process run) on the branch tip against
+  a fresh run of the tip before it, `compare`d with nothing ignored but a
+  field the push names, every moved answer enumerated in the commits and
+  `CHANGES.md` and attributed to the push (a move no commit claims is
+  bisected). The corpus run is the lead's at the merge, per batch of
+  pushes; the unit-test calls only where a stage boundary moves
+  (`tests/stage_calls.py`); the readings run at an agent's option for a
+  reader-only change. The cheap gates stay at commit time: the ledger
+  `report` (not grown but by a named overcount), the ratchets, the three
+  Phase 5 harnesses at 0, the gate chain. Measured before the change on
+  four agents' transcripts: model time 14-28% of wall, the proof and the
+  gate 55-70%, a commit cycle of 8-10 minutes of which 1-2 were the work;
+  the enumeration is what found this week's bugs, the frequency and the
+  redundancy were the cost. What stays non-negotiable: one broad
+  measurement of what a user sees per push with every move named, and no
+  refusal becoming a fluent wrong answer.
 - **Charts are declared shapes.** The four chart answers (39 on
   parser22) keep their own readers and renderers, each declared as a
   shape with its relation. Porting them onto shots and NetPoints relations
