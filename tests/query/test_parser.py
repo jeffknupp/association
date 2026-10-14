@@ -1210,3 +1210,34 @@ def test_a_teams_count_asked_by_the_bare_verb_after_did_is_a_total(con: duckdb.D
     verbs were the past forms alone, and "did ... make" holds none."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.unit == unit
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "asked"),
+    [
+        # No player in the words: the teams' standings, as a record is.
+        ("worst win percentage", [], TEAM_RANKING),
+        ("highest win percentage this season", [], TEAM_RANKING),
+        ("best win% since 2010", [], TEAM_RANKING),
+        ("team with worst win% last season", [], TEAM_RANKING),
+        # A named player's win percentage is his record: his splits, W-L by split.
+        ("jokic win percentage this season", ["Nikola Jokic"], PLAYER_SPLITS),
+        ("maxey winning pct vs boston", ["Tyrese Maxey"], PLAYER_SPLITS),
+        # Players asked for stay the players' ranking, which refuses it by name.
+        ("player with worst win percentage", [], PLAYER_RANKING),
+        ("highest win percentage duo in nba history", [], PLAYER_RANKING),
+    ],
+)
+def test_a_win_percentage_is_the_teams_standings_or_a_players_record(con: duckdb.DuckDBPyConnection, question: str, names: list[str], asked: PointShape) -> None:
+    """ISSUES.md #428: "worst win percentage" and "player with worst win
+    percentage" read no measure and ranked the league's scorers by points
+    per game. With no player in the words a win percentage is the teams'
+    standings, ranked by record; a named player's is his record, as "record"
+    is; a ranking of players by it is refused by name."""
+    reading = _read(con, question, names)
+    assert reading.asked == asked
+    if asked == TEAM_RANKING:
+        assert reading.measure is not None and reading.measure.key == "record" and reading.point_refusal is None
+    if asked == PLAYER_RANKING:
+        assert reading.point_refusal is not None and reading.point_refusal.facts["fact"] == "player win percentage"
+        assert "No ranking of players by win percentage is read here" in refusal_phrase(reading.point_refusal.kind, reading.point_refusal.facts)

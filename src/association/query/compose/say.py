@@ -4646,6 +4646,10 @@ _FACT_NOT_READ: dict[str, str] = {
         "No player's {words} is on file here - the ratings are kept for teams (points per 100 possessions) - so it cannot be read for a player. "
         "Ask for a team's {words}, or the player's NetPoints (its defense side rates his defense), instead."
     ),
+    "player win percentage": (
+        "No ranking of players by win percentage is read here - a player's record is his team's in the games he played, read for one player at a time "
+        "(his record, or with and without a teammate) - so {words!r} cannot be ranked. Ask for the teams' best record, or one player's record, instead."
+    ),
     "birth": "No birth date is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by season, team or position instead.",
     "height": "No height is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by position instead (centers, forwards or guards).",
     "jersey": (
