@@ -2501,6 +2501,7 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         TEAM_PERIOD_TOTAL,
         TEAM_RANKING,
         TEAM_RECORD,
+        TEAM_SEASON_HISTORY,
     )
 
     # Every shape's words are the sayer's (compose.say) since slice (iv); the
@@ -2531,8 +2532,9 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         # D4 lifted (Jeff, 2026-10-13): a team's best single game, its point's only answer.
         TEAM_GAME_HIGHS,
     }
-    # And the team-season readers' (compose.team_stats, Phase 2, step 4).
-    team_seasons = {TEAM_LINE, TEAM_RANKING, TEAM_OUTLOOK}
+    # And the team-season readers' (compose.team_stats, Phase 2, step 4), a
+    # team's history among them (D4 lifted, Jeff 2026-10-14, ISSUES.md #372).
+    team_seasons = {TEAM_LINE, TEAM_SEASON_HISTORY, TEAM_RANKING, TEAM_OUTLOOK}
     # And the NetPoints relation's (compose.netpoints, Phase 2, step 5), and the shot relation's (compose.shots).
     netpoints = {NETPOINTS_RATINGS, NETPOINTS_FINGERPRINT}
     shots = {SHOT_CHART, SHOT_DISTANCE}

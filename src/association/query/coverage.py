@@ -220,6 +220,9 @@ SOURCES: dict[PointShape, Tables] = {
     # count ESPN's own line holds (#227).
     PointShape("team_seasons", "scalar", "line"): _team_line_tables,
     PointShape("team_seasons", "ranking", "team"): _team_ranking_tables,
+    # A team's line season by season (ISSUES.md #372): the season lines, and
+    # the games its record (a postseason's) and opponent points are read from.
+    PointShape("team_seasons", "split", "season"): ("team_season_stats", "games"),
     PointShape("team_snapshots", "scalar", "projection"): ("team_power_index",),
 }
 """Per shape the answer side routes, the warehouse tables its reader reads,

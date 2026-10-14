@@ -48,12 +48,13 @@ def _asked_keys() -> set[PointShape]:
     """Every key the words can ask, as the reading module names them
     (``reading.PLAYER_LOG``, ...): the grammar's 26 (``test_frozen_shapes``
     freezes them; the 26th, ``PLAYERS_COUNTED``, and the 27th, a team's best
-    single game, by Jeff's lifting of D4 on 2026-10-13). Until Phase 4, step 0 the tests' label table
+    single game, by Jeff's lifting of D4 on 2026-10-13; the 28th, a team's
+    history season by season, on 2026-10-14). Until Phase 4, step 0 the tests' label table
     (``tests/shapes.ASKED``) listed them by the retired intents' names."""
     from association.query import reading
 
     keys = {value for name, value in vars(reading).items() if name.isupper() and isinstance(value, PointShape)}
-    assert len(keys) == 27, sorted(map(str, keys))  # 25 + the two keys D4 was lifted for on 2026-10-13
+    assert len(keys) == 28, sorted(map(str, keys))  # 25 + the two keys D4 was lifted for on 2026-10-13 + a team's history, lifted 2026-10-14 (#372)
     return keys
 
 

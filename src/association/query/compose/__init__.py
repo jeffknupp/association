@@ -72,7 +72,7 @@ from .splits import read_player_splits, read_team_splits
 from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
 from .team_records import read_team_record
-from .team_stats import TeamSeasonQuery, read_team_leaderboard, read_team_outlook, read_team_stat
+from .team_stats import TeamSeasonQuery, read_team_history, read_team_leaderboard, read_team_outlook, read_team_stat
 
 if TYPE_CHECKING:
     from association.query.reading import Reading
@@ -297,6 +297,7 @@ _ROUTES: dict[PointShape, _Route] = {
     PointShape("team_games", "rows", "measure"): _Route(read_team_game_high, only=True),
     PointShape("team_seasons", "scalar", "line"): _Route(read_team_stat, only=True),
     PointShape("team_seasons", "ranking", "team"): _Route(read_team_leaderboard, only=True),
+    PointShape("team_seasons", "split", "season"): _Route(read_team_history, only=True),
     PointShape("team_snapshots", "scalar", "projection"): _Route(read_team_outlook, only=True),
     PointShape("netpoints", "scalar", "ratings"): _Route(read_player_netpoints, only=True),
     PointShape("netpoints", "chart", "fingerprint"): _Route(read_fingerprint, only=True),

@@ -1756,6 +1756,17 @@ TEAM_LINE = PointShape("team_seasons", "scalar", "line")
 
 .. versionadded:: 6.0.0
 """
+TEAM_SEASON_HISTORY = PointShape("team_seasons", "split", "season")
+"""A team's season line season by season over a range or every season on
+record, with the range's total beneath - the team counterpart of
+:data:`SEASON_HISTORY` ("raptors last 5 seasons", "ppg season bulls
+all-time", "how many games did the heat play 2009 to 2023"): the 28th key,
+D4 lifted for it by Jeff on 2026-10-14 (ISSUES.md #372). Named by the
+child grammar under a team's season line and by the point reader for a
+team's season line whose span is more than one season.
+
+.. versionadded:: 6.0.0
+"""
 TEAM_RANKING = PointShape("team_seasons", "ranking", "team")
 """Teams ranked by a season metric or the standings (``team_leaderboard``).
 
@@ -2144,7 +2155,7 @@ the two readings would leave one of them silently wrong; filed in
    ``OWN_TEAM_RESTORABLE_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """
 
-TEAM_ONLY_ASKS: frozenset[PointShape] = frozenset({TEAM_RECORD, TEAM_RANKING, TEAM_LINE, TEAM_OUTLOOK})
+TEAM_ONLY_ASKS: frozenset[PointShape] = frozenset({TEAM_RECORD, TEAM_RANKING, TEAM_LINE, TEAM_SEASON_HISTORY, TEAM_OUTLOOK})
 """What the words ask with no player-shaped reading at all (``team_record``,
 ``team_leaderboard``, ``team_stat``, ``team_outlook``) - absent from
 :data:`PLAYER_ASKS`, and so never checked by

@@ -62,6 +62,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    TEAM_SEASON_HISTORY,
     LeftOut,
     PointShape,
     ordinal_word,
@@ -99,6 +100,7 @@ from association.query.result import (
     ShotValue,
     Span,
     SplitsFacts,
+    TeamHistoryFacts,
     TeamPeriodFacts,
     TeamRankingFacts,
     TeamRecordFacts,
@@ -3229,6 +3231,67 @@ def say_team_stat(result: Result) -> Answer:
     return _team_stat_table(result, period, stats, [dict(row) for row in body.rows])
 
 
+# --- a team's own season: season by season ---------------------------------------------
+
+#: How a team's history heads each column: its short label, as a box score's.
+_TEAM_HISTORY_HEADERS: dict[str, str] = {"points": "PPG", "opponent_points": "OPP", "point_differential": "DIFF"}
+
+
+def _team_history_header(key: str) -> str:
+    """A column's heading: the short label, or the metric's own words."""
+    return _TEAM_HISTORY_HEADERS.get(key, TEAM_METRICS[key].label)
+
+
+def _team_history_cell(key: str, value: Any) -> str:
+    """A metric's value in a team's history: one decimal, a percentage
+    marked, and a dash where the season has none."""
+    return "-" if value is None else metric_cell(TEAM_METRICS[key], float(value))
+
+
+def say_team_history(result: Result) -> Answer:
+    """A team's season line season by season (ISSUES.md #372), worded: the
+    seasons as a table, oldest first, under a heading naming the team, the
+    season type and the seasons shown, and the seasons summed beneath it -
+    the games, the record and each per-game figure over them.
+
+    .. versionadded:: 6.0.0
+    """
+    groups = result.grouped
+    assert groups is not None
+    facts = _facts(result, TeamHistoryFacts)
+    span, team = result.span, result.subject
+    period = "postseason" if span.season_type == 3 else "regular season"
+    rows = [dict(row) for row in groups.rows]
+    if not rows:
+        # The reader names the seasons it read (``Span.since``/``until``).
+        assert span.since is not None and span.until is not None
+        answer = f"The warehouse holds no {period} season lines for the {team} from {season_label(span.since)} through {season_label(span.until)}."
+        return Answer(data={"team": team, "seasons": [], "headline": answer}, text=answer)
+    headers = ["G", "W-L", *(_team_history_header(c) for c in facts.columns)]
+    body = [[season_label(row["key"]), str(row["games"]), "-" if row["wins"] is None else f"{row['wins']}-{row['losses']}", *(_team_history_cell(c, row[c]) for c in facts.columns)] for row in rows]
+    shown = season_label(rows[0]["key"]) if len(rows) == 1 else f"{season_label(rows[0]['key'])} to {season_label(rows[-1]['key'])}"
+    what = TEAM_METRICS[facts.metric].label if facts.metric is not None and facts.columns else "season line"
+    heading = f"The {team}, {what} by {period}, {shown} ({len(rows)} season{'s' if len(rows) != 1 else ''}):"
+    answer = _table(heading, headers, [(cells[0], cells[1:]) for cells in body])
+    summary = result.parts[1].body if len(result.parts) > 1 else None
+    if isinstance(summary, Scalar):
+        answer += "\n" + _team_history_total(team, summary, facts.columns, shown)
+    seasons = [{"season": row["key"], "games": row["games"], "wins": row["wins"], "losses": row["losses"], **{c: row[c] for c in facts.columns}} for row in rows]
+    stat = facts.columns[0] if facts.columns else "games"
+    return Answer(data={"team": team, "stat": stat, "seasons": seasons, "headline": heading.rstrip(":")}, text=answer)
+
+
+def _team_history_total(team: str, summary: Scalar, columns: tuple[str, ...], shown: str) -> str:
+    """The seasons summed, as a line beneath the table: the games, the
+    record where every season has one, and each per-game figure over them."""
+    said = [f"{summary.games:,} games"]
+    values = summary.values
+    if "wins" in values:
+        said.append(tally(values["wins"], values["losses"]))
+    said += [f"{_team_history_cell(c, values[c])} {TEAM_METRICS[c].label}" for c in columns if values.get(c) is not None]
+    return f"Over {shown}, the {team}: {', '.join(said)}."
+
+
 # --- a team's own season: every team ranked -------------------------------------------
 
 #: How a ranking's venue is said in its title.
@@ -4814,6 +4877,7 @@ _ASKED_AS: dict[PointShape, str] = {
     PLAYER_COMPARISON: "a comparison of players",
     SEASON_HISTORY: "a season-by-season history",
     TEAM_LINE: "a team's season line",
+    TEAM_SEASON_HISTORY: "a team's season-by-season history",
     TEAM_RANKING: "a ranking of teams",
     TEAM_OUTLOOK: "a team's outlook",
     TEAM_COACH: "a coach's record",
@@ -5094,7 +5158,7 @@ _GROUPED_SAYERS: dict[str, Callable[[Result], Answer]] = {
     "presence": say_with_without,
     "month": say_team_record_by_month,
     "metric": say_team_stat,
-    "season": say_player_history,
+    "season": lambda result: say_team_history(result) if result.relation == "team" else say_player_history(result),
     "category": say_player_netpoints,
 }
 

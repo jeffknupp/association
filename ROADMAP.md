@@ -801,7 +801,9 @@ populations with every move enumerated. Lifted again the same evening for #364's
 remainder (Jeff, 2026-10-13): a team's own games ranked by a figure,
 `team_games/rows/measure`, lane N's after its current entry with the team
 compiler's files, about 2 feed answers and the "by a thunder player"
-family. Still a refusal by name until decided: #392's remainder (a
+family. Lifted a third time (Jeff, 2026-10-14) for #372's remainder: a
+team's season line season by season over a range or every season,
+`team_seasons/split/season`, lane T3's (6 feed answers). Still a refusal by name until decided: #392's remainder (a
 player's first or last N seasons resolved over his seasons on record, 3),
 which is the relation's, not a shape.
 

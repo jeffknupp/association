@@ -1244,6 +1244,41 @@ def test_a_win_percentage_is_the_teams_standings_or_a_players_record(con: duckdb
 
 
 @pytest.mark.parametrize(
+    ("question", "names"),
+    [
+        # Named by the words a player's history is named by, under a team's line.
+        ("celtics last 5 seasons", ["celtics"]),
+        ("lakers ppg by season", ["lakers"]),
+        # A team's line over a range the words name another way is keyed so
+        # by the point reader.
+        ("how many games did the celtics play 2009 to 2023", ["celtics"]),
+        ("celtics ppg since 2015", ["celtics"]),
+    ],
+)
+def test_a_teams_line_over_more_than_one_season_is_its_history(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> None:
+    """ISSUES.md #372 (D4 lifted, Jeff 2026-10-14): a team's season line
+    reads one season, and refused a range; over more than one it is the
+    team's history season by season."""
+    reading = _read(con, question, names)
+    assert reading.point is not None
+    assert (reading.point.on, reading.point.shape, reading.point.by) == ("team_seasons", "split", "season")
+
+
+@pytest.mark.parametrize(
+    ("question", "names"),
+    [
+        # A ranking word or a line keeps the season line, refused by its cell.
+        ("most celtics rebounds since 2010", ["celtics"]),
+        ("celtics points per game this season", ["celtics"]),
+    ],
+)
+def test_a_teams_line_ranked_or_of_one_season_is_not_its_history(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> None:
+    reading = _read(con, question, names)
+    assert reading.point is not None
+    assert (reading.point.on, reading.point.shape, reading.point.by) != ("team_seasons", "split", "season")
+
+
+@pytest.mark.parametrize(
     ("question", "names", "since"),
     [
         ("portland trailblazers winning percentage last 10 seasons", ["portland trailblazers"], 2017),

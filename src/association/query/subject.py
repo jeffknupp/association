@@ -97,6 +97,7 @@ from association.query.reading import (
     TEAM_OUTLOOK,
     TEAM_RANKING,
     TEAM_RECORD,
+    TEAM_SEASON_HISTORY,
     Claim,
     Companion,
     Cuts,
@@ -190,6 +191,12 @@ _CHILD_GRAMMARS: tuple[tuple[PointShape, lexicon.Ask, frozenset[str], frozenset[
     # him (ISSUES.md #394).
     (GAMES_COUNTED, lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS | {PRESENCE_SPLIT}),
     (SEASON_HISTORY, lexicon.CHILD_PLAYER_HISTORY, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS),
+    # A team's season line season by season, by the same words a player's
+    # history is named by ("raptors last 5 seasons", "bulls ppg by season"):
+    # under a team's season line alone (ISSUES.md #372; D4 lifted for it,
+    # Jeff 2026-10-14). A season line over a range the words name another
+    # way ("2009 to 2023") is keyed so by the point reader.
+    (TEAM_SEASON_HISTORY, lexicon.CHILD_PLAYER_HISTORY, frozenset({"team"}), frozenset({TEAM_LINE})),
     (
         PLAYER_SPLITS,
         lexicon.CHILD_PLAYER_SPLITS,
