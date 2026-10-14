@@ -27,6 +27,7 @@ from association.query.compose.records import _record_when_team_result, read_rec
 from association.query.compose.runs import _streak_league_result, _streak_league_teams_result, _streak_player_result, _streak_team_result, read_streak, read_team_streak
 from association.query.compose.say import refusal_phrase
 from association.query.compose.seasons import _player_line_advanced, _player_line_career, _player_line_season, read_player_line
+from association.query.compose.sentence import team_sentence
 from association.query.compose.shots import read_shot_chart, read_shot_distance
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
@@ -1459,10 +1460,18 @@ def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: AnswerCo
     assert summed.narrowed_text == " over their last 3 games (1 regular season and 2 postseason)"
     differential = run_team(gl_con.con, TeamQuery(**scope.filters(), metric="differential"))
     assert differential.value == 3.0
-    # A range of seasons or a calendar is not dropped from the both-types
-    # read silently - the read is refused.
-    with pytest.raises(Unsupported, match="both season types"):
-        run_team(gl_con.con, TeamQuery(**(Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(both=True, since=2024), window=Window(order="recent", count=3))).filters(), metric="points"))
+    # A range of seasons or a calendar over both types is one read of both
+    # with the window cut after it, as the log reads it - refused until the
+    # P1 sweep's lane T3, and dropped silently before that.
+    ranged = Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(both=True, since=2024), window=Window(order="recent", count=3))
+    over_range = run_team(gl_con.con, TeamQuery(**ranged.filters(), metric="points"))
+    assert (over_range.value, over_range.games, over_range.wins, over_range.losses) == (302.0, 3, 2, 1)
+    assert team_sentence(TeamQuery(**ranged.filters(), metric="points"), over_range) == (
+        "The New York Knicks had 302 points over their last 3 games in the regular season and postseason career (2024 on) (2-1)."
+    )
+    on_sundays = Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("on sundays")), span=Span(both=True), window=Window(order="recent", count=3))
+    sunday = run_team(gl_con.con, TeamQuery(**on_sundays.filters(), metric="points"))
+    assert (sunday.value, sunday.games, sunday.wins, sunday.losses) == (96.0, 1, 0, 1)
     # The log's own both-types read honors a calendar narrowing, reading both
     # types in one, where it refused it (and before that dropped it,
     # silently): of e1 (a Friday), e2 (a Sunday), p1 (a Monday) and p2 (a
@@ -5520,6 +5529,15 @@ def test_team_game_log_career_says_all_time(gl_con: AnswerContext) -> None:
     result = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(career=True)))
     assert len(result.data["games"]) == 2
     assert f"(all-time, {current_season()} regular season) (1-1):" in result.text
+
+
+def test_team_game_log_over_a_range_names_the_range_not_all_time(gl_con: AnswerContext) -> None:
+    """ "hornets on the road vs magic last 2 seasons" read "last 4 games
+    (all-time, 2025-2026 regular seasons)" though the games were cut from
+    the seasons since 2025: a log over a range says the range."""
+    result = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=current_season())))
+    assert f"(since {current_season()}, {current_season()} regular season) (1-1):" in result.text
+    assert "all-time" not in result.text
 
 
 def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: AnswerContext) -> None:

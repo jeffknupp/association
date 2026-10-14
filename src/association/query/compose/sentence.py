@@ -333,7 +333,7 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     games_phrase = "" if "game" in result.narrowed_text else f" over {result.games} games"
     # A sum over every game of the span says which span (ISSUES.md #425):
     # the season line's sentence names it, and this stands in for it.
-    in_span = f" in the {span}" if result.whole_span else ""
+    in_span = f" in the {span}" if result.whole_span or result.said_span else ""
     if opponent_figure(q):
         said = _team_opponents_sentence(result, label, f"{games_phrase}{result.narrowed_text}{in_span}{record}")
     else:

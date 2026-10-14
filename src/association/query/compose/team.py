@@ -66,6 +66,7 @@ from association.query.coverage import floor_refusal
 from association.query.entities import Entity, resolved_team
 from association.query.lines import threshold_of
 from association.query.measure import won
+from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
     DEFAULT_STREAK_LIMIT,
@@ -350,6 +351,11 @@ class TeamResult:
     #: count the team's opponents had, :func:`season_read_from_games`),
     #: which the sentence says the span of.
     whole_span: bool = False
+    #: Whether the sentence says the span a narrowed read covered: a window
+    #: over both season types cut from a range of seasons or a calendar
+    #: narrowing ("over their last 3 games in the regular season and
+    #: postseason career (2024 on)"), which the window alone would not say.
+    said_span: bool = False
 
 
 def _team_narrowed(scope: Filtered) -> bool:
@@ -429,7 +435,7 @@ def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Ent
     return TeamResult(team=team, span=ResolvedSpan(season, season_type), measure=q.metric, aggregate=q.aggregate, value=value, games=games, from_season_line=True, note=note)
 
 
-def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[TeamNarrowed, Entity, ResolvedSpan]:
+def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, both: bool = False) -> tuple[TeamNarrowed, Entity, ResolvedSpan]:
     """``team``'s games, narrowed exactly as ``templates.games.team_quarter_points``
     narrows its own - through :func:`~association.query.team_relation.scoped_team`
     and :func:`~association.query.team_relation.team_games`, never a
@@ -443,6 +449,10 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled
+    if both:
+        # Both season types in one read, as the team log reads a range or a
+        # calendar narrowing over them (``compose.logs.read_team_log``).
+        span = span_of(scope.span, "games", season_type=BOTH_SEASON_TYPES)
     date = scope.cuts.date if scope.cuts.date is not None and len(scope.cuts.date) == 10 else None
     narrowed = narrow_team_games(con, team, span, scope, opponent=scope.cuts.opponent, date=date)
     if isinstance(narrowed, Unanswered):
@@ -575,13 +585,17 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     """
     box = _team_total_box(q)
     if _team_mixed(q):
-        if q.span.since or q.span.until or q.cuts.situation or q.period is not None:
+        if q.period is not None:
             # The both-types read is a plain window (an opponent and a venue
             # at most, as the log's is); a range of seasons or a calendar
             # would be dropped from it silently, so it is refused instead.
             raise Unsupported("a window over both season types is read for a plain 'last N games' only")
-        return _compile_team_games_mixed(con, q)
-    narrowed, team, span = _team_games_narrowed(con, q)
+        if not (q.span.since or q.span.until or q.cuts.situation):
+            return _compile_team_games_mixed(con, q)
+    # A range of seasons or a calendar over both types is one read of both,
+    # the window cut after it - the team log's own read of the same words.
+    both = _team_mixed(q)
+    narrowed, team, span = _team_games_narrowed(con, q, both=both)
     if box is None:
         row = team_games_total(con, narrowed, GAME_MEASURES[q.metric])
     else:
@@ -600,6 +614,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
         narrowed_text=narrowed.filters(),
         blank=int(games or 0) - int(counted or 0),
         whole_span=not _team_narrowed(q),
+        said_span=both,
     )
 
 

@@ -1110,6 +1110,16 @@ def _team_total_line(games: list[dict[str, Any]], stat: Any) -> str:
     return f"\n  Point differential: {diff:+,} ({diff / len(games):+.2f} per game)."
 
 
+def _team_log_range(span: Span) -> str:
+    """Which seasons a team's log over more than one was cut from: every
+    season on record ("all-time"), or the range the words named ("since
+    2025", "2017 through 2020") - said as all-time until the P1 sweep's
+    lane T3, though the window was cut from the range."""
+    if span.since is None:
+        return "all-time"
+    return f"{span.since} through {span.until}" if span.until is not None else f"since {span.since}"
+
+
 def _team_total_data(games: list[dict[str, Any]], stat: Any) -> dict[str, Any]:
     """The same total or differential as plain values, for the page."""
     kind = TEAM_LOG_STAT_TOTALS.get(stat) if isinstance(stat, str) else None
@@ -1207,7 +1217,7 @@ def say_team_log(result: Result) -> Answer:
         where = (
             f" of the {season_phrase(span.season, 2 if span.season_type is None else span.season_type)}"
             if span.season is not None
-            else (f" ({span.years})" if span.date else f" (all-time, {span.years})")
+            else (f" ({span.years})" if span.date else f" ({_team_log_range(span)}, {span.years})")
         )
         scope_text = _team_log_scope(len(games), window.ascending, span.date, body.total_before_window)
     header = f"{result.subject}{result.narrowing.phrase}, {scope_text}{where} ({record}):"
