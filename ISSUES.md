@@ -1347,14 +1347,6 @@ those were found.
   measure in `DATA.md`.
 - **GitHub:** #154
 
-### "ats" (against the spread) is dropped and the plain record answered: "Clippers ats record last 15 games at home" lists their home record
-- **Found:** 2026-09-18 (as the second half of the retired entry "`opponent` can hold garbage nothing else in the slots explains", whose first half - a model-filled `opponent` restating `without` or `venue` - is gone with the router: on the parser, 2026-10-09, "bane game log without anthony black and franz wagner this season" answers his 15 games without both, and the Clippers question below answers their home record, no `opponent` read).
-- **Evidence:** `~/association-research/stages/ask_unnamed.py "Clippers ats record last 15 games at home"` (no model) answers "LA Clippers at home, last 15 games of the 2026 regular season (9-6): ..." - the plain home record; nothing reads "ats", the warehouse holds no betting line, and the claims ledger counts the word as unread. 26 of the 2,082 feed questions (`~/association-research/stages/feed_recorded.jsonl`) say "ats", "spread", "cover", "over/under" or "odds" ("76ers versus chicago bulls spread last 10 games", "Blazers ats as the underdog the last 9 road games", "bucks vs celtics spread last 10 game", ...), and each is answered as the plain record or log its other words name.
-- **User sees:** a fluent record where a record against the spread was asked, with nothing saying the word was dropped - the failure shape at the top of `AGENTS.md`.
-- **Next step:** read "ats"/"against the spread"/"cover(ed) the spread" as what the words name that nothing reads (`Reading.unsupported`, step 0's family: "a betting line is not in the warehouse"), said where the answer side would otherwise answer the plain record; a case in `tests/query/test_parser.py`; the feed answers that move enumerated (the feed holds betting wordings - count them first).
-- **Source:** ours (the warehouse holds no lines; a refusal is the honest answer).
-- **Priority:** P1 - a different question answered, on 26 feed questions (ranked here from the retired entry's P2).
-- **GitHub:** #118
 ### A quarter or half is answered for a player or a team, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; the player half shipped the same
   day as `period_split`; **re-scoped 2026-09-29** when the period became a

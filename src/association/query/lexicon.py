@@ -4601,7 +4601,9 @@ championship.
 # height ("6'10"), "how tall" or "height"; "4 ft" alone is a shot's
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
-ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "death", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots"], re.Pattern[str]], ...] = (
+ABSENT_FACTS: tuple[
+    tuple[Literal["draft", "award", "birth", "death", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots", "betting line"], re.Pattern[str]], ...
+] = (
     (
         "draft",
         re.compile(
@@ -4647,12 +4649,25 @@ ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "death", "height", 
     # figure nothing fetches (ISSUES.md #351): read as the player's own
     # shooting until then.
     ("defended shots", re.compile(r"\bdefensive\s+(?:field[\s-]+goal|fg)\s*(?:%|percent(?:age)?|pct)|\bd[\s-]?fg\s*(?:%|pct)|\bdfg\b", re.IGNORECASE)),
+    # A betting line (ISSUES.md #118): "ats", the spread, a total's
+    # over/under, an underdog or a moneyline - the games hold the score and
+    # no line, and each was answered as the plain record or log its other
+    # words name ("76ers versus chicago bulls spread last 10 games" listed
+    # the meetings). Measured on the 2,710 readings (Phase 5, step 6): every
+    # "spread" is a line's ("point spread" as a margin of victory is no
+    # wording either population holds); "odds" is left alone - "celtics
+    # playoff odds" is the power index's projection, and answered so.
+    (
+        "betting line",
+        re.compile(r"\bats\b|\bagainst\s+the\s+spread\b|\b(?:point\s+)?spreads?\b|\bover\s*[/-]\s*under\b|\bo/u\b|\bunderdogs?\b|\bmoney\s?lines?\b|\bbetting\b", re.IGNORECASE),
+    ),
 )
 """The facts a question can name that no table here holds (a draft
 position, an award or an All-Star selection, a birth date, a height), holds only as a dateless snapshot (a
 jersey number) or that nothing here reads from what it holds (a lead within
 a game, a four-point play, a player's role on his team, an opponent's win
-total, the last minutes of a game, a defender's field-goal percentage) -
+total, the last minutes of a game, a defender's field-goal percentage) or that
+the games hold no line for (a betting line: the spread, a total's over/under) -
 each with the words that name it, in the order tried. The parser
 reads the first into the ``fact_not_read`` cause before any point
 (:attr:`~association.query.reading.Reading.refused`).

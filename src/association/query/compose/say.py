@@ -4763,6 +4763,10 @@ _FACT_NOT_READ: dict[str, str] = {
     ),
     "role": "{words!r} names a role on a team, and nothing here says which player is a team's first or second option. Ask for a team's players ranked by a stat instead.",
     "wins": "Games are not narrowed by how many wins the opponent had, so {words!r} cannot be read. Ask against a named team, a conference or a division instead.",
+    "betting line": (
+        "No betting line is on file here - the games hold the final score, not the spread, the over/under or who was favored - "
+        "so {words!r} cannot be read. Ask for a team's record or its point differential over the same games instead."
+    ),
 }
 
 

@@ -358,6 +358,15 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
         ("lebron clutch stats", "clutch", "clutch"),
         ("Pelicans players defensive field goal percentage 2025-26", "defended shots", "defensive field goal percentage"),
         ("best dfg% in the league", "defended shots", "dfg%"),
+        # ISSUES.md #118: a betting line, answered as the plain record or log.
+        ("Clippers ats record last 15 games at home", "betting line", "ats"),
+        ("76ers versus chicago bulls spread last 10 games", "betting line", "spread"),
+        ("Blazers ats as the underdog the last 9 road games", "betting line", "ats"),
+        ("blazers as the underdog the last 9 road games", "betting line", "underdog"),
+        ("portland trail blazers record against the spread 2024 season", "betting line", "against the spread"),
+        ("wizard o/u record at away", "betting line", "o/u"),
+        ("highest o/u for points", "betting line", "o/u"),
+        ("did the lakers cover the point spread last night", "betting line", "point spread"),
     ],
 )
 def test_a_fact_no_table_holds_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, fact: str, words: str) -> None:
@@ -404,6 +413,8 @@ def test_a_players_rating_is_refused_by_name(con: duckdb.DuckDBPyConnection, que
         "all nba players with 30 ppg",
         "all defensive stats for jokic",
         "who is the most improved scorer this season",
+        "what are the celtics playoff odds",
+        "jokic stats last 5 games",
     ],
 )
 def test_words_beside_an_absent_fact_are_not_refused(con: duckdb.DuckDBPyConnection, question: str) -> None:
