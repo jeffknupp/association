@@ -1224,7 +1224,11 @@ def say_team_log(result: Result) -> Answer:
     header = f"{result.subject}{result.narrowing.phrase}, {scope_text}{where} ({record}):"
     mark = {True: "W", False: "L", None: "?"}
     facts = _facts(result, LogFacts)
-    lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
+    lines = [
+        f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' or g.get('neutral') else 'at'} {g['opponent']}"
+        + (" (neutral site)" if g.get("neutral") else "")
+        for g in games
+    ]
     stat = facts.stat
     data = {"team": result.subject, "wins": wins, "losses": losses, "games": games, "headline": header.rstrip(":"), **_team_total_data(games, stat)}
     if facts.figure is None:

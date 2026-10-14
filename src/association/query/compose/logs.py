@@ -392,6 +392,12 @@ def _team_log_games(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     relation) rather than comparing a raw ``winner_team_id``."""
     games = [{"date": str(r["day"]), "home_away": r["side"], **{key: r[key] for key in ("opponent", "team_score", "opponent_score", "won", "season")}} for r in rows]
     for game, row in zip(games, rows, strict=True):
+        if row.get("neutral"):
+            # Played on neither team's floor (the NBA Cup in Las Vegas, a
+            # game abroad): ESPN's side is a label, and "at the Orlando Magic"
+            # for a game in Las Vegas read as a road game (ISSUES.md #173's
+            # record counts it as neither).
+            game["neutral"] = True
         if "figure" in row:
             # The box-score figure the log was asked for (team.team_figure),
             # and a percentage's attempts: None where the game has no box row.

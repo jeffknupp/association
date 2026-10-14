@@ -2752,6 +2752,14 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### The page's team log prints ESPN's side for a neutral-site game, where the sentence says "(neutral site)"
+- **Found:** 2026-10-14, Phase 5, step 6's lane T, fixing the team log's neutral-site label in the sentence.
+- **Evidence:** `compose.logs._team_log_games` marks a game played on neither team's floor (`neutral: True`, set only where true) and `say.say_team_log` says it "vs Orlando Magic (neutral site)"; `src/association/web/static/index.html`'s team log body (`g.home_away === "away" ? "at " : "vs "`, about line 1113) reads `home_away` alone, so the page's table still prints "at Orlando Magic" for the NBA Cup semifinal in Las Vegas. 0 recorded answers list a neutral-site game in a team's log.
+- **User sees:** on the web page only, a neutral-site game in a team's log labeled as ESPN's home or road side, beside a sentence that says it was neutral.
+- **Next step:** the renderer reads `g.neutral` and prints "vs ... (neutral site)" as the sentence does; `~/association-research/stages/page_renders.py` before and after.
+- **Source:** ours.
+- **Priority:** P4 - no recorded answer reaches it; the sentence is right.
+
 ### 116 plain declines no recorded question reaches are still sentences, not causes
 - **Found:** 2026-10-14, Phase 5, step 5, after its last class: the worded-declines harness reads 0 on both populations, and the source still holds `raise Unsupported("<sentence>")` at 116 sites outside `reading.py` (`compose/core.py` 21, `point.py` 15, `compose/team.py` 15, `compose/team_records.py` 12, `player_relation.py` 10, `compose/rankings.py` 7, `compose/splits.py` 6, `compose/logs.py` 6, and 13 more modules).
 - **Evidence:** `grep -rn 'raise Unsupported(' src/association/query --include='*.py'`. Some are a reader stepping aside for the compiler's own sentence (no user sees them), some guard states the planner already refuses, and some would reach a user as "Nothing here answers this question as ...: <sentence>", answered `refused` - the shape step 5 removed from every recorded question (12 of the 628 and 176 of the 2,082 on `da2c39c`, 0 and 0 after).
