@@ -2759,6 +2759,7 @@ those were found.
 - **Next step:** the renderer reads `g.neutral` and prints "vs ... (neutral site)" as the sentence does; `~/association-research/stages/page_renders.py` before and after.
 - **Source:** ours.
 - **Priority:** P4 - no recorded answer reaches it; the sentence is right.
+- **GitHub:** #439
 
 ### 116 plain declines no recorded question reaches are still sentences, not causes
 - **Found:** 2026-10-14, Phase 5, step 5, after its last class: the worded-declines harness reads 0 on both populations, and the source still holds `raise Unsupported("<sentence>")` at 116 sites outside `reading.py` (`compose/core.py` 21, `point.py` 15, `compose/team.py` 15, `compose/team_records.py` 12, `player_relation.py` 10, `compose/rankings.py` 7, `compose/splits.py` 6, `compose/logs.py` 6, and 13 more modules).
