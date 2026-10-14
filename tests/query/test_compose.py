@@ -31,7 +31,7 @@ from association.query import compose
 from association.query.answer import Answer, AnswerContext
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
-from association.query.compose.plan import plan, plan_point, refusal_of, refusal_result
+from association.query.compose.plan import aggregate_of, plan, plan_point, refusal_of, refusal_result
 from association.query.compose.say import say
 from association.query.compose.sentence import sentence, team_sentence
 from association.query.compose.shots import ShotQuery
@@ -1056,12 +1056,10 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
 
     def team_point(shape: str, **cells: Any) -> Reading:
         by, skeleton = {"rows": ("date", "rows"), "scalar": ("", "scalar"), "runs": ("won", "runs"), "split": ("splits", "split")}[shape]
-        aggregate = Aggregate.NONE if shape in ("rows", "runs") else (Aggregate.RECORD if shape == "split" else Aggregate.TOTAL)
         return Reading(
             relation="team",
             read_as=PointShape("team_games", skeleton, by),  # type: ignore[arg-type]
             measures=(Measure(key="points"),),
-            aggregate=aggregate,
             group="venue" if shape == "split" else "none",
             who=Who(kind="team", teams=("Orlando Magic",)),
             **cells,
@@ -2311,7 +2309,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
             ),
         ),
     )
-    assert reading.point is not None and (reading.point.read_as.shape, reading.point.aggregate) == ("scalar", "count")
+    assert reading.point is not None and (reading.point.read_as.shape, aggregate_of(reading.point)) == ("scalar", "count")
     by_hand = compose_answer(
         cx_ctx,
         GAMES_COUNTED,

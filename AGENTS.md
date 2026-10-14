@@ -1346,7 +1346,9 @@ a shape:
   catalog (`MeasureKey`, 42 keys; per key how it is read on each relation:
   the game column, the compiler's measure, the ranking's metric for a bare
   name, a career, a total, a per-game figure, the team metric, the
-  opponent's) and `measure.ALIASES` every spelling the six vocabularies
+  opponent's, and whether it is a yes or a no of each game, `yes_no`:
+  a double-double, a triple-double, a foul-out, a win, a game played -
+  the compiler's `BOOLEAN_MEASURES` are read from it) and `measure.ALIASES` every spelling the six vocabularies
   named a measure by (322 distinct spellings, re-counted 2026-10-13 where
   this said 390: the normalizer's keys, the grammar's, the
   box-score words, the team metrics' alias texts, the leaderboard metrics'
@@ -1376,11 +1378,39 @@ a shape:
   other reader in the sentence it had, taken beyond the relation by the
   ranking's and the team-season shapes' rows (`ShapeCells.taken`, through
   `Measure.CELLS`) and by the team compiler's own sum, declared in no
-  relation table (a unit narrows no games). The point's `aggregate` is a
-  closed enum (`reading.Aggregate`, Phase 4, step 3: `NONE`, `PER_GAME`,
-  `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`), on the point,
-  the `Query` and the `TeamQuery` alike, and a record writes a member as its
-  value (`stages.plain`); its `measures` are typed too
+  relation table (a unit narrows no games). The aggregate is a closed
+  enum (`reading.Aggregate`, Phase 4, step 3: `NONE`, `PER_GAME`,
+  `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`) on the
+  `Query` and the `TeamQuery`, and a record writes a member as its value
+  (`stages.plain`). It is the PLANNER's since Phase 5, step 4 (D5, Jeff,
+  2026-10-14): the point reader stamped it at 37 sites until then, and
+  `compose.plan.aggregate_of` derives it from what the point is read as
+  (its declared `read_as`, never the planned key: a season-line point
+  planned at the game level keeps its per-game figure) and its measure -
+  the catalog's `yes_no` facet on the point's `Measure` or on a measure it
+  keeps its games by held true, and `Measure.how` "total", which the
+  point reader writes where it reads "total" on the game-level ranking.
+  Its table: rows and charts, NetPoints and the shots `NONE`; a team's
+  own season `TOTAL` (the team compiler's sum where the season reader
+  declines); the season line and the periods `PER_GAME`; runs `COUNT` on
+  a team's games, `NONE` otherwise; a comparison `RECORD` by opponent,
+  `PER_GAME` by subject, `NONE` by met; a split or a scalar by `line`
+  `COUNT` where it counts a yes or a no, else `RECORD` (split) or
+  `PER_GAME` (scalar); a split by splits or presence `RECORD`, by anything
+  else `PER_GAME`; a scalar by count, record or total that, by `""`
+  `TOTAL` on a team relation and `COUNT` otherwise; a ranking on the games
+  `COUNT` by count, of a yes or a no or with no measure, `TOTAL` for a
+  measure asked as a total, `PER_GAME` otherwise. Measured first: on the
+  2,710 readings the planned key alone left 52 points off the stamped
+  value, with `Reading.relation` 39, with the reviewer's facet 24 - the
+  three remainders were a games-played ranking (6, `games_played` joined
+  the facet), a team's total stamped on its season's shape (6, its own
+  query carrying none) and "Lyngby bk total corners last 5 games average"
+  (declined either way) - and the declared shape and the held-true
+  predicate (the "how many games has embiid won when he scores 30 points"
+  wordings outside the populations) close them: every planned `Query` and
+  `TeamQuery` on the 2,710 and the 518 reader cases reduces as it did.
+  The point's `measures` are typed too
   (`tuple[Measure, ...]`, each the catalog's key, stated through
   `measure.measured` from the names the point reader reads a measure by),
   and the compilers' names are built once, where the planner hands the

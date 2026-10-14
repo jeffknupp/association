@@ -5,12 +5,13 @@ the question again - ROADMAP plan item 6, step (a)."""
 from __future__ import annotations
 
 from dataclasses import fields, replace
+from typing import Any
 
 import pytest
 from routed import planned_query
 
 from association.query.compose.core import Query, measure_names
-from association.query.compose.plan import plan
+from association.query.compose.plan import aggregate_of, plan
 from association.query.compose.team import TeamQuery, team_metric
 from association.query.point import default_point
 from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, Line, Measure, Period, PointShape, Reading, Span, Unsupported, Window
@@ -28,7 +29,7 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
     )
     reading = default_point(GAMES_COUNTED, scope)
     assert isinstance(reading, Reading)
-    assert (reading.relation, reading.read_as.shape, reading.aggregate, reading.predicates) == ("player", "scalar", "count", [("points", ">=", 30)])
+    assert (reading.relation, reading.read_as.shape, aggregate_of(reading), reading.predicates) == ("player", "scalar", "count", [("points", ">=", 30)])
     planned = plan(reading)
     assert isinstance(planned, Query)
     assert planned == planned_query(GAMES_COUNTED, scope)
@@ -45,9 +46,8 @@ def test_the_planner_copies_and_never_decides() -> None:
         **(Reading(who=Who(kind="player", players=("X",)), span=Span(season=2025))).filters(),
         read_as=PointShape("player_games", "ranking", "player"),
         measures=(Measure(key="points"),),
-        aggregate=Aggregate.PER_GAME,
         group="player",
-        predicates=[("won", "=", True)],
+        predicates=[("points", ">=", 10)],
         order="measure",
         direction="asc",
         limit=7,
@@ -59,15 +59,17 @@ def test_the_planner_copies_and_never_decides() -> None:
     q = plan(reading)
     assert isinstance(q, Query)
     assert q.filters() == reading.filters()
-    assert (q.skeleton, q.measures, q.aggregate, q.group, q.predicates) == ("grouped", ["points"], "per_game", "player", [("won", "=", True)])
+    assert (q.skeleton, q.measures, q.aggregate, q.group, q.predicates) == ("grouped", ["points"], "per_game", "player", [("points", ">=", 10)])
     assert (q.order, q.direction, q.limit, q.offset, q.minimum_games, q.subject, q.position, q.source) == ("measure", "asc", 7, 0, 20, "everyone", "C", "games")
     assert q.available is None and q.subject_span is None
     # The two records mirror each other on purpose: a point field added to
     # one and not the other is a decision the planner would be making alone.
     # What the point is read as (its shape, by and relation, one field
     # since Phase 5, step 4) is the target's vocabulary, from which the
-    # planner derives the compiler's skeleton and source (plan.skeleton_of).
-    point = {"read_as", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span"}
+    # planner derives the compiler's skeleton and source (plan.skeleton_of),
+    # and the aggregate with the measure (plan.aggregate_of, Phase 5, step 4).
+    assert "aggregate" not in {f.name for f in fields(Reading)}
+    point = {"read_as", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span"}
     assert point <= {f.name for f in fields(Reading)}
     # The Query's ``position`` is the point's subject's position group
     # (``Reading.who.position``, a field of the point until Phase 3, step 2).
@@ -81,9 +83,8 @@ def test_the_planner_copies_and_never_decides() -> None:
 def test_a_team_reading_plans_to_the_team_relation() -> None:
     reading = Reading(
         **(Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026))).filters(),
-        read_as=PointShape("player_games", "scalar"),
+        read_as=PointShape("team_games", "scalar"),
         measures=(Measure(key="threePointFieldGoalsMade"),),
-        aggregate=Aggregate.TOTAL,
         relation="team",
     )
     q = plan(reading)
@@ -99,7 +100,7 @@ def test_the_planner_names_the_points_typed_measures_once() -> None:
     margin; a measure the player-games relation has no name for is refused,
     never dropped."""
     player = Reading(who=Who(kind="player", players=("X",)), span=Span(season=2025)).filters()
-    reading = Reading(**player, read_as=PointShape("player_games", "scalar", "line"), measures=(Measure(key="fieldGoalPct"), Measure(key="points"), Measure(key="wins")), aggregate=Aggregate.PER_GAME)
+    reading = Reading(**player, read_as=PointShape("player_games", "scalar", "line"), measures=(Measure(key="fieldGoalPct"), Measure(key="points"), Measure(key="wins")))
     q = plan(reading)
     assert isinstance(q, Query) and q.measures == ["fg_pct", "points", "won"]
     assert measure_names(()) == []
@@ -113,7 +114,7 @@ def test_the_planner_names_the_points_typed_measures_once() -> None:
         (Measure(key="record"), "record"),
     ):
         assert team_metric(measure) == metric
-        q_team = plan(Reading(**team, read_as=PointShape("player_games", "scalar"), measures=(measure,), aggregate=Aggregate.TOTAL, relation="team"))
+        q_team = plan(Reading(**team, read_as=PointShape("team_games", "scalar"), measures=(measure,), relation="team"))
         assert isinstance(q_team, TeamQuery) and q_team.metric == metric
 
 
@@ -135,7 +136,6 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
         **(Reading(who=Who(kind="player", players=("Joel Embiid",)), span=Span(season=2026))).filters(),
         read_as=PointShape("player_games", "scalar"),
         measures=(),
-        aggregate=Aggregate.COUNT,
         group="none",
         predicates=[("points", ">=", 30)],
         order="date",
@@ -144,7 +144,7 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
         asked=GAMES_COUNTED,
     )
     line = reading.describe()
-    assert line.startswith("relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc")
+    assert line.startswith("relation=player subject=? shape=scalar by= on=player_games measures=[] group=none predicates=[('points', '>=', 30)] window=date/desc")
     assert "filters={'who': {'kind': 'player', 'players': ['Joel Embiid']}, 'span': {'season': 2026}}" in line
 
 
@@ -213,3 +213,74 @@ def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_
         "the seasons 2018-19 through 2020-21, the regular season and the playoffs together, the last 5 games, games ranked by points, games for MIA, the finals, "
         "the 2nd half, games with under 14 fta, games z started and games without y, a starter and bench split and a rate per 100 possessions cannot be read here - why"
     )
+
+
+_TRIPLE = Measure(key="triple_double", as_typed="triple doubles")
+_GAMES_PLAYED = Measure(key="games_played", as_typed="games played")
+_POINTS_TOTAL = Measure(key="points", as_typed="points", how="total")
+
+
+@pytest.mark.parametrize(
+    ("read_as", "fields_", "aggregate"),
+    [
+        # Rows and charts reduce nothing; the declared relations' points carry none.
+        (PointShape("player_games", "rows", "date"), {}, Aggregate.NONE),
+        (PointShape("netpoints", "chart", "fingerprint"), {}, Aggregate.NONE),
+        (PointShape("shots", "scalar", "distance"), {}, Aggregate.NONE),
+        # A team's own season: the team compiler's sum where the season reader declines.
+        (PointShape("team_seasons", "scalar", "line"), {}, Aggregate.TOTAL),
+        (PointShape("team_snapshots", "scalar", "projection"), {}, Aggregate.TOTAL),
+        # The season line is per game, a ranking of it and its count of players too.
+        (PointShape("player_seasons", "ranking", "player"), {"measure": _TRIPLE}, Aggregate.PER_GAME),
+        (PointShape("player_seasons", "scalar", "count"), {}, Aggregate.PER_GAME),
+        (PointShape("player_periods", "split", "period"), {}, Aggregate.PER_GAME),
+        (PointShape("player_periods", "ranking", "player"), {}, Aggregate.PER_GAME),
+        # Runs: a team's wins counted, a player's predicate held along.
+        (PointShape("team_games", "runs", "won"), {}, Aggregate.COUNT),
+        (PointShape("player_games", "runs", "line"), {"predicates": [("won", "=", True)]}, Aggregate.NONE),
+        # Comparisons.
+        (PointShape("team_games", "comparison", "opponent"), {}, Aggregate.RECORD),
+        (PointShape("player_games", "comparison", "subject"), {}, Aggregate.PER_GAME),
+        (PointShape("player_games", "comparison", "met"), {}, Aggregate.NONE),
+        # Splits: a line's record, or its count of a yes or a no.
+        (PointShape("player_games", "split", "line"), {"predicates": [("points", ">=", 30)]}, Aggregate.RECORD),
+        (PointShape("player_games", "split", "line"), {"measure": Measure(key="points"), "predicates": [("won", "=", True)]}, Aggregate.COUNT),
+        (PointShape("player_games", "split", "line"), {"measure": Measure(key="wins")}, Aggregate.COUNT),
+        (PointShape("player_games", "split", "splits"), {}, Aggregate.RECORD),
+        (PointShape("team_games", "split", "presence"), {}, Aggregate.RECORD),
+        (PointShape("team_games", "split", "season"), {}, Aggregate.PER_GAME),
+        # Scalars: a line per game or its count of a yes or a no; the rest name their own.
+        (PointShape("player_games", "scalar", "line"), {"measure": Measure(key="points")}, Aggregate.PER_GAME),
+        (PointShape("player_games", "scalar", "line"), {"measure": _TRIPLE, "predicates": [("triple_double", "=", True)]}, Aggregate.COUNT),
+        (PointShape("player_games", "scalar", "count"), {}, Aggregate.COUNT),
+        (PointShape("team_games", "scalar", "record"), {}, Aggregate.RECORD),
+        (PointShape("team_periods", "scalar", "total"), {}, Aggregate.TOTAL),
+        (PointShape("team_games", "scalar", ""), {"measures": (Measure(key="points"),)}, Aggregate.TOTAL),
+        (PointShape("player_games", "scalar", ""), {}, Aggregate.COUNT),
+        # Rankings on the games: a count, a total asked, per game otherwise.
+        (PointShape("player_games", "ranking", "count"), {"measures": (Measure(key="points"),)}, Aggregate.COUNT),
+        (PointShape("player_games", "ranking", "player"), {"measure": _GAMES_PLAYED}, Aggregate.COUNT),
+        (PointShape("player_games", "ranking", "player"), {"predicates": [("points", ">=", 30)]}, Aggregate.COUNT),
+        (PointShape("player_games", "ranking", "player"), {"measure": _POINTS_TOTAL, "measures": (Measure(key="points"),)}, Aggregate.TOTAL),
+        (PointShape("player_games", "ranking", "player"), {"measure": Measure(key="points"), "measures": (Measure(key="points"),)}, Aggregate.PER_GAME),
+    ],
+)
+def test_the_planner_derives_the_aggregate_from_what_the_point_is_read_as_and_its_measure(read_as: PointShape, fields_: dict[str, Any], aggregate: Aggregate) -> None:
+    """The aggregate is the planner's (Phase 5, step 4, D5): derived from the
+    point's declared shape and its measure - the catalog's yes-or-no facet,
+    a yes or a no the point keeps its games by, how the measure is asked -
+    one rule per row of ``compose.plan.aggregate_of``'s table."""
+    point = Reading(read_as=read_as, **fields_)
+    assert aggregate_of(point) == aggregate
+
+
+def test_the_yes_or_no_measures_are_the_catalogs() -> None:
+    """The one facet the aggregate reads beside the shape, on the catalog
+    (``MeasureSpec.yes_no``), and the compiler's boolean measures read from
+    it: a condition a game holds or not."""
+    from association.query.measure import CATALOG, yes_no
+    from association.query.measures import BOOLEAN_MEASURES
+
+    assert {key for key, spec in CATALOG.items() if spec.yes_no} == {"double_double", "triple_double", "fouled_out", "wins", "games_played"}
+    assert {"double_double", "triple_double", "fouled_out", "won"} == BOOLEAN_MEASURES
+    assert yes_no(Measure(key="wins")) and yes_no("won") and not yes_no(Measure(key="points")) and not yes_no(None)

@@ -19,7 +19,7 @@ from association.query.answer import Answer, Artifact, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Aggregate, Cause, Cuts, Measure, PointShape, Reading, Span
+from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Cause, Cuts, Measure, PointShape, Reading, Span
 from association.query.reading import Subject as Who
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
@@ -30,7 +30,7 @@ _TIMING = Timing(total_seconds=0.0, model_seconds=0.0, model_calls=0, tool_secon
 
 def _reading() -> Reading:
     scope = Reading(who=Who(kind="player", players=("Nikola Jokic",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=2026))
-    point = Reading(**scope.filters(), read_as=PointShape("player_games", "scalar"), measures=(Measure(key="points"),), aggregate=Aggregate.TOTAL, asked=PLAYER_LINE)
+    point = Reading(**scope.filters(), read_as=PointShape("player_games", "scalar", "total"), measures=(Measure(key="points"),), asked=PLAYER_LINE)
     subject = Subject(kind="player", players=("Nikola Jokic",), opponent="Boston Celtics", evidence=("'jokic' names one player",))
     return Reading(**scope.filters(), asked=PLAYER_LINE, subject=subject, point=point, decisions=(Decision("subject", "kind", None, "player", ""),))
 

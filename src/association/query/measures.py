@@ -21,7 +21,7 @@ from association.query.lexicon import MEASURE_WORDS
 # (lexicon.TEAM_METRIC_WORDS, Phase 3, step 2: the measure); the flat table
 # is re-exported here under the name team_metrics keys its catalog by.
 from association.query.lexicon import STAT_ALIASES as STAT_ALIASES
-from association.query.measure import column_name, measure_name, metric_name
+from association.query.measure import YES_NO_MEASURES, column_name, measure_name, metric_name
 from association.query.reading import LINE_RUNS, PLAYER_LOG, Cause, Measure, PointRefused
 
 # The columns a quarter or half rebuilds - the period relation's own list,
@@ -125,13 +125,17 @@ a question asks about.
 .. versionadded:: 5.0.0
 """
 
-BOOLEAN_MEASURES: frozenset[str] = frozenset({"triple_double", "double_double", "won", "fouled_out"})
+BOOLEAN_MEASURES: frozenset[str] = YES_NO_MEASURES
 """Measures read as a per-game condition rather than a counted quantity.
 
 .. versionadded:: 4.4.0
 
 .. versionchanged:: 5.0.0
    Defined here; ``compose.core`` re-exports it.
+
+.. versionchanged:: 6.0.0
+   The catalog's yes-or-no measures (``measure.YES_NO_MEASURES``, Phase 5,
+   step 4), where it listed the four names itself.
 """
 
 LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists")

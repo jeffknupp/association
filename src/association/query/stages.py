@@ -107,7 +107,7 @@ _SUBJECT_LEFT_OUT = frozenset({"evidence", "claims", "companion_phrases", "suppo
 # ``Reading.read_as``), recorded by its three parts under the names they
 # had (``_DECLARED``), so a record reads as it did. ``subject_span`` is the
 # one typed override of the span the subject is settled in.
-_POINT_FIELDS = ("asked", "relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
+_POINT_FIELDS = ("asked", "relation", "on", "shape", "by", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
 
 
 #: The point's declaration (``Reading.read_as``, one ``PointShape`` since
