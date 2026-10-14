@@ -4893,9 +4893,20 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "team_seasons_unsummed": lambda facts: _shape_declined(facts, f"team season stats have no way to sum {facts['metric']} across a span of seasons yet"),
     "team_venue_unsplit": lambda facts: _shape_declined(facts, f"team season stats have no {facts['venue']} split for {facts['metric']}"),
     "since_record_unsplit": lambda facts: _shape_declined(facts, "a since-bounded record has no home/road split yet"),
+    "span_and_season": lambda facts: _shape_declined(facts, _span_and_season(facts.get("season"), facts.get("since"))),
+    "no_season_column": lambda facts: _shape_declined(facts, f"no per-game column for stat {facts['stat']!r}"),
+    "franchise_career_ranking": lambda facts: _shape_declined(facts, "franchise career leaderboards are not supported"),
     "name_missing": lambda facts: _shape_declined(facts, f"it needs a {facts['needs']}'s name, and none was read"),
     "own_opponent": lambda facts: _shape_declined(facts, f"the {facts['team']} are named as both the team and its opponent - name the team they played"),
 }
+
+
+def _span_and_season(season: int | None, since: int | None) -> str:
+    """A span read two ways at once: a career, or one bounded by ``since``,
+    and a named season."""
+    if since is not None:
+        return f"since {since} and the {season} season at once"
+    return f"a career span and the {season} season at once" if season is not None else "a career span and a single season at once"
 
 
 def _shape_declined(facts: Mapping[str, Any], decline: str) -> str:

@@ -75,6 +75,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Measure,
     Minimum,
     Period,
+    PointRefused,
     ShapeDeclined,
     Span,
     Split,
@@ -476,6 +477,22 @@ def _agg(name: str, aggregate: Aggregate, *, rebuilt: bool = False) -> str:
     raise Unsupported(f"aggregate {str(aggregate)!r}")
 
 
+def passed_on(exc: Unsupported, sentence: str) -> Unsupported:
+    """A decline as a step passes it on: its cause kept - a shape's own
+    (:class:`~association.query.reading.ShapeDeclined`, a copy), or a point
+    reading's a shared step raised (:class:`~association.query.reading.PointRefused`)
+    as the shape's decline by it - and a decline with no cause as
+    ``sentence``. Until Phase 5, step 5 every decline passed on was a
+    sentence, headed "relation:" where a reader or the compiler's compile
+    step raised it.
+
+    .. versionadded:: 6.0.0
+    """
+    if isinstance(exc, (ShapeDeclined, PointRefused)):
+        return ShapeDeclined(exc.cause.kind, exc.cause.facts, str(exc))
+    return Unsupported(sentence)
+
+
 def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_extra: frozenset[str] = frozenset()) -> None:
     """The retired scope check's rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
@@ -593,7 +610,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
     try:
         span = span_of(replace(scope.span, season=season, career=season is None), "player_game_log")
     except Unsupported as exc:
-        raise Unsupported(str(exc)) from exc
+        raise passed_on(exc, str(exc)) from exc
     # The shared steps take the typed filters: the query itself.
     narrowed = league_games(con, span, scope, position=q.position)
     if isinstance(narrowed, Unanswered):
@@ -1369,7 +1386,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     try:
         c = compile_query(con, q)
     except Unsupported as exc:
-        raise Unsupported(f"relation: {exc}") from exc
+        raise passed_on(exc, f"relation: {exc}") from exc
     rows = rows_of(con, c)
     # The ranking read again where its default qualifier kept everyone out
     # (ISSUES.md #422): the query and statement it ran, under their own names.

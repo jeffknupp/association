@@ -49,7 +49,7 @@ from association.query.coverage import coverage_refusal
 from association.query.reading import Cause, PointShape, ShapeDeclined
 from association.query.result import Result, Unanswered
 
-from .core import Query, Refused, Unsupported, run
+from .core import Query, Refused, Unsupported, passed_on, run
 from .counts import read_threshold_count
 from .highs import read_single_game_high, read_team_game_high
 from .logs import read_player_log, read_team_log
@@ -227,11 +227,15 @@ def _read_log(read: Callable[[], Result | Unanswered | None]) -> Answer | None:
     """A log read and said: a Result, or the relation's own refusal or
     question, through the sayer; ``None`` as ``None`` (the compiler's own
     sentence answers). A cell the relation refuses while reading is the
-    compiler's decline, as ``present`` made it."""
+    compiler's decline, as ``present`` made it - and a decline by a cause
+    the planner says (a :class:`~association.query.reading.ShapeDeclined`,
+    or a point reading's cause a shared step raised,
+    :class:`~association.query.reading.PointRefused`) keeps its cause, where
+    it was a sentence headed "relation:" until Phase 5, step 5."""
     try:
         read_log = read()
     except Unsupported as exc:
-        raise Unsupported(f"relation: {exc}") from exc
+        raise passed_on(exc, f"relation: {exc}") from exc
     return None if read_log is None else say(read_log)
 
 

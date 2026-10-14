@@ -68,7 +68,7 @@ from association.query.player_relation import ResolvedSpan, scoped_player, span_
 # count cannot fetch more. It was a cap of its own, 100, for the retired
 # agent's model-supplied ``limit``; with the agent gone the ranking reader's
 # clamped count (``compose.rankings``) is the only one that reaches here.
-from association.query.reading import MAX_LIMIT, Filtered, Line, Unsupported
+from association.query.reading import MAX_LIMIT, Filtered, Line, ShapeDeclined
 from association.query.result import Grouped, Unanswered
 
 SEASON_LINES = Availability("player_season_stats_deduped")
@@ -1499,7 +1499,7 @@ def wanted_stats(scope: Filtered, default: tuple[str, ...] = STAT_LINE) -> list[
         return list(default)
     if stat in PLAYER_STAT_COLUMNS:
         return [stat]
-    raise Unsupported(f"no per-game column for stat {stat!r}")
+    raise ShapeDeclined("no_season_column", {"stat": stat}, f"no per-game column for stat {stat!r}")
 
 
 @dataclass(frozen=True)

@@ -48,7 +48,7 @@ from association.query.coverage import coverage_refusal, floor_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import PointShape, Situation, Unsupported
+from association.query.reading import PointShape, ShapeDeclined, Situation, Unsupported
 from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, TeamRecordFacts, Unanswered
 from association.query.season_text import MONTH_NAMES
 from association.query.team_games import TeamNarrowed
@@ -177,7 +177,7 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
     season = scope.span.season
     if career and season is not None:
         # "all-time ... in 2020" is either a slip or a range this cannot read.
-        raise Unsupported("a career span and a single season at once")
+        raise ShapeDeclined("span_and_season", {"season": None, "since": None}, "a career span and a single season at once")
     since = _team_record_since(scope.span.since, career, season)
     asked = _Asked(
         team=team,

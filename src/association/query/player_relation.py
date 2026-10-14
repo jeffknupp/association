@@ -56,6 +56,7 @@ from association.query.reading import (
     Period,
     PointShape,
     ShapeCells,
+    ShapeDeclined,
     Situation,
     Span,
     Unsupported,
@@ -616,7 +617,7 @@ def span_of(span: Span, table: str, *, season_type: int | None = None) -> Resolv
     until = validated_until(span.until, since)
     if since:
         if season:
-            raise Unsupported(f"since {since} and the {season} season at once")
+            raise ShapeDeclined("span_and_season", {"season": season, "since": since}, f"since {since} and the {season} season at once")
         coverage = COVERAGE[table]
         return ResolvedSpan(None, kind, max(since, coverage.floor(kind).season), coverage.phantom, since=since, until=until)
     if not span.career:
@@ -624,7 +625,7 @@ def span_of(span: Span, table: str, *, season_type: int | None = None) -> Resolv
     if season:
         # "Career" and a named year at once. Either reading answers a different
         # question from the other, so neither is picked.
-        raise Unsupported(f"a career span and the {season} season at once")
+        raise ShapeDeclined("span_and_season", {"season": season, "since": None}, f"a career span and the {season} season at once")
     coverage = COVERAGE[table]
     return ResolvedSpan(None, kind, coverage.floor(kind).season, coverage.phantom)
 
@@ -1566,7 +1567,7 @@ def condition_scope(span: Span, tables: tuple[str, ...]) -> _Scope:
     season, since = span.season, span.since
     if since:
         if season:
-            raise Unsupported(f"since {since} and the {season} season at once")
+            raise ShapeDeclined("span_and_season", {"season": season, "since": since}, f"since {since} and the {season} season at once")
         scope = _game_scope(None, kind, tables)
         return _Scope(None, kind, max(since, scope.first), scope.phantoms)
     if season is not None:
