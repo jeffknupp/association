@@ -1446,10 +1446,17 @@ moves into `data` before the slice that rewords its answer:
     Open: the `Query`'s `measures` as `tuple[Measure, ...]` (the draft's,
     RUN's input), which the answer side's readers test and replace by name
     - the step after the statements move (Phase 4, step 5), with the names
-    no question asks about (`margin`, `opponent_name`) given a home - and
-    the aggregate derived from the shape, which three keys do not determine
-    (measured above): the draft's `Measure.how` on each measure, or a `by`
-    of their own, is the choice, and either moves those 27 readings.
+    no question asks about (`margin`, `opponent_name`) given a home. The
+    aggregate is derived since Phase 5, step 4 (D5, Jeff, 2026-10-14): the
+    planner's `compose.plan.aggregate_of`, from the point's declared
+    `PointShape` and its measure - the catalog's `yes_no` facet (on the
+    `Measure`, or on a measure the point keeps its games by held true) and
+    `Measure.how` "total" - with `Reading.aggregate` gone; no planned
+    `Query` or `TeamQuery` of the 2,710 readings or the 518 reader cases
+    moved (measured first: the planned key alone left 52 of the 2,710
+    readings off the stamped value, with the reviewer's facet 24, and
+    `games_played` in the facet, the declared shape and the held-true
+    predicate closed the rest).
 14. **A position group beside a named player is read and then dropped.**
     "centers vs gobert gamelog with 34 minutes 2024" reads a `player`
     subject (Gobert) carrying the position group C, and the point reader

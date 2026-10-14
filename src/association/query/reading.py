@@ -82,8 +82,10 @@ everyone - the second said again by the typed subject's kind
 
 
 class Aggregate(StrEnum):
-    """How the rows are reduced - a closed set, which the point reader and
-    the compiler's readers name by member and the compiler reads by member
+    """How the rows are reduced - a closed set, which the planner derives
+    (``compose.plan.aggregate_of``, from what the point is read as and its
+    measure, since Phase 5, step 4) and the compiler's readers name by
+    member, and the compiler reads by member
     (``compose.core``'s ``_agg`` and ``_scalar_selects``), so no reducer is
     spelled as text on either side. A single game's high is no aggregate:
     it is the ``rows`` shape ordered by the measure; and a rate is the
@@ -1863,8 +1865,8 @@ class ShapeCells:
 
 @dataclass(frozen=True, kw_only=True)
 class Reading(Filtered):
-    """One question, read. The point fields (measures, aggregate, group,
-    predicates, order, direction, limit) mirror
+    """One question, read. The point fields (measures, group, predicates,
+    order, direction, limit) mirror
     :class:`~association.query.compose.core.Query` on purpose: the planner
     is a copy, not a second decision; what it is read as (:attr:`read_as`:
     its relation, shape and ``by``) is the target's own vocabulary, from which the planner derives the compiler's
@@ -1880,6 +1882,11 @@ class Reading(Filtered):
     .. versionchanged:: 6.0.0
        ``shape``, ``by`` and ``on`` are one field, :attr:`read_as`, a
        :class:`PointShape` (Phase 5, step 4, D9).
+
+    .. versionchanged:: 6.0.0
+       Breaking: ``aggregate`` is gone (Phase 5, step 4, D5): the planner
+       derives it from :attr:`read_as` and the measure
+       (``compose.plan.aggregate_of``).
 
     .. versionchanged:: 6.0.0
        The filters are the Reading's own fields (:class:`Filtered`: ``who``,
@@ -1924,7 +1931,6 @@ class Reading(Filtered):
     #: .. versionchanged:: 6.0.0
     #:    A tuple of :class:`Measure` where it was a list of the compiler's names.
     measures: tuple[Measure, ...] = ()
-    aggregate: Aggregate = Aggregate.NONE
     group: Group = "none"
     #: Row predicates: ``(measure, op, value)``.
     predicates: list[tuple[str, str, Any]] = field(default_factory=list)
@@ -2045,7 +2051,7 @@ class Reading(Filtered):
         window = f"{self.order}/{self.direction}" + (f"/{self.limit}" if self.limit is not None else "")
         who = self.subject.kind if self.subject is not None else "?"
         return (
-            f"relation={self.relation} subject={who} shape={self.read_as.shape} by={self.read_as.by} on={self.read_as.relation} measures={[m.key for m in self.measures]} aggregate={self.aggregate} "
+            f"relation={self.relation} subject={who} shape={self.read_as.shape} by={self.read_as.by} on={self.read_as.relation} measures={[m.key for m in self.measures]} "
             f"group={self.group} predicates={self.predicates} window={window} filters={self.stated()}"
         )
 

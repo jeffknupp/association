@@ -12,7 +12,7 @@ import pytest
 from routed import Routed, reading_of, with_subject
 from routed import staged as settle
 
-from association.query.compose.plan import plan_point
+from association.query.compose.plan import aggregate_of, plan_point
 from association.query.compose.say import refusal_phrase
 from association.query.decisions import Decision
 from association.query.entities import names_of
@@ -1319,7 +1319,7 @@ def test_a_ranking_by_games_played_is_read_as_games_played(con: duckdb.DuckDBPyC
     assert (reading.measure.key if reading.measure is not None else None) == key
     if key is not None:
         point = reading.point
-        assert point is not None and point.aggregate == "count" and point.measures == () and point.predicates == [] and point.order == "measure"
+        assert point is not None and aggregate_of(point) == "count" and point.measures == () and point.predicates == [] and point.order == "measure"
 
 
 @pytest.mark.parametrize(
@@ -1361,12 +1361,15 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
     assert _leaderboard_metric(planned, career=False) == "avg_game_score"
 
 
-@pytest.mark.parametrize(("question", "how"), [("most total points by a center this season", "total"), ("most points by a center this season", None)])
+@pytest.mark.parametrize(
+    ("question", "how"), [("most total points by a center this season", "total"), ("most points by a center this season", None), ("Lyngby bk total corners last 5 games average", "total")]
+)
 def test_a_total_asked_on_the_game_level_ranking_is_the_measures_own(con: duckdb.DuckDBPyConnection, question: str, how: str | None) -> None:
     """ "total" on the league's game-level ranking is how the measure is
     asked (``Measure.how``, Phase 5, step 4): the point reader writes it on
     its point's measure, which the planner derives the ranking's sum from
-    (D5), where it stamped the aggregate alone."""
+    (D5), where it stamped the aggregate alone - a measure of no key where
+    the words name none the catalog holds."""
     reading = _read(con, question)
     assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "player")
     assert reading.point.measure is not None and reading.point.measure.how == how

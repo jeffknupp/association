@@ -119,7 +119,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -316,7 +315,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -558,7 +556,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -770,7 +767,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -953,7 +949,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -1170,7 +1165,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -1344,7 +1338,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -1511,7 +1504,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -1721,7 +1713,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -1922,7 +1913,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -2100,7 +2090,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -2268,7 +2257,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -2426,7 +2414,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -2595,7 +2582,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -2777,7 +2763,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -2948,7 +2933,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -3110,7 +3094,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -3271,7 +3254,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -3431,7 +3413,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -3591,7 +3572,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -3761,7 +3741,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -3963,7 +3942,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -4174,7 +4152,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -4387,7 +4364,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -4594,7 +4570,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -4823,7 +4798,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -5041,7 +5015,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -5257,7 +5230,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -5486,7 +5458,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -5694,7 +5665,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -5892,7 +5862,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -6104,7 +6073,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -6336,7 +6304,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -6566,7 +6533,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -6767,7 +6733,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -6940,7 +6905,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -7116,7 +7080,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -7303,7 +7266,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -7485,7 +7447,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -7663,7 +7624,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -7843,7 +7803,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -8063,7 +8022,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -8239,7 +8197,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -8457,7 +8414,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -8671,7 +8627,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -8953,7 +8908,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -9148,7 +9102,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -9366,7 +9319,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -9604,7 +9556,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -9843,7 +9794,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -10060,7 +10010,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -10286,7 +10235,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -10458,7 +10406,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -10634,7 +10581,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -10846,7 +10792,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -11076,7 +11021,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -11277,7 +11221,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -11459,7 +11402,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -11630,7 +11572,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -11801,7 +11742,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -11972,7 +11912,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -12143,7 +12082,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -12325,7 +12263,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -12494,7 +12431,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -12706,7 +12642,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -12879,7 +12814,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -13144,7 +13078,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -13315,7 +13248,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -13534,7 +13466,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -13766,7 +13697,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -13989,7 +13919,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -14158,7 +14087,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -14316,7 +14244,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -14474,7 +14401,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -14741,7 +14667,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -15025,7 +14950,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -15255,7 +15179,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -15486,7 +15409,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -15677,7 +15599,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -15872,7 +15793,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -16079,7 +15999,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -16250,7 +16169,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -16419,7 +16337,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -16629,7 +16546,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -16874,7 +16790,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -17059,7 +16974,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -17288,7 +17202,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -17564,7 +17477,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -17764,7 +17676,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -18038,7 +17949,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -18236,7 +18146,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -18390,7 +18299,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -18559,7 +18467,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -18711,7 +18618,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -18874,7 +18780,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -19072,7 +18977,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -19279,7 +19183,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -19457,7 +19360,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -19622,7 +19524,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -19811,7 +19712,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -20010,7 +19910,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -20234,7 +20133,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -20442,7 +20340,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -20646,7 +20543,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -20843,7 +20739,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -21067,7 +20962,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -21369,7 +21263,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -21570,7 +21463,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -21769,7 +21661,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -21952,7 +21843,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -22119,7 +22009,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -22323,7 +22212,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -22603,7 +22491,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -22800,7 +22687,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -23008,7 +22894,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -23208,7 +23093,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -23377,7 +23261,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -23561,7 +23444,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -23761,7 +23643,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -23998,7 +23879,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -24222,7 +24102,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -24431,7 +24310,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -24622,7 +24500,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -24802,7 +24679,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -25011,7 +24887,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -25172,7 +25047,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -25350,7 +25224,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -25539,7 +25412,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -25749,7 +25621,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -25976,7 +25847,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -26256,7 +26126,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [
      [
@@ -26516,7 +26385,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -26694,7 +26562,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -26873,7 +26740,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -27052,7 +26918,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -27231,7 +27096,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -27410,7 +27274,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -27618,7 +27481,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -27842,7 +27704,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -28042,7 +27903,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -28256,7 +28116,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -28433,7 +28292,6 @@
     "shape": "split",
     "by": "season",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -28628,7 +28486,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -28828,7 +28685,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -29028,7 +28884,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -29230,7 +29085,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -29460,7 +29314,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -29678,7 +29531,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -29854,7 +29706,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -30032,7 +29883,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -30210,7 +30060,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -30391,7 +30240,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -30572,7 +30420,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -30753,7 +30600,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -30931,7 +30777,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -31111,7 +30956,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -31284,7 +31128,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -31464,7 +31307,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -31682,7 +31524,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -31903,7 +31744,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -32131,7 +31971,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -32359,7 +32198,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -32587,7 +32425,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -32825,7 +32662,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -33033,7 +32869,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -33229,7 +33064,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -33438,7 +33272,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -33607,7 +33440,6 @@
     "shape": "chart",
     "by": "fingerprint",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -33843,7 +33675,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -34085,7 +33916,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -34317,7 +34147,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -34524,7 +34353,6 @@
     "shape": "runs",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [
      [
@@ -34776,7 +34604,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -34954,7 +34781,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -35138,7 +34964,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -35567,7 +35392,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -35776,7 +35600,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -36000,7 +35823,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -36239,7 +36061,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -36507,7 +36328,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -36749,7 +36569,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -37004,7 +36823,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -37241,7 +37059,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -37459,7 +37276,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -37696,7 +37512,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -37961,7 +37776,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -38286,7 +38100,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -38485,7 +38298,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -38686,7 +38498,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -38877,7 +38688,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -39051,7 +38861,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -39266,7 +39075,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -39575,7 +39383,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -39768,7 +39575,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -39990,7 +39796,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -40188,7 +39993,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -40406,7 +40210,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -40630,7 +40433,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -40866,7 +40668,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -41086,7 +40887,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -41291,7 +41091,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -41533,7 +41332,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -41876,7 +41674,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -42111,7 +41908,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -42345,7 +42141,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -42584,7 +42379,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -42824,7 +42618,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -43051,7 +42844,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -43277,7 +43069,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -43503,7 +43294,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -43729,7 +43519,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -43955,7 +43744,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -44181,7 +43969,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -44416,7 +44203,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -44714,7 +44500,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -44936,7 +44721,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -45163,7 +44947,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -45389,7 +45172,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -45615,7 +45397,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -45841,7 +45622,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -46067,7 +45847,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -46293,7 +46072,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -46519,7 +46297,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -46745,7 +46522,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -46971,7 +46747,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -47197,7 +46972,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -47423,7 +47197,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -47649,7 +47422,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -47875,7 +47647,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -48101,7 +47872,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -48328,7 +48098,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -48567,7 +48336,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -48806,7 +48574,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -49034,7 +48801,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -49262,7 +49028,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -49482,7 +49247,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -49691,7 +49455,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -49945,7 +49708,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -50121,7 +49883,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -50297,7 +50058,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -50477,7 +50237,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -50656,7 +50415,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -50837,7 +50595,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -51017,7 +50774,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -51186,7 +50942,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -51344,7 +51099,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -51551,7 +51305,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -51767,7 +51520,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -51934,7 +51686,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -52141,7 +51892,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -52355,7 +52105,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -52546,7 +52295,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -52794,7 +52542,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -53040,7 +52787,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -53249,7 +52995,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -53445,7 +53190,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -53828,7 +53572,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -54036,7 +53779,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -54266,7 +54008,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -54496,7 +54237,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -54726,7 +54466,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -54932,7 +54671,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -55158,7 +54896,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -55388,7 +55125,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -55635,7 +55371,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -55841,7 +55576,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -56080,7 +55814,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -56301,7 +56034,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -56511,7 +56243,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -56737,7 +56468,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -57047,7 +56777,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -57257,7 +56986,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -57474,7 +57202,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -57653,7 +57380,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -57855,7 +57581,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -58069,7 +57794,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -58280,7 +58004,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -58466,7 +58189,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "opponent",
     "predicates": [],
     "order": "date",
@@ -58737,7 +58459,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "opponent",
     "predicates": [],
     "order": "date",
@@ -58910,7 +58631,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -59161,7 +58881,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -59401,7 +59120,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -59639,7 +59357,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -59869,7 +59586,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -60079,7 +59795,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -60301,7 +60016,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -60523,7 +60237,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -60747,7 +60460,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -60989,7 +60701,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -61206,7 +60917,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -61427,7 +61137,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -61637,7 +61346,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -61847,7 +61555,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -62072,7 +61779,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -62248,7 +61954,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -62459,7 +62164,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -62661,7 +62365,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -62944,7 +62647,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -63113,7 +62815,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -63316,7 +63017,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -63509,7 +63209,6 @@
     "shape": "runs",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [
      [
@@ -63750,7 +63449,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -63971,7 +63669,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -64160,7 +63857,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -64340,7 +64036,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -64531,7 +64226,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -64722,7 +64416,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -64902,7 +64595,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -65091,7 +64783,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -65269,7 +64960,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -65458,7 +65148,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -65655,7 +65344,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -65839,7 +65527,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -66081,7 +65768,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -66314,7 +66000,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -66524,7 +66209,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -66696,7 +66380,6 @@
     "shape": "comparison",
     "by": "met",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -66884,7 +66567,6 @@
     "shape": "comparison",
     "by": "met",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -67101,7 +66783,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -67278,7 +66959,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -67456,7 +67136,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -67656,7 +67335,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -67845,7 +67523,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "season",
     "predicates": [],
     "order": "date",
@@ -68045,7 +67722,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -68219,7 +67895,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -68389,7 +68064,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -68580,7 +68254,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -68761,7 +68434,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -68982,7 +68654,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -69169,7 +68840,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -69379,7 +69049,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -69643,7 +69312,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -69909,7 +69577,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -70175,7 +69842,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -70441,7 +70107,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -70675,7 +70340,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -70899,7 +70563,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -71103,7 +70766,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -71329,7 +70991,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -71561,7 +71222,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -71759,7 +71419,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -72001,7 +71660,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -72204,7 +71862,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -72406,7 +72063,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -72586,7 +72242,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -72807,7 +72462,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -73028,7 +72682,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -73249,7 +72902,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -73483,7 +73135,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -73681,7 +73332,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -73892,7 +73542,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -74118,7 +73767,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -74342,7 +73990,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -74566,7 +74213,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -74810,7 +74456,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -75014,7 +74659,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -75216,7 +74860,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -75540,7 +75183,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -75755,7 +75397,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -76055,7 +75696,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -76256,7 +75896,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -76457,7 +76096,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -76644,7 +76282,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -76843,7 +76480,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -77051,7 +76687,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -77266,7 +76901,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -77483,7 +77117,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -77694,7 +77327,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -78287,7 +77919,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -78484,7 +78115,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -78894,7 +78524,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "season",
     "predicates": [],
     "order": "date",
@@ -79092,7 +78721,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "season",
     "predicates": [],
     "order": "date",
@@ -79307,7 +78935,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -79522,7 +79149,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -79737,7 +79363,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -79952,7 +79577,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -80143,7 +79767,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -80360,7 +79983,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -80551,7 +80173,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -80742,7 +80363,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -80933,7 +80553,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -81130,7 +80749,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -81352,7 +80970,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -81558,7 +81175,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -81750,7 +81366,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -82142,7 +81757,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -82323,7 +81937,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -82511,7 +82124,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -82690,7 +82302,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -82879,7 +82490,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "season",
     "predicates": [],
     "order": "date",
@@ -83111,7 +82721,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -83373,7 +82982,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -83622,7 +83230,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -83870,7 +83477,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -84117,7 +83723,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -84374,7 +83979,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -84640,7 +84244,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -84905,7 +84508,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -85195,7 +84797,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -85480,7 +85081,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -85688,7 +85288,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -85892,7 +85491,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -86111,7 +85709,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [
      [
@@ -86329,7 +85926,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [
      [
@@ -86547,7 +86143,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [
      [
@@ -86731,7 +86326,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -86909,7 +86503,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -87087,7 +86680,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -87267,7 +86859,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -87445,7 +87036,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -87632,7 +87222,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -87825,7 +87414,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -88015,7 +87603,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -88204,7 +87791,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -88393,7 +87979,6 @@
     "shape": "scalar",
     "by": "distance",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -88586,7 +88171,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -88779,7 +88363,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -88976,7 +88559,6 @@
       "beside": []
      }
     ],
-    "aggregate": "total",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -89163,7 +88745,6 @@
     "shape": "split",
     "by": "line",
     "measures": [],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -89493,7 +89074,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -89725,7 +89305,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -89952,7 +89531,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -90121,7 +89699,6 @@
     "shape": "comparison",
     "by": "met",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -90293,7 +89870,6 @@
     "shape": "comparison",
     "by": "met",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -90467,7 +90043,6 @@
     "shape": "comparison",
     "by": "subject",
     "measures": [],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "date",
@@ -90657,7 +90232,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "season",
     "predicates": [],
     "order": "date",
@@ -90869,7 +90443,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -91124,7 +90697,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -91402,7 +90974,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -91669,7 +91240,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -91884,7 +91454,6 @@
     "shape": "comparison",
     "by": "met",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -92076,7 +91645,6 @@
     "shape": "comparison",
     "by": "met",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -92321,7 +91889,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -92534,7 +92101,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -92738,7 +92304,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -92944,7 +92509,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -93228,7 +92792,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -93416,7 +92979,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -93631,7 +93193,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -93863,7 +93424,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -94103,7 +93663,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -94301,7 +93860,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -94508,7 +94066,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "season",
     "predicates": [],
     "order": "date",
@@ -94727,7 +94284,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -94973,7 +94529,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -95170,7 +94725,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -95373,7 +94927,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "opponent",
     "predicates": [],
     "order": "date",
@@ -95543,7 +95096,6 @@
     "shape": "comparison",
     "by": "met",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -95771,7 +95323,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -95998,7 +95549,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -96225,7 +95775,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -96427,7 +95976,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -96627,7 +96175,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -96807,7 +96354,6 @@
     "shape": "scalar",
     "by": "line",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -96993,7 +96539,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -97204,7 +96749,6 @@
     "shape": "ranking",
     "by": "count",
     "measures": [],
-    "aggregate": "count",
     "group": "player",
     "predicates": [
      [
@@ -97411,7 +96955,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -97654,7 +97197,6 @@
       "beside": []
      }
     ],
-    "aggregate": "count",
     "group": "none",
     "predicates": [
      [
@@ -97900,7 +97442,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -98143,7 +97684,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -98353,7 +97893,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -98591,7 +98130,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -98874,7 +98412,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "venue",
     "predicates": [],
     "order": "date",
@@ -99045,7 +98582,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -99253,7 +98789,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -99446,7 +98981,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "period",
     "predicates": [],
     "order": "date",
@@ -99691,7 +99225,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -99865,7 +99398,6 @@
     "shape": "chart",
     "by": "shots",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -100067,7 +99599,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -100297,7 +99828,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -100478,7 +100008,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -100708,7 +100237,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -100915,7 +100443,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -101125,7 +100652,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -101332,7 +100858,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -101537,7 +101062,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -101758,7 +101282,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -101938,7 +101461,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -102101,7 +101623,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -102264,7 +101785,6 @@
     "shape": "ranking",
     "by": "team",
     "measures": [],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -102465,7 +101985,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -102652,7 +102171,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -102850,7 +102368,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "measure",
@@ -103299,7 +102816,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -103549,7 +103065,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "presence",
     "predicates": [],
     "order": "date",
@@ -103815,7 +103330,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -104071,7 +103585,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -104344,7 +103857,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -104608,7 +104120,6 @@
       "beside": []
      }
     ],
-    "aggregate": "record",
     "group": "none",
     "predicates": [
      [
@@ -104888,7 +104399,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -105104,7 +104614,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "player",
     "predicates": [],
     "order": "measure",
@@ -105302,7 +104811,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -105484,7 +104992,6 @@
       "beside": []
      }
     ],
-    "aggregate": "none",
     "group": "none",
     "predicates": [],
     "order": "date",
@@ -105690,7 +105197,6 @@
       "beside": []
      }
     ],
-    "aggregate": "per_game",
     "group": "none",
     "predicates": [],
     "order": "date",

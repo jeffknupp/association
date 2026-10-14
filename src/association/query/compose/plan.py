@@ -16,11 +16,11 @@ from typing import Any
 
 from association.query.answer import Answer
 from association.query.coverage import coverage_refusal
-from association.query.measure import spelled
+from association.query.measure import spelled, yes_no
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CELL_ORDER, PLAYERS_COUNTED, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_facts, cell_set
+from association.query.reading import CELL_ORDER, PLAYERS_COUNTED, Aggregate, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_facts, cell_set
 from association.query.result import Refusal, Unanswered
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
@@ -61,6 +61,106 @@ def skeleton_of(point: Reading) -> str:
     if declared.shape == "split":
         return "scalar" if declared.by == "line" else "grouped"
     return {"ranking": "grouped", "runs": "run"}.get(declared.shape, declared.shape)
+
+
+def aggregate_of(point: Reading) -> Aggregate:
+    """How the planned query reduces ``point``'s rows (:class:`~association.query.reading.Aggregate`),
+    derived from what the point is read as (its declared
+    :attr:`~association.query.reading.Reading.read_as`) and its measure -
+    one rule, where the point reader stamped it at each of its sites until
+    Phase 5, step 4 (D5, Jeff, 2026-10-14). The planner sets it on the
+    ``Query`` and the ``TeamQuery`` it builds, and nothing else reads it.
+
+    The point counts a yes or a no (:func:`counts_yes_no`) where its
+    measure is one of the catalog's yes-or-no measures
+    (:attr:`~association.query.measure.MeasureSpec.yes_no`: a
+    double-double, a triple-double, a foul-out, a win, a game played) or it
+    keeps its games by one held true ("how many games has embiid won when
+    he scores 30 points": a points measure, a ``won`` predicate).
+
+    What the point is read as, and its aggregate:
+
+    - any ``rows``, any ``chart``, ``netpoints``, ``shots``: ``NONE``;
+    - ``team_seasons``, ``team_snapshots``: ``TOTAL`` (the team compiler's
+      sum, where the season reader declines; its own query carries none);
+    - ``player_seasons``, ``player_periods``: ``PER_GAME`` (a season line is
+      per game; a point planned at the game level keeps it);
+    - ``runs``: ``COUNT`` on ``team_games`` (a team's wins), ``NONE``
+      otherwise;
+    - ``comparison``: ``RECORD`` by ``opponent``, ``PER_GAME`` by
+      ``subject``, ``NONE`` by ``met``;
+    - ``split``: by ``line``, ``COUNT`` where it counts a yes or a no and
+      ``RECORD`` otherwise; by ``splits`` or ``presence``, ``RECORD``; by
+      anything else, ``PER_GAME``;
+    - ``scalar``: by ``line``, ``COUNT`` where it counts a yes or a no and
+      ``PER_GAME`` otherwise; by ``count``, ``record`` or ``total``, that;
+      by ``""``, ``TOTAL`` on a team relation and ``COUNT`` otherwise;
+    - ``ranking``: by ``count``, or where it counts a yes or a no or
+      measures nothing, ``COUNT``; where its measure is asked as a total
+      (``Measure.how``), ``TOTAL``; ``PER_GAME`` otherwise.
+
+    Measured first (``ROADMAP.md``, Phase 5, step 4): on the 2,710
+    readings the planned key alone left 52 points off the stamped value,
+    with ``Reading.relation`` 39 and with the yes-or-no facet 24 - a
+    games-played ranking, a team's total stamped on its season's shape, and
+    one question declined either way - which ``games_played`` in the facet,
+    the declared shape and the held-true predicate close: on the 2,710 and
+    the 518 reader cases every planned ``Query`` and ``TeamQuery`` reduces
+    as the stamped point did.
+
+    .. versionadded:: 6.0.0
+    """
+    declared = point.read_as
+    if declared.shape in ("rows", "chart") or declared.relation in ("netpoints", "shots"):
+        return Aggregate.NONE
+    if declared.relation in ("team_seasons", "team_snapshots"):
+        return Aggregate.TOTAL
+    if declared.relation in ("player_seasons", "player_periods"):
+        return Aggregate.PER_GAME
+    if declared.shape == "runs":
+        return Aggregate.COUNT if declared.relation == "team_games" else Aggregate.NONE
+    if declared.shape == "comparison":
+        return {"opponent": Aggregate.RECORD, "subject": Aggregate.PER_GAME}.get(declared.by, Aggregate.NONE)
+    if declared.shape == "ranking":
+        return _ranking_aggregate(point)
+    return _scalar_or_split_aggregate(point)
+
+
+def counts_yes_no(point: Reading) -> bool:
+    """Whether ``point`` counts a yes or a no of each game: its measure is
+    one of the catalog's yes-or-no measures, or it keeps its games by one
+    held true (:func:`aggregate_of`).
+
+    .. versionadded:: 6.0.0
+    """
+    return yes_no(point.measure) or any(op == "=" and value is True and yes_no(name) for name, op, value in point.predicates)
+
+
+def _ranking_aggregate(point: Reading) -> Aggregate:
+    """:func:`aggregate_of` for a ranking on the games: a count of games -
+    by ``count``, of a yes or a no, or with no measure to rank by - a total
+    where the measure is asked as one, per game otherwise."""
+    if point.read_as.by == "count" or counts_yes_no(point) or not point.measures:
+        return Aggregate.COUNT
+    if point.measure is not None and point.measure.how == "total":
+        return Aggregate.TOTAL
+    return Aggregate.PER_GAME
+
+
+def _scalar_or_split_aggregate(point: Reading) -> Aggregate:
+    """:func:`aggregate_of` for a scalar or a split on the games: a line's
+    count of a yes or a no, its record or its figure per game; the shapes
+    that name their own reduction by it."""
+    declared = point.read_as
+    if declared.by == "line":
+        if counts_yes_no(point):
+            return Aggregate.COUNT
+        return Aggregate.RECORD if declared.shape == "split" else Aggregate.PER_GAME
+    if declared.shape == "split":
+        return Aggregate.RECORD if declared.by in ("splits", "presence") else Aggregate.PER_GAME
+    if declared.by in ("count", "record", "total"):
+        return Aggregate(declared.by)
+    return Aggregate.TOTAL if declared.relation.startswith("team") else Aggregate.COUNT
 
 
 def point_shape(point: Reading, query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery | None = None) -> PointShape:
@@ -330,7 +430,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         # Every team shape, the sums included, against the TEAM relation's
         # own cells and what this shape takes beside them.
         _check_relation_scoping(reading, "team", _cells_taken(key, team=True))
-        return TeamQuery(**reading.filters(), metric=team_metric(reading.measures[0]), aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
+        return TeamQuery(**reading.filters(), metric=team_metric(reading.measures[0]), aggregate=aggregate_of(reading), shape=skeleton_of(reading), group=reading.group)
     subject = "everyone" if reading.relation == "everyone" else "player"
     # The season line's ranking (leaderboard's retired reader) takes `rate`
     # - a season total, or a unit refused by name - which no game-level read
@@ -340,7 +440,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         **reading.filters(),
         skeleton=skeleton_of(reading),
         measures=measure_names(reading.measures),
-        aggregate=reading.aggregate,
+        aggregate=aggregate_of(reading),
         group=reading.group,
         predicates=list(reading.predicates),
         order=reading.order,

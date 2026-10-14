@@ -85,9 +85,16 @@ class MeasureSpec:
     total asked for outright, ``per_game_metric`` the per-game figure asked
     for outright. ``team`` is the team metric the team-season relation ranks
     and lists it by, ``team_opponent`` the metric for what a team gives up
-    of it ("points allowed").
+    of it ("points allowed"). ``yes_no`` says the measure is a yes or a no
+    of each game (a double-double, a triple-double, a foul-out, a win, a
+    game played), so its figure over the games is how many hold it: the one
+    facet the planner derives a point's aggregate from beside its shape
+    (``compose.plan.aggregate_of``, Phase 5, step 4, D5).
 
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       ``yes_no`` (Phase 5, step 4).
     """
 
     label: str
@@ -99,6 +106,7 @@ class MeasureSpec:
     per_game_metric: str | None = None
     team: str | None = None
     team_opponent: str | None = None
+    yes_no: bool = False
 
 
 def _box(key: str, label: str, *, metric: str, career: str, total: str | None, team: str | None, team_opponent: str | None = None) -> MeasureSpec:
@@ -165,18 +173,18 @@ CATALOG: dict[str, MeasureSpec] = {
     "game_score": MeasureSpec(label="game score", measure="game_score", column="game_score", per_game_metric="avg_game_score"),
     # A team's plus-minus is its point differential.
     "plusMinus": MeasureSpec(label="plus-minus", measure="plusMinus", column="plusMinus", team="point_differential"),
-    "double_double": MeasureSpec(label="double-doubles", measure="double_double", metric="double_doubles", career_metric="double_doubles"),
-    "triple_double": MeasureSpec(label="triple-doubles", measure="triple_double", metric="triple_doubles", career_metric="triple_doubles"),
-    "fouled_out": MeasureSpec(label="foul-outs", measure="fouled_out"),
+    "double_double": MeasureSpec(label="double-doubles", measure="double_double", metric="double_doubles", career_metric="double_doubles", yes_no=True),
+    "triple_double": MeasureSpec(label="triple-doubles", measure="triple_double", metric="triple_doubles", career_metric="triple_doubles", yes_no=True),
+    "fouled_out": MeasureSpec(label="foul-outs", measure="fouled_out", yes_no=True),
     "pra": MeasureSpec(label="points, rebounds and assists", measure="pra"),
     # NetPoints: one key, the side and the rate on the Measure, the metric
     # by the pair (NETPOINTS_METRICS); no game column.
     "netpoints": MeasureSpec(label="NetPoints", metric="netpoints_total", career_metric="netpoints_total"),
     # A team's wins: a game's `won` flag on the games relation, the record on the team's.
-    "wins": MeasureSpec(label="wins", measure="won", team="record"),
+    "wins": MeasureSpec(label="wins", measure="won", team="record", yes_no=True),
     "losses": MeasureSpec(label="losses", team="losses"),
     "record": MeasureSpec(label="record", team="record"),
-    "games_played": MeasureSpec(label="games played"),
+    "games_played": MeasureSpec(label="games played", yes_no=True),
     # A sentinel no relation reads: the ranking refuses it by name (shot_distance_ranking).
     "shot_distance": MeasureSpec(label="shot distance"),
     "point_differential": MeasureSpec(label="point differential", team="point_differential"),
@@ -387,6 +395,28 @@ def measure_name(measure: Measure | None) -> str | None:
     """
     spec = spec_of(measure)
     return spec.measure if spec is not None and measure is not None and measure.whose == "own" else None
+
+
+YES_NO_MEASURES: frozenset[str] = frozenset(spec.measure for spec in CATALOG.values() if spec.yes_no and spec.measure is not None)
+"""The compiler's names of the catalog's yes-or-no measures over the games
+relation (``double_double``, ``triple_double``, ``fouled_out``, ``won``):
+each a condition a game holds or not, never a quantity summed.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def yes_no(measure: Measure | str | None) -> bool:
+    """Whether ``measure`` - a :class:`~association.query.reading.Measure`,
+    or a measure by its compiler name over the games relation - is a yes or
+    a no of each game (:attr:`MeasureSpec.yes_no`).
+
+    .. versionadded:: 6.0.0
+    """
+    if isinstance(measure, str):
+        return measure in YES_NO_MEASURES
+    spec = spec_of(measure)
+    return spec is not None and spec.yes_no
 
 
 _BY_MEASURE_NAME: dict[str, str] = {spec.measure: key for key, spec in CATALOG.items() if spec.measure is not None}

@@ -1,8 +1,9 @@
 """The point reader: the question's own words, read in code - the way the
 grammar's rules (:mod:`association.query.grammar`; the router's ``route()``,
 its ``CODE_ASSIGNED_INTENTS`` and ``_validate_*`` helpers, before them) read
-them, never through a prompt - move the measure, the skeleton or the
-aggregate off the default point of what the words ask
+them, never through a prompt - move the measure or the shape off the
+default point of what the words ask (the aggregate is the planner's,
+derived from them since Phase 5, step 4: ``compose.plan.aggregate_of``)
 (:func:`default_point`; until Phase 2 deleted the adapters it was read on
 the answer side, ``compose.adapt``, this module's one reach there).
 :func:`read_point` is the parser's last step
@@ -87,7 +88,6 @@ from association.query.reading import (
     TEAM_RANKING,
     TEAM_RECORD,
     TEAM_SEASON_HISTORY,
-    Aggregate,
     Cause,
     Claim,
     Filtered,
@@ -265,7 +265,6 @@ def _everyone_single_game(asked: PointShape | None, scope: Filtered, question: s
         **scope.filters(),
         read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
         measures=_led_by(measure),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=predicates,
         order="measure",
@@ -316,7 +315,6 @@ def _everyone_boolean_game_ranking(asked: PointShape | None, question: str, scop
         **scope.filters(),
         read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
         measures=_led_by(measure),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=predicates,
         order="measure",
@@ -376,7 +374,6 @@ def _everyone_multi_line_games(asked: PointShape | None, scope: Filtered, questi
         **scope.filters(),
         read_as=PointShape("player_games", "rows", "count"),
         measures=_measured(*(name for name, _, _ in lines)),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=lines,
         order="date",
@@ -459,7 +456,6 @@ def _everyone_threshold_count(asked: PointShape | None, scope: Filtered, predica
         **scope.filters(),
         read_as=PointShape("player_games", "ranking", "count" if asked == GAMES_COUNTED else "player"),
         measures=(),
-        aggregate=Aggregate.COUNT,
         group="player",
         predicates=predicates,
         order="measure",
@@ -514,7 +510,6 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
             **scope.filters(),
             read_as=PointShape("player_games", "ranking", "player"),
             measures=(),
-            aggregate=Aggregate.COUNT,
             group="player",
             predicates=predicates,
             order="measure",
@@ -531,11 +526,14 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
             raise PointRefused(Cause(kind="shot_distance_ranking"))
         if stat is not None and stat.strip():
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
-    aggregate = Aggregate.TOTAL if lexicon.TOTAL_WORD.search(question) else Aggregate.PER_GAME
-    if aggregate == Aggregate.TOTAL and scope.measure is not None:
+    if lexicon.TOTAL_WORD.search(question):
         # "most total points by a center": the measure is asked as a total
-        # (``Measure.how``), what the planner derives the ranking's sum from.
-        scope = replace(scope, measure=replace(scope.measure, how="total"))
+        # (``Measure.how``), what the planner derives the ranking's sum from
+        # (``compose.plan.aggregate_of``; the point stamped the aggregate
+        # until Phase 5, step 4) - a measure of no key where the words name
+        # none the catalog holds ("total corners"), the ranking's points the
+        # total taken.
+        scope = replace(scope, measure=Measure(how="total") if scope.measure is None else replace(scope.measure, how="total"))
     minimum_games = PER_GAME_MIN_GAMES
     if scope.minimum is not None:
         if scope.minimum.unit != "games":
@@ -551,7 +549,6 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
         **scope.filters(),
         read_as=PointShape("player_games", "ranking", "player"),
         measures=_measured(measure or "points"),
-        aggregate=aggregate,
         group="player",
         predicates=predicates,
         order="measure",
@@ -619,7 +616,6 @@ def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question
         **scope.filters(),
         read_as=PLAYER_RANKING,
         measures=_measured(measure or "points"),
-        aggregate=Aggregate.PER_GAME,
         group="player",
         predicates=[],
         order="measure",
@@ -638,7 +634,6 @@ def _everyone_position_log(asked: PointShape | None, scope: Filtered, question: 
         **scope.filters(),
         read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
         measures=_measured(*LINE),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=[],
         order="date",
@@ -709,7 +704,6 @@ def _move_single_game(asked: PointShape | None, scope: Filtered, question: str, 
         **scope.filters(),
         read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
         measures=_led_by(measure),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=[],
         order="measure",
@@ -722,7 +716,7 @@ def _move_how_many_won(scope: Filtered, question: str, measure: str | None, aske
     """ "How many ... has he won" - a count with the ``won`` predicate."""
     if not (lexicon.HOW_MANY_OR_OFTEN.search(question) and lexicon.WON_WORDS.search(question) and (measure in (None, "won", "points") or asked in (LINE_RECORD, GAMES_COUNTED))):
         return None
-    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), aggregate=Aggregate.COUNT, group="none", predicates=[("won", "=", True)])
+    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), group="none", predicates=[("won", "=", True)])
 
 
 def _move_boolean_count(question: str, measure: str | None, asked: PointShape | None, career: Filtered) -> Reading | None:
@@ -741,7 +735,7 @@ def _move_boolean_count(question: str, measure: str | None, asked: PointShape | 
         # very line ``fouled_out`` is defined as (DERIVED) - so the keyed
         # line's own count is this one, and threshold_count's default point says it.
         return None
-    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), aggregate=Aggregate.COUNT, group="none", predicates=[(measure, "=", True)])
+    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), group="none", predicates=[(measure, "=", True)])
 
 
 def _move_boolean_count_is_line(measure: str, scope: Filtered) -> bool:
@@ -775,7 +769,6 @@ def _move_player_history(asked: PointShape | None, scope: Filtered, career: Filt
         **scope.filters(),
         read_as=SEASON_HISTORY,
         measures=_measured(measure or "points"),
-        aggregate=Aggregate.PER_GAME,
         group="season",
         predicates=[],
         order="date",
@@ -797,7 +790,7 @@ def _compare_point(scope: Filtered) -> Reading:
     """
     if len(set(scope.who.players)) < 2:
         raise Unsupported("player_compare needs at least two distinct player names")
-    return Reading(**scope.filters(), read_as=PLAYER_COMPARISON, measures=(), aggregate=Aggregate.PER_GAME, group="player", predicates=[])
+    return Reading(**scope.filters(), read_as=PLAYER_COMPARISON, measures=(), group="player", predicates=[])
 
 
 # --- the default points -----------------------------------------------------------
@@ -828,7 +821,6 @@ def _default_game_log(scope: Filtered) -> Reading:
         **scope.filters(),
         read_as=PLAYER_LOG,
         measures=_measured(*LINE),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=_threshold_line(scope),
         order="date",
@@ -866,13 +858,12 @@ def _default_player_stat(scope: Filtered) -> Reading:
     if scope.window.count or scope.window.order:
         return _default_game_log(scope)
     if not (scope_reads_box_scores(scope, measure_filters(scope)) or scope.cuts.date):
-        return Reading(**scope.filters(), read_as=PLAYER_LINE, measures=_measured(*measures), aggregate=Aggregate.PER_GAME, group="none", predicates=[])
+        return Reading(**scope.filters(), read_as=PLAYER_LINE, measures=_measured(*measures), group="none", predicates=[])
     date = scope.cuts.date
     return Reading(
         **scope.filters(),
         read_as=PointShape("player_games", "scalar", "line"),
         measures=_measured(*measures),
-        aggregate=Aggregate.PER_GAME,
         group="none",
         predicates=[],
         subject_span=scope.span.over_career() if date else scope.span,
@@ -887,7 +878,7 @@ def _default_player_splits(scope: Filtered) -> Reading:
     if not _named_player_in(scope):
         raise Unsupported("a team's splits are the team relation's")
     group: Group = "starter" if scope.split in ("starter_bench", "starter", "bench") else "venue"
-    return Reading(**scope.filters(), read_as=PLAYER_SPLITS, measures=_measured(*SPLIT_LINE), aggregate=Aggregate.RECORD, group=group, predicates=[], available=BOX_SCORES)
+    return Reading(**scope.filters(), read_as=PLAYER_SPLITS, measures=_measured(*SPLIT_LINE), group=group, predicates=[], available=BOX_SCORES)
 
 
 def _default_record_when(scope: Filtered) -> Reading:
@@ -919,7 +910,7 @@ def _default_record_when(scope: Filtered) -> Reading:
         raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"shape": LINE_RECORD, "threshold": threshold}))
     # A record over a line: said as a split by the line (compose.records),
     # compiled as the scalar record above and below it.
-    return Reading(**scope.filters(), read_as=LINE_RECORD, measures=(), aggregate=Aggregate.RECORD, group="none", predicates=[(col, ">=", threshold)], available=BOX_SCORES)
+    return Reading(**scope.filters(), read_as=LINE_RECORD, measures=(), group="none", predicates=[(col, ">=", threshold)], available=BOX_SCORES)
 
 
 def _default_period_split(scope: Filtered) -> Reading:
@@ -940,7 +931,6 @@ def _default_period_split(scope: Filtered) -> Reading:
             **scope.filters(),
             read_as=PointShape("player_periods", "split", "period"),
             measures=_measured(measure),
-            aggregate=Aggregate.PER_GAME,
             group="period",
             predicates=[],
             order="date",
@@ -953,7 +943,6 @@ def _default_period_split(scope: Filtered) -> Reading:
         **scope.filters(),
         read_as=PERIOD_LOG,
         measures=_measured(measure),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=[],
         order="date",
@@ -980,7 +969,7 @@ def _default_threshold_count(scope: Filtered) -> Reading:
         # Refuses (PointRefused) by the fact missing: a phrase naming no
         # stat, a stat with no per-game column.
         threshold_count_line(scope)
-        return Reading(**scope.filters(), read_as=GAMES_COUNTED, measures=(), aggregate=Aggregate.COUNT, group="none", predicates=[], available=BOX_SCORES)
+        return Reading(**scope.filters(), read_as=GAMES_COUNTED, measures=(), group="none", predicates=[], available=BOX_SCORES)
     if col is None or threshold is None or threshold < 1:
         # The reason the count gives, where it has one (a threshold of 0
         # counts every game; no stat it keeps a line on), by its cause.
@@ -995,7 +984,7 @@ def _default_threshold_count(scope: Filtered) -> Reading:
     keyed = threshold_line(scope)
     the_count = any(line.value == threshold and (line.measure == col or (keyed is not None and keyed.as_typed in line.as_typed)) for line in relation_lines(scope))
     predicates = [] if the_count else [(col, ">=", threshold)]
-    return Reading(**scope.filters(), read_as=GAMES_COUNTED, measures=(), aggregate=Aggregate.COUNT, group="none", predicates=predicates, available=BOX_SCORES)
+    return Reading(**scope.filters(), read_as=GAMES_COUNTED, measures=(), group="none", predicates=predicates, available=BOX_SCORES)
 
 
 def _default_single_game_high(scope: Filtered) -> Reading:
@@ -1014,7 +1003,6 @@ def _default_single_game_high(scope: Filtered) -> Reading:
         **scope.filters(),
         read_as=GAME_HIGHS,
         measures=_measured(col),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=[],
         order="measure",
@@ -1066,7 +1054,6 @@ def _default_streak(scope: Filtered) -> Reading:
             **scope.filters(),
             read_as=LINE_RUNS,
             measures=(),
-            aggregate=Aggregate.NONE,
             group="none",
             predicates=predicates,
             limit=DEFAULT_NAMED_RUNS,
@@ -1079,11 +1066,11 @@ def _default_streak(scope: Filtered) -> Reading:
     if scope.who.team is not None:
         if column is not None:
             raise PointRefused(Cause(kind="team_streak_of_stat", facts={"stat": column}))
-        return Reading(**scope.filters(), read_as=_TEAM_RUN, measures=_measured("won"), aggregate=Aggregate.COUNT, group="none", predicates=predicates, relation="team")
+        return Reading(**scope.filters(), read_as=_TEAM_RUN, measures=_measured("won"), group="none", predicates=predicates, relation="team")
     limit = _clamp_limit(scope.window.count, DEFAULT_STREAK_LIMIT)
     if column is not None:
-        return Reading(**scope.filters(), read_as=LINE_RUNS, measures=(), aggregate=Aggregate.NONE, group="none", predicates=predicates, limit=limit, relation="everyone")
-    return Reading(**scope.filters(), read_as=_TEAM_RUN, measures=_measured("won"), aggregate=Aggregate.COUNT, group="none", predicates=predicates, limit=limit, relation="team")
+        return Reading(**scope.filters(), read_as=LINE_RUNS, measures=(), group="none", predicates=predicates, limit=limit, relation="everyone")
+    return Reading(**scope.filters(), read_as=_TEAM_RUN, measures=_measured("won"), group="none", predicates=predicates, limit=limit, relation="team")
 
 
 def _default_player_matchup(scope: Filtered) -> Reading:
@@ -1106,7 +1093,6 @@ def _default_player_matchup(scope: Filtered) -> Reading:
         **scope.filters(),
         read_as=PLAYER_MEETINGS,
         measures=(),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=[],
         available=BOX_SCORES,
@@ -1137,7 +1123,7 @@ def _default_with_without(scope: Filtered) -> Reading:
         team_named = scope.who.team is not None
         if not ((team_named and len(texts) == 1) or (not team_named and len(texts) == 2)):
             raise Unsupported(f"with_without needs exactly one teammate, got {texts!r}")
-    return Reading(**scope.filters(), read_as=PRESENCE_SPLIT, measures=_RECORD, aggregate=Aggregate.RECORD, group="presence", predicates=[], relation="team")
+    return Reading(**scope.filters(), read_as=PRESENCE_SPLIT, measures=_RECORD, group="presence", predicates=[], relation="team")
 
 
 def _default_head_to_head(scope: Filtered) -> Reading:
@@ -1149,7 +1135,7 @@ def _default_head_to_head(scope: Filtered) -> Reading:
 
     .. versionadded:: 5.0.0
     """
-    return Reading(**scope.filters(), read_as=TEAM_MEETINGS, measures=_RECORD, aggregate=Aggregate.RECORD, group="opponent", predicates=[], relation="team")
+    return Reading(**scope.filters(), read_as=TEAM_MEETINGS, measures=_RECORD, group="opponent", predicates=[], relation="team")
 
 
 def _default_team_quarter_points(scope: Filtered) -> Reading:
@@ -1161,7 +1147,7 @@ def _default_team_quarter_points(scope: Filtered) -> Reading:
 
     .. versionadded:: 5.0.0
     """
-    return Reading(**scope.filters(), read_as=TEAM_PERIOD_TOTAL, measures=_measured("points"), aggregate=Aggregate.TOTAL, group="period", predicates=[], relation="team")
+    return Reading(**scope.filters(), read_as=TEAM_PERIOD_TOTAL, measures=_measured("points"), group="period", predicates=[], relation="team")
 
 
 def _default_period_leaderboard(scope: Filtered) -> Reading:
@@ -1177,7 +1163,6 @@ def _default_period_leaderboard(scope: Filtered) -> Reading:
         **scope.filters(),
         read_as=PERIOD_RANKING,
         measures=_measured("points"),
-        aggregate=Aggregate.PER_GAME,
         group="player",
         predicates=[],
         order="measure",
@@ -1199,7 +1184,6 @@ def _default_team_game_high(scope: Filtered) -> Reading:
         **scope.filters(),
         read_as=TEAM_GAME_HIGHS,
         measures=(measure,),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=[],
         order="measure",
@@ -1216,7 +1200,7 @@ def _default_team_record(scope: Filtered) -> Reading:
 
     .. versionadded:: 5.0.0
     """
-    return Reading(**scope.filters(), read_as=TEAM_RECORD, measures=_RECORD, aggregate=Aggregate.RECORD, group="none", predicates=[], relation="team")
+    return Reading(**scope.filters(), read_as=TEAM_RECORD, measures=_RECORD, group="none", predicates=[], relation="team")
 
 
 def _default_player_netpoints(scope: Filtered) -> Reading:
@@ -1416,7 +1400,6 @@ def team_log_point(scope: Filtered, subject: Subject) -> Reading | None:
         **(replace(scope, who=replace(scope.who, teams=(team_text,)))).filters(),
         read_as=PointShape("team_games", "rows", "date"),
         measures=_measured("points"),
-        aggregate=Aggregate.NONE,
         group="none",
         predicates=[],
         order="date",
@@ -1438,7 +1421,7 @@ def team_splits_point(scope: Filtered, subject: Subject) -> Reading | None:
     log = team_log_point(scope, subject)
     if log is None:
         return None
-    return Reading(**log.filters(), read_as=PointShape("team_games", "split", "splits"), measures=_measured("points"), aggregate=Aggregate.RECORD, group="venue", predicates=[], relation="team")
+    return Reading(**log.filters(), read_as=PointShape("team_games", "split", "splits"), measures=_measured("points"), group="venue", predicates=[], relation="team")
 
 
 def team_read_point(scope: Filtered, question: str, subject: Subject) -> Reading | None:
@@ -1500,7 +1483,7 @@ def team_read_point(scope: Filtered, question: str, subject: Subject) -> Reading
         return None
     # A sum no reader takes (the team compiler's own sentence), unless the
     # words ask a team's own season, which read_point names.
-    return Reading(**scope.filters(), read_as=PointShape("team_games", "scalar", ""), measures=(measure,), aggregate=Aggregate.TOTAL, relation="team")
+    return Reading(**scope.filters(), read_as=PointShape("team_games", "scalar", ""), measures=(measure,), relation="team")
 
 
 TEAM_SEASON_POINTS: frozenset[PointShape] = frozenset({TEAM_LINE, TEAM_SEASON_HISTORY, TEAM_RANKING, TEAM_OUTLOOK})
@@ -1769,7 +1752,7 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
         # season sum nor the window sum the team subject otherwise reads: it is
         # record_when's team reader's (compose.records.read_team_record_when).
         scope = _team_record_own_line(scope)
-        return Reading(**scope.filters(), read_as=PointShape("team_games", "split", "line"), measures=(_team_line_measure(scope),), aggregate=Aggregate.RECORD, relation="team")
+        return Reading(**scope.filters(), read_as=PointShape("team_games", "split", "line"), measures=(_team_line_measure(scope),), relation="team")
     if asked == PLAYER_LOG:
         # A team's log, before the team's sums: "knicks last 5 games" lists
         # them (the retired template's team half, ROADMAP plan item 6, step

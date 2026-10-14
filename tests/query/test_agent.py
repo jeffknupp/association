@@ -24,7 +24,6 @@ from association.query.reading import (
     TEAM_MEETINGS,
     TEAM_RANKING,
     TEAM_RECORD,
-    Aggregate,
     Cuts,
     Line,
     Measure,
@@ -668,7 +667,6 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
                     ).filters(),
                     read_as=PointShape("player_games", "scalar"),
                     measures=(),
-                    aggregate=Aggregate.COUNT,
                     group="none",
                     predicates=[("points", ">=", 30)],
                     asked=reading.asked,
@@ -691,7 +689,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     assert answer.text == "Joel Embiid had 9 games with 30+ points." and answer.answered_by == "fast" and agent.reading is not None and agent.reading.asked == GAMES_COUNTED
     assert calls == ["compose"]
     reading_lines = [line for line in seen if "(reading)" in line]
-    expected = "  -> (reading) relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc"
+    expected = "  -> (reading) relation=player subject=? shape=scalar by= on=player_games measures=[] group=none predicates=[('points', '>=', 30)] window=date/desc"
     # The filters print in the Reading's field order, each typed value as the fields it sets, whatever order the slots came in.
     who, lines = "'who': {'kind': 'player', 'players': ['Joel Embiid']}", "'lines': [{'measure': 'points', 'value': 30, 'as_typed': '30 points', 'keyed': True}]"
     filters = f"{{{who}, {lines}, 'measure': {{'key': 'points', 'as_typed': 'points'}}}}"
