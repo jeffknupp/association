@@ -666,7 +666,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
                             measure=Measure(key="points", as_typed="points"),
                         )
                     ).filters(),
-                    shape="scalar",
+                    read_as=PointShape("player_games", "scalar"),
                     measures=(),
                     aggregate=Aggregate.COUNT,
                     group="none",

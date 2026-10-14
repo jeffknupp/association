@@ -47,8 +47,8 @@ Shape = Literal["scalar", "rows", "ranking", "comparison", "split", "runs", "cha
 ``by`` - an entity over the league (``ranking``), the named subjects
 (``comparison``), a dimension of the games (``split``) - the longest runs
 of consecutive games one predicate holds along (``runs``), or a drawing
-(``chart``). Named by the point reader, with :attr:`Reading.by` and
-:attr:`Reading.on`; the compiler's skeleton (``rows``, ``scalar``,
+(``chart``). Named by the point reader, with ``by`` and the relation, in
+:attr:`Reading.read_as`; the compiler's skeleton (``rows``, ``scalar``,
 ``grouped``, ``run``, ``pair``, ``chart`` - :class:`~association.query.compose.core.Query`'s)
 is derived from the three by the planner
 (:func:`~association.query.compose.plan.skeleton_of`).
@@ -72,7 +72,7 @@ league's games, a quarter or half of them (``player_periods``), the season
 line (``player_seasons``), a team's games or a quarter of them, a team's own
 season (``team_seasons``: its line and its place in the standings), ESPN's
 power index for it (``team_snapshots``), NetPoints and the located shots.
-Named by the point reader (:attr:`Reading.on`). Beside it :data:`Relation`
+Named by the point reader (:attr:`Reading.read_as`). Beside it :data:`Relation`
 still says which compiler plans the point and whether its subject is
 everyone - the second said again by the typed subject's kind
 (:class:`Subject`, since Phase 3, step 2), which did not retire it.
@@ -1592,16 +1592,20 @@ class PointShape:
     scalar, how it is reduced; ``""`` for a point no reader takes). The
     answer side chooses a reader, its stated scoping and the coverage
     floor by this and by nothing else (``compose.answer``, ``coverage``).
-    Built by the planner from the point's own :attr:`Reading.on`,
-    :attr:`Reading.shape` and :attr:`Reading.by`, the one place it differs
-    being a season-line point re-planned at the game level
-    (:func:`~association.query.compose.plan.point_shape`).
+    Declared by the point reader as the point's one field
+    (:attr:`Reading.read_as`) and planned by the planner as it stands, the
+    one place the planned key differs being a season-line point re-planned
+    at the game level (:func:`~association.query.compose.plan.point_shape`).
 
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 6.0.0
        In ``reading``, built from the point's own fields; ``compose.plan``'s,
        translated from the intent by ``shape_of``, until Phase 3, step 1.
+
+    .. versionchanged:: 6.0.0
+       The point's own field, :attr:`Reading.read_as`, where the planner
+       built it from three (Phase 5, step 4, D9).
     """
 
     relation: PointRelation
@@ -1862,8 +1866,8 @@ class Reading(Filtered):
     """One question, read. The point fields (measures, aggregate, group,
     predicates, order, direction, limit) mirror
     :class:`~association.query.compose.core.Query` on purpose: the planner
-    is a copy, not a second decision; its shape, ``by`` and ``on`` are the
-    target's own vocabulary, from which the planner derives the compiler's
+    is a copy, not a second decision; what it is read as (:attr:`read_as`:
+    its relation, shape and ``by``) is the target's own vocabulary, from which the planner derives the compiler's
     skeleton and source. Every construction names its fields.
 
     .. versionadded:: 5.0.0
@@ -1872,6 +1876,10 @@ class Reading(Filtered):
        ``shape`` takes the target's vocabulary, and ``by`` and ``on`` are
        named beside it (Phase 3, step 1); ``source`` is gone - the season
        line is ``on="player_seasons"``.
+
+    .. versionchanged:: 6.0.0
+       ``shape``, ``by`` and ``on`` are one field, :attr:`read_as`, a
+       :class:`PointShape` (Phase 5, step 4, D9).
 
     .. versionchanged:: 6.0.0
        The filters are the Reading's own fields (:class:`Filtered`: ``who``,
@@ -1888,18 +1896,25 @@ class Reading(Filtered):
        trace and the records.
     """
 
-    #: The point's shape, what one row is ``by`` and the relation it is read
-    #: ``on`` - the three the answer side keys a reader and its stated
-    #: scoping by (:class:`PointShape`), named by the point reader and
-    #: never derived from the intent after it (Phase 3, step 1). ``by`` is
-    #: what one row is for a grouped shape (``player``, ``season``,
-    #: ``subject``, ``presence``, ...), how a scalar is reduced or what rows
-    #: are ordered by for a reader's shape (``line``, ``count``, ``date``,
-    #: ``measure``), and ``""`` where no reader takes the point and the
-    #: compiler's own sentence states what the query reads.
-    shape: Shape = "rows"
-    by: str = ""
-    on: PointRelation = "player_games"
+    #: What the point IS read as (:class:`PointShape`): the relation it is
+    #: read on, its shape and what one row is ``by`` - the key the answer
+    #: side chooses a reader, its stated scoping and its floor by, declared
+    #: by the point reader alone, beside :attr:`asked`, what the words ask
+    #: (one of the grammar's keys, which the point reader may move: a team's
+    #: log to the team games, a narrowed line to the player's games). The
+    #: planner plans it as it stands but in one place
+    #: (:func:`~association.query.compose.plan.point_shape`: a season-line
+    #: point re-planned at the game level). ``by`` is what one row is for a
+    #: grouped shape (``player``, ``season``, ``subject``, ``presence``,
+    #: ...), how a scalar is reduced or what rows are ordered by for a
+    #: reader's shape (``line``, ``count``, ``date``, ``measure``), and
+    #: ``""`` where no reader takes the point and the compiler's own
+    #: sentence states what the query reads.
+    #:
+    #: .. versionadded:: 6.0.0
+    #:    One field where the point declared three, ``shape``, ``by`` and
+    #:    ``on`` (Phase 5, step 4, D9; Phase 3, step 1 named them).
+    read_as: PointShape = PointShape("player_games", "rows")
     #: What the point measures, typed (:class:`Measure`, by the catalog's
     #: key): the box-score columns or derived measures a read reports,
     #: which the compiler names once, as the planner hands it the point
@@ -2030,7 +2045,7 @@ class Reading(Filtered):
         window = f"{self.order}/{self.direction}" + (f"/{self.limit}" if self.limit is not None else "")
         who = self.subject.kind if self.subject is not None else "?"
         return (
-            f"relation={self.relation} subject={who} shape={self.shape} by={self.by} on={self.on} measures={[m.key for m in self.measures]} aggregate={self.aggregate} "
+            f"relation={self.relation} subject={who} shape={self.read_as.shape} by={self.read_as.by} on={self.read_as.relation} measures={[m.key for m in self.measures]} aggregate={self.aggregate} "
             f"group={self.group} predicates={self.predicates} window={window} filters={self.stated()}"
         )
 

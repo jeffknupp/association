@@ -152,6 +152,10 @@ otherwise.
     `PointShape` lives in `reading` and is built by the planner on every
     verdict (`plan.point_shape`), the one move the planner makes being a
     season-line point re-planned at the game level (`player_games`).
+  - Since Phase 5, step 4 (D9, Jeff, 2026-10-14) the three are ONE field,
+    `Reading.read_as`, a `PointShape`, which the point reader declares
+    and the planner plans as it stands but in that one move; the stages'
+    records keep the three names, read off the field.
   - `coverage.SOURCES` is keyed by the `PointShape` (one entry per route,
     resolved per question where the table depends on the measure; the
     relation's own tables for a point no reader takes), the ranking floor

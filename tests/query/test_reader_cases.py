@@ -36,3 +36,34 @@ def test_every_case_names_its_reason_and_a_question() -> None:
     """A case is a retired test's wording and reason, kept; nothing here is a bare record."""
     assert len(CASES) == len({case["name"] for case in CASES})
     assert all(case["question"].strip() and case["why"].strip() for case in CASES)
+
+
+def test_the_planned_shape_is_what_the_point_is_read_as_but_the_game_level_move(con: duckdb.DuckDBPyConnection) -> None:
+    """The point declares what it is read as, one :class:`PointShape`
+    (``Reading.read_as``, Phase 5, step 4, D9), and the planner plans that
+    key as it stands - but in its one move: a season-line point its reader
+    does not read, planned at the game level (a ``Query`` whose source is
+    the games), is on the player-games relation, its shape and ``by`` kept
+    (``compose.plan.point_shape``). Held over every case the reader reads."""
+    from dataclasses import replace
+
+    from association.query.compose.core import Query
+    from association.query.compose.plan import plan_point, planned_shape
+
+    planned = moved = 0
+    for case in CASES:
+        reading = read(con, case["question"], case["names"] or None, case["stat"])
+        verdict = plan_point(reading)
+        key = planned_shape(reading, verdict)
+        if key is None:
+            assert reading.point is None or reading.refused is not None or reading.point_refusal is not None, case["question"]
+            continue
+        assert reading.point is not None
+        declared = reading.point.read_as
+        planned += 1
+        if isinstance(verdict, Query) and verdict.source == "games" and declared.relation == "player_seasons":
+            moved += 1
+            assert key == replace(declared, relation="player_games"), case["question"]
+        else:
+            assert key == declared, case["question"]
+    assert planned > 400 and moved > 0, (planned, moved)
