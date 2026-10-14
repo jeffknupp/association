@@ -515,13 +515,13 @@ def _game_level(key: PointShape, q: Query) -> Query:
         # How many players a season line holds, or how many of a player's
         # seasons it holds, has no game-level reading: the line is a
         # season's, declined by name (ISSUES.md #390, #391).
-        raise Unsupported(decline_body({"cells": [cell_facts(q, "season_line")], "reason": DeclineReason.BEYOND_WORDS}))
+        raise cannot_honor(q, ["season_line"], DeclineReason.BEYOND_WORDS)
     if q.group == "player" and q.subject == "everyone":
         stat = spelled(q.measure)
         if stat is not None and stat.strip() and stat_measure(q.measure) is None:
             raise Refused(Refusal(kind="no_ranking_measure", facts={"stat": stat}, shown={"stat": stat}))
         if cell_set(q, "rate"):
-            raise Unsupported(decline_body({"cells": [cell_facts(q, "rate")], "reason": DeclineReason.BEYOND_WORDS}))
+            raise cannot_honor(q, ["rate"], DeclineReason.BEYOND_WORDS)
         if q.measure is not None and q.measure.beside:
             raise Unsupported("the game-level ranking shows no columns beside its measure")
         return _game_level_minimum(replace(q, source="games"))

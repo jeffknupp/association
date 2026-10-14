@@ -75,6 +75,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Measure,
     Minimum,
     Period,
+    ShapeDeclined,
     Span,
     Split,
     Subject,
@@ -529,7 +530,10 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
         from association.query.compose.say import decline_body
 
         facts = {"cells": [cell_facts(scope, cell) for cell in unhonored], "over": "a team's games" if subject == "team" else None, "reason": DeclineReason.BEYOND_WORDS}
-        raise Unsupported(decline_body(facts))
+        # A cause the planner says (Phase 5, step 5): the user read this
+        # decline as a sentence the answering loop gave the question up
+        # with until then, the same words.
+        raise ShapeDeclined("cannot_honor", facts, decline_body(facts))
 
 
 #: What a period-narrowed read may measure: the columns the period's line
