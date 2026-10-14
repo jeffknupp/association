@@ -4847,6 +4847,28 @@ def _say_team_boolean_count(facts: Mapping[str, Any]) -> str:
     return f"A team's total of its players' {label} is not read yet - one player's {label} are (ask '<player> triple doubles this season'), and so is the team's own record. Ask one of those."
 
 
+#: The point reader's declines by a cause (Phase 5, step 5), each said as
+#: the decline it was: the reason after the frame (:func:`nothing_answers`).
+#: The planner says each at a decline's place (``compose.plan.plan_point``).
+POINT_DECLINES: dict[str, str] = {
+    "period_relations_question": "a quarter or half is the period relation's question",
+    "team_relations_question": "a team, an opponent's figure or a franchise is the team relation's question",
+    "team_only_question": "a team's own question is not the player relation's",
+    "no_subject_reading": "no player subject and no ranking or position-group reading of the question",
+}
+"""The point reader's causes that are declines: a reason the planner says
+in the decline frame, after the coverage floor and what the words name that
+nothing reads have had their look, as the sentence each was.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def _said_as_declined(body: str) -> Callable[[Mapping[str, Any]], str]:
+    """A cause said as the decline it was: ``body`` after the frame."""
+    return lambda facts: _shape_declined(facts, body)
+
+
 #: What the question's words name that nothing reads, and the refusals the
 #: words come to before any reader runs - the reading's causes Phase 3's
 #: first step moved off the answering loop (``refusals.by_question``,
@@ -4898,6 +4920,7 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "span_and_season": lambda facts: _shape_declined(facts, _span_and_season(facts.get("season"), facts.get("since"))),
     "no_season_column": lambda facts: _shape_declined(facts, f"no per-game column for stat {facts['stat']!r}"),
     "franchise_career_ranking": lambda facts: _shape_declined(facts, "franchise career leaderboards are not supported"),
+    **{kind: _said_as_declined(body) for kind, body in POINT_DECLINES.items()},
     "no_shape": lambda facts: _shape_declined(facts, "what its words ask has no reader"),
     "name_missing": lambda facts: _shape_declined(facts, f"it needs a {facts['needs']}'s name, and none was read"),
     "own_opponent": lambda facts: _shape_declined(facts, f"the {facts['team']} are named as both the team and its opponent - name the team they played"),

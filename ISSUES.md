@@ -2768,6 +2768,14 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### 116 plain declines no recorded question reaches are still sentences, not causes
+- **Found:** 2026-10-14, Phase 5, step 5, after its last class: the worded-declines harness reads 0 on both populations, and the source still holds `raise Unsupported("<sentence>")` at 116 sites outside `reading.py` (`compose/core.py` 21, `point.py` 15, `compose/team.py` 15, `compose/team_records.py` 12, `player_relation.py` 10, `compose/rankings.py` 7, `compose/splits.py` 6, `compose/logs.py` 6, and 13 more modules).
+- **Evidence:** `grep -rn 'raise Unsupported(' src/association/query --include='*.py'`. Some are a reader stepping aside for the compiler's own sentence (no user sees them), some guard states the planner already refuses, and some would reach a user as "Nothing here answers this question as ...: <sentence>", answered `refused` - the shape step 5 removed from every recorded question (12 of the 628 and 176 of the 2,082 on `da2c39c`, 0 and 0 after).
+- **User sees:** nothing on the recorded populations; on a new wording that reaches one, a decline said as a sentence (some still code-speak: "a team point names no measure", "no team compile for the 'x' shape").
+- **Next step:** read each site, delete the unreachable, and make each reachable one a cause (`ShapeDeclined` with a kind at the end of `reading.CAUSES` and its phrase in `say.refusal_phrase`), one enumerated commit per class as step 5 did; `~/association-research/stages/worded_declines.py --zero` over the populations is the check, and a new recorded wording that reaches one fails it.
+- **Source:** ours.
+- **Priority:** P4 - no recorded question reaches one.
+
 ### A line said over a since-date states the date and the span's opening season both: "... in 141 games since December 11, 2023 since 2024 (2024-2026 regular seasons)"
 - **Found:** 2026-10-13, the P1 sweep (lane S), reading #353's moved answer.
 - **Evidence:** "Nick Richards stats after Dec 11 2023" (the feed, on #353's fix) answers "Nick Richards averaged 8.5 points, 7.3 rebounds and 0.7 assists per game in 158 games since December 11, 2023 since 2024 (2024-2026 regular seasons)."; a team's record does the same on master ("celtics record since 1/26/2020": "The Boston Celtics are 343-167 (.673) since January 26, 2020 in the regular seasons since 2020."). The narrowing's phrase (the calendar cut) and the span's phrase (the season the cuts tagger opened the span at, `CutsRead.dated_since`) are each said; the log's heading says the date alone ("since December 11, 2023, last 10 of 158 games (2024-2026 regular seasons)").

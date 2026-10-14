@@ -21127,8 +21127,13 @@
     }
    ],
    "point": null,
-   "point_declined": "a quarter or half is the period relation's question",
-   "point_refusal": null
+   "point_declined": null,
+   "point_refusal": {
+    "kind": "period_relations_question",
+    "facts": {
+     "shape": null
+    }
+   }
   }
  },
  {
@@ -35256,8 +35261,17 @@
     }
    ],
    "point": null,
-   "point_declined": "a team, an opponent's figure or a franchise is the team relation's question",
-   "point_refusal": null
+   "point_declined": null,
+   "point_refusal": {
+    "kind": "team_relations_question",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -62568,8 +62582,13 @@
     }
    ],
    "point": null,
-   "point_declined": "a quarter or half is the period relation's question",
-   "point_refusal": null
+   "point_declined": null,
+   "point_refusal": {
+    "kind": "period_relations_question",
+    "facts": {
+     "shape": null
+    }
+   }
   }
  },
  {
@@ -75619,8 +75638,13 @@
     }
    ],
    "point": null,
-   "point_declined": "a quarter or half is the period relation's question",
-   "point_refusal": null
+   "point_declined": null,
+   "point_refusal": {
+    "kind": "period_relations_question",
+    "facts": {
+     "shape": null
+    }
+   }
   }
  },
  {

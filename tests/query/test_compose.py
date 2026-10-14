@@ -2330,15 +2330,21 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
 
 def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx: AnswerContext) -> None:
     """The compiler's verdict, read at parse time, is what ``compose.answer``
-    gives: a decline's reason (a league count with no line to count), and a
-    refusal as the answer - the planning's own refusal, unworded
-    (a :class:`~association.query.result.Refusal`), worded by the sayer."""
+    gives: the point reader's cause (a log with no player subject: a
+    decline's reason until Phase 5, step 5), and a refusal as the answer -
+    the planning's own refusal, unworded (a
+    :class:`~association.query.result.Refusal`), worded by the sayer."""
 
     declined = reading_of(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", Routed(PLAYER_LOG)))
-    assert declined.point is None and declined.point_declined == "no player subject and no ranking or position-group reading of the question"
+    assert declined.point is None and declined.point_declined is None
+    assert declined.point_refusal == Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG})
+    # Declined by that cause, which the answering loop says at a decline's
+    # place, after the floor and what the words name that nothing reads.
     why: list[str] = []
-    assert compose.answer(cx_ctx, declined, planned=plan_point(declined), declined=why.append) is None
-    assert why == [declined.point_declined]
+    causes: list[Cause] = []
+    assert compose.answer(cx_ctx, declined, planned=plan_point(declined), declined=why.append, declined_by=causes.append) is None
+    assert why == ["no player subject and no ranking or position-group reading of the question"]
+    assert causes == [Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG})]
 
     refused = reading_of(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", Routed(GAME_HIGHS, Reading(measure=Measure(as_typed="gizmos")))))
     assert refused.point is None and refused.point_refusal == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
@@ -2596,6 +2602,10 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "no_season_column": {"shape": PLAYER_LINE, "stat": "netpoints"},
     "franchise_career_ranking": {"shape": PLAYER_RANKING},
     "no_shape": {"shape": None},
+    "period_relations_question": {"shape": PLAYER_LOG},
+    "team_relations_question": {"shape": PLAYER_RANKING},
+    "team_only_question": {"shape": TEAM_RECORD},
+    "no_subject_reading": {"shape": PLAYER_LOG},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
 }

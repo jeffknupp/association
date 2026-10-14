@@ -323,7 +323,8 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
     (:func:`_read_only`) - in its shape's sentence where its row declines a
     cell its words do not state when it is asked (a team's own season,
     ``declined="read"``); one that steps aside has a cell it refuses said
-    with ``relation:`` before it. Until Phase 3, step 2's closing slice each
+    by its cause where it declines by one, and with ``relation:`` before it
+    where it does not (:func:`_read_log`). Until Phase 3, step 2's closing slice each
     reader made the check itself, over the ``stated=`` set it was handed."""
     route = _ROUTES.get(shape)
     if route is None:

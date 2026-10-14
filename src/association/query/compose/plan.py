@@ -42,7 +42,7 @@ from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION
 from .core import Query, Refused, Unsupported, _check_relation_scoping, measure_names
 from .netpoints import NetPointsQuery
 from .rankings import leaderboard_reads, players_counted_reads, seasons_counted_reads
-from .say import decline_body, say_refusal
+from .say import POINT_DECLINES, decline_body, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
 from .team import TeamQuery, team_metric
@@ -665,6 +665,12 @@ def plan_point(reading: Reading) -> Verdict:
         # The words' own refusal, before any point: a championship, a player
         # named on a question whose shape has no reading for one.
         return refusal_of(reading.refused)
+    if reading.point_refusal is not None and reading.point_refusal.kind in POINT_DECLINES:
+        # The point reader's decline by a cause (Phase 5, step 5): said at a
+        # decline's place - after the floor and what the words name that
+        # nothing reads - as the sentence it was until then.
+        cause = reading.point_refusal
+        return ShapeDeclined(cause.kind, cause.facts, POINT_DECLINES[cause.kind])
     if reading.point_refusal is not None:
         return refusal_of(reading.point_refusal)
     if reading.point is None:

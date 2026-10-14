@@ -213,13 +213,13 @@ def _everyone_guard(asked: PointShape | None, question: str, position: str | Non
     and a player ranking refusing it for want of a "record" measure names
     the wrong cause; it is not this relation's question."""
     if lexicon.PERIOD_GUARD.search(question) and not period_is_condition:
-        raise Unsupported("a quarter or half is the period relation's question")
+        raise PointRefused(Cause(kind="period_relations_question", facts={"shape": asked}), "a quarter or half is the period relation's question")
     # "the top 50 ... with the team they play for" (F017) names no team's
     # question: the team is a column the ranking shows.
     if lexicon.NOT_THE_PLAYERS_QUESTION.search(lexicon.TEAM_FIELD_WORDS.sub(" ", question)) and not position:
-        raise Unsupported("a team, an opponent's figure or a franchise is the team relation's question")
+        raise PointRefused(Cause(kind="team_relations_question", facts={"shape": asked}), "a team, an opponent's figure or a franchise is the team relation's question")
     if asked in TEAM_ONLY_ASKS:
-        raise Unsupported("a team's own question is not the player relation's")
+        raise PointRefused(Cause(kind="team_only_question", facts={"shape": asked}), "a team's own question is not the player relation's")
 
 
 def _everyone_opponent(scope: Filtered, question: str) -> Filtered:
@@ -680,7 +680,7 @@ def _everyone_point(asked: PointShape | None, scope: Filtered, question: str, me
     logged = _everyone_position_log(asked, scope, question)
     if logged is not None:
         return logged
-    raise Unsupported("no player subject and no ranking or position-group reading of the question")
+    raise PointRefused(Cause(kind="no_subject_reading", facts={"shape": asked}), "no player subject and no ranking or position-group reading of the question")
 
 
 def _measure_for_named(scope: Filtered, question: str) -> str | None:
@@ -1321,7 +1321,7 @@ def _move_named(asked: PointShape | None, scope: Filtered, question: str) -> Rea
     if lexicon.PERIOD_GUARD.search(question) and not any(line.period is not None for line in scope.lines):
         # The quarter words are a condition's (read into the scope), or the
         # period relation's question.
-        raise Unsupported("a quarter or half is the period relation's question")
+        raise PointRefused(Cause(kind="period_relations_question", facts={"shape": asked}), "a quarter or half is the period relation's question")
     measure = _measure_for_named(scope, question)
     single = _move_single_game(asked, scope, question, measure)
     if single is not None:

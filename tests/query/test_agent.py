@@ -379,8 +379,9 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     # refused with the compiler's reason where it has no reading: a log of
     # nobody.
     answer = ask_routed(agent, "a game log", Routed(PLAYER_LOG))
-    assert answer.answered_by == "refused" and "as a game log: no player subject" in answer.text
-    assert (agent.unanswered, agent.unanswered_as) == ("no player subject and no ranking or position-group reading of the question", PLAYER_LOG)
+    # The point reader's cause since Phase 5, step 5, in the decline's sentence.
+    assert answer.answered_by == "fast" and agent.unanswered is None
+    assert answer.text == "Nothing here answers this question as a game log: no player subject and no ranking or position-group reading of the question."
     # And says a cause where the reading came to one, as an answer: a count
     # with no line to count (Phase 2, step 3).
     answer = ask_routed(agent, "how many games", Routed(GAMES_COUNTED, Reading(measure=Measure(key="points", as_typed="points"))))
@@ -872,3 +873,22 @@ def test_a_question_is_answered_in_the_latest_season_on_record_not_the_calendars
     assert seen == [2026], "the question's default season is the latest with games, not the calendar's 2027"
     assert current_season() == 2027, "outside the question the calendar's season stands"
     assert any("default season: 2026 (the calendar's 2027 has no games on record)" in line for line in lines)
+
+
+def test_the_point_readers_decline_by_a_cause_waits_for_what_the_words_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Phase 5, step 5: the point reader's declines are causes, said at a
+    decline's place - so what the words name that nothing reads still
+    speaks first ("2013 nba finals" is refused by its playoff round, not by
+    the log's missing player), as it did when they were sentences."""
+    from association.query.normalizer import Normalized
+    from association.query.reading import Cause
+
+    reading = Reading(
+        asked=PLAYER_LOG,
+        point_refusal=Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG}),
+        unsupported=(Cause(kind="playoff_round", facts={"shape": PLAYER_LOG, "round": "finals"}),),
+    )
+    monkeypatch.setattr("association.query.parse.read_route", lambda *args, **kwargs: reading)
+    monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized([], ""))
+    answer = _agent_with_players(tmp_path).ask("2013 nba finals game log")
+    assert answer.answered_by == "fast" and answer.text.startswith("The games are not labeled by playoff round, so 'finals' cannot pick them out yet.")

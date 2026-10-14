@@ -1471,6 +1471,11 @@ CAUSES: frozenset[str] = frozenset(
         "franchise_career_ranking",
         # Phase 5, step 5: words that ask for no shape a reader reads.
         "no_shape",
+        # Phase 5, step 5: the point reader's declines, causes it refuses by.
+        "period_relations_question",
+        "team_relations_question",
+        "team_only_question",
+        "no_subject_reading",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -1579,7 +1584,14 @@ missing thing, never only the slot"):
   a team's own career ranking (``franchise_career_ranking``) -
   each said headed "relation:" until then; words that ask for no shape
   a reader reads, and name nothing that nothing reads (``no_shape``:
-  ``shape``, None), which the answering loop gave the question up with.
+  ``shape``, None), which the answering loop gave the question up with;
+  and the point reader's own (``point.py``: a quarter or half asked of a
+  read that is not the period relation's, ``period_relations_question``; a
+  team's, an opponent's or a franchise's figure asked of the league's
+  players, ``team_relations_question``; a team-only shape on the player
+  relation, ``team_only_question``; no player and no ranking or position
+  group to read, ``no_subject_reading`` - each ``shape``), declines
+  (``Reading.point_declined``) until then.
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.
