@@ -2646,3 +2646,12 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
     )
     assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
     assert refusal_result(reading.point_refusal).text == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."
+
+
+def test_an_unread_number_with_its_plus_is_said_with_examples_of_the_number() -> None:
+    """Phase 5, step 2: "20+" is an unread number since then; the examples
+    say the number, never "20++ points"."""
+    from association.query.compose.say import refusal_phrase
+
+    text = refusal_phrase("unread_number", {"shape": PLAYER_LINE, "words": ("20+",), "classes": {"number": ("20+",)}})
+    assert "'20+'" in text and '"last 20 games", "20+ points", "at least 20 games"' in text

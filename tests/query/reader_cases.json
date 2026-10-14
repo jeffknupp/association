@@ -72039,8 +72039,7 @@
    "minimum": null,
    "unread": [
     "murray",
-    "games",
-    "20+"
+    "games"
    ],
    "subject": {
     "kind": "everyone",
@@ -72153,7 +72152,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "20+"
+     ],
+     "classes": {
+      "number": [
+       "20+"
+      ]
+     }
+    }
+   }
   }
  },
  {
@@ -72218,8 +72235,7 @@
    "minimum": null,
    "unread": [
     "murray's",
-    "games",
-    "20+"
+    "games"
    ],
    "subject": {
     "kind": "everyone",
@@ -72332,7 +72348,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "20+"
+     ],
+     "classes": {
+      "number": [
+       "20+"
+      ]
+     }
+    }
+   }
   }
  },
  {

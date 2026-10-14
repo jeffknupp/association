@@ -4252,11 +4252,16 @@ MEANING_UNIT_NUMBERS: frozenset[str] = frozenset({"100", "36", "48"})
 .. versionadded:: 6.0.0
 """
 
-MEANING_NUMBER = re.compile(r"\d[\d,.]*%?|\d+(?:st|nd|rd|th)", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
-"""A number as a question writes one - "5", "1,000", "50%", "1st" - matched
-whole against one unread word.
+MEANING_NUMBER = re.compile(r"\d[\d,.]*[%+]?|\d+(?:st|nd|rd|th)", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+"""A number as a question writes one - "5", "1,000", "50%", "20+", "1st" -
+matched whole against one unread word.
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 6.0.0
+   "20+" is a number (Phase 5, step 2): "murray games of 20+ rebounds"
+   answered the league's rebounding leaders, its "20+" unread and in no
+   class.
 """
 
 MEANING_MONTH_WORDS: frozenset[str] = frozenset({"january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"}) | MONTH_ABBREVIATIONS
