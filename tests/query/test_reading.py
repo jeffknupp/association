@@ -14,7 +14,7 @@ from association.query.compose.core import Query, measure_names
 from association.query.compose.plan import aggregate_of, plan
 from association.query.compose.team import TeamQuery, team_metric
 from association.query.point import default_point
-from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, Line, Measure, Period, PointShape, Reading, Span, Unsupported, Window
+from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, DeclineReason, Line, Measure, Period, PointShape, Reading, Span, Unsupported, Window
 from association.query.reading import Subject as Who
 
 
@@ -208,10 +208,11 @@ def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_
     assert Reading().cells() == frozenset() and Reading(split="bench").cells() == {"split"}
     assert set(CELL_ORDER) >= scope.cells()
     assert unhonored_cells(scope, frozenset({"range", "companion", "split"})) == ["both", "window", "ranked_by", "tenure", "round", "period", "line", "rate"]
-    said = decline_body({"cells": [cell_facts(scope, cell) for cell in unhonored_cells(scope, frozenset())], "why": "why"})
+    said = decline_body({"cells": [cell_facts(scope, cell) for cell in unhonored_cells(scope, frozenset())], "reason": DeclineReason.BEYOND_WORDS})
     assert said == (
         "the seasons 2018-19 through 2020-21, the regular season and the playoffs together, the last 5 games, games ranked by points, games for MIA, the finals, "
-        "the 2nd half, games with under 14 fta, games z started and games without y, a starter and bench split and a rate per 100 possessions cannot be read here - why"
+        "the 2nd half, games with under 14 fta, games z started and games without y, a starter and bench split and a rate per 100 possessions cannot be read here - "
+        "it would answer for a different span than was asked"
     )
 
 

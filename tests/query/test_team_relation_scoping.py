@@ -22,6 +22,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    DeclineReason,
     PointShape,
 )
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
@@ -48,7 +49,7 @@ def test_team_templates_declare_scoping_through_the_shared_table() -> None:
         assert row.taken == extra, words
         for cell, reason in row.unstated.items():
             assert cell in TEAM_RELATION_SCOPING | row.taken, f"{words} excludes {cell!r}, which is not a team-relation cell at all"
-            assert reason.strip(), f"{words} excludes {cell!r} without a reason"
+            assert isinstance(reason, DeclineReason), f"{words} excludes {cell!r} without a reason"
         assert cells_stated(words) == (TEAM_RELATION_SCOPING | extra) - set(row.unstated), f"{words} declares scoping of its own rather than through its row"
     # What the readers' words state, as their retired declarations had it.
     assert cells_stated(TEAM_RECORD) == (TEAM_RELATION_SCOPING | {"split"}) - {"date", "window", "period"}

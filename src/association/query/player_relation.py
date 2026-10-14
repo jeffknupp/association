@@ -47,7 +47,23 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import Companion, Cuts, Filtered, Measure, Period, PointShape, ShapeCells, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import (
+    Companion,
+    Cuts,
+    DeclineReason,
+    Filtered,
+    Measure,
+    Period,
+    PointShape,
+    ShapeCells,
+    Situation,
+    Span,
+    Unsupported,
+    Window,
+    _clamp_limit,
+    ordinal_word,
+    period_narrowing,
+)
 from association.query.reading import Line as ReadLine
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -148,8 +164,10 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 # named no type on "last N games" - and by nothing else on the relation: a
 # reader whose answer is one season type's steps aside, and the compiler's
 # own sentence, which reads both and says so, answers. The reason is the
-# answer's in each case, as the rule above asks.
-_BOTH_TYPES_ASIDE = "the answer is one season type's; read over both at once its sentence would not say which games were the postseason's"
+# answer's in each case, as the rule above asks (`BOTH_TYPES_ASIDE`). Each
+# reason is a `reading.DeclineReason` member, which the sayer words
+# (`compose.say.decline_reason_phrase`): the sentences stood on these rows
+# until Phase 5, step 5.
 # The relation's cells beyond the span and the cuts - the line family, the
 # companions, a split, a window, the ranked measure, a quarter - are the
 # narrowings a shape that reads one row per player per season or per game,
@@ -159,49 +177,38 @@ _BOTH_TYPES_ASIDE = "the answer is one season type's; read over both at once its
 # cut and span cell such a shape steps aside for is.
 
 
-def _excluded_rows(cells: frozenset[str], why: str) -> dict[str, str]:
+def _excluded_rows(cells: frozenset[str], why: DeclineReason) -> dict[str, DeclineReason]:
     """``cells``, in name order, each with the one reason a shape gives for all of them."""
     return dict.fromkeys(sorted(cells), why)
 
 
-_SEASON_LINE_CUTS_ASIDE = "a season line is one row per player per season, with no game to cut; the game-level read, whose sentence says the cut it applied, answers"
-_SEASON_LINE_NARROWINGS_ASIDE = "a season line has no game a line, a teammate, a split, a window or a quarter could narrow; the game-level read, whose sentence says the narrowing, answers"
-_HIGH_CUTS_ASIDE = "a high's words state a career, and the compiler's own ranking of games, which says the cut it applied, answers one"
-_COUNT_CUTS_ASIDE = "a count's words state a career and an ordinal season, and the compiler's own count, which says the cut it applied, answers one"
-_QUARTER_RANKING_CUTS = (
-    "a ranking by a quarter pools one season's players, against an opponent or at a venue; one date ranks nothing per game, and a tenure, a series game or an ordinal season is one player's"
-)
-_NETPOINTS_NARROWINGS = "a NetPoints rating is one season's row, or one game's chosen as a first or last game; no line, teammate, split, ranked measure or quarter of the games has a rating"
-_FINGERPRINT_NARROWINGS = (
-    "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no line, teammate, split, ranked measure or quarter of the games has a fingerprint"
-)
 RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # A log's and a line's retired sentences head whole games and never name
     # a quarter or half: their readers step aside for one, and the
     # compiler's own sentence, which names the period through
     # Narrowed.filters, answers. Each honors one named half of the
     # starter/bench split, never the bare category.
-    PointShape("player_games", "rows", "date"): ShapeCells(unstated={"period": "the log's retired sentence heads whole games and never names a quarter or half"}, sides=True),
-    PointShape("player_games", "scalar", "line"): ShapeCells(unstated={"period": "the season line's retired sentence heads whole games and never names a quarter or half"}, sides=True),
-    PointShape("player_seasons", "scalar", "line"): ShapeCells(unstated={"period": "the season line's retired sentence heads whole games and never names a quarter or half"}, sides=True),
+    PointShape("player_games", "rows", "date"): ShapeCells(unstated={"period": DeclineReason.LOG_WHOLE_GAMES}, sides=True),
+    PointShape("player_games", "scalar", "line"): ShapeCells(unstated={"period": DeclineReason.LINE_WHOLE_GAMES}, sides=True),
+    PointShape("player_seasons", "scalar", "line"): ShapeCells(unstated={"period": DeclineReason.LINE_WHOLE_GAMES}, sides=True),
     # A run, a split and a record are read over every game in the span: one date
     # is no run and has nothing to split, and the last N games are game_log's
     # question. A quarter or half narrows what a read SEES of each game, which a
     # sentence headed as whole games would not say.
     PointShape("player_games", "split", "splits"): ShapeCells(
         unstated={
-            "date": "one game has nothing to split",
-            "window": "a limited number of recent games is game_log's question",
-            "period": "the splits table is headed as whole games; a quarter's or half's split would print under the same heading",
-            "both": _BOTH_TYPES_ASIDE,
+            "date": DeclineReason.SPLITS_ONE_GAME,
+            "window": DeclineReason.SPLITS_RECENT_GAMES,
+            "period": DeclineReason.SPLITS_WHOLE_GAMES,
+            "both": DeclineReason.BOTH_TYPES_ASIDE,
         }
     ),
     PointShape("player_games", "split", "line"): ShapeCells(
         unstated={
-            "date": "one game has no record",
-            "window": "a record over the last N games is game_log's question",
-            "period": "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter or half",
-            "both": _BOTH_TYPES_ASIDE,
+            "date": DeclineReason.RECORD_ONE_GAME,
+            "window": DeclineReason.RECORD_RECENT_GAMES,
+            "period": DeclineReason.RECORD_WHOLE_GAMES,
+            "both": DeclineReason.BOTH_TYPES_ASIDE,
         }
     ),
     # A run's games are ONE player's, or a team's: a teammate's role, a starter
@@ -213,10 +220,10 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # `_streak_league_cells` until the closing slice).
     PointShape("player_games", "runs", "line"): ShapeCells(
         unstated={
-            "date": "one game is not a run",
-            "window": "a run is read over every game in the span, not the last N",
-            "period": "a run is a run of whole games; a quarter or half of each is a different streak nobody has defined",
-            "both": _BOTH_TYPES_ASIDE,
+            "date": DeclineReason.RUN_ONE_GAME,
+            "window": DeclineReason.RUN_EVERY_GAME,
+            "period": DeclineReason.RUN_WHOLE_GAMES,
+            "both": DeclineReason.BOTH_TYPES_ASIDE,
         },
         refused=frozenset({"date", "window", "period"}),
         named_player=frozenset({"companion", "split", "season_n", "line", "game_n"}),
@@ -238,10 +245,10 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         (PointShape("player_periods", "rows", "date"), PointShape("player_periods", "split", "period")),
         ShapeCells(
             unstated={
-                "career": "the accuracy caveat is measured per season, not across a career",
-                "range": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
-                "both": "the accuracy caveat is measured per season and per season type; a read over both types would carry one caveat for games of two reliabilities",
-                "period_line": "a period answer says the one period it measures, never a second one conditioning which games count",
+                "career": DeclineReason.PERIOD_CAVEAT_CAREER,
+                "range": DeclineReason.PERIOD_CAVEAT_RANGE,
+                "both": DeclineReason.PERIOD_CAVEAT_BOTH,
+                "period_line": DeclineReason.PERIOD_ONE_PERIOD,
             },
             refused=frozenset({"career", "range"}),
             sides=True,
@@ -251,12 +258,12 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # the pair the matchup exists to compare.
     PointShape("player_games", "comparison", "met"): ShapeCells(
         unstated={
-            "opponent": "two players' meetings are the games they played against each other - there is no third team to narrow them to",
-            "window": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
-            "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
-            "period": "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter or half",
-            "period_line": "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only",
-            "both": _BOTH_TYPES_ASIDE,
+            "opponent": DeclineReason.MEETINGS_NO_THIRD_TEAM,
+            "window": DeclineReason.MEETINGS_AVERAGES,
+            "season_n": DeclineReason.MEETINGS_WHOSE_SEASON,
+            "period": DeclineReason.MEETINGS_PERIOD,
+            "period_line": DeclineReason.MEETINGS_PERIOD_LINE,
+            "both": DeclineReason.BOTH_TYPES_ASIDE,
         },
         refused=frozenset({"opponent", "window", "season_n", "period", "period_line"}),
     ),
@@ -264,10 +271,10 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # which says the narrowing it applied, answers the rest.
     PointShape("player_games", "rows", "measure"): ShapeCells(
         unstated={
-            "both": _BOTH_TYPES_ASIDE,
-            "range": "a high's words state a career, and the compiler's own ranking of games, which says the range it read, answers one",
-            **_excluded_rows(Cuts.CELLS - {"round"}, _HIGH_CUTS_ASIDE),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), "a high's words state a career, and the compiler's own ranking of games, which says the narrowing it applied, answers one"),
+            "both": DeclineReason.BOTH_TYPES_ASIDE,
+            "range": DeclineReason.HIGH_RANGE_ASIDE,
+            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.HIGH_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.HIGH_NARROWINGS_ASIDE),
         }
     ),
     # A count is already a line on a column: the `line` cell is the same line
@@ -280,11 +287,11 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         (PointShape("player_games", "scalar", "count"), PointShape("player_games", "ranking", "count"), PointShape("player_games", "rows", "count")),
         ShapeCells(
             unstated={
-                "range": "a count's words state a career, and the compiler's own count, which says the range it read, answers one",
-                **_excluded_rows(Cuts.CELLS - {"round", "season_n"}, _COUNT_CUTS_ASIDE),
+                "range": DeclineReason.COUNT_RANGE_ASIDE,
+                **_excluded_rows(Cuts.CELLS - {"round", "season_n"}, DeclineReason.COUNT_CUTS_ASIDE),
                 **_excluded_rows(
                     RELATION_SCOPING - Span.CELLS - Cuts.CELLS - {"line"},
-                    "a count's words state a career, an ordinal season and its own line, and the compiler's own count, which says the narrowing it applied, answers one",
+                    DeclineReason.COUNT_NARROWINGS_ASIDE,
                 ),
             }
         ),
@@ -297,10 +304,10 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # `ranking_unit` refusal); a history is every season or the last N.
     PointShape("player_seasons", "ranking", "player"): ShapeCells(
         unstated={
-            "range": "a ranking of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
-            "both": "a season line is one season type's row; a ranking over both at once would rank two rows per player",
-            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
+            "range": DeclineReason.SEASON_RANKING_RANGE,
+            "both": DeclineReason.SEASON_RANKING_BOTH,
+            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         },
         # A unit, and a line on the season's own figure ("averaged 30 ppg",
         # ISSUES.md #390), which the ranking keeps its players past.
@@ -311,10 +318,10 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # season's figure is no game to cut.
     PointShape("player_seasons", "ranking", "seasons"): ShapeCells(
         unstated={
-            "range": "a count of seasons pools every season on record; a range of them is not read yet",
-            "both": "a season line is one season type's row; a count over both at once would count two rows per player",
-            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
+            "range": DeclineReason.SEASONS_COUNTED_RANGE,
+            "both": DeclineReason.SEASON_COUNT_BOTH,
+            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         },
         taken=ReadLine.SEASON_CELLS,
         declined="plan",
@@ -323,19 +330,19 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # #390): the same cells, said the same way.
     PointShape("player_seasons", "scalar", "count"): ShapeCells(
         unstated={
-            "range": "a count of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
-            "both": "a season line is one season type's row; a count over both at once would count two rows per player",
-            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
+            "range": DeclineReason.SEASON_COUNT_RANGE,
+            "both": DeclineReason.SEASON_COUNT_BOTH,
+            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         },
         taken=Measure.CELLS | ReadLine.SEASON_CELLS,
     ),
     PointShape("player_seasons", "split", "season"): ShapeCells(
         unstated={
-            "range": "a history is every season or the last N of them, newest first; a range bounded by years is not how its rows are chosen",
-            "both": "a history lists one season type's rows; both at once would interleave two rows per season",
-            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
+            "range": DeclineReason.HISTORY_RANGE,
+            "both": DeclineReason.HISTORY_BOTH,
+            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         }
     ),
     # Two or more players' lines side by side state no narrowing at all:
@@ -343,11 +350,11 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # would be the substitution the cells exist to stop.
     PointShape("player_seasons", "comparison", "subject"): ShapeCells(
         unstated={
-            "career": "a comparison of two lines is one season's; the retired words state no span",
-            "range": "a comparison of two lines is one season's; the retired words state no span",
-            "both": "a comparison of two lines is one season's; the retired words state no span",
-            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), "a comparison of two lines is one season's row each; the retired words state no line, teammate, split, window or quarter"),
+            "career": DeclineReason.COMPARISON_SPAN,
+            "range": DeclineReason.COMPARISON_SPAN,
+            "both": DeclineReason.COMPARISON_SPAN,
+            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.COMPARISON_NARROWINGS),
         },
         declined="plan",
     ),
@@ -355,13 +362,13 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # accuracy is measured per season and type.
     PointShape("player_periods", "ranking", "player"): ShapeCells(
         unstated={
-            "career": "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
-            "range": "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
-            "both": "a ranking by a quarter is one season's and one type's: the rebuilt figures' accuracy is measured per season and type",
-            **_excluded_rows(Cuts.CELLS - {"round", "opponent", "venue"}, _QUARTER_RANKING_CUTS),
+            "career": DeclineReason.QUARTER_RANKING_SEASON,
+            "range": DeclineReason.QUARTER_RANKING_SEASON,
+            "both": DeclineReason.QUARTER_RANKING_TYPE,
+            **_excluded_rows(Cuts.CELLS - {"round", "opponent", "venue"}, DeclineReason.QUARTER_RANKING_CUTS),
             **_excluded_rows(
                 (RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"period"},
-                "a ranking by a quarter pools one season's players over the quarter itself; a line, a teammate, a split or a window is one player's",
+                DeclineReason.QUARTER_RANKING_NARROWINGS,
             ),
         },
         declined="plan",
@@ -373,27 +380,27 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # question from a date (``compose.netpoints``).
     PointShape("netpoints", "scalar", "ratings"): ShapeCells(
         unstated={
-            "career": "a NetPoints rating is one season's; there is no career rating to read",
-            "range": "a NetPoints rating is one season's; there is no range of seasons to sum",
-            "both": "a NetPoints rating is one season type's row",
+            "career": DeclineReason.NETPOINTS_CAREER,
+            "range": DeclineReason.NETPOINTS_RANGE,
+            "both": DeclineReason.NETPOINTS_BOTH,
             **_excluded_rows(
                 Cuts.CELLS - {"round"},
-                "a NetPoints rating is one season's row; the per-game tables are read for a first or last game alone, and no cut of the games has a rating",
+                DeclineReason.NETPOINTS_CUTS,
             ),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, _NETPOINTS_NARROWINGS),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, DeclineReason.NETPOINTS_NARROWINGS),
         },
         declined="plan",
     ),
     PointShape("netpoints", "chart", "fingerprint"): ShapeCells(
         unstated={
-            "career": "a fingerprint is drawn from one season's play types",
-            "range": "a fingerprint is drawn from one season's play types",
-            "both": "a fingerprint is drawn from one season type's play types",
+            "career": DeclineReason.FINGERPRINT_SPAN,
+            "range": DeclineReason.FINGERPRINT_SPAN,
+            "both": DeclineReason.FINGERPRINT_BOTH,
             **_excluded_rows(
                 Cuts.CELLS - {"round", "date"},
-                "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no cut of the games has a fingerprint",
+                DeclineReason.FINGERPRINT_CUTS,
             ),
-            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, _FINGERPRINT_NARROWINGS),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, DeclineReason.FINGERPRINT_NARROWINGS),
         },
         declined="plan",
     ),
@@ -401,12 +408,12 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # quarter narrows the LINE of each game, not which of its shots are drawn,
     # so the chart would be the whole game under a quarter's heading.
     PointShape("shots", "chart", "shots"): ShapeCells(
-        unstated={"period": "the chart draws every shot of each game, not the quarter's or half's", "both": _BOTH_TYPES_ASIDE},
+        unstated={"period": DeclineReason.SHOT_CHART_PERIOD, "both": DeclineReason.BOTH_TYPES_ASIDE},
         declined="plan",
         sides=True,
     ),
     PointShape("shots", "scalar", "distance"): ShapeCells(
-        unstated={"period": "the average reads every shot of each game, not the quarter's or half's", "both": _BOTH_TYPES_ASIDE},
+        unstated={"period": DeclineReason.SHOT_DISTANCE_PERIOD, "both": DeclineReason.BOTH_TYPES_ASIDE},
         declined="plan",
         sides=True,
     ),
@@ -1207,7 +1214,7 @@ def whole_span[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT) -> Narr
     """``narrowed`` with no window: the condition skeletons - a split, a
     record, a run - are read over every game in the span, which is why each
     of them excludes the ``window`` cell in :data:`RELATION_SCOPING_EXCLUDED`
-    ("a limited number of recent games is game_log's question"). A bare count
+    (DeclineReason.SPLITS_RECENT_GAMES). A bare count
     was the router's filler on those questions (``limit: 1`` beside "76ers
     record when Maxey scores 20+"), and :func:`relation_window` reads a bare
     count as the newest N for the readers that DO honor a window - so the

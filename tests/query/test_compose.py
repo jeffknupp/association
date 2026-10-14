@@ -32,7 +32,7 @@ from association.query.answer import Answer, AnswerContext
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import aggregate_of, plan, plan_point, refusal_of, refusal_result
-from association.query.compose.say import say
+from association.query.compose.say import decline_reason_phrase, say
 from association.query.compose.sentence import sentence, team_sentence
 from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
@@ -62,6 +62,7 @@ from association.query.reading import (
     Cause,
     Companion,
     Cuts,
+    DeclineReason,
     Filtered,
     Line,
     Measure,
@@ -2583,7 +2584,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_period_stat": {"shape": TEAM_PERIOD_TOTAL, "stat": "plusMinus"},
     "bench_points": {"shape": TEAM_RANKING},
     "team_boolean_count": {"shape": PLAYER_RANKING, "stat": "triple_double"},
-    "cannot_honor": {"shape": PRESENCE_SPLIT, "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "why": "it would answer for a different span than was asked"},
+    "cannot_honor": {"shape": PRESENCE_SPLIT, "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "reason": DeclineReason.BEYOND_WORDS},
     "no_reading_of_point": {"shape": TEAM_RECORD, "planned": TEAM_RECORD},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
@@ -2608,7 +2609,10 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
         said = refusal_result(Cause(kind=kind, facts=facts)).text
         assert said and said.endswith(".") and "{" not in said, kind
         for name, value in facts.items():
-            if (
+            if isinstance(value, DeclineReason):
+                # A reason is a key the sayer words (Phase 5, step 5): its phrase is in the sentence.
+                assert decline_reason_phrase(value) in said, (kind, value, said)
+            elif (
                 isinstance(value, str)
                 and kind not in ("unknown_stat", "needs_threshold", "ranking_unit", "team_streak_of_stat", "team_boolean_count")
                 and value not in ("game_log", "single_game_high", "record_when", "threshold_count", "under")
@@ -2627,7 +2631,7 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
                 "shape": LINE_RUNS,
                 "cells": [{"cell": "situation", "words": "on tuesdays"}],
                 "without": "team or player",
-                "why": "the league-wide streak has no single subject to narrow",
+                "reason": DeclineReason.NO_SINGLE_SUBJECT,
             },
         )
     ).text == ("Nothing here answers this question as a streak: the games 'on tuesdays' cannot be read here with no named team or player - the league-wide streak has no single subject to narrow.")

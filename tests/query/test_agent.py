@@ -787,8 +787,11 @@ def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Pat
             ),
         ),
     )
-    assert answer.answered_by == "refused" and "a rate per 36 cannot be read here" in answer.text
-    assert (agent.unanswered, agent.unanswered_as) == ("a rate per 36 cannot be read here - it would answer for a different span than was asked", GAMES_COUNTED)
+    # A cause the planner says since Phase 5, step 5 (answered, as a refusal
+    # that names why is), in the sentence the plain decline had.
+    assert answer.answered_by == "fast" and agent.unanswered is None
+    assert answer.text == "Nothing here answers this question as a count of games over a line: a rate per 36 cannot be read here - it would answer for a different span than was asked."
+    assert answer.data is not None and answer.data["reason"] == "beyond_words" and answer.data["cells"] == [{"cell": "rate", "unit": "per_36"}]
 
 
 def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

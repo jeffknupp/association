@@ -20,7 +20,22 @@ from association.query.measure import spelled, yes_no
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CELL_ORDER, PLAYERS_COUNTED, Aggregate, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_facts, cell_set
+from association.query.reading import (
+    CELL_ORDER,
+    PLAYERS_COUNTED,
+    Aggregate,
+    Cause,
+    DeclineReason,
+    Filtered,
+    Measure,
+    PointShape,
+    Reading,
+    ShapeCells,
+    ShapeDeclined,
+    _career_scope,
+    cell_facts,
+    cell_set,
+)
 from association.query.result import Refusal, Unanswered
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
@@ -213,14 +228,15 @@ def cells_stated(key: PointShape) -> frozenset[str]:
     return (table | row.taken) - set(row.unstated)
 
 
-def cells_unhonored(scope: Filtered, key: PointShape) -> list[tuple[str, str]]:
+def cells_unhonored(scope: Filtered, key: PointShape) -> list[tuple[str, DeclineReason]]:
     """The planner's one check of a point's cells against its shape's row and
     its relation's table: ``(cell, why)`` for every cell ``scope`` sets
     (:meth:`~association.query.reading.Filtered.cells`) that the shape ``key``'s
     words do not state (:func:`cells_stated`), in the order a decline names
     them (:data:`~association.query.reading.CELL_ORDER`) - and the
     bare starter/bench category on a shape that honors one named half
-    (``ShapeCells.sides``). ``why`` is the row's reason, or the relation's
+    (``ShapeCells.sides``). ``why`` is the row's reason (a
+    :class:`~association.query.reading.DeclineReason`), or the relation's
     where its table carries no such cell. A reader steps aside for these, or
     declines them where its shape is the point's only answer
     (``ShapeCells.declined``); what the planner refuses before any reader
@@ -237,33 +253,24 @@ def cells_unhonored(scope: Filtered, key: PointShape) -> list[tuple[str, str]]:
     table, row = found
     stated = (table | row.taken) - set(row.unstated)
     held = scope.cells() - stated
-    unhonored = [(cell, row.unstated.get(cell, _NOT_THE_RELATIONS)) for cell in CELL_ORDER if cell in held]
+    unhonored = [(cell, row.unstated.get(cell, DeclineReason.NOT_THE_RELATIONS)) for cell in CELL_ORDER if cell in held]
     if row.sides and scope.split == "starter_bench" and "split" not in held:
         # The bare category is "show me both groups", the splits' whole
         # answer: a reader of one named half would quietly filter to one
         # side or ignore it, so it is refused rather than either.
-        unhonored.append(("split", _BOTH_HALVES))
+        unhonored.append(("split", DeclineReason.BOTH_HALVES))
     return unhonored
 
 
-#: Why a cell its relation's table does not carry is not stated, and why the
-#: bare starter/bench category is not stated by a reader of one named half.
-_NOT_THE_RELATIONS = "the relation carries no such cell"
-_BOTH_HALVES = "the bare starter/bench category is a table of both halves; this reader honors one named half"
-
-
-#: Why a shape's reader is declined for a cell its words do not state,
-#: where it is the point's only answer (:func:`beyond_words`).
-_BEYOND_WORDS = "it would answer for a different span than was asked"
-
-
-def cannot_honor(scope: Filtered, cells: list[str], why: str, *, without: str | None = None) -> ShapeDeclined:
+def cannot_honor(scope: Filtered, cells: list[str], why: DeclineReason, *, without: str | None = None) -> ShapeDeclined:
     """The decline of a narrowing the point's shape cannot honor - the
     ``cannot_honor`` :class:`~association.query.reading.Cause` the planner
     says, its facts what the words asked under each of the ``cells`` the
     point sets (:func:`~association.query.reading.cell_facts`), the subject
     a cell needs and the point has none of (``without``) and the row's
-    reason (``why``) - with the decline's sentence
+    reason (``why``, the ``reason`` fact: a
+    :class:`~association.query.reading.DeclineReason`, which the sayer
+    words) - with the decline's sentence
     (:func:`~association.query.compose.say.decline_body`: "the last 5 games
     cannot be read here - <why>") as its message.
 
@@ -273,12 +280,17 @@ def cannot_honor(scope: Filtered, cells: list[str], why: str, *, without: str | 
        Takes the point and its cells, and says each by what the words asked;
        the shape's retired name and the slot names ("<name> cannot honor
        ['order']") until the Phase 3 review's cleanup (b)3 (ISSUES.md #281).
+
+    .. versionchanged:: 6.0.0
+       ``why`` is a :class:`~association.query.reading.DeclineReason`, the
+       cause's ``reason`` fact; a row's sentence, the ``why`` fact, until
+       Phase 5, step 5.
     """
-    facts = {"cells": [cell_facts(scope, cell) for cell in cells], "without": without, "why": why}
+    facts = {"cells": [cell_facts(scope, cell) for cell in cells], "without": without, "reason": why}
     return ShapeDeclined("cannot_honor", facts, decline_body(facts))
 
 
-def beyond_words(scope: Filtered, unhonored: list[tuple[str, str]]) -> ShapeDeclined:
+def beyond_words(scope: Filtered, unhonored: list[tuple[str, DeclineReason]]) -> ShapeDeclined:
     """The decline a shape's reader is declined in, where it is the point's
     only answer and the point sets ``unhonored`` (:func:`cells_unhonored`):
     "<the cells> cannot be read here - it would answer for a different span
@@ -290,7 +302,7 @@ def beyond_words(scope: Filtered, unhonored: list[tuple[str, str]]) -> ShapeDecl
        The typed decline (:class:`~association.query.reading.ShapeDeclined`),
        its sentence the message; the sentence alone until Phase 3, step 4.
     """
-    return cannot_honor(scope, [cell for cell, _ in unhonored], _BEYOND_WORDS)
+    return cannot_honor(scope, [cell for cell, _ in unhonored], DeclineReason.BEYOND_WORDS)
 
 
 def cells_declined(point: Reading, key: PointShape) -> ShapeDeclined | None:
@@ -325,10 +337,10 @@ def cells_declined(point: Reading, key: PointShape) -> ShapeDeclined | None:
     if point.relation != "player":
         claimed = [cell for cell in CELL_ORDER if cell in row.named_player and cell_set(scope, cell)]
         if claimed:
-            return cannot_honor(scope, claimed, "only his own games can be narrowed that way", without="player")
+            return cannot_honor(scope, claimed, DeclineReason.NEEDS_NAMED_PLAYER, without="player")
         claimed = [cell for cell in CELL_ORDER if cell in row.named_subject and cell_set(scope, cell)] if scope.who.team is None else []
         if claimed:
-            return cannot_honor(scope, claimed, "the league-wide streak has no single subject to narrow", without="team or player")
+            return cannot_honor(scope, claimed, DeclineReason.NO_SINGLE_SUBJECT, without="team or player")
     refused = [cell for cell in row.unstated if cell in row.refused and cell_set(scope, cell)]
     if refused:
         return cannot_honor(scope, [cell for cell in CELL_ORDER if cell in refused], row.unstated[refused[0]])
@@ -503,13 +515,13 @@ def _game_level(key: PointShape, q: Query) -> Query:
         # How many players a season line holds, or how many of a player's
         # seasons it holds, has no game-level reading: the line is a
         # season's, declined by name (ISSUES.md #390, #391).
-        raise Unsupported(decline_body({"cells": [cell_facts(q, "season_line")], "why": _BEYOND_WORDS}))
+        raise cannot_honor(q, ["season_line"], DeclineReason.BEYOND_WORDS)
     if q.group == "player" and q.subject == "everyone":
         stat = spelled(q.measure)
         if stat is not None and stat.strip() and stat_measure(q.measure) is None:
             raise Refused(Refusal(kind="no_ranking_measure", facts={"stat": stat}, shown={"stat": stat}))
         if cell_set(q, "rate"):
-            raise Unsupported(decline_body({"cells": [cell_facts(q, "rate")], "why": _BEYOND_WORDS}))
+            raise cannot_honor(q, ["rate"], DeclineReason.BEYOND_WORDS)
         if q.measure is not None and q.measure.beside:
             raise Unsupported("the game-level ranking shows no columns beside its measure")
         return _game_level_minimum(replace(q, source="games"))

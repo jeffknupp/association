@@ -63,6 +63,7 @@ from association.query.reading import (
     TEAM_RANKING,
     TEAM_RECORD,
     TEAM_SEASON_HISTORY,
+    DeclineReason,
     LeftOut,
     PointShape,
     ordinal_word,
@@ -4966,6 +4967,136 @@ def nothing_answers(why: str, asked: PointShape | None = None) -> str:
     return f"Nothing here answers this question{read_as}: {why}."
 
 
+#: Each :class:`~association.query.reading.DeclineReason` in the words a
+#: decline says it by (:func:`decline_reason_phrase`): the planner's own, then
+#: the cell tables' rows (``RELATION_SCOPING_EXCLUDED``,
+#: ``TEAM_RELATION_SCOPING_EXCLUDED``), whose sentences stood on the rows
+#: until Phase 5, step 5. A test holds it to every member.
+_DECLINE_REASONS: dict[DeclineReason, str] = {
+    DeclineReason.BEYOND_WORDS: "it would answer for a different span than was asked",
+    DeclineReason.NOT_THE_RELATIONS: "the relation carries no such cell",
+    DeclineReason.BOTH_HALVES: "the bare starter/bench category is a table of both halves; this reader honors one named half",
+    DeclineReason.NEEDS_NAMED_PLAYER: "only his own games can be narrowed that way",
+    DeclineReason.NO_SINGLE_SUBJECT: "the league-wide streak has no single subject to narrow",
+    DeclineReason.LOG_WHOLE_GAMES: "the log's retired sentence heads whole games and never names a quarter or half",
+    DeclineReason.LINE_WHOLE_GAMES: "the season line's retired sentence heads whole games and never names a quarter or half",
+    DeclineReason.SPLITS_ONE_GAME: "one game has nothing to split",
+    DeclineReason.SPLITS_RECENT_GAMES: "a limited number of recent games is game_log's question",
+    DeclineReason.SPLITS_WHOLE_GAMES: "the splits table is headed as whole games; a quarter's or half's split would print under the same heading",
+    DeclineReason.BOTH_TYPES_ASIDE: "the answer is one season type's; read over both at once its sentence would not say which games were the postseason's",
+    DeclineReason.RECORD_ONE_GAME: "one game has no record",
+    DeclineReason.RECORD_RECENT_GAMES: "a record over the last N games is game_log's question",
+    DeclineReason.RECORD_WHOLE_GAMES: "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter or half",
+    DeclineReason.RUN_ONE_GAME: "one game is not a run",
+    DeclineReason.RUN_EVERY_GAME: "a run is read over every game in the span, not the last N",
+    DeclineReason.RUN_WHOLE_GAMES: "a run is a run of whole games; a quarter or half of each is a different streak nobody has defined",
+    DeclineReason.PERIOD_CAVEAT_CAREER: "the accuracy caveat is measured per season, not across a career",
+    DeclineReason.PERIOD_CAVEAT_RANGE: "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
+    DeclineReason.PERIOD_CAVEAT_BOTH: "the accuracy caveat is measured per season and per season type; a read over both types would carry one caveat for games of two reliabilities",
+    DeclineReason.PERIOD_ONE_PERIOD: "a period answer says the one period it measures, never a second one conditioning which games count",
+    DeclineReason.MEETINGS_NO_THIRD_TEAM: "two players' meetings are the games they played against each other - there is no third team to narrow them to",
+    DeclineReason.MEETINGS_AVERAGES: "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
+    DeclineReason.MEETINGS_WHOSE_SEASON: "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
+    DeclineReason.MEETINGS_PERIOD: "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter or half",
+    DeclineReason.MEETINGS_PERIOD_LINE: "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only",
+    DeclineReason.HIGH_RANGE_ASIDE: "a high's words state a career, and the compiler's own ranking of games, which says the range it read, answers one",
+    DeclineReason.HIGH_CUTS_ASIDE: "a high's words state a career, and the compiler's own ranking of games, which says the cut it applied, answers one",
+    DeclineReason.HIGH_NARROWINGS_ASIDE: "a high's words state a career, and the compiler's own ranking of games, which says the narrowing it applied, answers one",
+    DeclineReason.COUNT_RANGE_ASIDE: "a count's words state a career, and the compiler's own count, which says the range it read, answers one",
+    DeclineReason.COUNT_CUTS_ASIDE: "a count's words state a career and an ordinal season, and the compiler's own count, which says the cut it applied, answers one",
+    DeclineReason.COUNT_NARROWINGS_ASIDE: "a count's words state a career, an ordinal season and its own line, and the compiler's own count, which says the narrowing it applied, answers one",
+    DeclineReason.SEASON_RANKING_RANGE: "a ranking of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
+    DeclineReason.SEASON_RANKING_BOTH: "a season line is one season type's row; a ranking over both at once would rank two rows per player",
+    DeclineReason.SEASON_LINE_CUTS_ASIDE: "a season line is one row per player per season, with no game to cut; the game-level read, whose sentence says the cut it applied, answers",
+    DeclineReason.SEASON_LINE_NARROWINGS_ASIDE: (
+        "a season line has no game a line, a teammate, a split, a window or a quarter could narrow; the game-level read, whose sentence says the narrowing, answers"
+    ),
+    DeclineReason.SEASONS_COUNTED_RANGE: "a count of seasons pools every season on record; a range of them is not read yet",
+    DeclineReason.SEASON_COUNT_BOTH: "a season line is one season type's row; a count over both at once would count two rows per player",
+    DeclineReason.SEASON_COUNT_RANGE: "a count of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
+    DeclineReason.HISTORY_RANGE: "a history is every season or the last N of them, newest first; a range bounded by years is not how its rows are chosen",
+    DeclineReason.HISTORY_BOTH: "a history lists one season type's rows; both at once would interleave two rows per season",
+    DeclineReason.COMPARISON_SPAN: "a comparison of two lines is one season's; the retired words state no span",
+    DeclineReason.COMPARISON_NARROWINGS: "a comparison of two lines is one season's row each; the retired words state no line, teammate, split, window or quarter",
+    DeclineReason.QUARTER_RANKING_SEASON: "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
+    DeclineReason.QUARTER_RANKING_TYPE: "a ranking by a quarter is one season's and one type's: the rebuilt figures' accuracy is measured per season and type",
+    DeclineReason.QUARTER_RANKING_CUTS: (
+        "a ranking by a quarter pools one season's players, against an opponent or at a venue; one date ranks nothing per game, and a tenure, a series game or an ordinal season is one player's"
+    ),
+    DeclineReason.QUARTER_RANKING_NARROWINGS: "a ranking by a quarter pools one season's players over the quarter itself; a line, a teammate, a split or a window is one player's",
+    DeclineReason.NETPOINTS_CAREER: "a NetPoints rating is one season's; there is no career rating to read",
+    DeclineReason.NETPOINTS_RANGE: "a NetPoints rating is one season's; there is no range of seasons to sum",
+    DeclineReason.NETPOINTS_BOTH: "a NetPoints rating is one season type's row",
+    DeclineReason.NETPOINTS_CUTS: "a NetPoints rating is one season's row; the per-game tables are read for a first or last game alone, and no cut of the games has a rating",
+    DeclineReason.NETPOINTS_NARROWINGS: (
+        "a NetPoints rating is one season's row, or one game's chosen as a first or last game; no line, teammate, split, ranked measure or quarter of the games has a rating"
+    ),
+    DeclineReason.FINGERPRINT_SPAN: "a fingerprint is drawn from one season's play types",
+    DeclineReason.FINGERPRINT_BOTH: "a fingerprint is drawn from one season type's play types",
+    DeclineReason.FINGERPRINT_CUTS: "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no cut of the games has a fingerprint",
+    DeclineReason.FINGERPRINT_NARROWINGS: (
+        "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no line, teammate, split, ranked measure or quarter of the games has a fingerprint"
+    ),
+    DeclineReason.SHOT_CHART_PERIOD: "the chart draws every shot of each game, not the quarter's or half's",
+    DeclineReason.SHOT_DISTANCE_PERIOD: "the average reads every shot of each game, not the quarter's or half's",
+    DeclineReason.PRESENCE_RANGE: "the split's words state a career or one season; a range of seasons would cut the teammates' stints without saying so",
+    DeclineReason.PRESENCE_BOTH: "the split reads one season type's games; both at once would join a teammate's regular-season and playoff absences as one",
+    DeclineReason.PRESENCE_CUTS: "the split's words state one opponent; another cut would narrow the teammates' games without the sentence saying so",
+    DeclineReason.PRESENCE_WINDOW: "the split divides every game in the span by the teammates' presence; the last N games would cut both sides without the sentence saying so",
+    DeclineReason.PRESENCE_PERIOD: "a record is won and lost over whole games; a quarter or half of each has no winner the split could count",
+    DeclineReason.MEETINGS_TALLY_WINDOW: "head_to_head counts every meeting in the span; picking the last N of them is not built",
+    DeclineReason.MEETINGS_TALLY_GAME_N: "head_to_head counts every meeting; one numbered game of a series is not read here",
+    DeclineReason.MEETINGS_TALLY_SITUATION: "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
+    DeclineReason.MEETINGS_TALLY_PERIOD: "a series is won and lost in whole games; a quarter or half of each meeting has no winner to tally",
+    DeclineReason.MEETINGS_TALLY_BOTH: "a series is tallied in one season type; both at once would count regular-season and playoff meetings as one series",
+    DeclineReason.TEAM_PERIOD_BOTH: "a quarter's figures are reconciled per season and per type; one read over both types would carry one caveat for two",
+    DeclineReason.TEAM_RECORD_ONE_GAME: "a record for one calendar date is a single game, which game_log already answers directly",
+    DeclineReason.TEAM_RECORD_RECENT_GAMES: "a record over a limited set of games is a game_log question",
+    DeclineReason.TEAM_RECORD_WHOLE_GAMES: "a record is won and lost over whole games; a quarter or half has no winner the record could count",
+    DeclineReason.TEAM_HIGH_WINDOW: "a best game ranks every game in the span; the best of the last N games is not built",
+    DeclineReason.TEAM_HIGH_PERIOD: "a team's box row is a whole game's; a quarter or half of each has no figure to rank by",
+    DeclineReason.TEAM_HIGH_BOTH: "a best game is read in one season type; both at once would rank regular-season and playoff games as one",
+    DeclineReason.TEAM_HIGH_ONE_GAME: "one calendar date is one game, which a game log answers directly",
+    DeclineReason.TEAM_LINE_CAREER: "a team's line is one season's row of the standings; there is no career row to read",
+    DeclineReason.TEAM_LINE_RANGE: "a team's line is one season's row of the standings; a range of seasons is not summed",
+    DeclineReason.TEAM_LINE_BOTH: "a team's line is one season type's row of the standings",
+    DeclineReason.TEAM_LINE_CUTS: "a team's line is one season's row of the standings, with no game to cut",
+    DeclineReason.TEAM_LINE_WINDOW: "a team's line is one season's row of the standings, with no game to window",
+    DeclineReason.TEAM_LINE_PERIOD: "a team's line is one season's row of the standings, and no row of the standings is split by quarter or half",
+    DeclineReason.TEAM_LINE_RATE: "a team's line is its season's row of the standings, per game; a total or another unit is the team compiler's sum, which reads one",
+    DeclineReason.TEAM_HISTORY_BOTH: "a team's history is one season type's rows of its season lines",
+    DeclineReason.TEAM_HISTORY_CUTS: "a team's history is its season lines' rows, each over every game of its season",
+    DeclineReason.TEAM_HISTORY_WINDOW: "a team's history is its season lines' rows, with no game to window",
+    DeclineReason.TEAM_HISTORY_PERIOD: "a team's history is its season lines' rows, and no row is split by quarter or half",
+    DeclineReason.TEAM_HISTORY_RATE: "a team's history is its season lines' rows, per game; a total or another unit is not read season by season",
+    DeclineReason.PROJECTION_SPAN: "a projection is one season's snapshot",
+    DeclineReason.PROJECTION_BOTH: "a projection is one season type's snapshot",
+    DeclineReason.PROJECTION_CUTS: "a projection is one season's snapshot, with no game to cut",
+    DeclineReason.PROJECTION_WINDOW: "a projection is one season's snapshot, with no game to window",
+    DeclineReason.PROJECTION_PERIOD: "a projection is one season's snapshot, with no quarter or half",
+    DeclineReason.PROJECTION_RATE: "a projection is one season's snapshot, in the power index's own units",
+    DeclineReason.TEAM_RANKING_OPPONENT: "a leaderboard ranks every team; it has no reading for one named opponent",
+    DeclineReason.TEAM_RANKING_DATE: "a leaderboard ranks a season, not one day's games",
+    DeclineReason.TEAM_RANKING_CAREER: "a leaderboard ranks one season's teams; a career total across every season is not built",
+    DeclineReason.TEAM_RANKING_BOTH: "a leaderboard ranks one season type's lines; the standings hold no row for both at once",
+    DeclineReason.TEAM_RANKING_WINDOW: "a leaderboard ranks a season, not a window of games",
+    DeclineReason.TEAM_RANKING_GAME_N: "a leaderboard ranks a season, not one game of a series",
+    DeclineReason.TEAM_RANKING_SITUATION: "a leaderboard ranks a season, not the games in one weekday, month or holiday within it",
+    DeclineReason.TEAM_RANKING_PERIOD: "a leaderboard ranks teams' season lines, and no season line is split by quarter or half",
+    DeclineReason.TEAM_RANKING_RATE: "a leaderboard ranks teams' season lines in the metric's own unit; a total or another unit is the team compiler's sum",
+}
+
+
+def decline_reason_phrase(reason: DeclineReason | str) -> str:
+    """Why a shape cannot honor a cell, in words (a ``cannot_honor``
+    cause's ``reason`` fact, a :class:`~association.query.reading.DeclineReason`):
+    ONE phrase per member - "one game is not a run".
+
+    .. versionadded:: 6.0.0
+    """
+    return _DECLINE_REASONS[DeclineReason(reason)]
+
+
 def decline_body(facts: Mapping[str, Any]) -> str:
     """A narrowing a shape or its relation cannot honor, said by what the
     words asked (``facts["cells"]``, each :func:`~association.query.reading.cell_facts`'s,
@@ -4974,7 +5105,9 @@ def decline_body(facts: Mapping[str, Any]) -> str:
     a cell needs and the point has none of (``without``) and where it was
     to be read (``over``: a team's games). The one wording of a decline the
     planner says (``cannot_honor``) and of one a relation's check raises
-    (``compose.core._check_relation_scoping``). Until the Phase 3 review's
+    (``compose.core._check_relation_scoping``), its reason the ``reason``
+    fact's phrase (:func:`decline_reason_phrase`; a sentence, the ``why``
+    fact, until Phase 5, step 5). Until the Phase 3 review's
     cleanup (b)3 it said "<name> cannot honor ['order']" - the shape's
     retired name and the slot names each cell was declared under before
     Phase 3, step 2 (ISSUES.md #281).
@@ -4984,7 +5117,7 @@ def decline_body(facts: Mapping[str, Any]) -> str:
     said = _joined_phrases([cell_phrase(cell) for cell in facts["cells"]])
     without = f" with no named {facts['without']}" if facts.get("without") else ""
     where = f" over {facts['over']}" if facts.get("over") else " here"
-    return f"{said} cannot be read{where}{without} - {facts['why']}"
+    return f"{said} cannot be read{where}{without} - {decline_reason_phrase(facts['reason'])}"
 
 
 def _joined_phrases(phrases: list[str]) -> str:

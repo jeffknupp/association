@@ -65,6 +65,7 @@ from association.query.reading import (
     Aggregate,
     Companion,
     Cuts,
+    DeclineReason,
     Filtered,
     Line,
     Measure,
@@ -6537,7 +6538,7 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
         assert table <= Filtered.CELLS
         for shape, row in rows.items():
             for cell, reason in row.unstated.items():
-                assert cell in table | row.taken and reason.strip(), f"{shape} excludes {cell!r} without a reason, or a cell its relation does not carry"
+                assert cell in table | row.taken and isinstance(reason, DeclineReason), f"{shape} excludes {cell!r} without a reason, or a cell its relation does not carry"
             assert row.refused <= set(row.unstated) and not row.taken & table and row.taken <= Filtered.CELLS
             assert cells_stated(shape) == (table | row.taken) - set(row.unstated)
     # The player relation's own readers take nothing beyond its table: what
