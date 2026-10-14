@@ -1463,10 +1463,22 @@ def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: AnswerCo
     # read silently - the read is refused.
     with pytest.raises(Unsupported, match="both season types"):
         run_team(gl_con.con, TeamQuery(**(Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(both=True, since=2024), window=Window(order="recent", count=3))).filters(), metric="points"))
-    # The log's own both-types read refuses the same narrowings rather than
-    # listing the plain window with them dropped (it did, silently).
-    with pytest.raises(Unsupported, match="both season types"):
-        game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("on tuesdays")), span=Span(both=True), window=Window(order="recent", count=3)))
+    # The log's own both-types read honors a calendar narrowing, reading both
+    # types in one, where it refused it (and before that dropped it,
+    # silently): of e1 (a Friday), e2 (a Sunday), p1 (a Monday) and p2 (a
+    # Wednesday), Sunday's alone.
+    sundays = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("on sundays")), span=Span(both=True), window=Window(order="recent", count=3)))
+    assert [g["date"] for g in sundays.data["games"]] == ["2026-04-12"]
+    assert "regular season and postseason" in (sundays.text or ""), sundays.text
+
+
+def test_a_teams_log_keeps_its_calendar_narrowing(gl_con: AnswerContext) -> None:
+    """A team's log listed every game of the window with its calendar or
+    alignment narrowing dropped, silently - "celtics last 5 games vs the
+    west" listed the last five, Orlando among them, though the log's row
+    says it honors the cut: the log handed the relation the venue alone."""
+    result = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("on sundays")), window=Window(order="recent", count=5)))
+    assert [g["date"] for g in result.data["games"]] == ["2026-04-12"]
 
 
 def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: AnswerContext) -> None:

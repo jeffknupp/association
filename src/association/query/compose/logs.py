@@ -529,17 +529,14 @@ def _team_log_types(scope: Filtered, asked: ReadSpan) -> tuple[bool, bool]:
     kept) - a career or a range reads both types in one (ISSUES.md #416).
     A date or a game of a series fixes one game's type."""
     both = scope.span.both and not scope.cuts.date and not scope.cuts.game_n
-    return both, both and not asked.career and not (scope.span.since or scope.span.until)
+    # A calendar narrowing reads both types in one too: the merge is a plain
+    # window (an opponent and a venue at most).
+    return both, both and not asked.career and not (scope.span.since or scope.span.until or scope.cuts.situation)
 
 
 def _team_log_mixed_of(con: duckdb.DuckDBPyConnection, scope: TeamQuery, asked: ReadSpan, team: Any, *, limit: int) -> Result | Unanswered:
     """One season's "last N games" over both types, merged by date
     (:func:`_team_log_mixed`), over the season the span settles on."""
-    if scope.cuts.situation:
-        # The both-types read is a plain window (an opponent and a venue at
-        # most); a calendar narrowing is refused, as the team compiler's
-        # window sum refuses the same read.
-        raise Unsupported("a window over both season types is read for a plain 'last N games' only")
     resolved_season = span_of(asked.without_range(), "games", season_type=2).season
     if resolved_season is None:
         raise Unsupported("a career span has no single season to read both season types within")
@@ -592,7 +589,9 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     if mixed:
         return _team_log_mixed_of(con, scope, asked, team, limit=limit)
     seasons = span_of(asked, "games", season_type=BOTH_SEASON_TYPES if both else season_type)
-    narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=venue)), opponent=opponent, date=date)
+    # The calendar's or the opponents' alignment's narrowing too, which the
+    # log's row says it honors and which was dropped here, silently.
+    narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=venue, situation=scope.cuts.situation)), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):
         return narrowed
     return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=spelled(scope.measure))
