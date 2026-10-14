@@ -4031,7 +4031,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     reading = Reading(**(Reading(measure=Measure(key="points", as_typed="points"))).filters(), asked=PLAYER_RANKING, subject=Subject("position", position="SG"))
     # The compiler's point reads the group over the box scores, not the season line.
     point = read_point(reading, "highest points per game by a shooting guard")
-    assert (point.relation, point.who.position, point.on) == ("everyone", "SG", "player_games")
+    assert (point.relation, point.who.position, point.read_as.relation) == ("everyone", "SG", "player_games")
     # And the season line's reader, handed the group on its own relation, steps aside for it.
     planned = plan(point)
     assert isinstance(planned, Query)
@@ -5083,7 +5083,7 @@ def test_the_matchup_point_honors_without_too(pg_ctx: AnswerContext) -> None:
     """A teammate's absence narrows the first player's games on a genuine
     two-player matchup, as it does on every reader of the relation."""
     scope = Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), companions=(Companion(player="Jaylen Brown", predicate="absent"),))
-    assert default_point(PLAYER_MEETINGS, scope).shape == "comparison"
+    assert default_point(PLAYER_MEETINGS, scope).read_as.shape == "comparison"
     assert [cell for cell, _ in cells_unhonored(scope, PLAYER_MEETINGS)] == []
 
 

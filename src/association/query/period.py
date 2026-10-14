@@ -27,7 +27,7 @@ takes one (:data:`~association.query.point.PERIOD_ASKS`, the key's reading,
 :func:`~association.query.point.period_under`).
 
 A "by quarter" question reads NO period: the breakdown across all four is
-the point's shape (``point._default_period_split``, ``Reading.by="period"``),
+the point's shape (``point._default_period_split``, ``by`` ``"period"`` in ``Reading.read_as``),
 not a filter. A period as a CONDITION on which games count ("after making
 one three in the first quarter") is the line slice's value
 (``parse.read_period_condition``), whose words the parser takes out of

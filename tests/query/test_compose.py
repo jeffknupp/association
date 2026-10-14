@@ -1059,9 +1059,7 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
         aggregate = Aggregate.NONE if shape in ("rows", "runs") else (Aggregate.RECORD if shape == "split" else Aggregate.TOTAL)
         return Reading(
             relation="team",
-            shape=skeleton,  # type: ignore[arg-type]
-            by=by,
-            on="team_games",
+            read_as=PointShape("team_games", skeleton, by),  # type: ignore[arg-type]
             measures=(Measure(key="points"),),
             aggregate=aggregate,
             group="venue" if shape == "split" else "none",
@@ -2313,7 +2311,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
             ),
         ),
     )
-    assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
+    assert reading.point is not None and (reading.point.read_as.shape, reading.point.aggregate) == ("scalar", "count")
     by_hand = compose_answer(
         cx_ctx,
         GAMES_COUNTED,

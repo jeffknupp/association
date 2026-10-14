@@ -170,9 +170,9 @@ def test_the_default_point_also_reads_box_scores_for_a_condition() -> None:
     bare ``conditions`` entry now switches it to box scores
     (``on="player_games"``), the same as ``without`` already did."""
     season = default_point(PLAYER_LINE, _maxey_points())
-    assert season.on == "player_seasons"
+    assert season.read_as.relation == "player_seasons"
     narrowed = default_point(PLAYER_LINE, _maxey_points(_embiid("started")))
-    assert narrowed.on == "player_games"
+    assert narrowed.read_as.relation == "player_games"
 
 
 def _agent_warehouse(tmp_path: Path) -> Path:

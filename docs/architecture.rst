@@ -218,9 +218,10 @@ not yet typed, and guessing at "Tatum rec" answered something else.
 5. **The point reader** (:func:`association.query.point.read_point`) reads
    the point the answer is computed from: the key's default point, moved by
    what the words say (a measure, a skeleton, an aggregate), declaring the
-   shape it is read and said as - ``Reading.on`` (one of nine relations),
-   ``Reading.shape`` (one of seven: ``scalar``, ``rows``, ``ranking``,
-   ``comparison``, ``split``, ``runs``, ``chart``) and ``Reading.by``. Where
+   shape it is read and said as, one field, ``Reading.read_as`` (a
+   :class:`~association.query.reading.PointShape`: its relation, one of
+   nine, its shape, one of seven - ``scalar``, ``rows``, ``ranking``,
+   ``comparison``, ``split``, ``runs``, ``chart`` - and its ``by``). Where
    the words come to a refusal instead - a ranking by a stat nothing ranks,
    a matchup without two players, a quarter's figure the plays do not
    rebuild - it carries a :class:`~association.query.reading.Cause` (a kind

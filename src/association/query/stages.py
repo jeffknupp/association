@@ -46,13 +46,13 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from association.query.reading import Unsupported
+from association.query.reading import Reading, Unsupported
 from association.query.result import Clarify, Refusal
 
 if TYPE_CHECKING:
     from association.query.answer import Answer
     from association.query.compose.plan import Verdict
-    from association.query.reading import Filtered, Reading
+    from association.query.reading import Filtered
 
 STAGES: tuple[str, ...] = ("reading", "query", "result", "answer")
 """The stages a snapshot holds, in the order a question passes through them.
@@ -103,9 +103,24 @@ _SUBJECT_LEFT_OUT = frozenset({"evidence", "claims", "companion_phrases", "suppo
 # ``shape``, ``by`` and ``on`` are the point reader's declaration (Phase 3,
 # step 1; ``shape`` was the compiler's skeleton and ``source`` the season
 # line's flag until then - both derived by the planner now, and on the
-# query record still). ``subject_span`` is the one typed override of the
-# span the subject is settled in.
+# query record still), one field since Phase 5, step 4 (D9,
+# ``Reading.read_as``), recorded by its three parts under the names they
+# had (``_DECLARED``), so a record reads as it did. ``subject_span`` is the
+# one typed override of the span the subject is settled in.
 _POINT_FIELDS = ("asked", "relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
+
+
+#: The point's declaration (``Reading.read_as``, one ``PointShape`` since
+#: Phase 5, step 4, D9) by the record names its three parts had as fields.
+_DECLARED = {"on": "relation", "shape": "shape", "by": "by"}
+
+
+def _point_field(point: Reading, name: str) -> Any:
+    """``point``'s field ``name`` as the record names it: ``on``, ``shape``
+    and ``by`` are the parts of what it is read as."""
+    if name in _DECLARED:
+        return getattr(point.read_as, _DECLARED[name])
+    return getattr(point, name)
 
 
 def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
@@ -156,6 +171,16 @@ def _plain_record(value: Any, mask: Mapping[str, str] | None) -> dict[str, Any]:
     had before a part was typed, so a record made before the part was typed
     compared identical to one made after; the projection went with that
     slice, and every typed value is recorded as its own fields."""
+    if isinstance(value, Reading):
+        # A Reading's declaration by its three parts, where its fields stood
+        # until Phase 5, step 4 (D9): a recorded Reading reads as it did.
+        record: dict[str, Any] = {}
+        for f in fields(value):
+            if f.name == "read_as":
+                record.update({name: plain(getattr(value.read_as, part), mask=mask) for name, part in (("shape", "shape"), ("by", "by"), ("on", "relation"))})
+            else:
+                record[f.name] = plain(getattr(value, f.name), mask=mask)
+        return record
     return {f.name: plain(getattr(value, f.name), mask=mask) for f in fields(value)}
 
 
@@ -187,7 +212,7 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         # The point's own fields, then its typed filters: the point reader
         # may have moved one off the reading's (a team as the opponent, a
         # position group the move does not honor).
-        point = {name: plain(getattr(reading.point, name), mask=mask) for name in _POINT_FIELDS}
+        point = {name: plain(_point_field(reading.point, name), mask=mask) for name in _POINT_FIELDS}
         point.update(_filters_record(reading.point, mask))
     return {
         # The key the words asked (``Reading.asked``, Phase 3, step 4); its

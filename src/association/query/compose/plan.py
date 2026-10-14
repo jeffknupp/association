@@ -49,22 +49,23 @@ def skeleton_of(point: Reading) -> str:
 
     .. versionadded:: 6.0.0
     """
-    if point.relation == "team" and point.on in ("team_seasons", "team_snapshots"):
+    declared = point.read_as
+    if point.relation == "team" and declared.relation in ("team_seasons", "team_snapshots"):
         # A team's own total the words read on the team relation, said as
         # its season's shape (``point.TEAM_SEASON_POINTS``: the team-season
         # reader first): what the team compiler sums where that reader
         # declines is the scalar it always was.
         return "scalar"
-    if point.shape == "comparison":
-        return "pair" if point.by == "met" else "grouped"
-    if point.shape == "split":
-        return "scalar" if point.by == "line" else "grouped"
-    return {"ranking": "grouped", "runs": "run"}.get(point.shape, point.shape)
+    if declared.shape == "comparison":
+        return "pair" if declared.by == "met" else "grouped"
+    if declared.shape == "split":
+        return "scalar" if declared.by == "line" else "grouped"
+    return {"ranking": "grouped", "runs": "run"}.get(declared.shape, declared.shape)
 
 
 def point_shape(point: Reading, query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery | None = None) -> PointShape:
-    """The key the answer side reads ``point`` by: the relation it is
-    ``on``, its ``shape`` and its ``by``, as the point reader declared them
+    """The key the answer side reads ``point`` by: what the point reader
+    declared it read as (:attr:`~association.query.reading.Reading.read_as`)
     - with the planner's one move: a season-line point its reader did not
     read, planned at the game level (:func:`_game_level`), is on the
     player-games relation, where no reader takes it and the compiler's own
@@ -72,10 +73,10 @@ def point_shape(point: Reading, query: Query | TeamQuery | TeamSeasonQuery | Net
 
     .. versionadded:: 6.0.0
     """
-    relation = point.on
-    if isinstance(query, Query) and query.source == "games" and relation == "player_seasons":
-        relation = "player_games"
-    return PointShape(relation, point.shape, point.by)
+    declared = point.read_as
+    if isinstance(query, Query) and query.source == "games" and declared.relation == "player_seasons":
+        return replace(declared, relation="player_games")
+    return declared
 
 
 def shape_cells(key: PointShape) -> tuple[frozenset[str], ShapeCells] | None:
