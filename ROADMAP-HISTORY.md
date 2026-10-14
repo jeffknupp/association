@@ -1601,6 +1601,32 @@ agents' reports named here are in `~/association-research/stages/`.
     reviewer left them. Order: step 1 (the lead, alone), then 2 and 5 in
     parallel, 6 by reach, 7 last. Open P1s 21 of 195 at the open.
 
+44. **Phase 5, steps 1, 2, 4 and 5 (2026-10-14): the defaults become
+    refusals, the declines become causes.** Step 1, the lead's, in one
+    commit (run 49): a word that carries a meaning the reading defaulted
+    past - a number, a stat, a window word, a date - is a cause the planner
+    says over a planned query, 6 of the 628 and 82 of the 2,082 answers
+    moving from a fluent answer past the word to the refusal naming it; the
+    ledgers fell as the refusals claimed their words (700 -> 690, 3,023 ->
+    2,879). Step 4's code, one agent (runs 48, 50): the point declares one
+    `PointShape`, the aggregate is derived from it and the catalog's yes/no
+    facet, zero moves but a refused Danish football question. Steps 2 and
+    5, two agents in parallel (runs 51-58): the grammar's typed-value drops
+    at 0 live with 31 held by rule or reason, and every planner decline a
+    cause with facts, 192 worded sentences to 0 with every rewording named
+    and six literal "None"s fixed. Three harnesses in the research repo
+    are the exits, each at 0 on `4f82e1b`. What it taught: a harness and
+    the parser must share their guards or the exit is measured by a looser
+    rule than the code (four guards were found that way: a leftover of the
+    read measure's words, the read quarter restated, an ordinal after a
+    month, a slashed figure); a cause said at the point's place preempts
+    the floor and the unsupported check, so it is said at the decline's
+    place (21 "finals" questions showed it); and the alignment tool's point
+    detection had been blind since the intent label went (Phase 4, step 2),
+    so every "calls aligned" figure since then was computed with the point
+    left in - now fixed. Open P1s 19 of 194 at the night's end; step 6 is
+    the queue.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
