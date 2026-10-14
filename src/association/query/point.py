@@ -1850,6 +1850,15 @@ _LINES_PAIR_NAMES_THE_STAT: frozenset[PointShape] = frozenset({LINE_RECORD, GAME
 #: one game), and a player's line is not among them.
 _LINES_ONE_NARROWS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS})
 
+#: The keys of a player's games that narrow by ONE line however it is
+#: stated where the words set it on the games - "2 threes in games Jamal
+#: Murray played", "lebron stats in games with 30 points", "kobe 30 point
+#: games" (Phase 5, step 2, ISSUES.md #357): his line, his log or his
+#: splits over the games that hold it. It was refused by name
+#: (``unread_number``) since Phase 5, step 1, and answered past the line
+#: before that.
+_LINES_ON_GAMES_NARROW: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS, PLAYER_LINE})
+
 ORDER_ASKS: frozenset[PointShape] = frozenset({NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL})
 """Keys whose reader honors ``order``, so filling it from the question can
 only make the answer match what was asked: on these the end of the span is
@@ -2067,8 +2076,9 @@ def _lines_pairs(asked: PointShape | None, pairs: list[LineCandidate], *, beside
     lined = asked in THRESHOLD_ASKS
     plus = [candidate for candidate in pairs if candidate.how == "plus"]
     stated = [candidate for candidate in pairs if candidate.how in ("plus", "at_least")]
-    one = asked in _LINES_ONE_NARROWS and not beside_line and len(pairs) == 1 and len(stated) == 1
-    narrowing = stated if one else plus
+    on_games = asked in _LINES_ON_GAMES_NARROW and not beside_line and len(pairs) == 1 and pairs[0].games
+    one = on_games or (asked in _LINES_ONE_NARROWS and not beside_line and len(pairs) == 1 and len(stated) == 1)
+    narrowing = pairs if on_games else stated if one else plus
     kept: list[tuple[int, Line, Claim]] = []
     for candidate in pairs:
         narrows = candidate in narrowing and (len(narrowing) > 1 or one)
