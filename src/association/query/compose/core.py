@@ -1364,24 +1364,52 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     except Unsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc
     rows = rows_of(con, c)
+    # The ranking read again where its default qualifier kept everyone out
+    # (ISSUES.md #422): the query and statement it ran, under their own names.
+    q, ran, rows, scaled = _run_scaled_minimum(con, q, c, rows)
     # Each grouped row's own rebuilt count, read before _box_notes pops the
     # scratch column - a by-player count says how many of the LEADER's games
     # were rebuilt (threshold_count's own note, compose.counts).
     rebuilt_by_row = [int(r.get("rebuilt_shown") or 0) for r in rows]
-    notes = _box_notes(con, q, c, rows)
+    notes = _box_notes(con, q, ran, rows)
     return {
         "rows": rows,
-        "entity": c.player,
+        "entity": ran.player,
         "rebuilt_by_row": rebuilt_by_row,
-        "total": _grouped_total(con, q, c, rows),
-        "player": c.player.name if c.player else _everyone_label(q.position),
-        "span": c.span,
-        "player_seasons": _player_own_seasons(con, c.player, c.span),
-        "narrowing": c.narrowed.filters(windowed=True),
-        "window": c.narrowed.window,
-        "sql": c.sql,
-        "params": c.params,
-        "rebuilt": c.rebuilt,
-        "measures": c.measures,
+        "total": _grouped_total(con, q, ran, rows),
+        "player": ran.player.name if ran.player else _everyone_label(q.position),
+        "span": ran.span,
+        "player_seasons": _player_own_seasons(con, ran.player, ran.span),
+        "narrowing": ran.narrowed.filters(windowed=True),
+        "window": ran.narrowed.window,
+        "sql": ran.sql,
+        "params": ran.params,
+        "rebuilt": ran.rebuilt,
+        "measures": ran.measures,
         "notes": notes,
+        "minimum_scaled": scaled,
     }
+
+
+def _run_scaled_minimum(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list[dict[str, Any]]) -> tuple[Query, Compiled, list[dict[str, Any]], tuple[int, int, int] | None]:
+    """A ranking of players whose DEFAULT qualifier (the question stated
+    none, ``Query.minimum`` None) kept every player out, read again with
+    the qualifier scaled to the pool: half the most games any player in it
+    played, rounded up - with ``(scaled, most, default)`` for the sentence
+    to say as the ``minimum`` decision. The default 20 games is a regular
+    season's; over the games against one opponent (four a season at most)
+    or one team's postseason it kept everyone out, and the answer said "No
+    games" about games that exist (ISSUES.md #422). A pool with no games
+    at all keeps its "No games", which is then true; a minimum the question
+    stated keeps its own sentence, which names it."""
+    if rows or q.group != "player" or q.minimum is not None or not q.minimum_games:
+        return q, c, rows, None
+    pool = rows_of(con, compile_query(con, replace(q, minimum_games=None, limit=None)))
+    counted = f"{q.measures[0]}_games" if q.measures else "games"
+    most = max((int(r.get(counted, r["games"]) or 0) for r in pool), default=0)
+    if not most:
+        return q, c, rows, None
+    chose = -(-most // 2)
+    scaled = replace(q, minimum_games=chose)
+    compiled = compile_query(con, scaled)
+    return scaled, compiled, rows_of(con, compiled), (chose, most, q.minimum_games)

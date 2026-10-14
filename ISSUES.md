@@ -389,14 +389,6 @@ those were found.
 - **Priority:** P2 - (4) and (5) answer a narrower or different question on 2 of the 2,082, the rest are refusals.
 - **Source:** ours.
 - **GitHub:** #390 (#391, the count of seasons, folded into it)
-### A league ranking narrowed to one opponent says "No games for every player": "most points vs nuggets this season" keeps the 20-game qualifier over the games against one team
-- **Found:** 2026-10-13, the P1 sweep's lane N, measuring #247's moves (the typo'd opponent read as the team made three feed answers this).
-- **Evidence:** on `088fb94`, names stubbed (`[]`, `points`), "most points vs nuggets this season" plans `Query(who=everyone, cuts.opponent='Denver Nuggets', skeleton='grouped', group='player', aggregate=per_game, minimum_games=20, ...)` and answers "No games for every player vs the Denver Nuggets in the 2026 regular season." - no player has 20 games against one team in a season. 75 of the 2,082 feed answers begin "No games for every ..." (most a player name unread with no model names, read as the league: "Curry vs the suns", "mpj vs atl"; but also real league questions: "which position has scored most points vs boston", "centers blocks against detroit pistons this season", "How many ppg do centers score against the mavericks", "highest scoring shooting guard in a game for the nets").
-- **User sees:** a false statement that no games exist, where the league's leaders against that team were asked.
-- **Next step:** the game-level ranking's qualifier scaled to the games the cuts leave (or dropped under an opponent, with the floor said as a decision), or the empty result refused naming the qualifier rather than "No games"; `compose/rankings.py` and the compiler's `minimum_games` (lane L's files).
-- **Source:** ours.
-- **Priority:** P2 - a refusal naming the wrong cause; 75 feed answers.
-- **GitHub:** #422
 ### Every reader keyed on a line but the team's record reads its number as "N+", whatever its comparison
 - **Found:** 2026-10-13, the P1 sweep's lane T, fixing #325's answer half.
 - **Evidence:** `lines.threshold_of` hands a reader the keyed line's NUMBER alone, and every caller but the team's record (since lane T) compares with `>=`: the point reader's log predicate (`point._threshold_line`: `[(col, ">=", threshold)]`) and its count, record, run and high points (`point.py` 382, 399, 690, 839, 914, 998), the player's record over a line (`compose.records._own_line`), the count (`compose.counts`), the run (`compose.runs`), the log (`compose.logs`). No reading writes a keyed line with another comparison today (0 of the 123 keyed lines on the 2,710 readings are not `>=`), so nothing answers wrong yet - but the reading half of #325 (or any "more than N" / "N or fewer" a tagger keys) would be answered as "N+" on every one of these shapes, fluently.
