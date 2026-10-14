@@ -1420,6 +1420,31 @@ def test_a_stated_minimum_is_the_qualifier_where_the_season_lines_ranking_is_rea
     assert refused.value.result == refusal_of(Cause(kind="ranking_floor_unit", facts={"unit": "attempts", "count": 20}))
 
 
+def test_a_default_minimum_no_player_met_is_scaled_to_the_pool_and_said_as_a_decision(cx_ctx: AnswerContext) -> None:
+    """ISSUES.md #422: the default qualifier (20 games, a regular season's)
+    over the games against one team kept every player out, and the ranking
+    said "No games for every player vs the Boston Celtics" about games that
+    exist. Where it keeps everyone out it is scaled to half the most games
+    any player in the pool played (two here, so one), said with why and
+    recorded as the ``minimum`` decision; a stated minimum is never scaled,
+    and a pool with no games still says so."""
+    scope = Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2), cuts=Cuts(opponent="Boston Celtics"))
+    q = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most points vs boston this season")
+    assert isinstance(q, Query) and q.minimum_games == 20 and q.minimum is None
+    with collect() as remarks:
+        said = sentence(q, run(cx_ctx.con, q))
+    assert said.startswith("every player vs the Boston Celtics, ")
+    assert ", minimum 1 game: none played the usual 20 here, so half the most any did (2) - state a minimum to set another)" in said
+    assert [line.split()[:2] for line in said.splitlines()[1:]] == [["Stephen", "Curry"], ["Brandin", "Podziemski"]]
+    assert [(d.kind, d.after, d.instead_of) for d in remarks.decisions] == [("minimum", 1, (20,))]
+    stated = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most points vs boston this season minimum 3 games")
+    assert isinstance(stated, Query)
+    assert sentence(stated, run(cx_ctx.con, stated)).startswith("No player vs the Boston Celtics played 3 games in the ")
+    nobody = move_point(cx_ctx.con, PLAYER_RANKING, replace(scope, cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season_type=3)), "most points vs the lakers in the playoffs")
+    assert isinstance(nobody, Query)
+    assert sentence(nobody, run(cx_ctx.con, nobody)).startswith("No games for every player vs the Los Angeles Lakers in the ")
+
+
 def test_a_stated_minimum_on_a_point_that_ranks_no_players_is_refused_by_name(cx_ctx: AnswerContext) -> None:
     """A qualifier keeps the players a ranking ranks: under a single game's
     high it keeps nothing, so it is refused by a cause naming the floor
