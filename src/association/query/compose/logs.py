@@ -36,6 +36,7 @@ from association.query.notes import Note
 from association.query.player_games import BOTH_SEASON_TYPES, Narrowed
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, log_total, no_narrowed_games, scoped_games, span_of
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, MAX_LIMIT, Cuts, Filtered, Measure, Unsupported, _clamp_limit
+from association.query.reading import Line as ReadLine
 from association.query.reading import Span as ReadSpan
 from association.query.reading import Window as ReadWindow
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
@@ -43,7 +44,7 @@ from association.query.team_games import TeamNarrowed, unnarrowed_games
 from association.query.team_relation import team_games
 
 from .core import LINE, Compiled, Query, compile_over, compile_query, rows_of
-from .team import TEAM_GAME_OWN, TeamQuery, compile_team_count, compile_team_over, team_figure
+from .team import TEAM_BOX_COLUMNS, TEAM_GAME_OWN, TeamQuery, compile_team_count, compile_team_over, team_figure
 
 # A player's log columns, by header -> player_game_log column. The four in
 # _LOG_BASE are always shown, and a named stat adds its own: "luka ft log" and
@@ -349,17 +350,39 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unansw
 # --- the team's log --------------------------------------------------------
 
 
-def _team_log_refusals(without: Any, measures: list[MeasureFilter], game_n: Any) -> None:
+def _team_log_refusals(without: Any, game_n: Any) -> None:
     """What a team's log cannot narrow by: a teammate's absence is
-    with_without's question, a line on a box-score stat keeps a PLAYER's
-    games - a team's log has no such column - and a game of a series is
-    numbered on the player relation only, so far."""
+    with_without's question, and a game of a series is numbered on the
+    player relation only, so far."""
     if without:
         raise Unsupported("a team's games without one of its players is a with_without question")
-    if measures:
-        raise Unsupported("a line on a box-score stat keeps a PLAYER's games; a team's log has no such column")
     if game_n:
         raise Unsupported("a team's log does not number the games of a series yet")
+
+
+def _team_log_lines(team_name: str, scope: Filtered) -> tuple[tuple[ReadLine, ...], Refusal | None]:
+    """The lines a team's log keeps its games past (ISSUES.md #430: "celtics
+    last 10 games when allowing 120+ points", declined "a team's log has no
+    such column"), each on the team's figure or its opponents'
+    (``Line.whose``) - or the refusal naming a stat no game of a team
+    carries a figure for (minutes, a percentage), which was declined the
+    same way."""
+    lines = tuple(line for line in scope.lines if line.narrows and line.period is None)
+    for line in lines:
+        if line.measure not in TEAM_BOX_COLUMNS:
+            return (), Refusal(kind="team_figure_unread", facts={"team": team_name, "stat": line.measure, "what": "log"}, shown={"team": team_name, "games": []}, under=())
+    return lines, None
+
+
+def _team_log_narrow_lines(narrowed: TeamNarrowed, lines: tuple[ReadLine, ...]) -> None:
+    """Keep ``narrowed`` to the games past each line (:func:`_team_log_lines`),
+    said as the record over a line says it: "when their opponents had 120+
+    points"."""
+    for line in lines:
+        figure = None if line.measure == "points" else TEAM_BOX_COLUMNS[str(line.measure)]
+        said = line.as_typed or f"{line.op}{line.value} {line.measure}"
+        label = f"when {'their opponents' if line.whose == 'opponent' else 'they'} had {said}"
+        narrowed.narrow_line(figure, line.op, float(line.value), whose=line.whose, label=label)
 
 
 def _team_log_games(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -478,7 +501,15 @@ def _team_log_figure(measure: Measure | None) -> str | None:
 
 
 def _team_mixed_rows(
-    con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int, figure: Measure | None = None
+    con: duckdb.DuckDBPyConnection,
+    team: Any,
+    season: int,
+    *,
+    opponent: Any,
+    venue: Any,
+    limit: int,
+    figure: Measure | None = None,
+    lines: tuple[ReadLine, ...] = (),
 ) -> tuple[list[dict[str, Any]], dict[int, int], str] | Unanswered:
     """A team's newest ``limit`` games of ``season`` over BOTH season types -
     each type narrowed on its own through
@@ -496,19 +527,32 @@ def _team_mixed_rows(
         narrowed = team_games(con, team, type_span, point, opponent=opponent)
         if isinstance(narrowed, Unanswered):
             return narrowed
+        _team_log_narrow_lines(narrowed, lines)
         narrowed_text = narrowed.filters()
         rows_by_type[season_type] = rows_of(con, compile_team_over(point, team, type_span, narrowed, limit=limit, figure=figure))
     rows, counts = _merge_season_types(rows_by_type, date_of=lambda row: row["day"], limit=limit, ascending=False)
     return rows, counts, narrowed_text
 
 
-def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any, measure: Measure | None = None) -> Result | Unanswered:
+def _team_log_mixed(
+    con: duckdb.DuckDBPyConnection,
+    team_name: str,
+    team: Any,
+    season: int,
+    *,
+    opponent: Any,
+    venue: Any,
+    limit: int,
+    stat: Any,
+    measure: Measure | None = None,
+    lines: tuple[ReadLine, ...] = (),
+) -> Result | Unanswered:
     """A team's "last N games" with no season type named: both types, read
     separately and merged by date. Only an opponent and a venue reach here:
     ``without`` refuses outright for a team, a date fixes one game
     regardless of its type, and a series game number is the player
     relation's alone."""
-    mixed = _team_mixed_rows(con, team, season, opponent=opponent, venue=venue, limit=limit, figure=measure)
+    mixed = _team_mixed_rows(con, team, season, opponent=opponent, venue=venue, limit=limit, figure=measure, lines=lines)
     if isinstance(mixed, Unanswered):
         return mixed
     rows, counts, narrowed_text = mixed
@@ -544,13 +588,13 @@ def _team_log_types(scope: Filtered, asked: ReadSpan) -> tuple[bool, bool]:
     return both, both and not asked.career and not (scope.span.since or scope.span.until or scope.cuts.situation)
 
 
-def _team_log_mixed_of(con: duckdb.DuckDBPyConnection, scope: TeamQuery, asked: ReadSpan, team: Any, *, limit: int) -> Result | Unanswered:
+def _team_log_mixed_of(con: duckdb.DuckDBPyConnection, scope: TeamQuery, asked: ReadSpan, team: Any, *, limit: int, lines: tuple[ReadLine, ...] = ()) -> Result | Unanswered:
     """One season's "last N games" over both types, merged by date
     (:func:`_team_log_mixed`), over the season the span settles on."""
     resolved_season = span_of(asked.without_range(), "games", season_type=2).season
     if resolved_season is None:
         raise Unsupported("a career span has no single season to read both season types within")
-    return _team_log_mixed(con, team.name, team, resolved_season, opponent=scope.cuts.opponent, venue=scope.cuts.venue, limit=limit, stat=spelled(scope.measure), measure=scope.measure)
+    return _team_log_mixed(con, team.name, team, resolved_season, opponent=scope.cuts.opponent, venue=scope.cuts.venue, limit=limit, stat=spelled(scope.measure), measure=scope.measure, lines=lines)
 
 
 def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
@@ -581,7 +625,9 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     date = scope.cuts.date
     opponent, venue, without = scope.cuts.opponent, scope.cuts.venue, tuple(c.player for c in scope.companions if c.absent)
     game_n = scope.cuts.game_n
-    measures = _game_log_lines(scope)
+    # The log's own check of a bare threshold beside its lines (the lines
+    # themselves are read below, on the team's figure or its opponents').
+    _game_log_lines(scope)
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it.
     asked = scope.span.over_career() if date else scope.span
@@ -592,16 +638,25 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     team = resolved_team(con, team_text, season=slot_season(scope))
     if isinstance(team, Unanswered):
         return team
-    _team_log_refusals(without, measures, game_n)
+    _team_log_refusals(without, game_n)
     unread = _team_log_unread(team.name, scope.measure)
     if unread is not None:
         return unread
+    lines, line_unread = _team_log_lines(team.name, scope)
+    if line_unread is not None:
+        return line_unread
+    if scope.measure is not None and any(line.measure == scope.measure.key and line.whose == "opponent" for line in lines):
+        # The figure shown beside each game is the line's own: "when they
+        # allowed 15+ threes" shows the opponents' threes, which the line
+        # kept them by, not the team's.
+        scope = q = replace(q, measure=replace(scope.measure, whose="opponent"))
     if mixed:
-        return _team_log_mixed_of(con, scope, asked, team, limit=limit)
+        return _team_log_mixed_of(con, scope, asked, team, limit=limit, lines=lines)
     seasons = span_of(asked, "games", season_type=BOTH_SEASON_TYPES if both else season_type)
     # The calendar's or the opponents' alignment's narrowing too, which the
     # log's row says it honors and which was dropped here, silently.
     narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=venue, situation=scope.cuts.situation)), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):
         return narrowed
+    _team_log_narrow_lines(narrowed, lines)
     return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=spelled(scope.measure))

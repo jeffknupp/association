@@ -330,8 +330,10 @@ def test_a_game_log_keeps_only_the_games_under_a_line_on_the_stat_the_words_name
     )
     assert [g["date"][5:] for g in two.data["games"]] == ["11-01"]
     assert "under 4 free throw attempts and under 12 points" in (two.text or "")
-    with pytest.raises(Unsupported, match="PLAYER's games"):
-        game_log(pg_ctx, Reading(who=Who(kind="team", teams=("Golden State Warriors",)), lines=(Line(measure="minutes", value=20, as_typed="with 20 minutes", narrows=True),)))
+    # A team's log keeps its games past a line on its own figures (ISSUES.md
+    # #430), and refuses one on a figure no game of a team carries by name.
+    team = game_log(pg_ctx, Reading(who=Who(kind="team", teams=("Golden State Warriors",)), lines=(Line(measure="minutes", value=20, as_typed="with 20 minutes", narrows=True),)))
+    assert (team.text or "").startswith("A team's games carry no minutes game by game"), team.text
 
 
 def test_player_stat_averages_over_exactly_the_games_under_a_line(con: AnswerContext) -> None:
@@ -1568,6 +1570,35 @@ def test_a_teams_log_shows_the_box_score_figure_it_was_asked_for(gl_con: AnswerC
     lines = (rebounds.text or "").split("\n")
     assert lines[1].endswith("opp REB 45") and lines[2].endswith("opp REB 39") and lines[3] == "  Total opponents' rebounds: 84 (42.0 per game).", lines
     assert rebounds.data["figure_total"] == 84 and rebounds.data["figure_whose"] == "opponent"
+
+
+def test_a_teams_log_keeps_the_games_past_a_line_on_its_figure_or_its_opponents(gl_con: AnswerContext) -> None:
+    """ISSUES.md #430: "celtics last 10 games when allowing 120+ points" was
+    declined "a team's log has no such column", and a line on the team's own
+    score the same way. The log keeps the games past a line on its score or
+    its box row, its own or its opponents' (``Line.whose``), says the line,
+    and shows the opponents' figure where the line is on theirs."""
+    _gl_box(gl_con)
+    knicks = Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season_type=2), window=Window(order="recent", count=10))
+    scored = game_log(gl_con, replace(knicks, lines=(Line(measure="points", op=">=", value=100, as_typed="100+ points", narrows=True),)))
+    assert [g["date"] for g in scored.data["games"]] == ["2026-04-10"], scored.text
+    assert (scored.text or "").startswith("New York Knicks when they had 100+ points,"), scored.text
+    allowed = game_log(gl_con, replace(knicks, lines=(Line(measure="points", op=">=", value=100, as_typed="100+ points", narrows=True, whose="opponent"),)))
+    assert [g["date"] for g in allowed.data["games"]] == ["2026-04-12"], allowed.text
+    assert (allowed.text or "").startswith("New York Knicks when their opponents had 100+ points,"), allowed.text
+    under = game_log(gl_con, replace(knicks, lines=(Line(measure="points", op="<", value=100, as_typed="under 100 points", narrows=True),)))
+    assert [g["date"] for g in under.data["games"]] == ["2026-04-12"], under.text
+    # A box-score line: the Knicks' own 12 threes in e1 (their e2 row has no
+    # figure, kept by no line), and the Celtics' 15 in e2, shown as theirs.
+    threes = Measure(key="threePointFieldGoalsMade", as_typed="threes")
+    own = game_log(gl_con, replace(knicks, measure=threes, lines=(Line(measure="threePointFieldGoalsMade", op=">=", value=12, as_typed="12+ threes", narrows=True),)))
+    assert [g["date"] for g in own.data["games"]] == ["2026-04-10"], own.text
+    theirs = game_log(gl_con, replace(knicks, measure=threes, lines=(Line(measure="threePointFieldGoalsMade", op=">=", value=15, as_typed="15+ threes", narrows=True, whose="opponent"),)))
+    lines = (theirs.text or "").split("\n")
+    assert [g["date"] for g in theirs.data["games"]] == ["2026-04-12"] and lines[1].endswith("opp 3PM 15"), lines
+    # A line on a figure no game of a team carries is refused by name.
+    minutes = game_log(gl_con, replace(knicks, lines=(Line(measure="minutes", op=">=", value=240, as_typed="240+ minutes", narrows=True),)))
+    assert (minutes.text or "").startswith("A team's games carry no minutes game by game"), minutes.text
 
 
 def test_a_teams_log_asked_for_a_figure_no_game_carries_is_refused_by_name(gl_con: AnswerContext) -> None:

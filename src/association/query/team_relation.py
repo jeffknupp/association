@@ -118,7 +118,9 @@ refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 #
 # A team's log, splits and record over a line take a player's cells beyond
 # the team relation's (`taken`): a teammate's absence or role, a line on a
-# box-score column, an ordinal season - refused in the reader's own words,
+# box-score column (which the log and the record read on the team's own
+# figure or its opponents', ISSUES.md #430), an ordinal season - refused in
+# the reader's own words where they do not read it,
 # which say where the question belongs (`compose.logs._team_log_refusals`,
 # `compose.splits`, `compose.records.read_team_record_when`); anything else a
 # team's games do not carry is the planner's refusal ("a team's games cannot
@@ -127,9 +129,12 @@ refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 # (`relation_scoping("game_log")` and its kin) beside the planner's
 # `_TEAM_READER_REFUSES`; the reasons are those rows', read from them.
 TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
+    # A team's log keeps its games past a line on its own figure or its
+    # opponents' (ISSUES.md #430: "when allowing 120+ points"), as the record
+    # over a line does.
     PointShape("team_games", "rows", "date"): ShapeCells(
         unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "rows", "date")].unstated,
-        taken=frozenset({"companion", "line", "season_n"}),
+        taken=frozenset({"companion", "line", "season_n"}) | ReadLine.OPPONENT_CELLS,
     ),
     PointShape("team_games", "split", "splits"): ShapeCells(
         unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "split", "splits")].unstated,

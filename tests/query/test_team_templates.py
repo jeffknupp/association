@@ -489,6 +489,20 @@ def test_a_record_against_a_conference_is_tallied_from_the_games(team_ctx: Answe
     assert division.text.startswith(f"The New York Knicks went 1-0 (1.000) against the Atlantic Division in the {S} regular season.")
 
 
+def test_a_home_record_including_the_playoffs_adds_the_seasons_home_record(team_ctx: AnswerContext) -> None:
+    """ "knicks record at home this season including playoffs" answered "60-31
+    combined at home (53-29 regular season ...)": the regular season's half
+    was the standings' whole season, the venue's record beside it unread. It
+    is the venue's (30-10), and a season whose standings carry no split says
+    so, as the regular season's own answer does."""
+    home = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(both=True)))
+    assert home.text.startswith("The New York Knicks are 31-11 (.738) combined at home, including the playoffs (30-10 (.750) regular season"), home.text
+    road = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="away"), span=Span(both=True)))
+    assert road.text.startswith("The New York Knicks are 24-19 (.558) combined on the road, including the playoffs (22-19 (.537) regular season"), road.text
+    old = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(season=1990, both=True)))
+    assert old.text.startswith("ESPN's 1990 standings carry no home/road split for the New York Knicks"), old.text
+
+
 def test_a_record_against_a_conference_including_the_playoffs_says_the_conference(team_ctx: AnswerContext) -> None:
     """Both season types summed say what each half was narrowed to: a
     combined record that dropped "against Eastern Conference teams" read as

@@ -34,6 +34,7 @@ every regular-season game only from 1993-94.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -507,7 +508,7 @@ def _by_month_span(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, 
     )
 
 
-def _half(read: Result | Unanswered) -> tuple[int, int, Any, tuple[Note, ...], str]:
+def _half(read: Result | Unanswered, venue: str | None = None) -> tuple[int, int, Any, tuple[Note, ...], str]:
     """One season type's half of a combined record: its wins, losses, first
     season and remarks, and where its neutral-site games are placed - a
     half that was a refusal or a question is no record at all. (Until the
@@ -518,6 +519,12 @@ def _half(read: Result | Unanswered) -> tuple[int, int, Any, tuple[Note, ...], s
         return 0, 0, None, (), ""
     line = read.scalar
     values = line.values if line is not None else {}
+    if venue is not None and read.span.source == "team_seasons" and not read.span.career:
+        # One season's standings say the season's whole record, the venue's
+        # beside it (its detail by venue): the half is the venue's - "knicks
+        # record at home this season including playoffs" added their 53-29
+        # season to their 7-2 at home in the playoffs.
+        values = _venue_row(read, venue)
     first = read.span.first if read.span.career else (read.span.season if read.span.source == "games" else None)
     if read.span.career and read.span.source == "games" and read.span.season_type == 2 and read.span.since is None and line is not None and line.games:
         # A tally of every regular season covers them from the first the game
@@ -528,6 +535,14 @@ def _half(read: Result | Unanswered) -> tuple[int, int, Any, tuple[Note, ...], s
     # Where the half's own answer places its neutral-site games.
     placed = "tally" if read.span.source == "games" else ("career" if read.span.career else "season")
     return int(values.get("wins") or 0), int(values.get("losses") or 0), first, read.notes, placed
+
+
+def _venue_row(read: Result, venue: str) -> Mapping[str, Any]:
+    """The venue's row of one season's standings (its detail by venue)."""
+    for part in read.parts:
+        if isinstance(part.body, Grouped) and part.body.by == "venue":
+            return next(row for row in part.body.rows if row["key"] == ("home" if venue == "home" else "road"))
+    raise AssertionError("a season's standings asked with a venue carry its split")
 
 
 def _without_neutral_site(notes: tuple[Note, ...]) -> tuple[Note, ...]:
@@ -543,7 +558,12 @@ def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Re
     combined total AND each type's own record and first season, never one
     type alone."""
     reads = [_route(con, q, asked, season_type) for season_type in (2, 3)]
-    halves = [_half(read) for read in reads]
+    if asked.venue is not None and isinstance(reads[0], Result) and reads[0].span.source == "team_seasons" and not reads[0].span.career and len(reads[0].parts) < 2:
+        # A season whose standings carry no home/road split has no venue's
+        # record to add the playoffs to: said as the regular season's own
+        # answer says it, where it added the season's whole record.
+        return reads[0]
+    halves = [_half(read, asked.venue) for read in reads]
     # What each half was narrowed to beyond the opponent and the venue (a
     # month, a calendar cut, a conference): one narrowing, read twice, and
     # said once - a combined record that dropped it read as the whole span's.
