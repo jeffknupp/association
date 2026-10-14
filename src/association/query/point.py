@@ -532,6 +532,10 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
         if stat is not None and stat.strip():
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
     aggregate = Aggregate.TOTAL if lexicon.TOTAL_WORD.search(question) else Aggregate.PER_GAME
+    if aggregate == Aggregate.TOTAL and scope.measure is not None:
+        # "most total points by a center": the measure is asked as a total
+        # (``Measure.how``), what the planner derives the ranking's sum from.
+        scope = replace(scope, measure=replace(scope.measure, how="total"))
     minimum_games = PER_GAME_MIN_GAMES
     if scope.minimum is not None:
         if scope.minimum.unit != "games":

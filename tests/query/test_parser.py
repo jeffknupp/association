@@ -1359,3 +1359,14 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
     planned = plan_point(reading)
     assert isinstance(planned, Query) and planned.source == "seasons"
     assert _leaderboard_metric(planned, career=False) == "avg_game_score"
+
+
+@pytest.mark.parametrize(("question", "how"), [("most total points by a center this season", "total"), ("most points by a center this season", None)])
+def test_a_total_asked_on_the_game_level_ranking_is_the_measures_own(con: duckdb.DuckDBPyConnection, question: str, how: str | None) -> None:
+    """ "total" on the league's game-level ranking is how the measure is
+    asked (``Measure.how``, Phase 5, step 4): the point reader writes it on
+    its point's measure, which the planner derives the ranking's sum from
+    (D5), where it stamped the aggregate alone."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "player")
+    assert reading.point.measure is not None and reading.point.measure.how == how
