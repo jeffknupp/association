@@ -407,14 +407,32 @@ def _period_quarter(row: dict[str, Any], quarter: int, measure: str) -> dict[str
 # --- a team's quarter or half ------------------------------------------------------------
 
 
-def _team_quarter_points_measure(asked: Measure | None) -> str | Unanswered:
-    """The column a team's period question measures - points where it names
-    none (the linescore's), else any column the team's period line rebuilds
+def _team_quarter_points_measure(asked: Measure | None) -> tuple[str, bool] | Unanswered:
+    """The column a team's period question measures, and whether it is the
+    opponent's figure ("points allowed in the 4th quarter", "opp rebounds":
+    the other side's linescore and rebuilt line in the same games, ISSUES.md
+    #427) - points where it names none (the linescore's), else any column
+    the team's period line rebuilds
     (:data:`~association.query.team_games.TEAM_PERIOD_COLUMNS`), or a
     shooting percentage over two of them - or the refusal, naming the stat,
     for one nothing splits by period: answering it with the team's POINTS
     was the fluent wrong answer this guards against ("trailblazers stats
     last 10 games 3 point average 1st quarter")."""
+    if asked is not None and asked.whose == "opponent":
+        # The same column, read from the other side of each game.
+        theirs = _team_quarter_points_measure(replace(asked, whose="own"))
+        if not isinstance(theirs, tuple):
+            # Refused for the stat, named as theirs below.
+            named = spelled_whose(asked)
+            return Refusal(kind="team_period_unknown", facts={"stat": named}, shown={"stat": named})
+        return theirs[0], True
+    own = _team_quarter_points_own(asked)
+    return own if isinstance(own, Unanswered) else (own, False)
+
+
+def _team_quarter_points_own(asked: Measure | None) -> str | Unanswered:
+    """The column of the team's own figure a period question measures, or
+    the refusal naming the stat."""
     stat = spelled(asked)
     if stat is None or stat == "all" or resolve_metric(asked) in ("avg_points", "total_points"):
         return "points"
@@ -589,9 +607,10 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Re
     if scope.who.player is not None:
         # A named player's quarter or half is period_split's.
         raise Unsupported("team_quarter_points cannot answer for a named player")
-    measure = _team_quarter_points_measure(scope.measure)
-    if isinstance(measure, Unanswered):
-        return measure
+    measured = _team_quarter_points_measure(scope.measure)
+    if isinstance(measured, Unanswered):
+        return measured
+    measure, theirs = measured
     settled = _team_quarter_points_team_and_span(con, scope)
     if isinstance(settled, Unanswered):
         return settled
@@ -603,6 +622,8 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Re
     narrowed = team_games(con, team, span, narrowing, opponent=scope.cuts.opponent, date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         return narrowed
+    if theirs:
+        narrowed.period_whose = "opponent"
     games, seasons = _team_quarter_points_games(con, narrowed, measure)
     first, last = (min(seasons), max(seasons)) if seasons else (None, None)
     read = _team_quarter_points_rebuilt(team, games, seasons, measure, period_label)
@@ -621,7 +642,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Re
         ),
         parts=(Part(body=_team_quarter_points_line(shown, measure)), Part(role="detail", body=Rows(rows=tuple(shown)))),
         notes=tuple(notes),
-        facts=TeamPeriodFacts(measure=measure, rank=scope.window.rank, dateless=narrowed.filters(opponent=False, date=False, period=False)),
+        facts=TeamPeriodFacts(measure=measure, rank=scope.window.rank, dateless=narrowed.filters(opponent=False, date=False, period=False), whose="opponent" if theirs else "own"),
     )
 
 

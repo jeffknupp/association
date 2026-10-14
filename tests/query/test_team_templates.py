@@ -1313,6 +1313,22 @@ def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: AnswerContext) -> Non
     assert result.data["total"] == 55
 
 
+def test_a_teams_points_allowed_in_a_quarter_are_the_other_linescores(tqp_ctx: AnswerContext) -> None:
+    """ISSUES.md #427: "celtics points allowed in the 4th quarter" was
+    refused "A team's points allowed by quarter is not on record: ESPN's
+    linescore holds only the score", though the linescore holds both
+    sides'. The Knicks' opponents' first quarters this season: 20 (e1, the
+    Celtics away), 25 (e2, the Lakers at home), 20 (e3), 30 (e4)."""
+    allowed = Measure(key="points", as_typed="points allowed", whose="opponent")
+    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, span=Span(season=S), period=Period(number=1)))
+    assert [g["points"] for g in result.data["games"]] == [20, 25, 20, 30]
+    assert (result.text or "").startswith(f"The New York Knicks' opponents, 1st quarter scoring, {S} regular season (4 games, 95 total):")
+    one = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
+    assert one.text == f"The Los Angeles Lakers scored 20 points in the 1st quarter against the New York Knicks on {S}-01-15."
+    fewest = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, span=Span(season=S), period=Period(number=1), window=Window(rank="fewest")))
+    assert (fewest.text or "").startswith("The New York Knicks' opponents scored 20 in the 1st quarter vs the Boston Celtics on")
+
+
 def test_a_quarter_points_date_reads_one_game(tqp_ctx: AnswerContext) -> None:
     result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
     assert result.data["games"] == [{"date": f"{S}-01-15", "opponent": "Los Angeles Lakers", "points": 25}]

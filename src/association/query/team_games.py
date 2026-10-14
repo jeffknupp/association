@@ -70,7 +70,7 @@ own already-Eastern ``eastern_date`` column) and ``until`` (the inclusive last s
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from association.nba.franchises import season_name_sql
 from association.nba.season import eastern_date_sql
@@ -219,6 +219,12 @@ class TeamNarrowed:
     #: Whether the warehouse holds ``plays``, which every rebuilt column but
     #: the shot ones is read from.
     period_plays: bool = True
+    #: Whose period figures a period-narrowed read's ``points`` and rebuilt
+    #: columns are: the team's own, or its opponent's in the same game - the
+    #: other side's linescore and the line the plays rebuild for the other
+    #: team (ISSUES.md #427: "celtics points allowed in the 4th quarter").
+    #: ``team_score``, ``opponent_score`` and ``won`` stay as they are.
+    period_whose: Literal["own", "opponent"] = "own"
 
     def clauses(self, *, narrowed: bool = True) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -759,12 +765,17 @@ def _team_period_source(narrowed: TeamNarrowed) -> tuple[str, list[Any]]:
     periods = narrowed.periods
     own = team_period_points_sql("CASE WHEN tg.side = 'home' THEN tpl_g.home_linescores ELSE tpl_g.away_linescores END", periods)
     theirs = team_period_points_sql("CASE WHEN tg.side = 'home' THEN tpl_g.away_linescores ELSE tpl_g.home_linescores END", periods)
+    # Whose figures `points` and the rebuilt columns are: the opponent's are
+    # the other linescore and the other team's rebuilt line in the same game.
+    opponent = narrowed.period_whose == "opponent"
+    points = theirs if opponent else own
+    line_team = "tg.opponent_id" if opponent else "tg.team_id"
     columns = [c for c in TEAM_PERIOD_COLUMNS if c != "points"]
     base = " AND ".join(narrowed.base) or "TRUE"
     if not narrowed.period_shots:
         rebuilt = ", ".join(f"CAST(NULL AS BIGINT) AS {c}" for c in columns)
         return (
-            f"(SELECT tg.* REPLACE ({own} AS team_score, {theirs} AS opponent_score), {own} AS points, {rebuilt} "
+            f"(SELECT tg.* REPLACE ({own} AS team_score, {theirs} AS opponent_score), {points} AS points, {rebuilt} "
             "FROM team_games tg JOIN real_games tpl_g ON tpl_g.event_id = tg.event_id AND tpl_g.season = tg.season) tg",
             [],
         )
@@ -782,9 +793,9 @@ def _team_period_source(narrowed: TeamNarrowed) -> tuple[str, list[Any]]:
     rebuilt = ", ".join(_figure(c) for c in columns)
     sql = (
         f"(WITH _team_period_line AS ({line}) "
-        f"SELECT tg.* REPLACE ({own} AS team_score, {theirs} AS opponent_score), {own} AS points, {rebuilt} "
+        f"SELECT tg.* REPLACE ({own} AS team_score, {theirs} AS opponent_score), {points} AS points, {rebuilt} "
         "FROM team_games tg JOIN real_games tpl_g ON tpl_g.event_id = tg.event_id AND tpl_g.season = tg.season "
-        "LEFT JOIN _team_period_line tpl_l ON tpl_l.event_id = tg.event_id AND tpl_l.season = tg.season AND tpl_l.team_id = tg.team_id) tg"
+        f"LEFT JOIN _team_period_line tpl_l ON tpl_l.event_id = tg.event_id AND tpl_l.season = tg.season AND tpl_l.team_id = {line_team}) tg"
     )
     return sql, list(narrowed.base_params)
 

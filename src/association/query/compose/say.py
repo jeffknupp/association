@@ -3541,6 +3541,23 @@ def _period_label(result: Result) -> str:
     return period.label
 
 
+def _team_period_who(result: Result) -> str:
+    """Whose figure a team's quarter answer says: the team's, or its
+    opponents' in the same games (ISSUES.md #427)."""
+    if _facts(result, TeamPeriodFacts).whose == "opponent":
+        return f"{possessive(result.subject)} opponents"
+    return result.subject
+
+
+def _team_period_one_game(result: Result, g: Mapping[str, Any]) -> tuple[str, str]:
+    """Who had one game's figure and whom it was against: the team against
+    its opponent, or - for the opponent's figure - that opponent against the
+    team."""
+    if _facts(result, TeamPeriodFacts).whose == "opponent":
+        return str(g["opponent"]), result.subject
+    return result.subject, str(g["opponent"])
+
+
 def _team_period_about(result: Result, games: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """The keys every team quarter answer's data opens with."""
     period = result.narrowing.period
@@ -3554,13 +3571,14 @@ def _team_period_rate(result: Result, played: list[Mapping[str, Any]], line: Sca
     reached it: one game said its own way, many listed beneath the figure as
     made-attempted. A "most"/"fewest" question is refused rather than
     ranked: one quarter's best percentage is whichever game went 2 for 2."""
-    measure, team, label, span_words = _facts(result, TeamPeriodFacts).measure, result.subject, _period_label(result), result.span.phrase or ""
+    measure, team, label, span_words = _facts(result, TeamPeriodFacts).measure, _team_period_who(result), _period_label(result), result.span.phrase or ""
     made, attempted, pct = line.sums["made"], line.sums["attempted"], line.values[measure]
     word = PERIOD_RATE_WORDS[measure]
     data: dict[str, Any] = {**_team_period_about(result, played), "stat": measure, "total": made, "attempted": attempted, "average": pct}
     if _facts(result, TeamPeriodFacts).rank in ("most", "fewest"):
+        owner = f"{team}'s" if _facts(result, TeamPeriodFacts).whose == "own" else possessive(team)
         message = (
-            f"The {team}'s best or worst single {label} by {word} is not ranked: over a few attempts the extreme is whichever game went 2 for 2. "
+            f"The {owner} best or worst single {label} by {word} is not ranked: over a few attempts the extreme is whichever game went 2 for 2. "
             f"Ask for their {word} in the {label} over the span instead."
         )
         return Answer(data={**data, "message": message, "headline": message}, text=message)
@@ -3569,7 +3587,8 @@ def _team_period_rate(result: Result, played: list[Mapping[str, Any]], line: Sca
     if len(played) == 1:
         g = played[0]
         paren = f" ({span_words})" if span_words else ""
-        answer = f"The {team} {did} in the {label} against the {g['opponent']} on {g['date']}{_facts(result, TeamPeriodFacts).dateless}{paren}."
+        who, against = _team_period_one_game(result, g)
+        answer = f"The {who} {did} in the {label} against the {against} on {g['date']}{_facts(result, TeamPeriodFacts).dateless}{paren}."
         return Answer(data={**data, "headline": answer}, text=answer)
     header = f"The {team} {did} in the {label} across {len(played)} {span_words} games{vs}{result.narrowing.phrase}"
     if len(played) > _QUARTER_BREAKDOWN_LIMIT:
@@ -3591,7 +3610,7 @@ def _team_period_extreme(result: Result, played: list[Mapping[str, Any]], data: 
     where = " and ".join(f"vs the {g['opponent']} on {g['date']}" for g in tied)
     figure = f"scored {best}" if measure == "points" else f"had {best} {period_noun(measure, best)}"
     vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
-    answer = f"The {result.subject} {figure} in the {_period_label(result)} {where}, their {rank} in the {result.span.phrase or ''}{vs}{_facts(result, TeamPeriodFacts).dateless}."
+    answer = f"The {_team_period_who(result)} {figure} in the {_period_label(result)} {where}, their {rank} in the {result.span.phrase or ''}{vs}{_facts(result, TeamPeriodFacts).dateless}."
     return Answer(data={**data, "rank": rank, "extreme": best, "extreme_games": tied, "headline": answer}, text=answer)
 
 
@@ -3599,14 +3618,15 @@ def _team_period_sentence(result: Result, played: list[Mapping[str, Any]], total
     """The figure over the games that reached the period: one game, many
     summed (or averaged, for a column other than points), or each listed
     under the total."""
-    measure, team, label, span_words = _facts(result, TeamPeriodFacts).measure, result.subject, _period_label(result), result.span.phrase or ""
+    measure, team, label, span_words = _facts(result, TeamPeriodFacts).measure, _team_period_who(result), _period_label(result), result.span.phrase or ""
     extra, dateless = result.narrowing.phrase, _facts(result, TeamPeriodFacts).dateless
     vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
     if len(played) == 1:
         g = played[0]
         paren = f" ({span_words})" if span_words else ""
         figure = f"scored {g['points']} points" if measure == "points" else f"had {g[measure]} {period_noun(measure, g[measure])}"
-        return f"The {team} {figure} in the {label} against the {g['opponent']} on {g['date']}{dateless}{paren}."
+        who, against = _team_period_one_game(result, g)
+        return f"The {who} {figure} in the {label} against the {against} on {g['date']}{dateless}{paren}."
     avg = total / len(played)
     if measure == "points":
         if len(played) > _QUARTER_BREAKDOWN_LIMIT:

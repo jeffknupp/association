@@ -470,6 +470,25 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
     assert listed is None or f"{listed:.1f}% of the time in {SEASON}" in (result.text or "")
 
 
+def test_team_quarter_points_answers_the_opponents_rebuilt_stat_from_the_other_side(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """ISSUES.md #427: an opponent's figure in a period ("opp turnovers in
+    the first half") was refused as not on record, though the plays rebuild
+    both teams' lines. The Away Team's opponents are the Home Team, whose
+    first-half turnovers are 5 in g1 and none in g2."""
+    ctx = AnswerContext(con=team_con, out_dir=tmp_path)
+    result = team_quarter_points(
+        ctx,
+        Reading(
+            who=Who(kind="team", teams=("Away Team",)),
+            measure=Measure(key="turnovers", as_typed="turnovers", whose="opponent"),
+            span=Span(season=SEASON, season_type=2),
+            period=Period(number=1, half=True),
+        ),
+    )
+    assert (result.data["total"], [g["turnovers"] for g in result.data["games"]]) == (5, [5, 0])
+    assert "The Away Team's opponents averaged 2.5 turnovers in the 1st half" in (result.text or "")
+
+
 def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "turnovers", {SEASON: 60.6})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
