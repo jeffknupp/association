@@ -37,6 +37,8 @@ LABELS: dict[str, str] = {
     "freeThrowsMade": "FTM",
     "freeThrowsAttempted": "FTA",
     "plusMinus": "+/-",
+    "offensiveRebounds": "OREB",
+    "defensiveRebounds": "DREB",
     "ts_pct": "TS%",
     "efg_pct": "eFG%",
     "fg_pct": "FG%",
@@ -242,7 +244,7 @@ def _grouped_minimum(q: Query, scaled: tuple[int, int, int] | None = None) -> st
         return decided("minimum", said, field="minimum", chose=chose, instead_of=(default,), why=f"the most games any player in the pool played: {most}", of="games")
     if not q.minimum_games:
         return ""
-    said = f", minimum {q.minimum_games} games"
+    said = f", minimum {_games(q.minimum_games)}"
     return said if q.minimum is not None else decided("minimum", said, field="minimum", chose=q.minimum_games, of="games")
 
 
