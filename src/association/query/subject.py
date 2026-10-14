@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import functools
 import gzip
+import itertools
 from dataclasses import dataclass, replace
 from importlib import resources
 from typing import TYPE_CHECKING, NamedTuple, get_args
@@ -454,6 +455,7 @@ def _teams_by_word(teams: names.TeamIndex, question: str) -> set[str]:
     one-word spelling, a nickname or a whole word of exactly one team's
     name (:func:`team_named_in`, word by word)."""
     found: set[str] = set()
+    question = lexicon.SINGULAR_NAMING_NO_TEAM.sub(_team_word_blank, question)
     for run in lexicon.TEAM_SPELLING_RUN.findall(question.lower()):
         team = lexicon.TEAM_SINGULARS.get(run.removesuffix("'s").rstrip("'")) or team_named_in(teams, run)
         if team is not None:
@@ -465,11 +467,17 @@ def _team_word(teams: names.TeamIndex, question: str) -> str | None:
     """The team the question names as a word: a singular or one-word
     nickname first, then :func:`~association.query.entities.team_named_in`
     (the roster table by whole word, the plural nicknames), then an
-    abbreviation."""
-    for w in _words(question.lower()):
+    abbreviation. A singular in words that name no team ("net points",
+    "martin luther king") is none."""
+    for w in _words(lexicon.SINGULAR_NAMING_NO_TEAM.sub(_team_word_blank, question).lower()):
         if w in lexicon.TEAM_SINGULARS:
             return lexicon.TEAM_SINGULARS[w]
     return team_named_in(teams, question) or _team_abbreviation(teams, question)
+
+
+def _team_word_blank(match: re.Match[str]) -> str:
+    """``match``'s characters as spaces, so every later offset holds."""
+    return " " * len(match.group(0))
 
 
 def _team_words(text: str) -> list[str]:
@@ -918,6 +926,66 @@ def versus_word_unread(players: names.PlayerIndex, teams: names.TeamIndex, quest
     return None
 
 
+def team_not_read(teams: names.TeamIndex, question: str, reading: reading.Reading) -> tuple[str, str] | None:
+    """The first team the subject reading read on a player's question (one
+    player or two) that the reading put nowhere - not the subject's team,
+    not his tenure, not the opponent - as the words that name it and the
+    team, or None: "lebron record vs t wolves" answered his splits over
+    every game, "Mikal bridges logs at philly" his last ten, the team read
+    by nothing and counted as read (ISSUES.md #436). The parser refuses by
+    it (``team_not_read``) rather than answer the question without the
+    team. A team placed under another name of its franchise ("the hornets
+    in 2008", read as the New Orleans Hornets) is placed.
+
+    .. versionadded:: 6.0.0
+    """
+    if reading.who.kind not in ("player", "pair") or reading.subject is None or reading.point is None:
+        # No point, nothing answered over every game: the reading refuses
+        # by its own cause ("steve kerr coaching record ... as a warrior").
+        return None
+    season = reading.span.season if reading.span.season is not None else reading.subject.named_season
+    placed = [name for name in (*reading.who.teams, reading.cuts.tenure, reading.cuts.opponent) if name]
+    tokens = _subject_claims_tokens(question)
+    held = {word.casefold() for name in (*reading.who.players, *(c.player for c in reading.companions)) for word in _words(name)}
+    # His own team too ("for the nets", "with okc"): where no tenure was
+    # written for it, nothing reads it.
+    named = (*reading.subject.teams, *((reading.subject.own_team,) if reading.subject.own_team else ()))
+    # Every team a word of the question names, not only the one the
+    # subject reading kept ("with Detroit Pistons and Atlanta Hawks").
+    named = (*named, *sorted(_teams_by_word(teams, question) - set(named)))
+    for team in named:
+        if any(_team_not_read_same(teams, team, other, season) for other in placed):
+            continue
+        stretches = _subject_claims_team(teams, tokens, team, season)
+        if stretches and all(_team_not_read_in_a_name(question[start:end], held) for start, end in stretches):
+            # "magic johnson vs larry bird": the team's word is a word of a
+            # player's name the reading holds, and names him.
+            continue
+        words = " ".join(question[start:end] for start, end in stretches) or team
+        resolved = _team_named(teams, team, season)
+        return words, resolved.name if resolved is not None else team
+    return None
+
+
+def _team_not_read_in_a_name(words: str, held: set[str]) -> bool:
+    """Whether every word of ``words`` is a word of a name the reading holds."""
+    each = [word.casefold() for word in _words(words)]
+    return bool(each) and all(word in held for word in each)
+
+
+def _team_not_read_same(teams: names.TeamIndex, team: str, other: str, season: int | None) -> bool:
+    """Whether ``team`` and ``other`` are one franchise's names: the same
+    team resolved, or one nickname under two cities' names (the Hornets of
+    Charlotte and of New Orleans, the Nets of New Jersey and Brooklyn)."""
+    if team.casefold() == other.casefold():
+        return True
+    one, two = _team_named(teams, team, season), _team_named(teams, other, season)
+    if one is not None and two is not None and one.id == two.id:
+        return True
+    last = [word.casefold() for word in _words(team)[-1:]]
+    return bool(last) and [word.casefold() for word in _words(other)[-1:]] == last
+
+
 def _versus_word_names_something(players: names.PlayerIndex, teams: names.TeamIndex, word: str, reading: reading.Reading) -> bool:
     """Whether ``word`` after a versus word is something a reader reads: an
     ordinary or a short word, a nickname or a team's word, a word of a name
@@ -1218,7 +1286,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     # Miami"); with none, or with the player following as a condition
     # ("stats for sixers when maxey scored 20+", F087), it names the team the
     # question is about.
-    own_team = own[0].name if own is not None and players and _named_before(question, players, own[1]) else None
+    own_team = _read_subject_own_team(index.teams, question, players, own, season, opponent)
     teams = _team_names(index, question, scope, team_word, opponent, own_team)
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
@@ -1240,6 +1308,18 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
         filler=filler,
         claims=(*subject.claims, *_read_subject_season_claims(question)),
     )
+
+
+def _read_subject_own_team(teams: names.TeamIndex, question: str, players: tuple[str, ...], own: tuple[Entity, int] | None, season: int | None, opponent: str | None) -> str | None:
+    """The player's own team: the one a lead names after his name ("for the
+    Heat", "with okc"), else - for one player - the team word right beside
+    his name ("lakers westbrook stats", ISSUES.md #436)."""
+    if own is not None and players and _named_before(question, players, own[1]):
+        return own[0].name
+    if len(players) != 1:
+        return None
+    beside = _team_beside_player(teams, question, players[0], season, opponent)
+    return beside[0].name if beside is not None else None
 
 
 def _read_subject_conditions(question: str, beside: tuple[str, ...], scope: Filtered) -> tuple[tuple[Companion, ...], tuple[Claim, ...], tuple[tuple[int, int, str], ...]]:
@@ -1395,6 +1475,9 @@ def _named_before(question: str, players: tuple[str, ...], at: int) -> bool:
     # (a name's words are letters alone, so a word standing whole in the
     # head is one of its runs).
     head = {run.group(0) for run in lexicon.WORD_RUN.finditer(question[:at].casefold())}
+    # A possessive "s" glued on is the name still ("lebrons playoff outcome
+    # during lakers", ISSUES.md #436).
+    head |= {word[:-1] for word in head if word.endswith("s")}
     return any(word in head for p in players for word in _words(p.casefold()) if len(word) >= 3)
 
 
@@ -1671,7 +1754,7 @@ def _apply_own_team(subject: Subject, scope: Filtered, asked: PointShape | None)
     the question (:attr:`Subject.named_season`, never a defaulted
     "current season"), ``span`` becomes "career" - "for Miami"
     fifteen years into a Lakers career is not asking about this season."""
-    if asked not in OWN_TEAM_RESTORABLE_ASKS or subject.own_team is None or not scope.who.players:
+    if asked not in OWN_TEAM_RESTORABLE_ASKS or subject.own_team is None or len(scope.who.players) != 1:
         return scope, []
     # Beside an opponent too, so long as it is another team: "d'angelo
     # russell vs pistons as a laker" is his Lakers games against Detroit,
@@ -2504,16 +2587,64 @@ def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = 
     .. versionadded:: 4.4.0
     """
     for match in lexicon.FOR_TEAM_PHRASE.finditer(question):
-        span_text = match.group(1) or match.group(2) or match.group(3) or match.group(4) or ""
-        words = _team_words(span_text)[:3]
+        span_text = next((group for group in match.groups() if group), "")
+        words = _team_words(span_text)
+        # A team's span ends at a versus word: "with knicks vs hawks" is the
+        # Knicks, and its three words read as the Hawks by the last.
+        words = list(itertools.takewhile(lambda word: word.casefold() not in _VERSUS_WORDS, words))[:3]
+        bare = any(match.group(group) for group in lexicon.FOR_TEAM_BARE_GROUPS) or (match.group(3) is not None and match.group(0).split() == ["as"])
+        if match.group(lexicon.FOR_TEAM_BARE_GROUPS[-1]) and not (words and _team_after_for_nickname(words[0])):
+            # "in" leads a season, a city and a quarter far more than a
+            # team: only a team's nickname after it is one ("in nets").
+            continue
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
                 if size == 1 and words[0].casefold() in lexicon.COMMON_WORDS_THAT_NAME_TEAMS:
                     # "for me" is the asker, not the Memphis Grizzlies.
                     continue
+                if bare and not (is_team_name(" ".join(words[:size])) or (size == 1 and _team_after_for_nickname(words[0]))):
+                    # "with at least 50 points" is no Atlanta Hawk, "with
+                    # no paul george" no New Orleans Pelican: a bare lead
+                    # reads a span that is a team's name by its own words.
+                    continue
                 team = _team_named(teams, " ".join(words[:size]), season)
                 if team is not None:
                     return team, match.start()
+    return None
+
+
+#: The words a versus phrase opens with (:data:`~association.query.lexicon.AGAINST_PHRASE`'s).
+_VERSUS_WORDS = frozenset({"vs", "versus", "against", "v"})
+
+
+def _team_after_for_nickname(word: str) -> bool:
+    """Whether ``word`` is a team's nickname, a shorthand or a singular -
+    never a city or an abbreviation (:func:`_team_after_for`'s "in")."""
+    folded = word.casefold()
+    return lexicon.TEAM_NICKNAME.fullmatch(folded) is not None or folded in lexicon.TEAM_SINGULARS or folded in _TEAM_NICKNAMES
+
+
+def _team_beside_player(teams: names.TeamIndex, question: str, player: str, season: int | None, opponent: str | None) -> tuple[Entity, int] | None:
+    """The team a player's question names right beside his name, with no
+    word leading it - "lakers westbrook stats", "darius garland clippers
+    stats", "sixers kelly oubre jr. vs clippers" (ISSUES.md #436): his
+    tenure, the way "for the lakers" is. The word just before his name's
+    first word or just after its last, where it names one team and not the
+    opponent; with where the team stands, or None."""
+    tokens = _subject_claims_tokens(question)
+    stretches = [(claim.start, claim.end) for claim in _subject_claims_player(question, tokens, player)]
+    if not stretches:
+        return None
+    first, last = min(start for start, _ in stretches), max(end for _, end in stretches)
+    before = [token for token in tokens if token[2] <= first][-1:]
+    after = [token for token in tokens if token[1] >= last][:1]
+    for text, start, _end in (*before, *after):
+        found = _teams_by_word(teams, text)
+        if len(found) != 1:
+            continue
+        team = _team_named(teams, next(iter(found)), season)
+        if team is not None and team.name != opponent:
+            return team, start
     return None
 
 

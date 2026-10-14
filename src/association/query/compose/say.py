@@ -4889,6 +4889,11 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "opponent_not_read": lambda facts: (
         f"'{facts['words']}' after the versus word names no team or player on record, so the games against it cannot be picked out - spell the team or the player as the warehouse has them."
     ),
+    # Phase 5, step 6 (ISSUES.md #436).
+    "team_not_read": lambda facts: (
+        f"'{facts['words']}' names the {facts['team']}, and nothing here reads which games the team picks out - "
+        "the ones played for them or the ones against them - so the question is not answered over every game."
+    ),
     "denied_role": lambda facts: (
         f"'{facts['words']}' asks for the games {facts['player']} did not "
         f"{'start' if facts['role'] == 'start' else 'come off the bench'}, which nothing here narrows by - "

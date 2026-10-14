@@ -2578,6 +2578,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "no_player_reading": {"player": "Alperen Sengun", "shape": TEAM_RANKING},
     "fact_not_read": {"fact": "draft", "words": "3rd nba overall draft picks"},
     "opponent_not_read": {"words": "phnx", "shape": PLAYER_LINE},
+    "team_not_read": {"words": "t wolves", "team": "Minnesota Timberwolves", "shape": PLAYER_SPLITS},
     "unread_number": {"shape": PLAYER_LINE, "words": ("5",), "classes": {"number": ("5",)}},
     "unread_stat": {"shape": PLAYER_RANKING, "words": ("3pm",), "classes": {"stat": ("3pm",)}, "names": "3-pointers made", "read": "field goal percentage"},
     "unread_window": {"shape": PLAYER_LINE, "words": ("last",), "classes": {"window": ("last",)}},

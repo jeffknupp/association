@@ -450,6 +450,7 @@ _TEAM_NICKNAMES: dict[str, str] = {
     "mavs": "Dallas Mavericks",
     "wolves": "Minnesota Timberwolves",
     "twolves": "Minnesota Timberwolves",
+    "t wolves": "Minnesota Timberwolves",
     "dubs": "Golden State Warriors",
     "clips": "LA Clippers",
     "pels": "New Orleans Pelicans",
