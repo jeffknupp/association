@@ -3864,7 +3864,7 @@ TEAM_AS_ITS_PLAYERS = re.compile(r"\bon\s+the\s+([\w']+)|\b(?:by|for)\s+an?\s+([
 """
 
 
-def whole_phrases(phrases: list[str] | tuple[str, ...]) -> re.Pattern[str]:
+def whole_phrases(phrases: list[str] | tuple[str, ...], *, possessive: bool = False) -> re.Pattern[str]:
     """One pattern finding any of ``phrases`` as a whole phrase, longest
     first so "greek freak" wins over a hypothetical "greek", ignoring case.
     Word boundaries are spelled as lookarounds rather than ``\\b`` because
@@ -3873,10 +3873,18 @@ def whole_phrases(phrases: list[str] | tuple[str, ...]) -> re.Pattern[str]:
     pattern with it (``subject.nicknames_in``), over the curated table the
     names module keeps.
 
+    With ``possessive``, a phrase also stands with an "s" glued on and no
+    apostrophe - "lebrons record", "ADs record" - the possessive typed
+    without its mark, group 1 still the phrase alone.
+
     .. versionadded:: 6.0.0
        ``subject._NICKNAME_RE``'s construction until Phase 3, step 2.
+
+    .. versionchanged:: 6.0.0
+       Takes ``possessive`` (Phase 5, step 2).
     """
-    return re.compile(r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(phrases, key=len, reverse=True)) + r")(?![\w])", re.IGNORECASE)
+    glued = "s?" if possessive else ""
+    return re.compile(r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(phrases, key=len, reverse=True)) + r")" + glued + r"(?![\w])", re.IGNORECASE)
 
 
 MAX_NAME_WORDS = 3

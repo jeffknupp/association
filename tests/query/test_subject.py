@@ -161,6 +161,17 @@ def test_a_near_spelling_initials_and_a_nickname_support_a_router_name(con: duck
     assert question_supports("Kevin Durant", "without kd") and not question_supports("Kevin Durant", "without the ball")
 
 
+def test_a_nickname_with_its_possessive_s_glued_on_names_the_subject(con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 5, step 2: "Lebrons record when AD plays" left "lebrons" unread
+    and read the companion, the one name left, as the subject - Anthony
+    Davis's splits answered. A curated nickname with its possessive "s" and
+    no apostrophe is the nickname; a surname plus "s" is not ("browns")."""
+    s = _read(con, "Lebrons record when kd plays")
+    assert s.players == ("LeBron James",) and [c.player for c in s.conditions] == ["Kevin Durant"]
+    assert _read(con, "kds stats this season").players == ("Kevin Durant",)
+    assert _read(con, "browns stats this season").players == ()
+
+
 def test_a_swapped_pair_of_letters_is_one_edit(con: duckdb.DuckDBPyConnection) -> None:
     """ISSUES #239: plain Levenshtein charged a transposition twice, past
     the one-edit budget of a five- or six-letter word, so a question that
