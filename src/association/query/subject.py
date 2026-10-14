@@ -518,10 +518,27 @@ def _question_players(index: names.NameIndex, question: str, routed: list[str], 
             continue
         if teams_here and any(len(w) >= 4 and (lexicon.TEAM_SINGULARS.get(w) or team_named_in(index.teams, w)) in teams_here for w in matched):
             continue
-        if all(w in dictionary for w in matched) and not any(question_supports(name, p) for p in routed) and not _by_nickname(name, question):
+        if (
+            all(w in dictionary for w in matched)
+            and not any(question_supports(name, p) for p in routed)
+            and not _by_nickname(name, question)
+            and not _question_players_in_full(index.players, name, q_words)
+        ):
             continue
         kept.append(name)
     return kept
+
+
+def _question_players_in_full(players: names.PlayerIndex, name: str, q_words: list[str]) -> bool:
+    """Whether the question writes a player's name whole, two words or
+    more in a row: "miles bridges", "derrick white" are players though each
+    word is an ordinary one (:func:`_question_players`' dictionary rule is
+    for a single word - "best" is Travis Best). ``name`` must be a player's
+    name on record, never a span read as a near spelling ("most most")."""
+    words = [w.casefold() for w in _words(name)]
+    if len(words) < 2 or not any(q_words[i : i + len(words)] == words for i in range(len(q_words) - len(words) + 1)):
+        return False
+    return any(entity.name.casefold() == name.casefold() for entity in find_players(players, name))
 
 
 def _merge_names(router_named: list[str], question_named: list[str]) -> tuple[str, ...]:

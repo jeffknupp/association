@@ -77603,7 +77603,7 @@
     "by": "coach"
    },
    "who": {
-    "kind": "everyone",
+    "kind": "player",
     "players": [],
     "teams": [],
     "position": null
@@ -77640,13 +77640,13 @@
    },
    "minimum": null,
    "unread": [
-    "games",
-    "doc",
-    "rivers"
+    "games"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "Doc Rivers"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -77669,8 +77669,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "question names players ['Doc Rivers']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Doc Rivers"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": null,
@@ -109752,6 +109761,596 @@
      "shape": null
     }
    }
+  }
+ },
+ {
+  "name": "a_full_name_of_ordinary_words_is_a_player",
+  "why": "Phase 5, step 6 (lane N, found on ISSUES.md #367): \"miles bridges\" is Miles Bridges though both words are ordinary ones; the dictionary rule dropped him and the league's quarter was read.",
+  "question": "miles bridges stats vs raptors second half",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_periods",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Miles Bridges"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": "Toronto Raptors",
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": {
+    "number": 2,
+    "half": true
+   },
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "stats"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Miles Bridges"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": "Toronto Raptors",
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_periods",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Miles Bridges']; team word 'Toronto Raptors'; against 'Toronto Raptors'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Miles Bridges"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "opponent",
+     "before": null,
+     "after": "Toronto Raptors",
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_periods",
+     "shape": "rows",
+     "by": "date"
+    },
+    "relation": "player",
+    "on": "player_periods",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": {
+     "table": "shot_chart"
+    },
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "Miles Bridges"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": "Toronto Raptors",
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": {
+     "number": 2,
+     "half": true
+    },
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "a_full_name_of_ordinary_words_is_a_player_2",
+  "why": "Phase 5, step 6 (lane N): \"derrick white\" is Derrick White; dropped as two dictionary words, the 2026 postseason's scorers answered.",
+  "question": "derrick white playoff stats this seasond",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Derrick White"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 3,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "stats",
+    "seasond"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Derrick White"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Derrick White']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Derrick White"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "player",
+    "on": "player_seasons",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Derrick White"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "a_near_spelling_span_of_ordinary_words_is_no_player",
+  "why": "Phase 5, step 6 (lane N): \"most most\" is a span read as a near spelling, no name on record; kept by the full-name rule it was read as a player.",
+  "question": "players with most most 25 point season",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 25,
+     "period": null,
+     "as_typed": "25 point season",
+     "keyed": false,
+     "narrows": false,
+     "per": "season",
+     "whose": "own"
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "players",
+    "most",
+    "most"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "seasons",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "player",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 25,
+      "period": null,
+      "as_typed": "25 point season",
+      "keyed": false,
+      "narrows": false,
+      "per": "season",
+      "whose": "own"
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
   }
  }
 ]
