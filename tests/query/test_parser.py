@@ -1244,6 +1244,26 @@ def test_a_win_percentage_is_the_teams_standings_or_a_players_record(con: duckdb
 
 
 @pytest.mark.parametrize(
+    ("question", "names", "since"),
+    [
+        ("portland trailblazers winning percentage last 10 seasons", ["portland trailblazers"], 2017),
+        ("celtics winning percentage last 10 seasons", ["celtics"], 2017),
+        ("portland trailblazers winning percentage last 15 seasons", ["portland trailblazers"], 2012),
+        ("lakers winning pct this season", ["lakers"], None),
+    ],
+)
+def test_a_teams_winning_percentage_is_its_record(con: duckdb.DuckDBPyConnection, question: str, names: list[str], since: int | None) -> None:
+    """ISSUES.md #372: "portland trailblazers winning percentage last 10
+    seasons" was read as the team's season line, which reads one season,
+    and refused the range; "win percentage" was the record by its "win"
+    and "winning percentage" by nothing. It is the record's, over the
+    seasons the words name."""
+    reading = _read(con, question, names)
+    assert reading.asked == TEAM_RECORD
+    assert reading.span.since == since
+
+
+@pytest.mark.parametrize(
     ("question", "names", "asked", "key"),
     [
         ("most games played by a player this season", [], PLAYER_RANKING, "games_played"),
