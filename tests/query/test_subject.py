@@ -161,6 +161,17 @@ def test_a_near_spelling_initials_and_a_nickname_support_a_router_name(con: duck
     assert question_supports("Kevin Durant", "without kd") and not question_supports("Kevin Durant", "without the ball")
 
 
+def test_a_nickname_with_its_possessive_s_glued_on_names_the_subject(con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 5, step 2: "Lebrons record when AD plays" left "lebrons" unread
+    and read the companion, the one name left, as the subject - Anthony
+    Davis's splits answered. A curated nickname with its possessive "s" and
+    no apostrophe is the nickname; a surname plus "s" is not ("browns")."""
+    s = _read(con, "Lebrons record when kd plays")
+    assert s.players == ("LeBron James",) and [c.player for c in s.conditions] == ["Kevin Durant"]
+    assert _read(con, "kds stats this season").players == ("Kevin Durant",)
+    assert _read(con, "browns stats this season").players == ()
+
+
 def test_a_swapped_pair_of_letters_is_one_edit(con: duckdb.DuckDBPyConnection) -> None:
     """ISSUES #239: plain Levenshtein charged a transposition twice, past
     the one-edit budget of a five- or six-letter word, so a question that
@@ -604,6 +615,10 @@ def test_a_count_of_games_over_a_threshold_is_assigned_under_its_parents(con: du
         con, "how many games in 2005-2006 did kobe score under 25 points", PLAYER_LOG, scope=Reading(who=Who(kind="player", players=("Kobe Bryant",)), measure=Measure(key="points", as_typed="points"))
     )
     assert asked == GAMES_COUNTED and _below(reading) == ["under 25 points"]
+    # A playoff round between the line and "games" (Phase 5, step 2): the count, its round refused by name - where a
+    # player's line refused the "40" as a number it did not use.
+    asked, reading = _assigned(con, "how many 40 point finals games does kobe have", PLAYER_LINE, scope=Reading(who=Who(kind="player", players=("Kobe Bryant",))))
+    assert asked == GAMES_COUNTED and _threshold(reading) == 40
 
 
 def test_a_count_with_no_threshold_in_the_text_stays_the_routers_question(con: duckdb.DuckDBPyConnection) -> None:

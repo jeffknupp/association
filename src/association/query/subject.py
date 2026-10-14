@@ -2028,7 +2028,7 @@ def team_named_in_text(question: str, candidate: str | None) -> str | None:
 
 # Built once, by the lexicon's reader of whole phrases (longest first, "greek
 # freak" before a hypothetical "greek"), over the curated table.
-_NICKNAME_RE = lexicon.whole_phrases(tuple(PLAYER_NICKNAMES))
+_NICKNAME_RE = lexicon.whole_phrases(tuple(PLAYER_NICKNAMES), possessive=True)
 
 
 def nicknames_in(question: str) -> list[str]:
@@ -2114,6 +2114,11 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
                 found.append(rows[0].name)
                 index += size
                 break
+            possessive = _players_named_in_possessive(span) if size == 1 and not rows else None
+            if possessive is not None:
+                found.append(possessive)
+                index += 1
+                break
         else:
             index += 1
     seen: list[str] = []
@@ -2121,6 +2126,18 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
         if name not in seen:
             seen.append(name)
     return seen
+
+
+def _players_named_in_possessive(span: list[str]) -> str | None:
+    """The player a one-word nickname names where the word is that nickname
+    with its possessive "s" glued on and no apostrophe - "lebrons record
+    when AD plays", "ADs record with lebron" - or None. Only a curated
+    nickname: a surname plus "s" is an ordinary plural too often ("browns",
+    "greens"). Until Phase 5, step 2 the word was unread, and the one name
+    the question still held, the companion's, was read as the subject:
+    "Lebrons record when AD plays" answered Anthony Davis's splits."""
+    word = span[0].casefold()
+    return PLAYER_NICKNAMES.get(word[:-1]) if len(word) >= 3 and word.endswith("s") and word not in PLAYER_NICKNAMES else None
 
 
 def _players_named_in_near(players: names.PlayerIndex, words: list[str]) -> list[str] | None:

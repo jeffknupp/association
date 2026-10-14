@@ -3515,7 +3515,10 @@ CHILD_THRESHOLD_COUNT = ask(
     # between the line and "games" ("how many 40 point playoff games does
     # kobe have", ISSUES.md #375: refused "no 2026 postseason numbers" as a
     # player's line over a defaulted season).
-    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away)[\s-]+)?games?\b"
+    # A playoff round there too ("how many 40 point finals games does kobe
+    # have", Phase 5, step 2): the count, whose round the planner refuses by
+    # name, where a player's line refused the "40" as unread.
+    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away|(?:(?:nba|conference|conf)[\s-]+)?finals|semi[\s-]?finals|(?:first|second)[\s-]+round)[\s-]+)?games?\b"
     # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
     # 30+ point games", "how many games did he score 30 points or more in".
     rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*{LINE_NUMBER_NO_PLUS}\s+(?:\w+|{typed('line_stat')}+)\s+or more\b"
@@ -3864,7 +3867,7 @@ TEAM_AS_ITS_PLAYERS = re.compile(r"\bon\s+the\s+([\w']+)|\b(?:by|for)\s+an?\s+([
 """
 
 
-def whole_phrases(phrases: list[str] | tuple[str, ...]) -> re.Pattern[str]:
+def whole_phrases(phrases: list[str] | tuple[str, ...], *, possessive: bool = False) -> re.Pattern[str]:
     """One pattern finding any of ``phrases`` as a whole phrase, longest
     first so "greek freak" wins over a hypothetical "greek", ignoring case.
     Word boundaries are spelled as lookarounds rather than ``\\b`` because
@@ -3873,10 +3876,18 @@ def whole_phrases(phrases: list[str] | tuple[str, ...]) -> re.Pattern[str]:
     pattern with it (``subject.nicknames_in``), over the curated table the
     names module keeps.
 
+    With ``possessive``, a phrase also stands with an "s" glued on and no
+    apostrophe - "lebrons record", "ADs record" - the possessive typed
+    without its mark, group 1 still the phrase alone.
+
     .. versionadded:: 6.0.0
        ``subject._NICKNAME_RE``'s construction until Phase 3, step 2.
+
+    .. versionchanged:: 6.0.0
+       Takes ``possessive`` (Phase 5, step 2).
     """
-    return re.compile(r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(phrases, key=len, reverse=True)) + r")(?![\w])", re.IGNORECASE)
+    glued = "s?" if possessive else ""
+    return re.compile(r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(phrases, key=len, reverse=True)) + r")" + glued + r"(?![\w])", re.IGNORECASE)
 
 
 MAX_NAME_WORDS = 3
@@ -4585,7 +4596,7 @@ championship.
 # height ("6'10"), "how tall" or "height"; "4 ft" alone is a shot's
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
-ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots"], re.Pattern[str]], ...] = (
+ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "death", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots"], re.Pattern[str]], ...] = (
     (
         "draft",
         re.compile(
@@ -4609,6 +4620,9 @@ ABSENT_FACTS: tuple[tuple[Literal["draft", "award", "birth", "height", "jersey",
         ),
     ),
     ("birth", re.compile(r"\bborn\b|\bbirth(?:\s?(?:days?|dates?|places?|years?))?\b", re.IGNORECASE)),
+    # A player's death (Phase 5, step 2): "when did brandon clarke die" read
+    # "when ... brandon clarke" as a teammate's games and answered his line.
+    ("death", re.compile(r"\b(?:die|dies|died|death|deceased|passed\s+away)\b", re.IGNORECASE)),
     (
         "height",
         re.compile(
