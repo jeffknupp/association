@@ -4169,12 +4169,17 @@ def _say_combined_record(result: Result, line: Scalar) -> Answer:
     wins, losses = line.values["wins"], line.values["losses"]
     against = f" against the {opponent}" if opponent else ""
     where_played = f" {_VENUE_WORDS[venue]}" if venue else ""
-    r_from = _combined_from(regular["first_season"], playoff=False) + inline[0]
-    p_from = _combined_from(playoff["first_season"], playoff=True) + inline[1]
+    # One season is said once, in the headline; its halves start together,
+    # and "from 2025-26" beside "from 2026" read as two spans. A span's
+    # halves say where each starts.
+    season = result.span.season if not result.span.career and result.span.since is None else None
+    in_season = f" in {season_label(season)}" if season is not None else ""
+    r_from = ("" if season is not None else _combined_from(regular["first_season"], playoff=False)) + inline[0]
+    p_from = ("" if season is not None else _combined_from(playoff["first_season"], playoff=True)) + inline[1]
     cut = result.narrowing.cell(Calendar)
     month = f" in {MONTH_NAMES[cut.month - 1]}" if cut is not None and cut.month is not None else ""
     answer = (
-        f"The {team} are {tally(wins, losses)} combined{month}{where_played}{against}{result.narrowing.phrase}, including the playoffs "
+        f"The {team} are {tally(wins, losses)} combined{month}{where_played}{against}{result.narrowing.phrase}{in_season}, including the playoffs "
         f"({tally(regular['wins'], regular['losses'])} regular season{r_from}, {tally(playoff['wins'], playoff['losses'])} playoffs{p_from})." + "".join(after)
     )
     if tails:

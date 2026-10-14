@@ -496,9 +496,9 @@ def test_a_home_record_including_the_playoffs_adds_the_seasons_home_record(team_
     is the venue's (30-10), and a season whose standings carry no split says
     so, as the regular season's own answer does."""
     home = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(both=True)))
-    assert home.text.startswith("The New York Knicks are 31-11 (.738) combined at home, including the playoffs (30-10 (.750) regular season"), home.text
+    assert home.text.startswith(f"The New York Knicks are 31-11 (.738) combined at home in {LAST}, including the playoffs (30-10 (.750) regular season"), home.text
     road = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="away"), span=Span(both=True)))
-    assert road.text.startswith("The New York Knicks are 24-19 (.558) combined on the road, including the playoffs (22-19 (.537) regular season"), road.text
+    assert road.text.startswith(f"The New York Knicks are 24-19 (.558) combined on the road in {LAST}, including the playoffs (22-19 (.537) regular season"), road.text
     old = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(season=1990, both=True)))
     assert old.text.startswith("ESPN's 1990 standings carry no home/road split for the New York Knicks"), old.text
 
@@ -508,9 +508,7 @@ def test_a_record_against_a_conference_including_the_playoffs_says_the_conferenc
     combined record that dropped "against Eastern Conference teams" read as
     the whole span's."""
     result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("vs the east")), span=Span(both=True)))
-    assert result.text.startswith(
-        f"The New York Knicks are 4-1 (.800) combined against Eastern Conference teams, including the playoffs (1-0 (1.000) regular season from {LAST}, 3-1 (.750) playoffs from {S})."
-    )
+    assert result.text.startswith(f"The New York Knicks are 4-1 (.800) combined against Eastern Conference teams in {LAST}, including the playoffs (1-0 (1.000) regular season, 3-1 (.750) playoffs).")
 
 
 def test_an_all_time_record_including_the_playoffs_names_the_game_lists_floor_not_the_first_game_found(team_ctx: AnswerContext) -> None:
@@ -1120,7 +1118,9 @@ def test_team_record_combines_both_season_types_for_one_season(team_ctx: AnswerC
     # ISSUES.md #336: the regular half's neutral-site count explains a
     # home/road split this answer does not show, so it is not said here.
     assert "53-29 (.646) regular season," in result.text and "neutral-site" not in result.text
-    assert f"3-1 (.750) playoffs from {S})" in result.text
+    # One season is said once, in the headline: "from 2025-26" beside
+    # "from 2026" read as two spans.
+    assert result.text.startswith(f"The New York Knicks are 56-30 (.651) combined in {LAST}, including the playoffs") and "3-1 (.750) playoffs)." in result.text
 
 
 def test_team_record_combined_types_honors_opponent(team_ctx: AnswerContext) -> None:

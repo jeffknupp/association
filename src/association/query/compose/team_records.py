@@ -551,6 +551,14 @@ def _without_neutral_site(notes: tuple[Note, ...]) -> tuple[Note, ...]:
     return tuple(each for each in notes if not (each.kind == "definition" and each.facts.get("term") == "neutral_site"))
 
 
+def _combined_season(asked: _Asked) -> int | None:
+    """The one season a combined record is over, or None for a career or a
+    since-bounded span."""
+    if asked.career or asked.since is not None:
+        return None
+    return asked.season or current_season()
+
+
 def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Result:
     """Both season types together - "including the playoffs" - each read
     through the record's own single-type route, so from exactly the source a
@@ -582,7 +590,9 @@ def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Re
     return Result(
         subject=asked.team.name,
         relation="team",
-        span=Span(season=asked.season, career=asked.season is None),
+        # One season (named, or the current one by default) or a span: a
+        # season's halves are said in it, a span's from where each starts.
+        span=Span(season=_combined_season(asked), career=asked.career, since=asked.since, until=asked.until),
         narrowing=Narrowing(phrase=narrowed.phrase, opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue, cells=narrowed.cells),
         parts=(Part(body=total), Part(role="detail", body=Grouped(by="season_type", rows=rows))),
         notes=(*r_notes, *p_notes),
