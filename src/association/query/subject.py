@@ -454,6 +454,7 @@ def _teams_by_word(teams: names.TeamIndex, question: str) -> set[str]:
     one-word spelling, a nickname or a whole word of exactly one team's
     name (:func:`team_named_in`, word by word)."""
     found: set[str] = set()
+    question = lexicon.SINGULAR_NAMING_NO_TEAM.sub(_team_word_blank, question)
     for run in lexicon.TEAM_SPELLING_RUN.findall(question.lower()):
         team = lexicon.TEAM_SINGULARS.get(run.removesuffix("'s").rstrip("'")) or team_named_in(teams, run)
         if team is not None:
@@ -465,11 +466,17 @@ def _team_word(teams: names.TeamIndex, question: str) -> str | None:
     """The team the question names as a word: a singular or one-word
     nickname first, then :func:`~association.query.entities.team_named_in`
     (the roster table by whole word, the plural nicknames), then an
-    abbreviation."""
-    for w in _words(question.lower()):
+    abbreviation. A singular in words that name no team ("net points",
+    "martin luther king") is none."""
+    for w in _words(lexicon.SINGULAR_NAMING_NO_TEAM.sub(_team_word_blank, question).lower()):
         if w in lexicon.TEAM_SINGULARS:
             return lexicon.TEAM_SINGULARS[w]
     return team_named_in(teams, question) or _team_abbreviation(teams, question)
+
+
+def _team_word_blank(match: re.Match[str]) -> str:
+    """``match``'s characters as spaces, so every later offset holds."""
+    return " " * len(match.group(0))
 
 
 def _team_words(text: str) -> list[str]:
@@ -916,6 +923,58 @@ def versus_word_unread(players: names.PlayerIndex, teams: names.TeamIndex, quest
             continue
         return run.group(0)
     return None
+
+
+def team_not_read(teams: names.TeamIndex, question: str, reading: reading.Reading) -> tuple[str, str] | None:
+    """The first team the subject reading read on a player's question (one
+    player or two) that the reading put nowhere - not the subject's team,
+    not his tenure, not the opponent - as the words that name it and the
+    team, or None: "lebron record vs t wolves" answered his splits over
+    every game, "Mikal bridges logs at philly" his last ten, the team read
+    by nothing and counted as read (ISSUES.md #436). The parser refuses by
+    it (``team_not_read``) rather than answer the question without the
+    team. A team placed under another name of its franchise ("the hornets
+    in 2008", read as the New Orleans Hornets) is placed.
+
+    .. versionadded:: 6.0.0
+    """
+    if reading.who.kind not in ("player", "pair") or reading.subject is None:
+        return None
+    season = reading.span.season if reading.span.season is not None else reading.subject.named_season
+    placed = [name for name in (*reading.who.teams, reading.cuts.tenure, reading.cuts.opponent) if name]
+    tokens = _subject_claims_tokens(question)
+    held = {word.casefold() for name in (*reading.who.players, *(c.player for c in reading.companions)) for word in _words(name)}
+    for team in reading.subject.teams:
+        if any(_team_not_read_same(teams, team, other, season) for other in placed):
+            continue
+        stretches = _subject_claims_team(teams, tokens, team, season)
+        if stretches and all(_team_not_read_in_a_name(question[start:end], held) for start, end in stretches):
+            # "magic johnson vs larry bird": the team's word is a word of a
+            # player's name the reading holds, and names him.
+            continue
+        words = " ".join(question[start:end] for start, end in stretches) or team
+        resolved = _team_named(teams, team, season)
+        return words, resolved.name if resolved is not None else team
+    return None
+
+
+def _team_not_read_in_a_name(words: str, held: set[str]) -> bool:
+    """Whether every word of ``words`` is a word of a name the reading holds."""
+    each = [word.casefold() for word in _words(words)]
+    return bool(each) and all(word in held for word in each)
+
+
+def _team_not_read_same(teams: names.TeamIndex, team: str, other: str, season: int | None) -> bool:
+    """Whether ``team`` and ``other`` are one franchise's names: the same
+    team resolved, or one nickname under two cities' names (the Hornets of
+    Charlotte and of New Orleans, the Nets of New Jersey and Brooklyn)."""
+    if team.casefold() == other.casefold():
+        return True
+    one, two = _team_named(teams, team, season), _team_named(teams, other, season)
+    if one is not None and two is not None and one.id == two.id:
+        return True
+    last = [word.casefold() for word in _words(team)[-1:]]
+    return bool(last) and [word.casefold() for word in _words(other)[-1:]] == last
 
 
 def _versus_word_names_something(players: names.PlayerIndex, teams: names.TeamIndex, word: str, reading: reading.Reading) -> bool:
@@ -2504,7 +2563,7 @@ def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = 
     .. versionadded:: 4.4.0
     """
     for match in lexicon.FOR_TEAM_PHRASE.finditer(question):
-        span_text = match.group(1) or match.group(2) or match.group(3) or match.group(4) or ""
+        span_text = match.group(1) or match.group(2) or match.group(3) or match.group(4) or match.group(5) or ""
         words = _team_words(span_text)[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:

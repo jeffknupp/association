@@ -3799,12 +3799,13 @@ AGAINST_PHRASE = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)"
 # the clippers" mean different things, but a bare "with" also introduces a
 # teammate ("stats with steph curry on the floor"), so only "with the" - which
 # a teammate's name never takes - is read as this shape.
-FOR_TEAM_PHRASE = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)|\bas\s+an?\s+(?=(.+))|\bon\s+(?:the\s+)?(?=(.+))", re.IGNORECASE)
+FOR_TEAM_PHRASE = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)|\bas\s+an?\s+(?=(.+))|\bon\s+(?:the\s+)?(?=(.+))|\bjoined\s+(?:the\s+)?(.+)", re.IGNORECASE)
 """A "for"/"with the"/"as a" and everything after it, a player's own team is
 read from. "as a laker", "as a spur" name his tenure by the team's singular
 (ISSUES.md #269), and "on <team>" too ("zach lavine vs magic on bulls"); the
 words after "as a" and "on" are read without being consumed, so "as a
-starter for kings" still reads "for kings".
+starter for kings" still reads "for kings". "joined <team>" too: "since he
+joined the Warriors" is his Warriors tenure (ISSUES.md #436).
 
 .. versionadded:: 6.0.0
    ``subject._FOR_TEAM`` until Phase 3, step 2.
@@ -3901,6 +3902,16 @@ joiner, "a turnover" at a word no name holds).
 .. versionadded:: 6.0.0
    ``subject._SPAN_MAX_WORDS`` and ``subject._MAX_NAME_WORDS`` until Phase
    3, step 2: two names for one cap.
+"""
+
+# Words that begin with a team's singular and name no team: a measure ("net
+# points", "net rating" - no Brooklyn Net) and a holiday ("martin luther
+# king day" - no Sacramento King). ISSUES.md #436: read as a team beside a
+# player, the team was a cause the question never gave.
+SINGULAR_NAMING_NO_TEAM = re.compile(r"\bnet\s*(?:points?|pts|ratings?|rtg)\b|\bmartin\s+luther\s+king\b", re.IGNORECASE)
+"""Words holding a team's singular that name no team.
+
+.. versionadded:: 6.0.0
 """
 
 #: The singular of a team's nickname names the team: "a hawk player", "a

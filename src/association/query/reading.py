@@ -1476,6 +1476,9 @@ CAUSES: frozenset[str] = frozenset(
         "team_relations_question",
         "team_only_question",
         "no_subject_reading",
+        # Phase 5, step 6: a team named beside a player that no read placed
+        # (ISSUES.md #436).
+        "team_not_read",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -1538,7 +1541,10 @@ missing thing, never only the slot"):
   embiid doesn't start"), which nothing narrows by (``denied_role``:
   ``player``, ``words``, ``role``, ``shape``; ISSUES.md #248), the word a
   versus word leads that names no team or player on record
-  (``opponent_not_read``: ``words``, ``shape``; ISSUES.md #247), or a player named on a question whose
+  (``opponent_not_read``: ``words``, ``shape``; ISSUES.md #247), a team
+  named beside a player that no read placed - not his tenure, not the
+  opponent (``team_not_read``: ``words``, ``team``, ``shape``; ISSUES.md
+  #436), or a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
   ``shape``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,

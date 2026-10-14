@@ -15840,7 +15840,7 @@
    },
    "cuts": {
     "opponent": null,
-    "tenure": null,
+    "tenure": "Golden State Warriors",
     "venue": null,
     "date": null,
     "situation": null,
@@ -15866,7 +15866,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -15881,20 +15881,17 @@
    },
    "minimum": null,
    "unread": [
-    "since",
-    "joined"
+    "since"
    ],
    "subject": {
     "kind": "player",
     "players": [
      "Curry"
     ],
-    "teams": [
-     "Golden State Warriors"
-    ],
+    "teams": [],
     "position": null,
     "opponent": null,
-    "own_team": null,
+    "own_team": "Golden State Warriors",
     "companions": [],
     "invented": [],
     "named_season": null,
@@ -15927,12 +15924,24 @@
     },
     {
      "stage": "subject",
-     "field": "teams",
+     "field": "own_team",
      "before": null,
-     "after": [
-      "Golden State Warriors"
-     ],
+     "after": "Golden State Warriors",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "own_team",
+     "before": null,
+     "after": "Golden State Warriors",
+     "reason": "from the question; the router left it out"
+    },
+    {
+     "stage": "subject",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "a team named with no season is a tenure, not \"now\""
     }
    ],
    "point": {
@@ -15942,7 +15951,7 @@
      "by": "line"
     },
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -15966,7 +15975,14 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
     "who": {
      "kind": "player",
      "players": [
@@ -15977,7 +15993,7 @@
     },
     "cuts": {
      "opponent": null,
-     "tenure": null,
+     "tenure": "Golden State Warriors",
      "venue": null,
      "date": null,
      "situation": null,
@@ -16003,7 +16019,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42271,9 +42287,7 @@
     "players": [
      "LeBron James"
     ],
-    "teams": [
-     "Sacramento Kings"
-    ],
+    "teams": [],
     "position": null,
     "opponent": null,
     "own_team": null,
@@ -42296,7 +42310,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']; team word 'Sacramento Kings'"
+     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -42304,15 +42318,6 @@
      "before": null,
      "after": [
       "LeBron James"
-     ],
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "teams",
-     "before": null,
-     "after": [
-      "Sacramento Kings"
      ],
      "reason": "from the question's own words"
     }
@@ -42510,9 +42515,7 @@
     "players": [
      "LeBron James"
     ],
-    "teams": [
-     "Sacramento Kings"
-    ],
+    "teams": [],
     "position": null,
     "opponent": null,
     "own_team": null,
@@ -42535,7 +42538,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']; team word 'Sacramento Kings'"
+     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -42543,15 +42546,6 @@
      "before": null,
      "after": [
       "LeBron James"
-     ],
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "teams",
-     "before": null,
-     "after": [
-      "Sacramento Kings"
      ],
      "reason": "from the question's own words"
     }
@@ -48228,9 +48222,7 @@
     "players": [
      "LeBron James"
     ],
-    "teams": [
-     "Sacramento Kings"
-    ],
+    "teams": [],
     "position": null,
     "opponent": null,
     "own_team": null,
@@ -48253,7 +48245,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']; team word 'Sacramento Kings'"
+     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -48261,15 +48253,6 @@
      "before": null,
      "after": [
       "LeBron James"
-     ],
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "teams",
-     "before": null,
-     "after": [
-      "Sacramento Kings"
      ],
      "reason": "from the question's own words"
     }
@@ -48466,9 +48449,7 @@
     "players": [
      "LeBron James"
     ],
-    "teams": [
-     "Sacramento Kings"
-    ],
+    "teams": [],
     "position": null,
     "opponent": null,
     "own_team": null,
@@ -48491,7 +48472,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']; team word 'Sacramento Kings'"
+     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -48499,15 +48480,6 @@
      "before": null,
      "after": [
       "LeBron James"
-     ],
-     "reason": "from the question's own words"
-    },
-    {
-     "stage": "subject",
-     "field": "teams",
-     "before": null,
-     "after": [
-      "Sacramento Kings"
      ],
      "reason": "from the question's own words"
     }
@@ -106972,6 +106944,909 @@
      }
     }
    }
+  }
+ },
+ {
+  "name": "issue_436_a_team_beside_a_player_read_by_nothing_is_refused",
+  "why": "ISSUES.md #436: \"t wolves\" after the versus word is the Timberwolves the subject reading read and nothing placed; LeBron's splits over every game answered. Refused by the cause naming the team (team_not_read) until a read places it.",
+  "question": "lebron record vs t wolves",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "splits"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "LeBron James"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "t"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "LeBron James"
+    ],
+    "teams": [
+     "Minnesota Timberwolves"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "splits"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['LeBron James']; team word 'Minnesota Timberwolves'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "LeBron James"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Minnesota Timberwolves"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "splits"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "split",
+    "by": "splits",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "steals",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "blocks",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "turnovers",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "threePointFieldGoalsMade",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "fieldGoalPct",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "venue",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "LeBron James"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "refused": {
+    "kind": "team_not_read",
+    "facts": {
+     "words": "wolves",
+     "team": "Minnesota Timberwolves",
+     "shape": {
+      "relation": "player_games",
+      "shape": "split",
+      "by": "splits"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "issue_436_at_a_team_is_refused_by_the_team",
+  "why": "ISSUES.md #436: \"at philly\" is the 76ers, read as no venue and no opponent; his last 10 games answered. Refused by the cause naming the team (team_not_read).",
+  "question": "Mikal bridges logs at philly",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Mikal Bridges"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Mikal Bridges"
+    ],
+    "teams": [
+     "Philadelphia 76ers"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Mikal Bridges']; team word 'Philadelphia 76ers'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Mikal Bridges"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Philadelphia 76ers"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "Mikal Bridges"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "refused": {
+    "kind": "team_not_read",
+    "facts": {
+     "words": "philly",
+     "team": "Philadelphia 76ers",
+     "shape": {
+      "relation": "player_games",
+      "shape": "rows",
+      "by": "date"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "issue_436_net_points_name_no_nets",
+  "why": "ISSUES.md #436: \"net points\" is a measure, never the Brooklyn Nets by the singular \"net\"; read as a team beside the pair, the team cause would name a wrong cause.",
+  "question": "compare luka's and sga's net points",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "comparison",
+    "by": "subject"
+   },
+   "who": {
+    "kind": "pair",
+    "players": [
+     "Luka Doncic",
+     "Shai Gilgeous-Alexander"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "netpoints",
+    "as_typed": "netpoints",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "compare"
+   ],
+   "subject": {
+    "kind": "pair",
+    "players": [
+     "Luka Doncic",
+     "Shai Gilgeous-Alexander"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "comparison",
+     "by": "subject"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "pair",
+     "reason": "question names players ['Luka Doncic', 'Shai Gilgeous-Alexander']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Luka Doncic",
+      "Shai Gilgeous-Alexander"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "comparison",
+     "by": "subject"
+    },
+    "relation": "player",
+    "on": "player_seasons",
+    "shape": "comparison",
+    "by": "subject",
+    "measures": [],
+    "group": "player",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "pair",
+     "players": [
+      "Luka Doncic",
+      "Shai Gilgeous-Alexander"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "netpoints",
+     "as_typed": "netpoints",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "issue_436_joined_a_team_is_his_tenure",
+  "why": "ISSUES.md #436: \"since he joined the Warriors\" is his Warriors tenure, read by the tenure's lead words; read as nothing, the team cause would refuse a question the career answered.",
+  "question": "how many points has curry scored since he joined the Warriors",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Golden State Warriors"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": "total",
+    "unit": "total",
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "curry",
+    "scored",
+    "since",
+    "joined"
+   ],
+   "subject": {
+    "kind": "team",
+    "players": [],
+    "teams": [
+     "Golden State Warriors"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team",
+     "reason": "team word 'Golden State Warriors'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Golden State Warriors"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "team",
+    "on": "team_seasons",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team",
+     "players": [],
+     "teams": [
+      "Golden State Warriors"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": "total",
+     "unit": "total",
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
   }
  }
 ]
