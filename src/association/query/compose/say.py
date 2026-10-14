@@ -4781,7 +4781,8 @@ def _say_unread_number(facts: Mapping[str, Any]) -> str:
     """A number the reading did not use (Phase 5, step 1): what it counts is
     the question's to say."""
     words = _unread_words(facts)
-    first = facts["words"][0]
+    # "20+": the examples say the number, its plus their own.
+    first = facts["words"][0].rstrip("+")
     if first[-1:].isalpha():
         # An ordinal: a place or a period, not a count.
         return (

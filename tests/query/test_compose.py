@@ -2686,3 +2686,12 @@ def test_a_team_named_as_its_own_opponent_is_said_by_name() -> None:
     assert refusal_result(Cause(kind="own_opponent", facts={"shape": TEAM_PERIOD_TOTAL, "team": "Boston Celtics"})).text == (
         "Nothing here answers this question as a team's quarter or half: the Boston Celtics are named as both the team and its opponent - name the team they played."
     )
+
+
+def test_an_unread_number_with_its_plus_is_said_with_examples_of_the_number() -> None:
+    """Phase 5, step 2: "20+" is an unread number since then; the examples
+    say the number, never "20++ points"."""
+    from association.query.compose.say import refusal_phrase
+
+    text = refusal_phrase("unread_number", {"shape": PLAYER_LINE, "words": ("20+",), "classes": {"number": ("20+",)}})
+    assert "'20+'" in text and '"last 20 games", "20+ points", "at least 20 games"' in text

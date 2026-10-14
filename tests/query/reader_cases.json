@@ -72039,8 +72039,7 @@
    "minimum": null,
    "unread": [
     "murray",
-    "games",
-    "20+"
+    "games"
    ],
    "subject": {
     "kind": "everyone",
@@ -72153,7 +72152,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "20+"
+     ],
+     "classes": {
+      "number": [
+       "20+"
+      ]
+     }
+    }
+   }
   }
  },
  {
@@ -72218,8 +72235,7 @@
    "minimum": null,
    "unread": [
     "murray's",
-    "games",
-    "20+"
+    "games"
    ],
    "subject": {
     "kind": "everyone",
@@ -72332,7 +72348,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "20+"
+     ],
+     "classes": {
+      "number": [
+       "20+"
+      ]
+     }
+    }
+   }
   }
  },
  {
@@ -106048,6 +106082,1048 @@
      }
     }
    ]
+  }
+ },
+ {
+  "name": "phase5_step2_held_drop#1",
+  "why": "A typed value the key's reading drops with no cause the planner says, held by its question in tests/grammar_drops.py with its reason (Phase 5, step 2).",
+  "question": "marvin bagley gameswith 20 points by season",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "split",
+    "by": "season"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Marvin Bagley III"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "gameswith"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Marvin Bagley III"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "split",
+     "by": "season"
+    },
+    "asked_reason": "the words 'by season' name player_seasons/split/season",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Marvin Bagley III']; the words 'by season' name player_seasons/split/season"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Marvin Bagley III"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "player_seasons/split/season",
+     "reason": "the words 'by season' name player_seasons/split/season"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "split",
+     "by": "season"
+    },
+    "relation": "player",
+    "on": "player_seasons",
+    "shape": "split",
+    "by": "season",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "season",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Marvin Bagley III"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "split",
+      "by": "season"
+     },
+     "words": [
+      "20"
+     ],
+     "classes": {
+      "number": [
+       "20"
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "phase5_step2_held_drop#2",
+  "why": "A typed value the key's reading drops with no cause the planner says, held by its question in tests/grammar_drops.py with its reason (Phase 5, step 2).",
+  "question": "Towns over 9 rebound",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "rebounds",
+    "as_typed": "rebounds",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "towns",
+    "over"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "player",
+    "measures": [
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "player",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "rebounds",
+     "as_typed": "rebounds",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "9"
+     ],
+     "classes": {
+      "number": [
+       "9"
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "phase5_step2_held_drop#3",
+  "why": "A typed value the key's reading drops with no cause the planner says, held by its question in tests/grammar_drops.py with its reason (Phase 5, step 2).",
+  "question": "harden 61 points",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "harden"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "player",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "player",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "61"
+     ],
+     "classes": {
+      "number": [
+       "61"
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "phase5_step2_held_drop#4",
+  "why": "A typed value the key's reading drops with no cause the planner says, held by its question in tests/grammar_drops.py with its reason (Phase 5, step 2).",
+  "question": "most 30 point triple doubles in the last 3 years",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "triple_double",
+    "as_typed": "triple_double",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": 2024,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "most"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 3,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "triple_double",
+     "as_typed": "triple_double",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": 2024,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "30"
+     ],
+     "classes": {
+      "number": [
+       "30"
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "phase5_step2_held_drop#5",
+  "why": "A typed value the key's reading drops with no cause the planner says, held by its question in tests/grammar_drops.py with its reason (Phase 5, step 2).",
+  "question": "players who made exactly 129 three pointers in the NBA in 2025-26",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "threePointFieldGoalsMade",
+    "as_typed": "threePointFieldGoalsMade",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "players",
+    "made",
+    "exactly"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_seasons",
+    "shape": "ranking",
+    "by": "player",
+    "measures": [
+     {
+      "key": "threePointFieldGoalsMade",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "player",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": 20,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "everyone",
+     "players": [],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": {
+     "key": "threePointFieldGoalsMade",
+     "as_typed": "threePointFieldGoalsMade",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "words": [
+      "129"
+     ],
+     "classes": {
+      "number": [
+       "129"
+      ]
+     }
+    }
+   }
   }
  }
 ]

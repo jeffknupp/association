@@ -1366,7 +1366,7 @@ def _defaulted_number(lower: str, before: str, context: _DefaultedContext) -> bo
     """Whether a number the reading did not read counts: not a rate's unit,
     not a season the span read, not a read line's or period's value, not
     a year, and not the day of a date after a month ("september 11th")."""
-    number = lower.rstrip("%").replace(",", "")
+    number = lower.rstrip("%+").replace(",", "")
     if number in lexicon.MEANING_UNIT_NUMBERS or number in context.years or lower in context.values or number in context.values:
         return False
     if len(number) == 4 and number.isdigit() and 1946 <= int(number) <= 2030:

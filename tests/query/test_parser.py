@@ -1367,6 +1367,8 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
         ("aaron gorodn lat 5 games", ["Aaron Gordon"], "points", "unread_number", ("5",)),
         ("Bam adeboyo 1st quater average", ["Bam Adebayo"], "points", "unread_number", ("1st",)),  # codespell:ignore quater - the feed's own spelling
         ("sga scored 20 points in the 2nd quarter", ["Shai Gilgeous-Alexander"], "points", "unread_number", ("20",)),
+        # "20+" is a number too (Phase 5, step 2): the league's rebounding leaders answered, the "20+" in no class.
+        ("murray games of 20+ rebounds", [], "rebounds", "unread_number", ("20+",)),
         ("anthony davis last 1st quarter stats vs pistons", ["Anthony Davis"], "points", "unread_window", ("last",)),
         ("curry stats november", ["Stephen Curry"], "points", "unread_date", ("november",)),
     ],
