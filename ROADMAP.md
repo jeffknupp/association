@@ -804,6 +804,13 @@ compiler's files, about 2 feed answers and the "by a thunder player"
 family. Still a refusal by name until decided: #392's remainder (a
 player's first or last N seasons resolved over his seasons on record, 3),
 which is the relation's, not a shape.
+Lifted a third time (Jeff, 2026-10-14) for #372's remainder, measured by
+lane T3: a team's season line over a range of seasons, the team counterpart
+of a player's season-by-season history, `team_seasons/split/season` - rows
+per season from `team_season_stats` with the range's total, about 6 feed
+questions ("raptors last 5 season", "ppg season bulls all-time", the "Heat
+games played 2009-2023" family); lane T3's last item, under "what a new
+shape brings" (the 28th key).
 
 **The sweep finished 2026-10-13 evening** (master `c93fffa`; its tally is Phase 5's step 0 row below). 32 merges, each
 re-proved by the lead on its own fresh runs of the four populations against the previous merged tree (`scratchpad/p4/master-sweep1..32`),
