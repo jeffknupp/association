@@ -1426,6 +1426,22 @@ def test_a_teams_last_n_games_with_no_season_type_named_reads_both(gl_con: Answe
     assert result.data["wins"] == 2 and result.data["losses"] == 1
 
 
+def test_a_teams_log_over_its_career_including_the_playoffs_reads_both_types(gl_con: AnswerContext) -> None:
+    """ISSUES.md #416: "sixers last 10 games against bos including playoffs"
+    read the span's ``both`` and listed ten regular-season meetings, the
+    heading saying "regular seasons" - a career's log, unlike one season's
+    "last N games", read one type alone. Both types are one read over the
+    team relation now (the postseason by the calendar year it was played
+    in), the heading saying so; a range of seasons the same."""
+    _add_knicks_postseason(gl_con)
+    s = current_season()
+    for span in (Span(both=True, career=True), Span(both=True, since=s - 1)):
+        result = game_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(opponent="Boston Celtics"), span=span, window=Window(order="recent", count=3)))
+        assert [g["date"] for g in result.data["games"]] == ["2026-04-22", "2026-04-20", "2026-04-12"], span
+        assert "regular season and postseason" in (result.text or ""), result.text
+        assert "last 3 of 4 games" in (result.text or ""), result.text
+
+
 def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: AnswerContext) -> None:
     """F128 (ISSUES.md): "total points scored by the raptors in the last 10
     games" narrowed correctly but never stated the total - the games were

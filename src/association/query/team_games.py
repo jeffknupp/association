@@ -938,7 +938,8 @@ def unnarrowed_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, sea
     from association.query.season_line import Statement
 
     where, params = narrowed.clauses(narrowed=False)
-    season_col = "year(tg.eastern_date)" if season_type == 3 else "tg.season"
+    # A postseason by the calendar year; both types (ISSUES.md #416), each by its own.
+    season_col = {3: "year(tg.eastern_date)", 2: "tg.season"}.get(season_type, "CASE WHEN tg.season_type = 3 THEN year(tg.eastern_date) ELSE tg.season END")
     found = values_of(con, Statement(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params))
     total, first, last = found[0] if found else (0, None, None)
     return total, first, last
