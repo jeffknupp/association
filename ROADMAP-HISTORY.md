@@ -1585,6 +1585,11 @@ agents' reports named here are in `~/association-research/stages/`.
     #428, #408, #370, #114) and stopped as briefed; nine merges (runs
     33-41), 61 feed answers moved against the first close, open P1s 22 ->
     19. Two resurrected entries caught by the same GitHub cross-check.
+    A third dispatch on 2026-10-14 (lane T3, the team seam's P2s): #341,
+    #173, #427 and #372 closed - #372's remainder as the 28th key under
+    D4's third lifting - #401 narrowed to the reader; six merges (runs
+    42-47), 21 feed answers moved; open P1s 21 of 195, every lane's list
+    done and the remainders unowned, which is Phase 5's step 6 to own.
 
 ## The plan items, as written
 
