@@ -3157,6 +3157,12 @@ which a league-wide read refuses unless the words name the season
 "nba players who averaged 20 ppg ... on a season" is a season line's
 question (ISSUES.md #390)."""
 
+RANKED_PER_GAME = re.compile(r"\bper\s+game\b|\b(?:ppg|rpg|apg|spg|bpg)\b|\baverag\w*|\bavg\b", re.IGNORECASE)
+"""A ranking of players asked per game - "per game", a per-game
+abbreviation, "average(d)", "avg" - which reads the measure's per-game
+figure over a career, where the bare name reads the career total
+(``point.measure_under``)."""
+
 PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages?\b|\bavg\b", re.IGNORECASE)
 """A per-game figure asked for outright.
 

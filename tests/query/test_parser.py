@@ -1463,3 +1463,24 @@ def test_the_best_single_season_of_a_named_season_reads_that_season(con: duckdb.
     reading = _read(con, "highest single season 3pt percent in 2016")
     assert reading.point_refusal is None and reading.point is not None
     assert reading.span.season == 2016
+
+
+@pytest.mark.parametrize(
+    ("question", "how"),
+    [
+        ("highest career ppg", "per_game"),
+        ("highest career points per game", "per_game"),
+        ("who averaged the most points in his career", "per_game"),
+        ("how many assist did Wilt average for his career", "per_game"),
+        ("most career points", None),
+    ],
+)
+def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.DuckDBPyConnection, question: str, how: str | None) -> None:
+    """Phase 5, step 6 (lane L): "highest career ppg" answered "LeBron James
+    leads in career points in the regular season: 43,440" - a career's bare
+    name reads the career total, and nothing read "ppg", "per game" or
+    "averaged" on the ranking. Asked per game, the measure is the per-game
+    figure (the season line's career points per game); unasked, the total."""
+    reading = _read(con, question, [], "assists" if "assist" in question else "points")
+    assert reading.point is not None and reading.point.read_as == PLAYER_RANKING
+    assert reading.point.measure is not None and reading.point.measure.how == how

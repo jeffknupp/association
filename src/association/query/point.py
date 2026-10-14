@@ -2331,13 +2331,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
     key = _measure_key_by_ask(asked, words, context, key, from_words=words.worded is not None)
     key = _measure_key_by_words(asked, words, context, key, claims)
     key, unit = _measure_rate(asked, words, key, claims)
-    how: MeasureHow | None = None
-    if unit is not None:
-        how = how_of(unit)
-    elif asked == PERIOD_LOG and (words.log or (words.period_games and key is None)):
-        # A quarter's or half's figure asked game by game: a log, or "games"
-        # with no stat named.
-        how = "per_game"
+    how = _measure_how(asked, words, key, unit, claims)
     of_wins = None
     if asked == LINE_RUNS:
         of_wins = words.losing is None
@@ -2366,6 +2360,25 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
         beside=beside,
     )
     return MeasureRead(measure, distinct)
+
+
+def _measure_how(asked: PointShape | None, words: MeasureWords, key: str | None, unit: str | None, claims: list[Claim]) -> MeasureHow | None:
+    """How the measure is asked: a unit's reading; a players' ranking asked
+    per game ("highest career ppg", "who averaged the most points in his
+    career") the per-game figure, where a career's bare name reads the
+    career TOTAL (the record books' list) and answered LeBron's 43,440
+    points to a per-game question; a quarter's or half's figure asked game
+    by game (a log, or "games" with no stat named)."""
+    if unit is not None:
+        return how_of(unit)
+    if asked == PLAYER_RANKING and key not in (None, "shot_distance") and words.ranked_per_game is not None:
+        # (Not the shot-distance sentinel, which the ranking refuses by name:
+        # "avg 3 point distance" is the shot's distance, no game's figure.)
+        claims.append(Claim(words.ranked_per_game.start(), words.ranked_per_game.end(), "measure"))
+        return "per_game"
+    if asked == PERIOD_LOG and (words.log or (words.period_games and key is None)):
+        return "per_game"
+    return None
 
 
 def _measure_whose(asked: PointShape | None, words: MeasureWords, key: str | None, whose: MeasureWhose, claims: tuple[Claim, ...]) -> tuple[MeasureWhose, tuple[Claim, ...]]:

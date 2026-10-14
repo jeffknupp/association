@@ -30175,7 +30175,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -30203,8 +30203,6 @@
    },
    "minimum": null,
    "unread": [
-    "per",
-    "game",
     "leaders",
     "season"
    ],
@@ -30290,7 +30288,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -30355,7 +30353,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -30383,8 +30381,6 @@
    },
    "minimum": null,
    "unread": [
-    "per",
-    "game",
     "leaders",
     "season"
    ],
@@ -30470,7 +30466,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -30535,7 +30531,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -30563,8 +30559,6 @@
    },
    "minimum": null,
    "unread": [
-    "per",
-    "game",
     "leaders",
     "season"
    ],
@@ -30650,7 +30644,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -65309,7 +65303,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -65338,9 +65332,7 @@
    "minimum": null,
    "unread": [
     "led",
-    "league",
-    "per",
-    "game"
+    "league"
    ],
    "subject": {
     "kind": "everyone",
@@ -65424,7 +65416,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -92562,7 +92554,7 @@
    "measure": {
     "key": "plusMinus",
     "as_typed": "plus_minus",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -92595,8 +92587,6 @@
     "word": "games played"
    },
    "unread": [
-    "per",
-    "game",
     "leaders"
    ],
    "subject": {
@@ -92681,7 +92671,7 @@
     "measure": {
      "key": "plusMinus",
      "as_typed": "plus_minus",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
