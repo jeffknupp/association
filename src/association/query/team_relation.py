@@ -15,11 +15,14 @@ would be an import cycle.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import duckdb
 
+from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.query.entities import Entity, resolved_team
+from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, ResolvedSpan, apply_situation, has_table, relation_window, span_of
 from association.query.reading import Cuts, Filtered, Measure, Period, PointShape, ShapeCells, Span, Unsupported, period_narrowing
 from association.query.result import Refusal, Unanswered
@@ -357,7 +360,22 @@ def team_span_clause(span: ResolvedSpan) -> tuple[str, list[Any]]:
 
     .. versionadded:: 5.0.0
        Public, as the relation's shared step.
+
+    .. versionchanged:: 6.0.0
+       Reads :data:`~association.query.player_games.BOTH_SEASON_TYPES`: each
+       type's own games in one clause, the postseason from its own floor
+       (ISSUES.md #416).
     """
+    if span.season_type == BOTH_SEASON_TYPES:
+        # Both types in one read ("including the playoffs", ISSUES.md #416):
+        # each type's own games, the postseason's by the calendar year -
+        # the type is part of the clause, so `team_games` adds none.
+        # The postseason reaches back to its own floor (1989, by the
+        # calendar year), not the regular season's a both-types span carries.
+        post_first = span.first if span.season is not None else max(span.since or 0, COVERAGE["games"].floor(POSTSEASON).season)
+        regular, regular_params = span.clause("tg.season")
+        post, post_params = team_span_clause(replace(span, season_type=POSTSEASON, first=post_first))
+        return f"((tg.season_type = {REGULAR_SEASON} AND {regular}) OR (tg.season_type = {POSTSEASON} AND {post}))", [*regular_params, *post_params]
     if span.season_type == 3:
         if span.season is not None:
             return "year(tg.eastern_date) = ?", [span.season]
@@ -365,6 +383,12 @@ def team_span_clause(span: ResolvedSpan) -> tuple[str, list[Any]]:
             return "year(tg.eastern_date) BETWEEN ? AND ?", [span.first, span.until]
         return "year(tg.eastern_date) >= ?", [span.first]
     return span.clause("tg.season")
+
+
+def _team_games_type(span: ResolvedSpan) -> tuple[list[str], list[Any]]:
+    """The season-type condition :func:`team_games` puts before the span's
+    clause - none for both types, whose clause carries each type's own."""
+    return ([], []) if span.season_type == BOTH_SEASON_TYPES else (["tg.season_type = ?"], [span.season_type])
 
 
 def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: ResolvedSpan, scope: Filtered, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Unanswered:
@@ -426,13 +450,14 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
        game (:meth:`~association.query.team_games.TeamNarrowed.narrow_periods`).
     """
     clause, params = team_span_clause(span)
+    typed, type_params = _team_games_type(span)
     if team is None:
         # Every team's games - the league's teams, each game once per side
         # (a team's best single game asked of any team: "most 3s made in a
         # single game by a team", D4 lifted for it, Jeff 2026-10-13).
-        narrowed = TeamNarrowed(base=["tg.season_type = ?", clause], base_params=[span.season_type, *params], team=None)
+        narrowed = TeamNarrowed(base=[*typed, clause], base_params=[*type_params, *params], team=None)
     else:
-        narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
+        narrowed = TeamNarrowed(base=["tg.team_id = ?", *typed, clause], base_params=[team.id, *type_params, *params], team=team)
     if opponent:
         rival = opponent if isinstance(opponent, Entity) else resolved_team(con, opponent, season=span.season)
         if isinstance(rival, Unanswered):
