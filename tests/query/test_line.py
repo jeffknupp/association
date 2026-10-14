@@ -116,7 +116,16 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
         ("anthony edwards log with at least 50 points", PLAYER_LOG, [("points", ">=", 50, "50 points", False, True)], None),
         # A player's line is not among them ("lebron 20+ points this season" can ask whether he averages it).
         ("lebron 20+ points per game this season", PLAYER_LINE, [], None),
-        ("2 threes in games Jamal Murray played", PLAYER_LINE, [], None),
+        # ... unless the words set the line on the games, however it is stated (Phase 5, step 2, ISSUES.md #357): his
+        # line, log or splits over the games holding it, where step 1 refused the number by name.
+        ("2 threes in games Jamal Murray played", PLAYER_LINE, [("threePointFieldGoalsMade", ">=", 2, "2 threes", False, True)], None),
+        ("lebron stats in games with 30 points", PLAYER_LINE, [("points", ">=", 30, "30 points", False, True)], None),
+        ("lebron 30 point games log", PLAYER_LOG, [("points", ">=", 30, "30 point", False, True)], None),
+        ("lebron splits in games with 10 assists", PLAYER_SPLITS, [("assists", ">=", 10, "10 assists", False, True)], None),
+        ("harden 61 points", PLAYER_LOG, [], None),
+        ("harden 61 points", PLAYER_LINE, [], None),
+        # "min N stat" is the floor "at least N stat" states.
+        ("centers min 2 threes v bos gamelog 2024", PLAYER_LOG, [("threePointFieldGoalsMade", ">=", 2, "2 threes", False, True)], None),
         # A second and third bare line under a count are read, keyed on nothing and narrowing nothing: the league's multi-line listing alone applies them.
         (
             "most playoff games with 46 points 6 assists 6 rebounds",

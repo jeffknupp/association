@@ -89,6 +89,11 @@ class LineCandidate:
     #: Where the words that state a line under a number stand before it
     #: ("under", "fewer than"), or None.
     lead: tuple[int, int] | None = None
+    #: Whether the words set the line on the games themselves - "games with
+    #: 2 threes", "2 threes in games", "30 point games" - which a reader of
+    #: a player's games narrows by however the line is stated (Phase 5,
+    #: step 2, ISSUES.md #357).
+    games: bool = False
 
 
 @dataclass(frozen=True)
@@ -253,7 +258,8 @@ def read_lines(question: str) -> LineCandidates:
         line = Line(measure=lexicon.THRESHOLD_WORDS[match.group(2).casefold()], value=int(match.group(1)), as_typed=match.group(0).casefold())
         # The number with its plus ("20+", "20 or more"): up to the stat word, its separator aside.
         number_end = len(question[: match.start(2)].rstrip(" \t-")) if how == "plus" else match.end(1)
-        found.append(LineCandidate(line, match.start(), Claim(match.start(), match.end(), "line"), how, (match.start(1), number_end, how), (match.start(2), match.end(2))))
+        games = lexicon.LINE_ON_GAMES_BEFORE.search(question, 0, match.start()) is not None or lexicon.LINE_ON_GAMES_AFTER.match(question, match.end()) is not None
+        found.append(LineCandidate(line, match.start(), Claim(match.start(), match.end(), "line"), how, (match.start(1), number_end, how), (match.start(2), match.end(2)), games=games))
     if not pairs:
         scored = lexicon.scored_threshold(question)
         if scored is not None:

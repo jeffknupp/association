@@ -2210,8 +2210,29 @@ inside his phrase (``subject._condition_role`` reads it through this too).
 # "anthony edwards log with at least 50 points": the floor said in words before
 # the number - a line stated outright, as "50+ points" is, where a bare "50
 # points" beside a log can as well name one game ("harden 61 points").
-AT_LEAST_PAIR = re.compile(rf"\bat\s+least\s+(\d{{1,3}})[\s-]*({_THRESHOLD_ALTERNATION})\b", re.IGNORECASE)
-"""A line at or above a number said as "at least N stat".
+AT_LEAST_PAIR = re.compile(rf"\b(?:at\s+least|min(?:imum)?(?:\s+of)?)\s+(\d{{1,3}})[\s-]*({_THRESHOLD_ALTERNATION})\b", re.IGNORECASE)
+"""A line at or above a number said as "at least N stat" or "min N stat".
+
+.. versionadded:: 6.0.0
+
+.. versionchanged:: 6.0.0
+   "min"/"minimum" before the number states the floor as "at least" does
+   ("centers min 2 threes v bos gamelog", Phase 5, step 2).
+"""
+# A line the words set on the games themselves - "games with 2 threes", "2
+# threes in games he played", "30 point games" - which a reader of a player's
+# games narrows by, where a bare "61 points" alone can as well name one game
+# (Phase 5, step 2, ISSUES.md #357). Read right before the pair and right
+# after it.
+LINE_ON_GAMES_BEFORE = re.compile(r"\bgames?\s+(?:with|where\s+(?:he|she)\s+(?:had|has|made|makes|scored|scores|hit|hits))\s+$", re.IGNORECASE)
+"""The words that set the line right after them on the games ("games
+with").
+
+.. versionadded:: 6.0.0
+"""
+LINE_ON_GAMES_AFTER = re.compile(r"[\s-]*(?:(?:in|from)\s+(?:the\s+|his\s+|her\s+)?)?games?\b", re.IGNORECASE)
+"""The words that set the line right before them on the games ("in
+games", "games"), matched where the line ends.
 
 .. versionadded:: 6.0.0
 """
