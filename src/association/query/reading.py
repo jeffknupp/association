@@ -1455,6 +1455,16 @@ CAUSES: frozenset[str] = frozenset(
         "unread_stat",
         "unread_window",
         "unread_date",
+        # Phase 5, step 5: a team-season reader's declines, said by the
+        # planner as the shapes' own are (ShapeDeclined).
+        "no_team_metric",
+        "team_seasons_unsummed",
+        "team_venue_unsplit",
+        "since_record_unsplit",
+        # Phase 5, step 5: a team named as its own opponent (ISSUES.md #277).
+        "own_opponent",
+        # Phase 5, step 5: a read that needs a name the reading has none of.
+        "name_missing",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -1547,6 +1557,17 @@ missing thing, never only the slot"):
   only where the floor and the reading's own causes did not speak first,
   as the decline was (:class:`ShapeDeclined`) - the shape in its words
   since Phase 4, step 2, by the page's label before it.
+- a team-season reader's decline, said as the shapes' own are (Phase 5,
+  step 5; sentences the answering loop gave the question up with until
+  then): a stat no team metric holds, or no metric named
+  (``no_team_metric``: ``stat``), a metric summed over a span of seasons
+  (``team_seasons_unsummed``: ``metric``) or split by venue
+  (``team_venue_unsplit``: ``metric``, ``venue``), and a since-bounded
+  record split by venue (``since_record_unsplit``); a team named as its
+  own opponent (``own_opponent``: ``team``); a read that needs a name the
+  reading has none of (``name_missing``: ``needs`` - ``player``, ``team``
+  or ``teammate``), which each reader said naming its retired template
+  ("shot_chart needs a player name").
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.

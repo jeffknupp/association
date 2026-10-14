@@ -40,7 +40,7 @@ from association.nba.season import current_season
 from association.query import lexicon, names
 from association.query.connection import latest_season_on_record
 from association.query.notes import decided
-from association.query.reading import Filtered, Unsupported
+from association.query.reading import Filtered, ShapeDeclined
 from association.query.result import Clarify, Refusal
 
 MAX_CANDIDATES = 10
@@ -1604,10 +1604,22 @@ def clarify(text: str, candidates: list[str], kind: Literal["player", "team"] = 
     return Clarify(asked=text, candidates=tuple(candidates), kind=kind, active=active)
 
 
+def name_missing(needs: str) -> ShapeDeclined:
+    """The decline of a read that needs a name the reading has none of - a
+    ``player``, a ``team`` or a ``teammate`` (``needs``): the ``name_missing``
+    cause the planner says ("it needs a player's name, and none was read"),
+    where each reader raised a sentence of its own naming its retired
+    template ("shot_chart needs a player name") until Phase 5, step 5.
+
+    .. versionadded:: 6.0.0
+    """
+    return ShapeDeclined("name_missing", {"needs": needs}, f"it needs a {needs}'s name, and none was read")
+
+
 def resolved_player(
     con: duckdb.DuckDBPyConnection,
     text: Any,
-    missing: str = "no player named",
+    needs: str = "player",
     *,
     available: Availability | tuple[Availability, ...],
     season: int | None = None,
@@ -1629,7 +1641,7 @@ def resolved_player(
        not raised as a decline.
     """
     if not isinstance(text, str) or not text.strip():
-        raise Unsupported(missing)
+        raise name_missing(needs)
     try:
         resolution = resolve_player(con, text, available, season, through)
     except duckdb.CatalogException:
@@ -1667,7 +1679,7 @@ def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
        not raised as a decline.
     """
     if not isinstance(text, str) or not text.strip():
-        raise Unsupported("no team named")
+        raise name_missing("team")
     match resolve_team(con, text, season):
         case Entity() as team:
             return team

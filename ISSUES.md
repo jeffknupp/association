@@ -358,7 +358,7 @@ those were found.
 
 ### The quarter stage files the opponent's nickname as the team: "1st q log sabonis vs clippers" is refused "a team cannot be its own opponent"
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the stages' name writes.
-- **Evidence:** `router._team_slot_or_word` (a quarter or half question, or one with a ranking word, where no team is handed) files the one team nickname the words hold as the subject's team - on 27 of the 2,710 readings at `054d9e9`: 24 a nickname the subject reading had already read as the OPPONENT ("vs clippers", "vs cavs"), 3 the "76ers" the reading did not read until `b1daa88`. Where no player is read (the words-only feed, an ambiguous surname or a dictionary word: "1st q log sabonis vs clippers", "Al horfird first quarter stats against hawks", "Brunson 1st half log vs Celtics 23-24 season", "Josh hart first half game log vs Celtics", "miles bridges stats vs raptors second half" and its "last game" wording) the stage then chooses `team_quarter_points` for that team against itself, and the 6 answers are "Nothing here answers this question: team_quarter_points: a team cannot be its own opponent." Where a player is read ("luka highest scoring games vs bucks", 21 more) the extra team changes no answer. With the model's span the player is read and the stage does not fire. <!-- codespell:ignore hart - Josh Hart's surname -->
+- **Evidence:** `router._team_slot_or_word` (a quarter or half question, or one with a ranking word, where no team is handed) files the one team nickname the words hold as the subject's team - on 27 of the 2,710 readings at `054d9e9`: 24 a nickname the subject reading had already read as the OPPONENT ("vs clippers", "vs cavs"), 3 the "76ers" the reading did not read until `b1daa88`. Where no player is read (the words-only feed, an ambiguous surname or a dictionary word: "1st q log sabonis vs clippers", "Al horfird first quarter stats against hawks", "Brunson 1st half log vs Celtics 23-24 season", "Josh hart first half game log vs Celtics", "miles bridges stats vs raptors second half" and its "last game" wording) the stage then chooses `team_quarter_points` for that team against itself, and the 6 answers are "Nothing here answers this question as a team's quarter or half: the LA Clippers are named as both the team and its opponent - name the team they played." (since Phase 5, step 5; "a team cannot be its own opponent" before, ISSUES.md #277 closed) Where a player is read ("luka highest scoring games vs bucks", 21 more) the extra team changes no answer. With the model's span the player is read and the stage does not fire. <!-- codespell:ignore hart - Josh Hart's surname -->
 - **User sees:** a refusal naming a cause the question never gave.
 - **Next step:** the stage files no nickname the hand-off already holds as the opponent (`router.Named.opponent`); the 6 answers move from the false cause to the question's own refusal or answer, enumerated. Step 4 deletes the stage.
 - **Source:** ours.
@@ -2706,23 +2706,6 @@ those were found.
   counts it as"
 - **GitHub:** #276
 
-### A team named as its own opponent is refused with no reason given
-- **Found:** 2026-09-29, period relation's team half
-- **Evidence:** "celtics 2nd half turnovers vs boston" reads as
-  `team_quarter_points` with team "celtics" and opponent "Boston Celtics"
-  (`parse.read_route`, measured on the read-only warehouse); the shared step
-  `team_relation.team_games` raises `TemplateUnsupported("a team cannot be
-  its own opponent")`, `compose.team.run_team` turns the same raise into
-  `Unsupported`, and the question leaves the fast path with nothing said about
-  why. Every team template reaches the same raise.
-- **User sees:** a refusal naming only the compiler's reason ("a team cannot
-  be its own opponent") for a question whose real problem is that it names
-  one team twice - or, likelier, meant a different opponent.
-- **Next step:** return a `TemplateResult` from `team_games` naming it ("the
-  Boston Celtics are named as both the team and its opponent - name the team
-  they played"), with a test per team template.
-- **GitHub:** #277
-
 ### 2013 and 2016 period lines could read the made shots the plays mistype
 - **Found:** 2026-09-29, period relation's team half
 - **Evidence:** DATA.md, "A team's play-by-play does not add up to its box
@@ -2802,15 +2785,6 @@ those were found.
 - **Source:** ours.
 - **Priority:** P4 - tooling.
 - **GitHub:** #407
-
-### Six readers still name a retired intent in their "needs a player name" sentence: "Plot Curry's threes from last season" is refused "... as a shot chart: shot_chart needs a player name."
-- **Found:** 2026-10-12, Phase 4, step 2 (lane B), deleting the label: the decline frame says the shape in words since then, and the reason a reader hands it still carries the retired name as a literal.
-- **Evidence:** the reason strings, hard-coded in the readers, read no table: `compose/shots.py:529` ("shot_chart needs a player name") and `:253` ("shot_distance ..."), `compose/netpoints.py:366` ("fingerprint ...") and `:159` ("player_netpoints ..."), `season_line.py:181` ("player_stat ...") and `:206` ("player_history ..."). Measured on `12925ed`'s runs: 2 of the 628 and 5 of the 2,082 answers print one, all the shot chart's ("Plot Curry's threes from last season", "Last season's threes by Plot Curry", "Strphon Castle shot chart", ...), as "Nothing here answers this question as a shot chart: shot_chart needs a player name."
-- **User sees:** a refusal whose cause is right (no player was read) and whose wording names an identifier no user asked about, twice over the shape's own words.
-- **Next step:** each reason says what is missing without the shape ("needs a player name", or "a shot chart needs a player name" where the frame does not already say the shape) - one enumerated commit under the decline rule, in the readers' own files (lane C's: `season_line.py` was lane C1's while step 2 ran, `compose/` beyond the planner and the sayer was outside lane B).
-- **Source:** ours.
-- **Priority:** P4 - a refusal's wording, the cause right; 7 answers over the two populations.
-- **GitHub:** #398
 
 ### A measure tagger's claim holds the team's name: "how many 3 pointers have the magic made" is claimed whole as the measure
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, adding the subject reading's claims.

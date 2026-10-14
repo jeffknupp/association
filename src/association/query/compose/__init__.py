@@ -246,6 +246,9 @@ def _read_only(read: Callable[[], Result | Unanswered | None], shape: PointShape
     (``no_reading_of_point``, :class:`~association.query.reading.ShapeDeclined`)."""
     try:
         found = read()
+    except ShapeDeclined:
+        # A decline by a cause the planner says (Phase 5, step 5) keeps it.
+        raise
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
     if found is None:

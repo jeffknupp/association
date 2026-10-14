@@ -184,7 +184,7 @@ def line_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> tuple[Entit
     .. versionadded:: 5.0.0
        ``templates.players._player_stat_season_line_subject`` was this.
     """
-    return scoped_player(con, scope, "player_stat needs a player name", table="player_season_stats_deduped", available=SEASON_LINES)
+    return scoped_player(con, scope, "player", table="player_season_stats_deduped", available=SEASON_LINES)
 
 
 def history_through(scope: Filtered) -> int:
@@ -209,7 +209,7 @@ def history_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Entity |
     .. versionadded:: 5.0.0
        ``templates.players._player_history_subject`` was this.
     """
-    return resolved_player(con, scope.who.player, "player_history needs a player name", available=SEASON_LINES, through=history_through(scope))
+    return resolved_player(con, scope.who.player, "player", available=SEASON_LINES, through=history_through(scope))
 
 
 def compared_player(con: duckdb.DuckDBPyConnection, name: str, season: int) -> Entity | Unanswered:

@@ -231,7 +231,7 @@ def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str],
     refused rather than guessed at."""
     mates: list[Entity] = []
     for text in mate_texts:
-        found = resolved_player(con, text, "with_without needs a teammate", available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
+        found = resolved_player(con, text, "teammate", available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
         if isinstance(found, Unanswered):
             return found
         if found.id not in {m.id for m in mates}:
