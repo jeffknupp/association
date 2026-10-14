@@ -167,6 +167,14 @@ game, with ``season``, ``season_type``, ``eastern_date``, ``event_id``,
 """
 
 
+TEAM_LINE_OPS: frozenset[str] = frozenset({">=", ">", "<=", "<", "="})
+"""The comparisons a line keeps a team's games by (:meth:`TeamNarrowed.narrow_line`),
+the five a :class:`~association.query.reading.Line` holds.
+
+.. versionadded:: 6.0.0
+"""
+
+
 @dataclass
 class TeamNarrowed:
     """One team's games in a span, and whatever the question narrowed them
@@ -225,6 +233,9 @@ class TeamNarrowed:
     #: team (ISSUES.md #427: "celtics points allowed in the 4th quarter").
     #: ``team_score``, ``opponent_score`` and ``won`` stay as they are.
     period_whose: Literal["own", "opponent"] = "own"
+    #: How the answer names each line the games were kept past
+    #: (:meth:`narrow_line`): ``"when they had 120+ points"``.
+    line_labels: tuple[str, ...] = ()
 
     def clauses(self, *, narrowed: bool = True) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -271,6 +282,7 @@ class TeamNarrowed:
             parts.append(self.calendar.label)
         if self.alignment is not None:
             parts.append(self.alignment.label)
+        parts += self.line_labels
         if self.window is not None:
             order, n = self.window
             parts.append(f"over their {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
@@ -312,6 +324,28 @@ class TeamNarrowed:
         clause, params = calendar_clause(narrowing, "tg.eastern_date", "tg.season")
         self.narrow(clause, *params)
         self.calendar = narrowing
+
+    def narrow_line(self, figure: str | None, op: str, value: float, *, whose: Literal["own", "opponent"], label: str) -> None:
+        """Only the games where the team's figure - or its opponents', by
+        ``whose`` - held the line ``op value`` (ISSUES.md #430: "celtics last
+        10 games when allowing 120+ points"). ``figure`` is the box-score
+        expression over ``team_box_stats`` aliased ``tbs`` (the team
+        compiler's ``TEAM_BOX_COLUMNS``), or None for the score, which the
+        relation carries itself; a game with no box row for the figure is
+        kept by no line. ``op`` is one of :data:`TEAM_LINE_OPS`, an allowlist,
+        so no question text reaches the statement as an operator.
+
+        .. versionadded:: 6.0.0
+        """
+        if op not in TEAM_LINE_OPS:  # ops are written in code (reading.LineOp), so this is a programming error, not a refusal
+            raise ValueError(f"no comparison called {op!r}")
+        if figure is None:
+            score = "tg.opponent_score" if whose == "opponent" else "tg.team_score"
+            self.narrow(f"{score} {op} ?", value)
+        else:
+            side = "tg.opponent_id" if whose == "opponent" else "tg.team_id"
+            self.narrow(f"EXISTS (SELECT 1 FROM team_box_stats tbs WHERE tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = {side} AND ({figure}) {op} ?)", value)
+        self.line_labels = (*self.line_labels, label)
 
     def narrow_alignment(self, narrowing: AlignmentNarrowing) -> None:
         """Only the games against an opponent in this conference or division,
