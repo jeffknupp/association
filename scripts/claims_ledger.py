@@ -324,7 +324,9 @@ def _report_held(rows: list[dict[str, Any]], population: str, *, shrink: bool = 
         print(f"  --shrink needs a run of the whole population ({POPULATIONS[population]} questions); nothing written")
         return 1
     held_file[population] = lowered
-    HELD_PATH.write_text(json.dumps(held_file, indent=1, sort_keys=True) + "\n")
+    # The questions as typed, never escaped: the file is read by people and
+    # merged by hand, and an escaped "Dončić" reads as a change where none is.
+    HELD_PATH.write_text(json.dumps(held_file, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
     print(f"  wrote {HELD_PATH.name}: {population} lowered to this run where it fell")
     return grew
 

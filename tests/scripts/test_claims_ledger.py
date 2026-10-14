@@ -259,3 +259,24 @@ def test_the_held_file_holds_both_populations() -> None:
     assert all(isinstance(question, str) for population in held.values() for question in population["unread_numbers"])
     assert all(isinstance(question, str) for question in held["feed"]["disagreements"])
     assert all(isinstance(count, int) for count in held["feed"]["joins"].values())
+
+
+def test_shrink_keeps_a_questions_own_characters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``report --shrink`` writes the held questions as typed - "dončić", not
+    its escape - and the lists sorted, so a lowered file differs from the one
+    before only where a count fell or a question left (found 2026-10-14 by
+    the sweep's lane T3, whose hand-lowered file ``--shrink`` rewrote whole)."""
+    import argparse
+
+    held = tmp_path / "held.json"
+    monkeypatch.setattr(ledger, "HELD_PATH", held)
+    monkeypatch.setattr(ledger, "POPULATIONS", {"corpus": 2, "feed": 2})
+    held.write_text(json.dumps({"corpus": {"unread_words": 3, "unread_numbers": ["luka dončić 30 points", "q1 with 5"]}}, ensure_ascii=False))
+    rows = [
+        {"question": "luka dončić 30 points", "content_words": ["30"], "unread": ["30"], "reading_unread": ["30"]},
+        {"question": "q1 with 5", "content_words": ["5"], "unread": [], "reading_unread": []},
+    ]
+    assert ledger.report(argparse.Namespace(ledger=_held_run(tmp_path, "corpus", rows), top=5, show=0, shrink=True)) == 0
+    text = held.read_text()
+    assert "luka dončić 30 points" in text and "\\u" not in text
+    assert json.loads(text)["corpus"] == {"unread_words": 1, "unread_numbers": ["luka dončić 30 points"]}
