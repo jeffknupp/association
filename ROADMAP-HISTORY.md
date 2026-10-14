@@ -1579,6 +1579,12 @@ agents' reports named here are in `~/association-research/stages/`.
     and new P1s appear as fast as old ones close because each fix stops
     at the next seam (a reader fix exposes a relation gap), which is
     Phase 5's step 6 to count rather than a sign the sweep went backward.
+    A second dispatch the same evening (two agents on the new `opus-medium`
+    type, Jeff's default from then on): lane T2 closed #416 and #426, fixed
+    an unfiled P1 and was cut after #426; lane L2 closed its five (#422,
+    #428, #408, #370, #114) and stopped as briefed; nine merges (runs
+    33-41), 61 feed answers moved against the first close, open P1s 22 ->
+    19. Two resurrected entries caught by the same GitHub cross-check.
 
 ## The plan items, as written
 

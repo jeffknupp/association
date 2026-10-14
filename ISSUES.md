@@ -62,7 +62,6 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** (the grammar, lanes N/L) name a team's log or count from "games where they gave up N" / "how many games did X allow N" as `"games where they scored N"` would be; then the team log's and the count's readers take the `opponent_line` cell (`compose.team.compile_team_line`'s `whose` is the relation's reading of it), or the decline names it until they do.
 - **Source:** ours.
 - **Priority:** P1 - a different question answered fluently (0 of the 2,710; natural wordings).
-- **GitHub:** #426
 - **GitHub:** #430
 ### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
 - **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
