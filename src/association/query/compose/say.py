@@ -1201,7 +1201,12 @@ def say_team_log(result: Result) -> Answer:
         where = mixed_where(span.season or 0, dict(body.by_season_type))
         scope_text = _scope_words(len(games), False, None)
     else:
-        where = f" of the {season_phrase(span.season, span.season_type or 2)}" if span.season is not None else (f" ({span.years})" if span.date else f" (all-time, {span.years})")
+        # A season type of 0 is both types (BOTH_SEASON_TYPES), not "none named".
+        where = (
+            f" of the {season_phrase(span.season, 2 if span.season_type is None else span.season_type)}"
+            if span.season is not None
+            else (f" ({span.years})" if span.date else f" (all-time, {span.years})")
+        )
         scope_text = _team_log_scope(len(games), window.ascending, span.date, body.total_before_window)
     header = f"{result.subject}{result.narrowing.phrase}, {scope_text}{where} ({record}):"
     mark = {True: "W", False: "L", None: "?"}
