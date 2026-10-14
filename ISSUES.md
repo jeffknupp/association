@@ -62,7 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** (the grammar, lanes N/L) name a team's log or count from "games where they gave up N" / "how many games did X allow N" as `"games where they scored N"` would be; then the team log's and the count's readers take the `opponent_line` cell (`compose.team.compile_team_line`'s `whose` is the relation's reading of it), or the decline names it until they do.
 - **Source:** ours.
 - **Priority:** P1 - a different question answered fluently (0 of the 2,710; natural wordings).
-- **GitHub:** #426
+- **GitHub:** #430
 ### "win percentage" asked of the league's players reads no measure, and the points ranking answers: "player with worst win percentage" lists the 2026 scorers
 - **Found:** 2026-10-13, the P1 sweep's lane L, fixing #350 ("worst" a ranking word).
 - **Evidence:** on sweep-L, "worst win percentage" and "player with worst win percentage" (2 of the 2,082 feed questions) read no measure (`Reading.measure` None; "win percentage" in no measure word), so the players' ranking defaults to points per game, descending - "every player, 2026 regular season, by player (points per game, minimum 20 games): Luka Doncic 64 G points 33.5 ...". A player's win percentage is his team's record in his games (the with/without split and `player_splits` read it per player); no ranking of players reads it, and the bare "worst win percentage" is as likely the teams' standings.
