@@ -2586,6 +2586,10 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_boolean_count": {"shape": PLAYER_RANKING, "stat": "triple_double"},
     "cannot_honor": {"shape": PRESENCE_SPLIT, "cells": [{"cell": "range", "since": 2020, "until": 2024}], "without": None, "reason": DeclineReason.BEYOND_WORDS},
     "no_reading_of_point": {"shape": TEAM_RECORD, "planned": TEAM_RECORD},
+    "no_team_metric": {"shape": TEAM_RANKING, "stat": "rebounds allowed"},
+    "team_seasons_unsummed": {"shape": TEAM_RANKING, "metric": "free throw attempts per game"},
+    "team_venue_unsplit": {"shape": TEAM_RANKING, "metric": "pace", "venue": "home"},
+    "since_record_unsplit": {"shape": TEAM_RANKING},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
 }
@@ -2650,3 +2654,25 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
     )
     assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
     assert refusal_result(reading.point_refusal).text == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."
+
+
+def test_a_team_season_readers_decline_is_a_cause_the_planner_says() -> None:
+    """Phase 5, step 5: a team-season reader's decline - no team metric, a
+    span it cannot sum, a venue split it does not hold - is a cause, kept
+    through the only reader's door (``compose._read_only``) and said in the
+    sentence the plain decline had; a metric the words never named is said
+    so, where the sentence printed "for stat None"."""
+    from association.query import compose
+    from association.query.reading import ShapeDeclined
+
+    def declines() -> None:
+        raise ShapeDeclined("no_team_metric", {"stat": None}, "the words name no team metric")
+
+    with pytest.raises(ShapeDeclined) as kept:
+        compose._read_only(declines, TEAM_RANKING)
+    assert kept.value.cause == Cause(kind="no_team_metric", facts={"stat": None})
+    said = refusal_result(ShapeDeclined.under(kept.value.cause, TEAM_RANKING)).text
+    assert said == "Nothing here answers this question as a ranking of teams: the words name no team metric."
+    assert refusal_result(Cause(kind="no_team_metric", facts={"shape": TEAM_RANKING, "stat": "rebounds allowed"})).text == (
+        "Nothing here answers this question as a ranking of teams: no team metric for stat 'rebounds allowed'."
+    )

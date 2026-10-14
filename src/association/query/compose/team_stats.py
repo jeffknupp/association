@@ -35,6 +35,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Minimum,
     Period,
     PointShape,
+    ShapeDeclined,
     Split,
     Subject,
     Unsupported,
@@ -231,7 +232,7 @@ def _team_stat_metric(scope: Filtered) -> str | None:
     key = resolve_team_metric(scope.measure)
     stat = spelled(scope.measure)
     if key is None and stat and stat.strip():
-        raise Unsupported(f"no team metric for stat {stat!r}")
+        raise ShapeDeclined("no_team_metric", {"stat": stat}, f"no team metric for stat {stat!r}")
     return key
 
 
@@ -489,7 +490,10 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) ->
         return conference
     key = resolve_team_metric(scope.measure)
     if key is None:
-        raise Unsupported(f"no team metric for stat {spelled(scope.measure)!r}")
+        stat = spelled(scope.measure)
+        # A cause the planner says (Phase 5, step 5); "for stat None" where
+        # the words named no metric until then.
+        raise ShapeDeclined("no_team_metric", {"stat": stat}, f"no team metric for stat {stat!r}" if stat else "the words name no team metric")
     # `season` still settles to a real year under `since` - unread by the
     # since-bounded read, and here only for the named team's own-season name
     # lookup, which stays "now" either way.
@@ -515,7 +519,7 @@ def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Spa
     assert span.season is not None and span.season_type is not None
     if span.first:
         if venue is not None:
-            raise Unsupported("a since-bounded record has no home/road split yet")
+            raise ShapeDeclined("since_record_unsplit", {}, "a since-bounded record has no home/road split yet")
         records = read_team_since_records(con, span.season_type, span.first, span.last)
     elif venue:
         rows = read_team_venue_rows(con, span.season, span.season_type, venue)
@@ -534,10 +538,10 @@ def _team_leaderboard_metric(con: duckdb.DuckDBPyConnection, key: str, span: Spa
     the metric's first season and a team short of games are refused."""
     metric = TEAM_METRICS[key]
     if span.first or span.last:
-        raise Unsupported(f"team season stats have no way to sum {metric.label} across a span of seasons yet")
+        raise ShapeDeclined("team_seasons_unsummed", {"metric": metric.label}, f"team season stats have no way to sum {metric.label} across a span of seasons yet")
     if venue is not None:
         # Team season stats have no home/road split; team_box_stats does.
-        raise Unsupported(f"team season stats have no {venue} split for {metric.label}")
+        raise ShapeDeclined("team_venue_unsplit", {"metric": metric.label, "venue": venue}, f"team season stats have no {venue} split for {metric.label}")
     assert span.season is not None and span.season_type is not None
     if span.season < metric.first_season:
         return Refusal(kind="metric_before_first_season", facts={"metric": key, "season": span.season}, shown={"season": span.season})
