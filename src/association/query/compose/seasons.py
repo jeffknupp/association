@@ -44,6 +44,7 @@ from association.query.season_line import (
     ADVANCED_STATS,
     COMPARE_STAT_LINE,
     HISTORY_COLUMNS,
+    HISTORY_LINE,
     MAX_COMPARED_PLAYERS,
     NETPOINTS_COMPARE_ROWS,
     PLAYER_STAT_COLUMNS,
@@ -301,10 +302,19 @@ def player_history_reads(q: Query) -> bool:
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    stat = spelled(q.measure)
+    stat = _history_stat(q)
     if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
         return False
     return stat_measure(q.measure) in (None, *q.measures[:1])
+
+
+def _history_stat(q: Query) -> str | None:
+    """The stat a history reads: the measure's spelling, or the whole line
+    where the words named none (ISSUES.md #387: "james wiseman stats by
+    season" answered his 2026 line alone)."""
+    if q.measure is None or q.measure.key is None:
+        return HISTORY_LINE if q.measure is None else None
+    return spelled(q.measure)
 
 
 def read_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
@@ -333,7 +343,7 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
     player = history_subject(con, scope)
     if isinstance(player, Unanswered):
         return player
-    stat = spelled(scope.measure)
+    stat = _history_stat(scope)
     assert stat is not None
     latest = history_through(scope)
     career = scope.span.career
@@ -360,6 +370,10 @@ def _player_history_career(con: duckdb.DuckDBPyConnection, player: Entity, stat:
     counting column, the career total
     (:func:`~association.query.season_line.history_total`).
     ``None`` with no attempts, or no total."""
+    if stat == HISTORY_LINE:
+        # The whole line has no one career figure beneath it: the career
+        # line is its own question ("career averages").
+        return None
     columns = HISTORY_COLUMNS[stat][1]
     games = sum(row["games"] or 0 for row in rows)
     if len(columns) == 3:

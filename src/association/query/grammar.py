@@ -549,11 +549,14 @@ _PLAYED_TOGETHER_REROUTABLE = frozenset({TEAM_MEETINGS, TEAM_RECORD, TEAM_LINE, 
 
 def _line_and_record(working: _Working, question: str, companions: tuple[Companion, ...]) -> None:
     """A history that is really a line, a record ranking, and a career high."""
-    if working.asked == SEASON_HISTORY and (not names_a_stat(question) or (lexicon.VERSUS_OR_AGAINST.search(question) and working.team_words)):
+    if working.asked == SEASON_HISTORY and _line_and_record_history_is_line(working, question):
         # A season-by-season history of one stat is neither "career
         # averages" (no stat named - the whole line) nor a career against
         # one team: "Jokic career averages" answered with points by season,
-        # "derozan career points vs knicks" refused on its opponent.
+        # "derozan career points vs knicks" refused on its opponent. A
+        # history the words ask season by season ("stats by season", "each
+        # season") with no stat named is the whole line's history (ISSUES.md
+        # #387), never one season's line.
         working.asked = PLAYER_LINE
     if working.asked == PRESENCE_SPLIT and not absent(companions) and not _played(companions) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
         # No teammate named, and "the last 7 games": a team's log, not a
@@ -579,6 +582,14 @@ def _line_and_record(working: _Working, question: str, companions: tuple[Compani
         # "Diabate career high assists" was answered with his assists per
         # game.
         working.asked = GAME_HIGHS
+
+
+def _line_and_record_history_is_line(working: _Working, question: str) -> bool:
+    """Whether a history is really the line: no stat named and nothing
+    asked season by season ("Jokic career averages"), or a career against
+    one team."""
+    unmeasured = not names_a_stat(question) and not lexicon.SEASON_BY_SEASON.search(question)
+    return unmeasured or bool(lexicon.VERSUS_OR_AGAINST.search(question) and working.team_words)
 
 
 def _played(companions: tuple[Companion, ...]) -> tuple[str, ...]:

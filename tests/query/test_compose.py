@@ -33,6 +33,7 @@ from association.query.compose.core import Query, Refused, Unsupported, compile_
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import aggregate_of, plan, plan_point, refusal_of, refusal_result
 from association.query.compose.say import decline_reason_phrase, say
+from association.query.compose.seasons import player_history_reads
 from association.query.compose.sentence import sentence, team_sentence
 from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
@@ -76,7 +77,9 @@ from association.query.reading import (
     situation_of,
 )
 from association.query.reading import Subject as Who
-from association.query.result import Refusal
+from association.query.result import Grouped, LineFacts, Part, Refusal, Result
+from association.query.result import Span as ResultSpan
+from association.query.season_line import HISTORY_LINE
 from association.query.subject import Subject, read_subject
 from association.query.window import read_minimum
 
@@ -2256,14 +2259,21 @@ def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(c
     assert refused is not None and refused.text == "The 15th season is a place in one player's career, and no player was named."
 
 
-def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: AnswerContext) -> None:
-    """A per-season history that names no stat reads points per game, and its
-    heading says so - a default that is displayed and corrected by naming a
-    stat (AGENTS.md). The retired template refused it; the compiler, which
-    answered player_history first from step (a), read the same default."""
-    result = compose_answer(cx_ctx, SEASON_HISTORY, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "")
-    assert result is not None
-    assert "points per game" in result.text.split("\n")[0]
+def test_a_history_naming_no_stat_is_the_whole_line_and_says_so(cx_ctx: AnswerContext) -> None:
+    """A per-season history that names no stat reads the whole line - points,
+    rebounds and assists per game by season (ISSUES.md #387) - and its
+    heading says so, where it read points alone."""
+    query = move_point(cx_ctx.con, SEASON_HISTORY, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "")
+    assert isinstance(query, Query) and query.source == "seasons" and query.measures == ["points", "rebounds", "assists"]
+    assert player_history_reads(query)
+    result = Result(
+        subject="Brandin Podziemski",
+        relation="player",
+        span=ResultSpan(season_type=2, source="seasons"),
+        parts=(Part(body=Grouped(by="season", rows=({"key": 2026, "games": 60, "avgPoints": 11.1, "avgRebounds": 5.0, "avgAssists": 3.6},))),),
+        facts=LineFacts(stat=HISTORY_LINE),
+    )
+    assert "points, rebounds and assists per game" in say(result).text.split("\n")[0]
 
 
 def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(cx_ctx: AnswerContext) -> None:

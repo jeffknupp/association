@@ -817,10 +817,13 @@ def _move_player_history(asked: PointShape | None, scope: Filtered, career: Filt
         # below would read in its place.
         raise Unsupported(f"no per-season history for stat {scope.measure.as_typed!r}")
     del career  # the season line reads the question's own span; the planner's game-level point widens it
+    # No stat named: the whole line season by season (ISSUES.md #387), where
+    # the default measure answered points by season.
+    line = measure is None and (scope.measure is None or scope.measure.key is None)
     return Reading(
         **scope.filters(),
         read_as=SEASON_HISTORY,
-        measures=_measured(measure or "points"),
+        measures=_measured(*STAT_LINE) if line else _measured(measure or "points"),
         group="season",
         predicates=[],
         order="date",
@@ -2476,6 +2479,8 @@ def _measure_key_by_words(asked: PointShape | None, words: MeasureWords, context
         claims.append(Claim(words.two_point.start(), words.two_point.end(), "measure"))
     if asked == PLAYER_RANKING:
         key = _measure_key_ranked(words, key, claims)
+    if asked in (PLAYER_RANKING, SEASON_HISTORY):
+        key = _measure_key_abbreviated(words, key, claims)
     if key in MADE_TO_ATTEMPTED and words.attempted is not None and not words.made:
         key = MADE_TO_ATTEMPTED[key]
         claims.append(Claim(words.attempted.start(), words.attempted.end(), "measure"))
@@ -2500,14 +2505,20 @@ def _measure_key_ranked(words: MeasureWords, key: str | None, claims: list[Claim
     if words.shot_distance is not None:
         key = "shot_distance"
         claims.append(Claim(words.shot_distance.start(), words.shot_distance.end(), "measure"))
-    abbreviation = words.ranked_per_game.group(0).lower() if words.ranked_per_game is not None else None
-    if key is None and abbreviation in lexicon.SEASON_LINE_PER_GAME_WORDS and words.ranked_per_game is not None:
-        # A per-game abbreviation names the ranking's stat ("most ppg in a
-        # playoff season", ISSUES.md #421), where the words named none and
-        # the ranking's points default was all that made it points.
-        key = lexicon.SEASON_LINE_PER_GAME_WORDS[abbreviation]
-        claims.append(Claim(words.ranked_per_game.start(), words.ranked_per_game.end(), "measure"))
     return key
+
+
+def _measure_key_abbreviated(words: MeasureWords, key: str | None, claims: list[Claim]) -> str | None:
+    """A per-game abbreviation names the stat of a ranking or a history
+    where the words name none else ("most ppg in a playoff season",
+    ISSUES.md #421; "sga ppg in the last 4 seasons", #387), where the
+    ranking's points default, or the history's, was all that read it."""
+    found = words.ranked_per_game
+    abbreviation = found.group(0).lower() if found is not None else None
+    if key is not None or found is None or abbreviation not in lexicon.SEASON_LINE_PER_GAME_WORDS:
+        return key
+    claims.append(Claim(found.start(), found.end(), "measure"))
+    return lexicon.SEASON_LINE_PER_GAME_WORDS[abbreviation]
 
 
 def _measure_rate(asked: PointShape | None, words: MeasureWords, key: str | None, claims: list[Claim]) -> tuple[str | None, str | None]:

@@ -1519,3 +1519,35 @@ def test_a_yes_no_measure_over_a_range_of_seasons_ranks_each_players_count(con: 
     assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "count")
     assert reading.point.predicates == [(stat, "=", True)]
     assert reading.defaulted is None
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "career"),
+    [
+        ("jokic stats by season", ["Nikola Jokic"], False),
+        ("lebron nba stats by year", ["LeBron James"], False),
+        ("Jokic games play each season", ["Nikola Jokic"], True),
+        ("lebron stats every season", ["LeBron James"], True),
+    ],
+)
+def test_a_history_with_no_stat_named_is_the_whole_line_season_by_season(con: duckdb.DuckDBPyConnection, question: str, names: list[str], career: bool) -> None:
+    """ISSUES.md #387: "james wiseman stats by season" answered his 2026
+    line - a history with no stat named was turned into the line. Asked
+    season by season, it is the whole line's history (points, rebounds and
+    assists by season); "every season" and "each season" are every season
+    on record, where the history's default four answered."""
+    reading = _read(con, question, names)
+    assert reading.asked == SEASON_HISTORY
+    assert reading.point is not None and [m.key for m in reading.point.measures] == ["points", "rebounds", "assists"]
+    assert reading.span.career is career
+
+
+def test_career_averages_stay_the_line(con: duckdb.DuckDBPyConnection) -> None:
+    """ "career averages" with no "by season" is the whole career line."""
+    assert _read(con, "Jokic career averages", ["Nikola Jokic"]).asked == PLAYER_LINE
+
+
+def test_a_history_by_a_per_game_abbreviation_reads_its_stat(con: duckdb.DuckDBPyConnection) -> None:
+    """ "ppg" names the history's stat: points by season, not the line."""
+    reading = _read(con, "sga ppg avarage in the last 4 seasons", ["Shai Gilgeous-Alexander"])  # codespell:ignore avarage - the feed's question as typed
+    assert reading.measure is not None and reading.measure.key == "points"
