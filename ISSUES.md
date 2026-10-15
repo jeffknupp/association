@@ -126,15 +126,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #447
 
-### A window word before a time word, a yes/no measure or a period is read as nothing: "last time chris paul dropped 20 assists in a game" answers his season high
-- **Found:** 2026-10-15, the lead, re-running `~/association-research/stages/unread_meaning.py` on the Phase 5 close run (`f365d627`): the narrowing of step 1's window class (`lexicon.MEANING_WINDOW_NEXT`: a window word counts only beside a count or a game word) restored these from the `unread_window` refusal and the commit called them correct answers; they are not.
-- **Evidence:** ten feed questions (the harness's `LAST_TIME` class, held by text): "last time chris paul dropped 20|20|25|30 points/assists in a game" answers "Chris Paul's highest assist total in a single game in the 2026 regular season was 8"; "scottie barnes last triple double" (and "... on a wednesday") answers the count of his triple-doubles (9; 1); "lebron career last triple double vs wolves" answers 2 games with one; "tyler herro last week" answers his season averages over 33 games; "Tyrese maxey last first quarter game stats no" answers his 1st-quarter season total (555 points); "When was the last time the Knicks opened the nba season" answers the Knicks' season record. In each, "last" is followed by "time", "week", "triple", "first" - none in `MEANING_WINDOW_NEXT` - so `parse._beside_a_stretch` says no stretch and the word is left unread without the `unread_window` cause.
-- **User sees:** a fluent answer to a different question - the high, a count or the season line where the most recent game over a line was asked.
-- **Next step:** the window class counts a window word before a time word ("time", "week", "month", "night"), a yes/no measure's words ("triple", "double"), a period word ("first quarter") and a line's words, back to the refusal by name; then the read itself - the newest game over a line is a log over the line with a window of one (`player_games/rows/date` with `lines` and `window.count=1`), which the frozen keys already name - under Jeff's lifting if it is a new shape. The harness holds the ten by text until then; the record in `ROADMAP.md`'s done table and `CHANGES.md`'s `f365d627` entry is corrected in the same change.
-- **Priority:** P1 - a fluent wrong answer on ten recorded questions.
-- **Source:** ours.
-- **GitHub:** #453
-
 ### Two stat words on a one-stat shape, one read: "James harden rebound and assist vs POR" answers his rebounds alone
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
 - **Evidence:** "James harden rebound and assist vs POR" answers "averaged 4 rebounds per game in 2 games vs Portland"; "Giannis first half points rebounds assists gamelog vs washington" answers "16 rebounds in the 1st half over 3 games" (a period total of one stat where a log of three was asked). The measure tagger reads one stat from the words, so the `unread_stat` class (which triggers only where the measure did NOT come from the words) does not fire, and the other stat words stay unread; `measures_combined` refuses two stats only where the point reads a combined measure.
@@ -2698,6 +2689,15 @@ those were found.
 - **Source:** ours.
 - **Restored at Phase 5's close (2026-10-14):** the entry had been lost in a merge while GitHub #241 stayed open (the Phase 5 review).
 - **GitHub:** #241
+
+### "last time X did Y", "last triple double" and "last week" are refused by name; the read - the most recent game over a line - is not done
+- **Found:** 2026-10-15, the lead, the unread-meaning harness on the Phase 5 close run; the wrong answers (the season high, a count, the season line for ten feed wordings) fixed the same day at `2ee1f513` by the window class refusing them (`lexicon.MEANING_WINDOW_NEXT` counts a time word, a yes/no measure's word and a period word).
+- **Evidence:** "last time chris paul dropped 20 assists in a game", "scottie barnes last triple double", "tyler herro last week", "When was the last time the Knicks opened the nba season" answer "'last' asks for a stretch of games this reading did not count - say how many ("last 5 games") or which one ("last game")"; ten feed wordings, held as refusals in `~/association-research/stages/unread_meaning.py`.
+- **User sees:** a refusal that names the word, with a wording that reaches the newest N games but not the newest game OVER A LINE.
+- **Next step:** the read: "last time X did Y" and "last <yes/no>" is a log over the line with a window of one, newest first (`player_games/rows/date` with `lines` and `window.count=1`, a key the grammar names); "last week" a date range of seven days back from the latest game; under Jeff's lifting if the planner needs a shape for it (Phase 6, step 2).
+- **Priority:** P3 - a refusal by name where an answer exists.
+- **Source:** ours.
+- **GitHub:** #453
 
 ## P4: tooling, docs, low impact
 
