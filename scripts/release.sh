@@ -53,7 +53,11 @@ notes=$(awk -v v="## ${VERSION} " '
     found {print}
 ' CHANGES.md)
 
-if [[ -z "${notes// /}" ]]; then
+# Tested with grep, not a parameter substitution: bash's "${notes// /}" walks
+# the string once per match, quadratic in its length, and on 6.0.0's
+# 600,000-character section it had not finished after three minutes
+# (5.0.0's 293,000 had passed). The pipe costs nothing at any size.
+if ! printf '%s' "${notes}" | grep -q '[^[:space:]]'; then
     echo "error: no '## ${VERSION}' section in CHANGES.md to use as release notes" >&2
     exit 1
 fi
