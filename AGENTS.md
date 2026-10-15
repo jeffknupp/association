@@ -30,14 +30,14 @@ names; "(history)" after a rule points there.
 
 ## While the pipeline is rebuilt
 
-The rewrite's rules (`ROADMAP.md`, accepted 2026-09-30; the four-stage
-pipeline READ -> PLAN -> RUN -> SAY) are **standing rules since decision
-D10** (Jeff, 2026-10-14): they bind every change under
+The rewrite's rules (`ROADMAP.md`; the four-stage pipeline READ -> PLAN ->
+RUN -> SAY) are **standing rules by decision D10** (Jeff's): they bind
+every change under
 `src/association/query/`, whoever makes it. Each is a gate or a test, so a
 change that breaks one fails rather than drifts.
 
 **The work is a rewrite, and it is worked like one** (Jeff's standing
-instruction, 2026-10-04, to every agent and subagent):
+instruction to every agent and subagent):
 
 - **Make the large change when it is the right one.** A change that moves
   a whole shape, deletes a module or reshapes a type is the expected size;
@@ -60,13 +60,13 @@ instruction, 2026-10-04, to every agent and subagent):
 The rules:
 
 - **New shapes are frozen: a new shape comes only by Jeff's lifting, and
-  brings what decision D11 lists.** D11 (2026-10-14) replaced D4's plain
-  freeze with "what a new shape brings" (`ROADMAP.md`, under "D4 lifted
-  for the season ranking's shapes"). `tests/query/test_frozen_shapes.py`
-  holds the 28 keys the grammar can name (`reading.PointShape`: relation,
-  shape, `by`; the 26th to 28th by Jeff's liftings of 2026-10-13 and -14:
+  brings what decision D11 lists** ("what a new shape brings",
+  `ROADMAP.md`, under "D4 lifted for the season ranking's shapes").
+  `tests/query/test_frozen_shapes.py` holds the 28 keys the grammar can
+  name (`reading.PointShape`: relation, shape, `by`; among them
   `reading.PLAYERS_COUNTED`, a team's best single game
-  `team_games/rows/measure`, `reading.TEAM_SEASON_HISTORY`), the page's 7
+  `team_games/rows/measure` and `reading.TEAM_SEASON_HISTORY`, each by
+  Jeff's lifting), the page's 7
   renderers (one per `reading.Shape`) and the 4 scoping declarations left
   in `src`, read from the source by module and name: `RELATION_SCOPING`
   and `RELATION_SCOPING_EXCLUDED` on `query/player_relation.py`,
@@ -95,11 +95,8 @@ The rules:
     a function, is a door, counted at its callers, not itself (decision
     D6); and every `core.rows_of`/`core.values_of` call over a statement
     the compiler did not build, in the module making the call. The
-    argument's tracing is `_origin`'s docstring in the script. Three
-    counts were raised by hand during the P1 sweep, each with Jeff's
-    say-so recorded in `ROADMAP.md`'s Phase 5 step 0 row: `season_line`
-    12 -> 13 (`6634777`), `team_relation` 5 -> 6 (`eef7625`),
-    `team_seasons` 7 -> 8 (`5339bdf`).
+    argument's tracing is `_origin`'s docstring in the script. A count is
+    raised by hand only with Jeff's say-so, recorded in `ROADMAP.md`.
   - `regex_outside_the_lexicon` - a module but the lexicon that calls `re`
     or imports it at run time (an import under `TYPE_CHECKING` is none),
     or a module outside the reader that takes a reader's private pattern:
@@ -121,7 +118,7 @@ The rules:
   ignored edge. A new edge fails; an ignore is not the way past it.
   (history)
 - **A change to the pipeline is proven on the recorded populations, one
-  run per PUSH (decision D12, Jeff, 2026-10-14).** The feed
+  run per PUSH (decision D12, Jeff's).** The feed
   (`scripts/stage_snapshots.py run --feed --workers 4`, about 80 seconds
   sharded) on the branch tip against a fresh run of the tip before it,
   `compare`d with nothing ignored but a field the push names, every moved
@@ -143,8 +140,7 @@ The rules:
   answer was wrong, which the offline compare cannot tell; the
   yardstick's key can, which is why a live run closes a phase. (history)
 
-  The four populations, which the tools still measure when asked (the
-  rewrite's per-commit rule until D12):
+  The four populations, which the tools measure when asked:
   1. **The corpus**: `scripts/stage_snapshots.py run OUT.jsonl` answers
      the 628 recorded questions through the whole agent with no model (the
      normalizer's recorded replies, the date pinned, DuckDB
@@ -178,7 +174,7 @@ The rules:
     change.
   - **Identical means identical.** Everything compares text and all;
     `--values-only` (sentences left out) is only for a change the roadmap
-    allows to reword an answer. One permitted move (Jeff, 2026-10-05): a
+    allows to reword an answer. One permitted move (Jeff's): a
     decline the user sees becoming a `reading.Cause` the planner says -
     which moves the reading's verdict (`point_declined` ->
     `point_refusal`) and the answer's `answered_by` - is done as ONE
@@ -205,7 +201,7 @@ The rules:
   lowers the file with the change (it only removes and lowers). After a
   reader change, run it on both populations and read the unread numbers
   first. A count grows only by a named overcount exposed, said in the
-  commit (Jeff's rulings, 2026-10-10, -11 and -13). (history)
+  commit (Jeff's rulings). (history)
 
   The Reading states the same list itself: `Reading.unread`, the content
   words no claim covers, by the ledger's own rule in the lexicon
@@ -284,8 +280,8 @@ git commit ...`), never `;`: a `;` chain once pushed a red commit.
 Sphinx build, plus the whole suite, in parallel. It leaves out only the
 docs build, the gate that catches a malformed docstring, so a commit
 touching a docstring runs the full check. Nothing else may be skipped.
-Measured on the OVH devbox (24 cores, 2026-10-02; the 8-core times are in
-the history):
+Measured on the OVH devbox (24 cores; the 8-core times are in the
+history):
 
 | command | time |
 | --- | --- |
@@ -675,7 +671,7 @@ as typed and read by `entities.resolved_team`, which says so. (history:
 the measured default and ask rates.)
 
 **A reasonable default beats a question, where the default is visible and
-can be corrected** (Jeff, 2026-09-21: *"A default that chooses reasonably
+can be corrected** (Jeff: *"A default that chooses reasonably
 but happens to be wrong is better than no answer as long as it can be
 easily corrected. If the query returns Dean Wade and I have no way to refer
 to Dwyane Wade, that's the only time there's an issue."*). Both conditions
@@ -695,7 +691,7 @@ It is elimination, not the prominence tiebreak: two namesakes who both
 played are asked about. Before extending the rule to another open slot,
 check both conditions. (history)
 
-**A question too short to be one is refused unread** (Jeff, 2026-09-29):
+**A question too short to be one is refused unread** (Jeff's rule):
 fewer than `parse.MIN_QUESTION_WORDS` (three) words is the `too_short`
 cause (`parse.too_short`), which `Agent.ask` asks before the normalizer (no
 model call) and the planner says (`compose.plan.refusal_result`, answered
@@ -716,9 +712,8 @@ the prominence tiebreak above `PLAYER_NICKNAMES` was measured and rejected.
 
 The pipeline is parser -> planner -> a reader over a relation -> the sayer
 -> a deterministic answer, and a refusal naming why where nothing has a
-reading of the question. There are no templates and no fall-through agent
-(measured and retired at 5.0.0; history). Since Phase 5, step 5
-(`6a85bc5`) every refusal and decline is a cause the planner says, answered
+reading of the question. No model writes SQL (history). Every refusal and
+decline is a cause the planner says, answered
 `answered_by="fast"` - since looking at the question and having something
 to say is an answer - including words that ask for no shape (`no_shape`,
 "what its words ask has no reader"). Only a question too short to be one
@@ -935,7 +930,7 @@ by its `PointShape` key. The populations record the typed Reading
 **What the words ask comes from the question's own words, never from the
 model.** The grammar names a `reading.PointShape` - the relation, the shape
 and the `by` of the point the words ask for bare (`Reading.asked`,
-`Subject.asked`; `None` for no shape), one key per retired intent
+`Subject.asked`; `None` for no shape), one key per shape the words can ask
 (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`); a
 sentence says a key in words (`say.asked_as`), the trace and the records by
 `reading.key_path` (`relation/shape/by`). The kind is no part of the key: it
@@ -1067,7 +1062,7 @@ ollama, and it narrows a relation only through the shared steps.
   reading of the subject) it is a cause too, said at a decline's place
   rather than the point's (`compose.say.POINT_DECLINES`, read by the
   planner: `period_relations_question`, `team_relations_question`,
-  `team_only_question`, `no_subject_reading`; Phase 5, step 5, `7ee992b`).
+  `team_only_question`, `no_subject_reading`).
   A decline the user would see as "Nothing here answers this question"
   becomes a Cause in one enumerated commit.
 - **A shape's own decline is a cause too** (`reading.ShapeDeclined`, raised
@@ -1092,15 +1087,12 @@ ollama, and it narrows a relation only through the shared steps.
   fluently past the word is refused by name. The classes are the taggers'
   own words, under guards the harness shares: a word that restates the
   shape ("record", "stats") is in no class, a leftover of the read
-  measure's own words names no other stat (by stem since step 7: the
-  "point" of "three points made", `parse._leftover` over
-  `lexicon.letter_words`), and a slashed figure is no day. The window and
-  date classes still refuse some correct answers ("top scorers", "who may
-  lead"); the lead's narrowing of them is in flight. Its harness is
-  `~/association-research/stages/unread_meaning.py` (the done table's
-  coverage row; it read 2 on the corpus at `3dc37821`, lacking the stem
-  guard). Nothing after the parser re-reads the question for any of the
-  three. (history)
+  measure's own words names no other stat (by stem: the "point" of "three
+  points made", `parse._leftover` over `lexicon.letter_words`), and a
+  slashed figure is no day. Its harness is
+  `~/association-research/stages/unread_meaning.py`, which holds what it
+  flags by text with each one's grade. Nothing after the parser re-reads
+  the question for any of the three. (history)
 - **An answer is `Answer`, stamped by the loop.** `answer.Answer` (the
   text, the data, the files), returned by the sayer and the compiler's own
   sentence, is stamped by the answering loop with the question, the path,
@@ -1785,7 +1777,7 @@ irreversible.
 
 - **The distribution is `association-py`; the import package, the
   `association` command and the repository keep the bare name** (PyPI
-  refused `association`, 2026-10-09; history). `pyproject.toml`'s `name`,
+  refused `association`; history). `pyproject.toml`'s `name`,
   `association.__version__`'s metadata lookup, `docs/conf.py` and the web
   extra's install hint read the new name; the wheel is
   `association_py-X.Y.Z-py3-none-any.whl`. The install lines in `README.md`,
