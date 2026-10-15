@@ -56,8 +56,9 @@ notes=$(awk -v v="## ${VERSION} " '
 # Tested with grep, not a parameter substitution: bash's "${notes// /}" walks
 # the string once per match, quadratic in its length, and on 6.0.0's
 # 600,000-character section it had not finished after three minutes
-# (5.0.0's 293,000 had passed). The pipe costs nothing at any size.
-if ! printf '%s' "${notes}" | grep -q '[^[:space:]]'; then
+# (5.0.0's 293,000 had passed). A here-string, not a pipe: grep -q exits at
+# its first match, and under pipefail the writer's SIGPIPE failed the test.
+if ! grep -q '[^[:space:]]' <<< "${notes}"; then
     echo "error: no '## ${VERSION}' section in CHANGES.md to use as release notes" >&2
     exit 1
 fi
