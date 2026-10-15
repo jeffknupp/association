@@ -4701,7 +4701,7 @@ ranking would answer the question fluently and wrongly.
    ``parse._CHAMPIONSHIP`` until Phase 4, step 6.
 """
 TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
-""""Title odds": a regular-season projection ``team_outlook`` answers, not a
+""""Title odds": a regular-season projection ``TEAM_OUTLOOK`` answers, not a
 championship.
 
 .. versionadded:: 6.0.0

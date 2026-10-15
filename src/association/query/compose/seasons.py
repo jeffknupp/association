@@ -72,7 +72,7 @@ from .core import Query, measure_names
 
 
 def player_line_reads(q: Query) -> bool:
-    """Whether ``q`` is ``player_stat``'s own unnarrowed point on the season
+    """Whether ``q`` is ``PLAYER_LINE``'s own unnarrowed point on the season
     line: a per-game scalar for one named player and the reading's own stat
     - the default point's measures, or the question's word for that same
     stat ("3pt percentage" is three_pct, which the router filed as
@@ -104,7 +104,7 @@ def player_line_reads(q: Query) -> bool:
 
 
 def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``player_stat``'s unnarrowed point - one season's line or a career,
+    """``PLAYER_LINE``'s unnarrowed point - one season's line or a career,
     from the season line, or a computed advanced stat from
     ``player_season_advanced_stats`` - as a
     :class:`~association.query.result.Scalar` on a span whose ``source`` is
@@ -291,7 +291,7 @@ def _advanced_empty(con: duckdb.DuckDBPyConnection, player: Entity, span: Resolv
 
 
 def player_history_reads(q: Query) -> bool:
-    """Whether ``q`` is ``player_history``'s own point on the season line:
+    """Whether ``q`` is ``SEASON_HISTORY``'s own point on the season line:
     a history by season of the reading's own stat, one with a per-season
     column. A stat with no per-season column or a measure the question's
     words moved in is the game-level reading's, and so is a narrowing
@@ -320,7 +320,7 @@ def _history_stat(q: Query) -> str | None:
 
 
 def read_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``player_history``'s own point - the stat season by season from the
+    """``SEASON_HISTORY``'s own point - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
     under a career every season with the career line beneath - as a
     :class:`~association.query.result.Grouped` by ``season`` (one row per
@@ -393,7 +393,7 @@ def _player_history_career(con: duckdb.DuckDBPyConnection, player: Entity, stat:
 
 
 def player_compare_reads(q: Query) -> bool:
-    """Whether ``q`` is ``player_compare``'s own point: a pair's lines on
+    """Whether ``q`` is ``PLAYER_COMPARISON``'s own point: a pair's lines on
     the season line, grouped by player, no line on a column and no measure
     of the words' own (a narrowing its words do not state is the planner's
     decline before it, ``compose.plan.cells_declined``).
@@ -409,7 +409,7 @@ def player_compare_reads(q: Query) -> bool:
 
 
 def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``player_compare``'s own point - two or more named players' season
+    """``PLAYER_COMPARISON``'s own point - two or more named players' season
     lines side by side - as a :class:`~association.query.result.Grouped` by
     ``subject`` (one row per player in the question's order: ``key`` his
     name, ``games`` and each stat's per-game figure; a player with no line

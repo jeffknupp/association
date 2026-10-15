@@ -12,7 +12,7 @@ because they live in the relation instead of in each caller:
   away_team_id, eastern_date)`` - the highest ``season`` label when two agree
   - so a caller never needs its own ``season NOT IN (1993, ...)`` guard the
   way ``association.query.templates.games._season_games`` used to write one
-  per call site (removed, step 3, C4b: its one caller, ``team_quarter_points``,
+  per call site (removed, step 3, C4b: its one caller, ``TEAM_PERIOD_TOTAL``,
   now takes its games from this relation);
 - **a postseason is selected by the calendar year it was played in**, from
   the relation's own :data:`Eastern date <association.nba.season.eastern_date_sql>`
@@ -40,9 +40,9 @@ already resolved, never a name.
 
 The old ``conditions._team_games``, which scoped by season LABEL rather than
 calendar year (the wrong-year fault this module's docstring above describes),
-is gone: ``player_splits``, ``record_when`` and ``streak``'s team branches and
-``with_without``'s windows were ported onto this relation in step 3, C4, and
-``head_to_head`` and ``game_log``'s team half in the same step. Every reader of
+is gone: ``PLAYER_SPLITS``, ``LINE_RECORD`` and ``LINE_RUNS``'s team branches and
+``PRESENCE_SPLIT``'s windows were ported onto this relation in step 3, C4, and
+``TEAM_MEETINGS`` and ``PLAYER_LOG``'s team half in the same step. Every reader of
 a team's games now goes through here.
 
 Step 3, C4b adds the cells a team's games can be narrowed to that C4 left off:
@@ -251,13 +251,13 @@ class TeamNarrowed:
     def filters(self, *, opponent: bool = True, date: bool = True, period: bool = True) -> str:
         """What the games were narrowed to, as it follows a name: ``" vs the
         Detroit Pistons at home"``. ``opponent`` is False for a caller that
-        already names the opponent its own way (``team_quarter_points`` says
+        already names the opponent its own way (``TEAM_PERIOD_TOTAL`` says
         "against the Pistons", not "vs the Pistons") and wants the rest of the
         narrowing without a second, differently-worded mention of it. ``date``
         is False the same way, for a caller whose sentence already names the
         one game's date its own way (a single-game answer that already prints
         ``g['date']``) and would otherwise say it twice, and ``period`` for a
-        caller that names the quarter or half itself (``team_quarter_points``).
+        caller that names the quarter or half itself (``TEAM_PERIOD_TOTAL``).
 
         .. versionchanged:: 5.0.0
            Says the period (``"in the 1st quarter"``) a narrowing set, and

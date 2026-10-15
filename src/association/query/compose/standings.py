@@ -7,7 +7,7 @@ at home or on the road - read over the team-season relation
 :class:`~association.query.result.Scalar` record body (``how="record"``)
 and, for a season with a home/road split, a
 :class:`~association.query.result.Grouped` part by venue. Phase 2's slice
-(iv): the retired ``team_record`` template's standings reads
+(iv): the retired ``TEAM_RECORD`` template's standings reads
 (``templates.teams._standings_season``, ``_standings_career``) moved here,
 their statements into the relation, their sentences to the sayer
 (:func:`association.query.compose.say.say_team_record`); since Phase 4,

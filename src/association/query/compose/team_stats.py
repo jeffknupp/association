@@ -1,6 +1,6 @@
-"""A team's own season, read: its line and where it ranks (``team_stat``),
+"""A team's own season, read: its line and where it ranks (``TEAM_LINE``),
 every team ranked by one metric of the line or the standings
-(``team_leaderboard``), and its place in ESPN's power index
+(``TEAM_RANKING``), and its place in ESPN's power index
 (``team_outlook``) - the two team-season relations of ``ROADMAP-TYPES.md``
 (``team_seasons``, ``team_snapshots``), beside the team-games relation the
 team compiler reads (:mod:`~association.query.compose.team`).

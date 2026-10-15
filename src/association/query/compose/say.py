@@ -10,11 +10,6 @@ editing that phrase; the compiler's own sentence
 outside this module, phrases its notes through it too
 (``compose.core._box_notes``).
 
-Phase 2's first slice (``ROADMAP.md``, "Phase 2, the expected steps",
-step 0): the game log's words, taken from the retired template's body
-(``templates.games._player_game_log`` and ``team_game_log``) and
-reproduced from the Result word for word.
-
 .. versionadded:: 5.0.0
 """
 
@@ -357,8 +352,8 @@ def _say_stat_blank(facts: dict[str, Any]) -> str:
 
 
 def _unit(stat: Any) -> str:
-    """The unit a line is said in: the stat's label with an "s", as the
-    record template pluralized it ("point" -> "points")."""
+    """The unit a line is said in: the stat's label with an "s" ("point" ->
+    "points")."""
     return f"{STAT_LABELS.get(stat or '', stat or '')}s"
 
 
@@ -633,9 +628,7 @@ def _ranking_unit(metric: str, rate: Any) -> str:
     netpoints / 90": per 90 minutes is a football unit, and nothing in the
     warehouse is stored in it). Only the three NetPoints metrics have a
     per-100 sibling, so a generic list of units would be the
-    refusal-with-the-wrong-cause shape. The retired leaderboard template's
-    sentence, word for word (``compose.rankings._leaderboard_no_such_rate``
-    until the point reader carried the cause)."""
+    refusal-with-the-wrong-cause shape."""
     forms = ["as a season total" if metric.startswith("total_") else "per game"]
     if metric in SEASON_TOTAL_OF:
         forms.append("as a season total")
@@ -684,12 +677,9 @@ def _stat_words(stat: Any) -> str:
 
 
 def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
-    """The sentence each cause of a shape over a line - and the other
-    declines slices (i) and (ii) gave a user as "Nothing here answers this
-    question" (Phase 2, step 3) - is said with, naming the fact that is
-    missing; ``None`` for a kind said elsewhere. Moved from
-    ``compose.plan``, which said a reading's causes until the run's joined
-    them here."""
+    """The sentence each cause of a shape over a line - and of the other
+    shapes' own refusals - is said with, naming the fact that is missing;
+    ``None`` for a kind said elsewhere."""
     asked = facts.get("shape") if isinstance(facts.get("shape"), PointShape) else None
     shape = _LINE_SHAPES.get(asked, "this answer") if asked is not None else "this answer"
     reaching = _REACHING.get(asked, "Games reaching {}") if asked is not None else "Games reaching {}"
@@ -737,15 +727,14 @@ def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
 #: source rather than one naming only the shape.
 #:
 #: No table here holds a coach - 20 base tables and 6 views, zero columns named
-#: anything like it - so a reader has nothing to find. Left to fall through,
-#: the retired SQL agent spent a slow round trip and was then free to fill the
-#: silence from its own weights, which is the failure ``check_coverage`` exists
-#: to stop: an agent with nothing to read writes a confident answer. So the
+#: anything like it - so a reader has nothing to find, and a model with
+#: nothing to read writes a confident answer from its own weights, the
+#: failure ``check_coverage`` exists to stop. So the
 #: reading refuses (``point._read_point``: the ``no_coach_table`` cause), and
 #: this names which fact is missing.
 #:
 #: The sentence says what it says because the obvious reading - "ESPN does not
-#: publish coaches" - was checked on 2026-09-17 and is false. ESPN serves two
+#: publish coaches" - is false. ESPN serves two
 #: coach collections, and neither is usable: the league-wide one ignores the
 #: season it is asked for (1977 answers with today's staff, Doug Christie and
 #: JJ Redick among them), and the team-scoped one covers 12 of 30 teams in
@@ -1079,16 +1068,13 @@ def say_player_log(result: Result) -> Answer:
 
 # --- the team's log ----------------------------------------------------------------
 
-#: A ``stat`` slot's own word, mapped to the total a team's log states
-#: beneath its games - "total points" (F128) and "point differential"
-#: (F129), both narrowed correctly by the log already but never STATED
-#: until this existed: the games were right and the question's own number
-#: was still missing.
+#: A measure's own word, mapped to the total a team's log states beneath
+#: its games - "total points" (F128) and "point differential" (F129): the
+#: games alone would leave the question's own number unstated.
 TEAM_LOG_STAT_TOTALS: dict[str, str] = {
     "points": "points",
     "pointsDifference": "differential",
-    # The model's other spellings of the same thing, seen live once the
-    # router's prompt shrank (day6, F129).
+    # The model's other spellings of the same thing (day6, F129).
     "points_differential": "differential",
     "point_differential": "differential",
     "differential": "differential",
@@ -1313,7 +1299,7 @@ def say(result: Result | Refusal | Clarify) -> Answer:
 def say_record_when(result: Result) -> Answer:
     """A player's team's record when he reached a line, worded: the three-row
     table (reached, fell short, all his games) under its heading, then the
-    pool, the floor and the caveats in the retired template's order.
+    pool, the floor and the caveats.
 
     .. versionadded:: 5.0.0
     """
@@ -1331,8 +1317,8 @@ def say_record_when(result: Result) -> Answer:
     title = f"{whose} when {result.subject} had {threshold}+ {unit}{result.narrowing.phrase}, {result.span.phrase}:"
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
-    # Recorded in the Result's order (the template wrote the caveats first),
-    # said in the heading's: the pool, the floor, the caveats.
+    # Recorded in the Result's order (the caveats first), said in the
+    # heading's: the pool, the floor, the caveats.
     said = {each.kind: text for each, text in zip(result.notes, _said(result), strict=True)}
     trailer = said.get("definition", "") + said.get("floor", "") + said.get("games_unseen", "") + said.get("stat_blank", "")
     data = {
@@ -1350,9 +1336,9 @@ def say_record_when(result: Result) -> Answer:
 
 
 def _say_team_record_when(result: Result, groups: Grouped) -> Answer:
-    """A team's record when its own figure reached a line, worded as the
-    retired template's team branch said it: the three rows under the team's
-    heading, then the pool, the floor and the games with no figure."""
+    """A team's record when its own figure reached a line, worded: the
+    three rows under the team's heading, then the pool, the floor and the
+    games with no figure."""
     line = groups.of
     assert isinstance(line, Line)
     stat, threshold = line.column, line.value
@@ -1365,8 +1351,8 @@ def _say_team_record_when(result: Result, groups: Grouped) -> Answer:
     title = f"{result.subject} record when {who} had {held.format(n=threshold, unit=unit)}{result.narrowing.phrase}, {result.span.phrase}:"
     rows = [(held.format(n=threshold, unit=unit), reached), (missed.format(n=threshold, unit=unit), short), ("all their games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
-    # Recorded in the Result's order (the template wrote the caveat first),
-    # said in the heading's: the pool, the floor, the caveat.
+    # Recorded in the Result's order (the caveat first), said in the
+    # heading's: the pool, the floor, the caveat.
     said = {each.kind: text for each, text in zip(result.notes, _said(result), strict=True)}
     trailer = said.get("definition", "") + said.get("floor", "") + said.get("stat_blank", "")
     data = {"team": result.subject, "stat": stat, "threshold": threshold, "span": result.span.phrase, "reached": reached, "fell_short": short, "headline": title.rstrip(":"), "notes": [trailer]}
@@ -1405,8 +1391,7 @@ def say_splits(result: Result) -> Answer:
     """A player's or a team's splits, worded: the shared table over whichever
     subject was read - one or all four splits, each split's rows under its
     group label, a blank line between splits - and the notes that qualify
-    them, in the retired template's order: what the words mean, the floor,
-    the caveat.
+    them: what the words mean, the floor, the caveat.
 
     .. versionadded:: 5.0.0
     """
@@ -1453,14 +1438,14 @@ def rounded(value: Any) -> float | None:
 
 
 def stat_value_labels(wanted: list[str]) -> dict[str, str]:
-    """``data["stats"]``' own labels for a multi-stat ``player_stat`` line -
+    """``data["stats"]``' own labels for a multi-stat ``PLAYER_LINE`` line -
     the page's static abbreviation table (``LABELS``,
     ``web/static/index.html``) maps both the per-game column
     (``avgPoints``) and the season total (``points``) to the same short
     word ("PTS"), so a line naming both prints two tiles labeled identically
-    with no way to tell the average from the total apart (seen live on the
-    rendered page, 2026-09-24: "PTS" twice, one of them a season sum in the
-    hundreds sitting next to a per-game figure under 30). Every wanted
+    with no way to tell the average from the total apart ("PTS" twice, one
+    of them a season sum in the hundreds next to a per-game figure under
+    30). Every wanted
     stat's own English label (``PLAYER_STAT_COLUMNS``' third element)
     names both explicitly rather than leaving the page to guess a pair apart
     that its own lookup collapses to one string.
@@ -1622,8 +1607,7 @@ def say_player_stat(result: Result) -> Answer:
     """A player's line over the games a question narrowed to, worded: one
     sentence (a percentage with its makes and attempts, or each stat per
     game with the total of one stat alone), the remarks after it, and
-    against one opponent the newest meetings beneath - the retired
-    ``player_stat`` template's words.
+    against one opponent the newest meetings beneath.
 
     .. versionadded:: 5.0.0
     """
@@ -2032,8 +2016,8 @@ def _threshold_count_rows(result: Result) -> list[tuple[Any, int, int]]:
 def say_threshold_count(result: Result) -> Answer:
     """How many games cleared a line, worded - a named player's count, or
     the league's leaders with "Next: ..." - with the floor said first where
-    his career began before the box scores, and the notes after it in the
-    retired template's order: a league career is not all-time, a withheld
+    his career began before the box scores, and the notes after it: a
+    league career is not all-time, a withheld
     stat (else the empty box scores), the leader's rebuilt games.
 
     .. versionadded:: 5.0.0
@@ -2121,8 +2105,7 @@ def _times_phrase(count: int) -> str:
 
 
 def say_single_game_high(result: Result) -> Answer:
-    """A single game's high, worded - the retired ``single_game_high``
-    template's sentence: the floor first where a career began before the
+    """A single game's high, worded: the floor first where a career began before the
     box scores, the high, then a league career's floor, the empty box
     scores and a rebuilt top game, and the defaulted season's redirect on
     the same line (and in ``data["notes"]``, since the page's caption is
@@ -2292,8 +2275,8 @@ def say_run_listing(runs: Sequence[Run], what: str, rule: str, label: str, where
     ``compose.runs.read_team_streak``), each under its ``owner``, a
     tie reported as a tie, and the rule and the open-run footnote under the
     table - carried in ``data["notes"]`` too, so the web page shows them
-    under the rendered table (rendered, the "*" beside a run had no key
-    anywhere on screen - Jeff's note, 2026-09-24). ``where`` names a span
+    under the rendered table (rendered, the "*" beside a run has no key
+    anywhere else on screen). ``where`` names a span
     with no run in it ("in the 2026 regular season").
 
     .. versionadded:: 5.0.0
@@ -2366,8 +2349,7 @@ def say_streak(result: Result) -> Answer:
 
 def _say_team_run(result: Result, body: Runs, rule: str, *, want_win: bool, still_open: bool) -> Answer:
     """A named team's longest run of wins or losses (and any that tie it),
-    or that it never won (or lost) a game in the span narrowed so -
-    ``streak``'s retired team branch, word for word."""
+    or that it never won (or lost) a game in the span narrowed so."""
     team, label, filters = result.subject, result.span.phrase or "", result.narrowing.phrase
     if not body.runs:
         message = f"The {team} did not {'win' if want_win else 'lose'} a game{filters} in the {label}."
@@ -2648,8 +2630,7 @@ def say_players_counted(result: Result) -> Answer:
 
 
 def say_leaderboard(result: Result) -> Answer:
-    """A ranking over the season line, worded as the retired template
-    worded it (``templates.players._leaderboard_ranking``): the leader and
+    """A ranking over the season line, worded: the leader and
     the next names in a sentence, or a table once "also" columns were asked
     for, the qualifier in either, a career's pool said every time, and the
     most-recent-team remark on its own line beneath a team column.
@@ -2672,8 +2653,7 @@ def say_leaderboard(result: Result) -> Answer:
             # the answer records that the season was chosen, not asked.
             period = decision_phrase(each)
     where = f"the {facts.team}" if facts.team else "the league"
-    # The remark beneath the table is written before the table's qualifier,
-    # in the order the template wrote them.
+    # The remark beneath the table is written before the table's qualifier.
     trade_note = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
     minimum, applied = _leaderboard_minimum(result)
     qualifier = _leaderboard_qualifier(result, minimum)
@@ -2805,8 +2785,8 @@ def _say_player_line_advanced(result: Result, line: Scalar) -> Answer:
 def _player_line_values(result: Result, line: Scalar, wanted: list[str]) -> tuple[dict[str, Any], Any]:
     """The line as ``data["stats"]`` holds it, by column: the games, each
     wanted stat's per-game figure and total, a made count's attempts - as
-    stored for a season, rounded as the retired template rounded a summed
-    career - and those attempts, for the sentence."""
+    stored for a season, a summed career rounded the same way - and those
+    attempts, for the sentence."""
     career = result.span.career
     values: dict[str, Any] = {"gamesPlayed": line.games}
     for stat in wanted:
@@ -2838,8 +2818,7 @@ def say_player_line(result: Result) -> Answer:
     season's ("averaged 27.7 points per game in 70 games in the 2026
     regular season"), a career's ("over his career (8 regular seasons,
     2019-2026)"), a percentage with its makes and attempts, or a computed
-    advanced stat - the retired ``player_stat`` template's words for the
-    season line.
+    advanced stat.
 
     .. versionadded:: 5.0.0
     """
@@ -2898,8 +2877,7 @@ def _history_career_line(name: str, label: str, summary: Scalar) -> str:
 
 def say_player_history(result: Result) -> Answer:
     """A player's stat season by season, worded: the aligned table under its
-    heading, and under a career the career line - the retired
-    ``player_history`` template's words. ``data["seasons"]`` keys each row
+    heading, and under a career the career line. ``data["seasons"]`` keys each row
     by the STABLE name (``HISTORY_COLUMNS``' third element), never the SQL a
     column reads through, and ``data["labels"]`` carries each column's
     printed header, so the page need not guess one back out of a key.
@@ -2958,8 +2936,7 @@ def _compare_table(rows: dict[str, dict[str, Any]], wanted: list[str], period: s
 def say_player_compare(result: Result) -> Answer:
     """Two or more players' season lines side by side, worded: a table of
     the games and each stat per game, the NetPoints summary beneath where
-    anybody has a row, and which players have no line that season - the
-    retired ``player_compare`` template's words.
+    anybody has a row, and which players have no line that season.
 
     .. versionadded:: 5.0.0
     """
@@ -3038,7 +3015,7 @@ def _team_outlook_bpi_line(result: Result, line: Scalar) -> str:
     dropped, since the power index IS this answer's headline: ESPN's 2026
     regular-season snapshot is the live case, all 30 of its teams with a
     NULL ``bpi`` while their records, projections, chances and SOS are
-    populated (measured 2026-09-18)."""
+    populated."""
     withheld = _team_outlook_noted(result, "bpi")
     if withheld:
         return withheld[0]
@@ -3083,8 +3060,7 @@ def say_team_outlook(result: Result) -> Answer:
     kind, date and size) and what is odd about it, the BPI line, the record
     and its projection, the chances, the strength of schedule and the
     season's other snapshots - or, where no snapshot of the kind asked for
-    holds the team, which snapshots exist. ``templates.teams.team_outlook``'s
-    words, from the Result.
+    holds the team, which snapshots exist, from the Result.
 
     .. versionadded:: 5.0.0
     """
@@ -3108,9 +3084,8 @@ def say_team_outlook(result: Result) -> Answer:
         "losses": values["losses"],
         # In a postseason snapshot ESPN's "projection" columns hold the
         # finished regular season (see _team_outlook_record_line), so they
-        # are filed under that name: the page drew "PROJECTED 45-37" beside
-        # "RECORD 49-44" for a team whose season was over (Jeff's session,
-        # 2026-09-24).
+        # are filed under that name, or the page draws "PROJECTED 45-37"
+        # beside "RECORD 49-44" for a team whose season is over.
         **(
             {"regular_season_wins": values["projected_wins"], "regular_season_losses": values["projected_losses"]}
             if facts.kind == 3
@@ -3123,9 +3098,8 @@ def say_team_outlook(result: Result) -> Answer:
     # above (RENDERERS.team_outlook, web/static/index.html), so its notes
     # are only the lines the card does NOT carry: the BPI's offense/defense
     # split, the strength-of-schedule RANK, and the other snapshots. The
-    # record and chances lines restate the card's own boxes and were shown
-    # beneath them, twice over (Jeff's session, 2026-09-24); the CLI's text
-    # keeps every line.
+    # record and chances lines restate the card's own boxes, so the page
+    # leaves them out; the CLI's text keeps every line.
     data["headline"] = lines[0].rstrip(":")
     data["notes"] = [each.strip() for each in (bpi_line, sos_line, others_line) if each is not None]
     return Answer(data=data, text="\n".join(lines))
@@ -3199,7 +3173,7 @@ def _team_stat_single(result: Result, period: str, stats: dict[str, dict[str, An
     # on) rather than the note-free sentence alone: the renderer's own
     # `caption` is `firstLine(text)`, and a shorter headline here would make
     # the two disagree and print the caption a second time, duplicating the
-    # note (measured on the rendered page, 2026-09-24). No separate `notes`
+    # note. No separate `notes`
     # entry either, for the same reason - the note is already inside
     # `headline`, and `notes` has no way here to say it is the same text.
     return Answer(data={"team": team, "season": season, "games": facts.games, "stats": stats, "headline": answer, "notes": []}, text=answer)
@@ -3226,8 +3200,7 @@ def say_team_stat(result: Result) -> Answer:
     """One team's season numbers, worded: a record and its rank, one metric's
     value and rank (with the rating formula beneath a rating or the pace),
     or the compact line as a table with what a rank means and what was left
-    out - or, with nothing to give, which fact is missing.
-    ``templates.teams.team_stat``'s words, from the Result.
+    out - or, with nothing to give, which fact is missing, from the Result.
 
     .. versionadded:: 5.0.0
     """
@@ -3342,8 +3315,7 @@ def say_team_leaderboard(result: Result) -> Answer:
     """Every team ranked by one metric, worded: the title (the metric, a venue,
     the span), which end comes first, how many teams were ranked, the rows
     shown (a named team's own past a "..."), and the rating formula beneath a
-    rating or the pace - or why nothing could be ranked.
-    ``templates.teams.team_leaderboard``'s words, from the Result.
+    rating or the pace - or why nothing could be ranked, from the Result.
 
     .. versionadded:: 5.0.0
     """
@@ -3413,8 +3385,7 @@ def _with_without_heading(result: Result, named: list[str], all_of: str) -> tupl
 
 
 def say_with_without(result: Result) -> Answer:
-    """A team's record with and without named teammates, worded as the
-    retired ``with_without`` template said it: the two rows side by side
+    """A team's record with and without named teammates, worded: the two rows side by side
     per team (the question's own side first), with the subject's averages
     where a player is named, under a title naming the teams, the opponent
     and the span; then what was counted, what "played" (or "out") means,
@@ -3475,7 +3446,7 @@ def _head_to_head_series(lead: str, a: str, b: str, a_wins: int, b_wins: int, *,
 def _head_to_head_windowed(result: Result, a: str, b: str, a_wins: int, b_wins: int) -> str:
     """The meetings a window kept - the last (or first) N of all their
     meetings in the span, said with how many that is of - and who won them
-    (Phase 5, step 7: "lakers vs mavs record last 10 home games played")."""
+    ("lakers vs mavs record last 10 home games played")."""
     facts, window, span = _facts(result, MeetingsFacts), result.window, result.span
     assert window is not None
     end = "first" if window.ascending else "last"
@@ -3545,7 +3516,7 @@ def _head_to_head_sentence(result: Result, a: str, b: str, a_wins: int, b_wins: 
 def say_head_to_head(result: Result) -> Answer:
     """Two teams' meetings, worded: how many times they met in the span (one
     season, one date, a venue's games, a since-bounded or whole-career span)
-    and who won them - the retired ``head_to_head`` template's words.
+    and who won them.
 
     .. versionadded:: 5.0.0
     """
@@ -3773,8 +3744,7 @@ def say_team_quarter_points(result: Result) -> Answer:
     average and the games beneath it, one game, the extreme a "most" or
     "fewest" asks for, a shooting percentage, or why there is nothing to
     say - and, on its own line, how a rebuilt column was read (the games
-    with no play-by-play, each season's measured agreement) - the retired
-    ``team_quarter_points`` template's words.
+    with no play-by-play, each season's measured agreement).
 
     .. versionadded:: 5.0.0
     """
@@ -3849,8 +3819,7 @@ def say_period_leaderboard(result: Result) -> Answer:
     """The league's (or a team's) players ranked by a stat in one quarter or
     half, per game - the leader in a sentence, the next four after him, the
     qualifier it applied and the season's accuracy caveat - or, with no
-    period named, their points in each quarter side by side: the retired
-    ``period_leaderboard`` template's words.
+    period named, their points in each quarter side by side.
 
     .. versionadded:: 5.0.0
     """
@@ -3896,8 +3865,8 @@ def _say_conference_named(facts: Mapping[str, Any]) -> str:
     """The refusal for a team slot that names a conference or a division:
     a record or a line here is one team's, and nothing adds a conference's
     or a division's teams together yet (ISSUES.md #25). Not "no
-    membership": ``team_alignment`` has held every team's conference and
-    division since 2026-09-24, and a player's games against one are read."""
+    membership": ``team_alignment`` holds every team's conference and
+    division, and a player's games against one are read."""
     return (
         f"{facts['named']!r} is a conference or a division, not a team: a record or a line here is read for one team, "
         "and nothing adds up a conference's or a division's teams yet. Name a team instead."
@@ -4225,8 +4194,7 @@ def _say_combined_record(result: Result, line: Scalar) -> Answer:
 def say_team_record(result: Result) -> Answer:
     """A team's record, worded by its parts: both season types summed (a
     detail by season type), a tally of its games (the games beneath), or a
-    standings season or career - the retired
-    ``team_record`` template's words.
+    standings season or career.
 
     .. versionadded:: 5.0.0
     """
@@ -4243,8 +4211,7 @@ def say_team_record(result: Result) -> Answer:
 
 def say_team_record_by_month(result: Result) -> Answer:
     """A team's record broken out by calendar month, as one table, or one
-    per season of a since-bounded span - the retired ``team_record``
-    template's words.
+    per season of a since-bounded span.
 
     .. versionadded:: 5.0.0
     """
@@ -4340,8 +4307,8 @@ def say_player_netpoints(result: Result) -> Answer:
         data={
             "player": result.subject,
             "season": season,
-            # `totals` is a stable dict, not the raw SQL row `headline` used to
-            # be: the page's own `data["headline"]` is the display sentence
+            # `totals` is a stable dict, never the raw SQL row: the page's
+            # own `data["headline"]` is the display sentence
             # every other renderer reads verbatim (ISSUES.md, "`player_netpoints`
             # still renders as a `<pre>` block").
             "totals": _netpoints_totals(totals),
@@ -4528,8 +4495,7 @@ def say_fingerprint(result: Result) -> Answer:
 
 
 def say_shot_distance(result: Result) -> Answer:
-    """One player's average shot distance worded, as ``shot_distance``'s
-    retired template said it: the average and the attempts it is over, or
+    """One player's average shot distance worded: the average and the attempts it is over, or
     that there were none, over the period or the games a narrowing or a
     window pinned it to - then a derived season's caveat and the career's
     floor, in that order.
@@ -4563,8 +4529,7 @@ def say_shot_distance(result: Result) -> Answer:
 
 
 def say_shot_chart(result: Result) -> Answer:
-    """One player's shot chart worded, as ``shot_chart``'s retired template
-    and its renderer said it: the file drawn, whom for (and which game or
+    """One player's shot chart worded: the file drawn, whom for (and which game or
     window, by the narrowing's phrase), made of attempted - or that nothing
     was drawn, and why (the read's refusal: the shot value's, or no shots
     found where it looked) - then
@@ -4664,8 +4629,8 @@ def _say_team_figure_unread(facts: Mapping[str, Any]) -> str:
 _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "season_out_of_reach": lambda facts: unavailable(tuple(facts["tables"]), facts["season"], facts["season_type"], ranking=facts["ranking"]),
     # An advanced stat with no figure (ISSUES.md #293): the cause the read
-    # found, where "computed from box scores, which start in 1994" was said
-    # of every empty line, a retired player's defaulted season included.
+    # found, never "computed from box scores, which start in 1994" of every
+    # empty line, a retired player's defaulted season included.
     "no_advanced_line": lambda facts: f"{facts['player']} has no {facts['label']} on record {facts['during']}.",
     "advanced_from_empty_box_scores": lambda facts: (
         f"{facts['player']} has no {facts['label']} on record {facts['during']}: ESPN serves {facts['games']} of his box scores that season with every line zeroed, and the rate is computed from them."
@@ -4742,9 +4707,8 @@ def _say_no_player_reading(facts: Mapping[str, Any]) -> str:
     """A player named on a question whose shape has no reading for one
     ("alperen şengün alltime record" read as a team ranking): names the
     player it read rather than answering the league's or a team's own
-    numbers, the wrong subject. Was ``entities.team_only_question_names_a_player``."""
-    # The shape by its words (the retired intent's name, its underscores
-    # spaced, until Phase 4, step 2).
+    numbers, the wrong subject."""
+    # The shape by its words.
     player, shape = facts["player"], asked_as(facts["shape"])
     return (
         f"This was read as a question about {player}, a player, but {shape} has no reading for one - "
@@ -4812,7 +4776,7 @@ def _unread_words(facts: Mapping[str, Any]) -> str:
 
 
 def _say_unread_number(facts: Mapping[str, Any]) -> str:
-    """A number the reading did not use (Phase 5, step 1): what it counts is
+    """A number the reading did not use: what it counts is
     the question's to say."""
     words = _unread_words(facts)
     # "20+": the examples say the number, its plus their own.
@@ -4840,8 +4804,8 @@ def _number_examples(first: str) -> str:
 
 
 def _say_unread_stat(facts: Mapping[str, Any]) -> str:
-    """A stat word naming a measure other than the one read (Phase 5, step
-    1): the question is asked about one stat."""
+    """A stat word naming a measure other than the one read: the question
+    is asked about one stat."""
     words = _unread_words(facts)
     read = facts.get("read")
     instead = f" and read {read} instead" if read else ", which this reading did not take"
@@ -4849,15 +4813,14 @@ def _say_unread_stat(facts: Mapping[str, Any]) -> str:
 
 
 def _say_unread_window(facts: Mapping[str, Any]) -> str:
-    """A window word where no window was read (Phase 5, step 1)."""
+    """A window word where no window was read."""
     words = _unread_words(facts)
     first = facts["words"][0]
     return f'{words} asks for a stretch of games this reading did not count - say how many ("{first} 5 games") or which one ("{first} game").'
 
 
 def _say_unread_date(facts: Mapping[str, Any]) -> str:
-    """A month or a slashed day where no calendar narrowing was read (Phase
-    5, step 1)."""
+    """A month or a slashed day where no calendar narrowing was read."""
     words = _unread_words(facts)
     first = facts["words"][0]
     return f'{words} names a day or a month this reading did not narrow by - say it as "in {first}" or "on {first}", or leave it out.'
@@ -4893,8 +4856,8 @@ def _say_team_boolean_count(facts: Mapping[str, Any]) -> str:
     return f"A team's total of its players' {label} is not read yet - one player's {label} are (ask '<player> triple doubles this season'), and so is the team's own record. Ask one of those."
 
 
-#: The point reader's declines by a cause (Phase 5, step 5), each said as
-#: the decline it was: the reason after the frame (:func:`nothing_answers`).
+#: The point reader's declines by a cause, each said as a decline: the
+#: reason after the frame (:func:`nothing_answers`).
 #: The planner says each at a decline's place (``compose.plan.plan_point``).
 POINT_DECLINES: dict[str, str] = {
     "period_relations_question": "a quarter or half is the period relation's question",
@@ -4916,10 +4879,8 @@ def _said_as_declined(body: str) -> Callable[[Mapping[str, Any]], str]:
 
 
 #: What the question's words name that nothing reads, and the refusals the
-#: words come to before any reader runs - the reading's causes Phase 3's
-#: first step moved off the answering loop (``refusals.by_question``,
-#: ``refusals.unanswerable``'s checks, the team-only player), each said by
-#: the sentence it was said by there, word for word.
+#: words come to before any reader runs - the reading's causes, each said
+#: by its sentence.
 _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
     "no_player_reading": _say_no_player_reading,
@@ -4931,7 +4892,7 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "opponent_not_read": lambda facts: (
         f"'{facts['words']}' after the versus word names no team or player on record, so the games against it cannot be picked out - spell the team or the player as the warehouse has them."
     ),
-    # Phase 5, step 6 (ISSUES.md #436).
+    # ISSUES.md #436.
     "team_not_read": lambda facts: (
         f"'{facts['words']}' names the {facts['team']}, and nothing here reads which games the team picks out - "
         "the ones played for them or the ones against them - so the question is not answered over every game."
@@ -4989,19 +4950,14 @@ def _span_and_season(season: int | None, since: int | None) -> str:
 def _shape_declined(facts: Mapping[str, Any], decline: str) -> str:
     """A shape's decline as the user reads it - the answering loop's
     sentence for a question nothing answered (:func:`nothing_answers`),
-    said as what the words ask (the cause's ``shape``): Phase 3, step 4 made
-    each a cause the planner says (``cannot_honor``,
-    ``no_reading_of_point``), and the sentence did not move. Until Phase 4,
-    step 2 it named the shape by the page's label ("Nothing here answers
-    this question: team_leaderboard: ..."), the retired intent's name."""
+    said as what the words ask (the cause's ``shape``), for the causes the
+    planner says (``cannot_honor``, ``no_reading_of_point``)."""
     return nothing_answers(decline, facts["shape"])
 
 
 #: What the words ask (the grammar's key, :class:`~association.query.reading.PointShape`),
 #: in the words a sentence names it by - "as a ranking of teams", "a game
-#: log has no reading of this point". Since Phase 4, step 2, where a
-#: decline printed the retired intent's name, the page's label
-#: (``reading.SHAPE_NAMES``: "team_leaderboard", "game_log"). Every key the
+#: log has no reading of this point". Every key the
 #: grammar names, whatever the subject's kind: a team's log is asked as a
 #: player's (:data:`~association.query.reading.PLAYER_LOG`), so each phrase
 #: reads for either.
@@ -5064,8 +5020,7 @@ def nothing_answers(why: str, asked: PointShape | None = None) -> str:
 #: Each :class:`~association.query.reading.DeclineReason` in the words a
 #: decline says it by (:func:`decline_reason_phrase`): the planner's own, then
 #: the cell tables' rows (``RELATION_SCOPING_EXCLUDED``,
-#: ``TEAM_RELATION_SCOPING_EXCLUDED``), whose sentences stood on the rows
-#: until Phase 5, step 5. A test holds it to every member.
+#: ``TEAM_RELATION_SCOPING_EXCLUDED``). A test holds it to every member.
 _DECLINE_REASONS: dict[DeclineReason, str] = {
     DeclineReason.BEYOND_WORDS: "it would answer for a different span than was asked",
     DeclineReason.NOT_THE_RELATIONS: "the relation carries no such cell",
@@ -5200,11 +5155,8 @@ def decline_body(facts: Mapping[str, Any]) -> str:
     to be read (``over``: a team's games). The one wording of a decline the
     planner says (``cannot_honor``) and of one a relation's check raises
     (``compose.core._check_relation_scoping``), its reason the ``reason``
-    fact's phrase (:func:`decline_reason_phrase`; a sentence, the ``why``
-    fact, until Phase 5, step 5). Until the Phase 3 review's
-    cleanup (b)3 it said "<name> cannot honor ['order']" - the shape's
-    retired name and the slot names each cell was declared under before
-    Phase 3, step 2 (ISSUES.md #281).
+    fact's phrase (:func:`decline_reason_phrase`), naming each cell by what
+    the words asked, never by a field's name (ISSUES.md #281).
 
     .. versionadded:: 6.0.0
     """
@@ -5500,6 +5452,6 @@ def _sayer(result: Result) -> Callable[[Result], Answer]:
         if body.by == "date":
             return _say_rows
         # A team's best single game, or every team's: the high's rows, said
-        # of the team (D4 lifted for it, Jeff 2026-10-13).
+        # of the team.
         return say_team_game_high if result.relation == "team" else say_single_game_high
     raise ValueError(f"no sayer for a {type(body).__name__} body")

@@ -1,5 +1,5 @@
 """The single-game high reader: a named player's biggest game by one stat,
-or the league's - ``single_game_high``'s own point, read into a
+or the league's - ``GAME_HIGHS``'s own point, read into a
 :class:`~association.query.result.Result` whose body is a
 :class:`~association.query.result.Rows` of games ranked by the measure
 (``Rows.by``). Phase 2's slice (ii) (``ROADMAP.md``, "Phase 2, the
@@ -49,7 +49,7 @@ from .team import TeamQuery, compile_team_high
 
 
 def _single_game_high_column(q: Query) -> str | None:
-    """The column ``q`` ranks games by where it is ``single_game_high``'s
+    """The column ``q`` ranks games by where it is ``GAME_HIGHS``'s
     own point - the stat the reading measures (the measure tagger's; the
     router's own stat until 5.0.0), whitelisted, first among the
     measures, top games first, nothing the question's words added - else
@@ -62,7 +62,7 @@ def _single_game_high_column(q: Query) -> str | None:
 
 
 def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``single_game_high``'s own point - the top games by one stat, a named
+    """``GAME_HIGHS``'s own point - the top games by one stat, a named
     player's or the league's - read into a Result over the compiled
     statement. ``None`` where the point is not that, and the compiler's own
     sentence answers.
@@ -174,7 +174,7 @@ def read_team_game_high(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result 
     relation's own (no such team, a coverage floor); a measure no game of a
     team carries is refused by name (``Unsupported``). D4 lifted for it
     (Jeff, 2026-10-13; ISSUES.md #364): a team's own best game was refused
-    ``team_game_high``, and the league's form read the teams' season
+    ``TEAM_GAME_HIGHS``, and the league's form read the teams' season
     ranking.
 
     .. versionadded:: 6.0.0

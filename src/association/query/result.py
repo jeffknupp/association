@@ -278,9 +278,9 @@ class Grouped:
     ``ranked_by`` is the measure a ranking orders its rows by, the draft's
     "order: by the measure" (``ROADMAP-TYPES.md``, "The shapes") - what tells
     two rankings by ``player`` apart: ``"games"`` for a count of games over a
-    line (``threshold_count``'s league, whose rows carry ``games``), a
+    line (``GAMES_COUNTED``'s league, whose rows carry ``games``), a
     season-line metric's name (``"avg_points"``, ``"ts_pct"``) for a stat
-    ranking (``leaderboard``, whose rows carry ``rank`` and ``values`` by
+    ranking (``PLAYER_RANKING``, whose rows carry ``rank`` and ``values`` by
     measure, the ranked figure under this name). ``None`` for a group that
     is no ranking (a split, a record over a line, two named subjects).
 
@@ -304,15 +304,15 @@ class Scalar:
     rate as the ratio of its sums), and the sums the line is said from
     (``sums``: a stat's total by its name, a percentage's ``made`` and
     ``attempted``, a made count's attempts by their column). Declared by the
-    first scalar shape to retire its template (``player_stat``'s narrowed
+    first scalar shape to retire its template (``PLAYER_LINE``'s narrowed
     line), as the draft says a type is.
 
     ``how`` is how the set was reduced, the draft's ``Measure.how``: each
     measure per game beside its sums (``"per_game"``, a line), or the games
-    counted (``"count"``, ``threshold_count``'s one player: ``games`` is the
+    counted (``"count"``, ``GAMES_COUNTED``'s one player: ``games`` is the
     figure, ``values`` is empty, and ``sums`` holds how many of the counted
     games are rebuilt from play-by-play, ``rebuilt``), or a team's games
-    won and lost (``"record"``, ``team_record``'s: ``values`` holds
+    won and lost (``"record"``, ``TEAM_RECORD``'s: ``values`` holds
     ``wins`` and ``losses`` and what the record's source says beside them),
     or - since the sayer is chosen by the body's type and this field
     (2026-10-05) - a season line read as the season stores it
@@ -377,7 +377,7 @@ class Runs:
     """The longest runs a read found, longest first (``ROADMAP-TYPES.md``,
     "The shapes": ``runs``) - a named subject's longest and any that tie
     it, or one per owner over the league. Declared by the first runs shape
-    to retire its template (``streak``).
+    to retire its template (``LINE_RUNS``).
 
     .. versionadded:: 5.0.0
     """

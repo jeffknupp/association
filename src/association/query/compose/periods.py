@@ -1,6 +1,6 @@
 """The period reader: a named player's figure in one quarter or half, game by
 game, or his four quarters side by side, read into a
-:class:`~association.query.result.Result` - ``period_split``'s own point.
+:class:`~association.query.result.Result` - ``PERIOD_LOG``'s own point.
 Phase 2's slice (i) (``ROADMAP.md``, "Phase 2, the expected steps", step 1,
 sub-step (e)): the retired template's per-period read
 (``templates.games._period_split_from``, which the presenter
@@ -103,7 +103,7 @@ _PERIOD_LOG_MEASURES: list[str] = [*PERIOD_COLUMNS, "opponent_name"]
 
 
 def read_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``period_split``'s own point - a named player's games read as one
+    """``PERIOD_LOG``'s own point - a named player's games read as one
     quarter's or half's line, or his four quarters side by side - read into
     a Result over the compiled statement. ``None`` where the point is not
     that (a predicate, another skeleton, a measure the point did not plan),
@@ -573,7 +573,7 @@ def _team_quarter_points_line(games: list[dict[str, Any]], measure: str) -> Scal
 
 
 def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
-    """``team_quarter_points``' point - a team's figure in ONE quarter or
+    """``TEAM_PERIOD_TOTAL``' point - a team's figure in ONE quarter or
     half, game by game and over them all, narrowed by any of the team
     relation's cells - read into a Result: the line over the games that
     reached the period (a :class:`~association.query.result.Scalar`) and the
@@ -681,7 +681,7 @@ def _period_leaderboard_narrowing(narrowed: Narrowed, period: str | None) -> Nar
 
 
 def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``period_leaderboard``'s point - players ranked by a stat in ONE
+    """``PERIOD_RANKING``'s point - players ranked by a stat in ONE
     quarter or half, per game, or with no period named by their points in
     each of the four quarters at once - read over every player's games in
     one season (:func:`~association.query.player_relation.league_games`,

@@ -1,4 +1,4 @@
-"""The NetPoints relation's readers: a player's NetPoints (``player_netpoints``)
+"""The NetPoints relation's readers: a player's NetPoints (``NETPOINTS_RATINGS``)
 and his play-type fingerprint (``fingerprint``), read from ESPN Analytics'
 NetPoints tables into a :class:`~association.query.result.Result` -
 Phase 2's slice (v) (``ROADMAP.md``, step 5, and the decision "Charts are
@@ -15,7 +15,7 @@ pool and the polygons come out of one read), and drawn by its own renderer
 (:mod:`association.query.radar`) in :func:`draw_fingerprint`, the step
 between this reader and the sayer that writes the page.
 
-``player_netpoints`` is a scalar and a split by play type
+``NETPOINTS_RATINGS`` is a scalar and a split by play type
 (``ROADMAP-TYPES.md``, "Still open" 6): a season's ratings from
 ``net_points_player`` and the categories behind them from
 ``net_points_player_fingerprint`` (a :class:`~association.query.result.Scalar`
@@ -122,7 +122,7 @@ _NETPOINTS_CATEGORIES = tuple(c for c in FINGERPRINT_CATEGORIES.values() if c !=
 
 
 def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> Result | Unanswered | None:
-    """One player's NetPoints (``player_netpoints``' point): a season's line
+    """One player's NetPoints (``NETPOINTS_RATINGS``' point): a season's line
     and the play-type split behind it, in the units the scope asks for (per
     100 possessions, or season totals where no possession count is on
     record), or one

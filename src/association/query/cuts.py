@@ -240,7 +240,7 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
     ``season`` - this project's own numbering
     (:func:`~association.nba.season.current_season`) applied to a month, not
     a guess. "Desmond bane march 17" against season 2026 is 2026-03-17, and
-    ``game_log`` answers it with that game. The season that fixes it is the
+    ``PLAYER_LOG`` answers it with that game. The season that fixes it is the
     one a reader would use - the season the words name, or the current one,
     the default they all apply - EXCEPT on a career question, which spans
     twenty Octobers and fixes nothing, so that refuses. Reading an absent

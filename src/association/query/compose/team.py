@@ -16,7 +16,7 @@ reason :class:`association.query.team_games.TeamNarrowed` is its own
 dataclass rather than a subclass of
 :class:`association.query.player_games.Narrowed`.
 
-Two readers, mirroring the shape ``player_stat`` already keeps between a
+Two readers, mirroring the shape ``PLAYER_LINE`` already keeps between a
 season line and box scores:
 
 - **Unnarrowed** ("how many 3-pointers have the Magic made this season") -
@@ -260,17 +260,17 @@ class TeamQuery(Filtered):
     #: over the narrowed or season games.
     aggregate: Aggregate = Aggregate.TOTAL
     #: ``"scalar"`` (a sum, this module's own readers), ``"rows"`` (the
-    #: team's games listed - ``game_log``'s team half), ``"grouped"`` (its
-    #: splits - ``player_splits``' team half) or ``"run"`` (its longest run
-    #: of wins or losses - ``streak``'s team half, read here by
+    #: team's games listed - ``PLAYER_LOG``'s team half), ``"grouped"`` (its
+    #: splits - ``PLAYER_SPLITS``' team half) or ``"run"`` (its longest run
+    #: of wins or losses - ``LINE_RUNS``'s team half, read here by
     #: :func:`_compile_team_run`; the league's with no team named), the
     #: first two compiled by :func:`compile_team_over` and read by
     #: ``compose.logs``/``compose.splits``.
     shape: str = "scalar"
     #: A ``"grouped"`` shape's group: ``"none"`` for the team's own splits
-    #: (``player_splits``' team half, which compiles one read per kind by a
+    #: (``PLAYER_SPLITS``' team half, which compiles one read per kind by a
     #: key of :data:`TEAM_GROUPS`), or ``"presence"`` - the team's games
-    #: divided by whether named teammates played (``with_without``'s retired
+    #: divided by whether named teammates played (``PRESENCE_SPLIT``'s retired
     #: template, compiled by :func:`compile_team_presence`).
     group: str = "none"
 
@@ -360,7 +360,7 @@ class TeamResult:
 
 def _team_narrowed(scope: Filtered) -> bool:
     """Whether the question narrows the games at all - the team counterpart
-    of ``player_stat``'s own ``_player_stat_reads_box_scores``: an opponent,
+    of ``PLAYER_LINE``'s own ``_player_stat_reads_box_scores``: an opponent,
     a venue, a date, ``since``/``until``, a game of a series, a calendar
     ``situation``, or a window (``order``/``limit``) all send the read to the
     game-level relation; nothing here means the plain season (or career)
@@ -406,7 +406,7 @@ def _team_season_note(con: duckdb.DuckDBPyConnection, team: Entity, season: int,
     """A postseason addendum for an unnarrowed regular-season total - "and
     added 78 more in a 7-game playoff run" (F127) - said because leaving a
     finished postseason unmentioned under a "so far" question reads as though
-    it does not exist, the same reasoning ``team_record``'s own cup-final
+    it does not exist, the same reasoning ``TEAM_RECORD``'s own cup-final
     mention already carries. Empty where the team has no postseason total on
     record for the year.
 
@@ -636,7 +636,7 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
     :func:`~association.query.conditions._longest_runs_sql`'s, partitioned
     by ``(team_id, season)``: a team's run is counted within one season, as
     the record book counts them. The games the runs are read over are kept
-    as ``run_rows`` for :func:`compile_team_range`. ``streak``'s retired
+    as ``run_rows`` for :func:`compile_team_range`. ``LINE_RUNS``'s retired
     team and league branches (ROADMAP plan item 6, step (g)).
 
     .. versionadded:: 5.0.0
@@ -713,7 +713,7 @@ def compile_team_presence(
     a player is named, and whether the game has a box score - the relation
     cell :func:`~association.query.conditions.presence_games_sql`, over the
     team relation narrowed to the windows' teams and the opponent.
-    ``with_without``'s retired template (ROADMAP plan item 6, step (g));
+    ``PRESENCE_SPLIT``'s retired template (ROADMAP plan item 6, step (g));
     read by ``compose.presence.read_with_without``, which keeps the games
     inside the windows (:func:`~association.query.conditions.presence_games`).
 
@@ -936,7 +936,7 @@ def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, st
     turnovers" is ``>=``, "10 or fewer" ``<=``) - a game with no figure is
     in neither group, excluded in the join - each group's record, average
     margin and first and last season (a postseason's by the calendar year
-    it was played in). ``record_when``'s team half, a team's record over
+    it was played in). ``LINE_RECORD``'s team half, a team's record over
     its OWN line (ISSUES.md #144, #325).
 
     .. versionadded:: 5.0.0

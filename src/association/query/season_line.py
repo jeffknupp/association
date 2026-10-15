@@ -176,7 +176,7 @@ class Statement:
 
 
 def line_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> tuple[Entity, ResolvedSpan] | Unanswered:
-    """The player and span an unnarrowed ``player_stat`` reads the season
+    """The player and span an unnarrowed ``PLAYER_LINE`` reads the season
     line over - the span first, since it is what narrows an ambiguous name
     (:func:`~association.query.player_relation.scoped_player`) - or the
     clarifying question.
@@ -1514,7 +1514,7 @@ def wanted_stats(scope: Filtered, default: tuple[str, ...] = STAT_LINE) -> list[
 
 @dataclass(frozen=True)
 class ShootingStat:
-    """One percentage ``player_stat`` answers, computed from makes and
+    """One percentage ``PLAYER_LINE`` answers, computed from makes and
     attempts rather than read from a stored percentage - a season, a career
     and a narrowed set of games are all the same sum.
 
@@ -1572,7 +1572,7 @@ SHOOTING_STATS: dict[str, ShootingStat] = {
         "2PT%",
     ),
 }
-"""Shooting percentages ``player_stat`` answers, always with the makes and
+"""Shooting percentages ``PLAYER_LINE`` answers, always with the makes and
 attempts behind them - computed from those, never read from a stored
 percentage, so a season, a career and a set of games are all the same sum.
 
@@ -1602,7 +1602,7 @@ MADE_STAT_ATTEMPTS: dict[str, str] = {
     "fieldGoalsMade": "fieldGoalsAttempted",
     "freeThrowsMade": "freeThrowsAttempted",
 }
-"""``player_stat`` made-count stat -> its attempted column.
+"""``PLAYER_LINE`` made-count stat -> its attempted column.
 
 .. versionadded:: 4.4.0
 """
@@ -1651,7 +1651,7 @@ ADVANCED_STATS: dict[str, AdvancedStat] = {
     "usage_pct": AdvancedStat("usage_pct", "usage rate", None, percentage=False),
     "game_score": AdvancedStat("avg_game_score", "game score", None, percentage=False),
 }
-"""The computed advanced stats ``player_stat`` can look up, mapped to how each
+"""The computed advanced stats ``PLAYER_LINE`` can look up, mapped to how each
 one reads and how it adds up over a career.
 
 .. versionadded:: 4.3.0

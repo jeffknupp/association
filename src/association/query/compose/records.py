@@ -1,7 +1,7 @@
 """The record-over-a-line reader: a player's team's record in the games he
 reached a line, the games he fell short, and all of them, read into a
 :class:`~association.query.result.Result` with a :class:`~association.query.result.Grouped`
-body (``record_when``'s own point). Phase 2's slice (i): the retired
+body (``LINE_RECORD``'s own point). Phase 2's slice (i): the retired
 template's read (``templates.splits._record_when_query``) moved here, then
 replaced by the compiled statement - the point as a grouped read by the
 line, the compiler's ``line`` group - its remarks as kinds and facts; the
@@ -52,7 +52,7 @@ def _group(by_hit: dict[str, dict[str, Any]], *keys: str) -> dict[str, Any]:
 
 
 def _own_line(q: Query) -> tuple[str, str, int] | None:
-    """The stat, its column and the threshold where ``q`` is ``record_when``'s
+    """The stat, its column and the threshold where ``q`` is ``LINE_RECORD``'s
     own point - a scalar record on the player relation with that one
     predicate - else None."""
     scope = q
@@ -67,7 +67,7 @@ def _own_line(q: Query) -> tuple[str, str, int] | None:
 
 
 def read_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``record_when``'s own point - a scalar record on the player relation
+    """``LINE_RECORD``'s own point - a scalar record on the player relation
     with the one predicate ``column >= threshold`` - read as the three-row
     record (reached, fell short, all his games) with the teams' names, the
     span the heading says and the remarks: the games with no box score, a
@@ -180,7 +180,7 @@ def _team_record_when_needs_player(scope: Filtered) -> None:
 
 
 def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
-    """``record_when``'s team half: a team's record when its OWN figure for
+    """``LINE_RECORD``'s team half: a team's record when its OWN figure for
     a stat reached a line, fell short of it, and over every game with a
     result, reached when the question names no player at all ("what was the
     celtics record when they scored 120 points" - ISSUES.md #144). The

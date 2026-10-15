@@ -1,5 +1,5 @@
 """The count reader: how many games a named player cleared a line in, or
-who in the league cleared it most often - ``threshold_count``'s own point,
+who in the league cleared it most often - ``GAMES_COUNTED``'s own point,
 read into a :class:`~association.query.result.Result`. A named player's
 count is a :class:`~association.query.result.Scalar` (``how="count"``); the
 league's is a :class:`~association.query.result.Grouped` ranking by
@@ -47,7 +47,7 @@ from .core import Query, compile_query, rows_of
 
 
 def _threshold_count_is_own_point(q: Query, column: str) -> bool:
-    """Whether ``q`` counts exactly the games ``threshold_count`` counts: the
+    """Whether ``q`` counts exactly the games ``GAMES_COUNTED`` counts: the
     reading's own stat at its keyed line's number (or a below/above line carrying
     that threshold instead, which the count reads as the line), for one
     player or grouped by player over the league - nothing the question's
@@ -106,7 +106,7 @@ def _threshold_count_rows(q: Query, player: Entity | None, rows: list[dict[str, 
 
 
 def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``threshold_count``'s own point - a named player's games clearing a
+    """``GAMES_COUNTED``'s own point - a named player's games clearing a
     line, counted, or the league's count by player - read into a Result
     over the compiled statement. ``None`` where the point is not that (a
     line the question's words added, another skeleton, a stat no line is

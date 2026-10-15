@@ -13,8 +13,8 @@ parser wrote a team's quarter after the stages where they had left none
 (``parse._read_route_period``) - three writers of one value. Measured
 first (``~/association-research/stages/period_family.py``, the two slots
 as each stage set them on all 2,710 readings): 120 readings carry one (79
-quarters, 41 halves: 82 ``period_split``, 23 ``period_leaderboard``, 15
-``team_quarter_points``), no stage moved one between the route and the
+quarters, 41 halves: 82 ``PERIOD_LOG``, 23 ``PERIOD_RANKING``, 15
+``TEAM_PERIOD_TOTAL``), no stage moved one between the route and the
 reading, no period word fell inside another tagger's claim, and the value
 is written ONLY under the three period intents - six readings name a
 quarter and carry none, their subject unread and the point reader

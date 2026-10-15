@@ -1,7 +1,7 @@
 """Games under a condition: the SQL and tables behind five readers.
 
-``player_splits``, ``with_without``, ``record_when``, ``player_matchup`` and
-``streak`` all answer one kind of question - take a set of games, divide it
+``PLAYER_SPLITS``, ``PRESENCE_SPLIT``, ``LINE_RECORD``, ``PLAYER_MEETINGS`` and
+``LINE_RUNS`` all answer one kind of question - take a set of games, divide it
 by something that happened in each, and report the parts side by side. Their
 readers (``compose.splits``, ``compose.presence``, ``compose.records``,
 ``compose.pairs``, ``compose.runs``) settle names and narrow the games
@@ -44,7 +44,7 @@ against the warehouse rather than assumed:
   phantoms that carry a winner but no box score. Counted, a placeholder is a
   loss and a phantom is a result nobody played. Every team-side query here
   reads ``real_games`` instead - the one filtered list, built at load time by
-  :mod:`association.fetch.repairs.real_games` and shared with ``head_to_head`` and
+  :mod:`association.fetch.repairs.real_games` and shared with ``TEAM_MEETINGS`` and
   ``team_metrics`` - rather than filtering for itself. The player-side read is
   the shared relation (:mod:`association.query.player_games`), which joins
   ``games`` under its played-game guard; measured, no played box-score row
@@ -636,7 +636,7 @@ def _with_without_team_games(scope: _Scope, teams: Sequence[str]) -> TeamNarrowe
     already joined ``real_games``, the same source the relation is built
     from, and no game in it lacks a ``team_box_stats`` row to join. The
     correction this port makes reachable in principle is the pre-1993-94
-    postseason label; ``with_without``'s own coverage floor
+    postseason label; ``PRESENCE_SPLIT``'s own coverage floor
     (``TEMPLATE_SOURCES["with_without"]`` = ``_PLAYER_GAME_TABLES`` when this
     was written, ``coverage.SOURCES`` since; capped at 1994 by
     ``_game_scope``) refuses every question that would exercise it,
@@ -936,7 +936,7 @@ def condition_span_label(covered: _Scope, scope: Filtered, first: Any, last: Any
     """The season(s) a condition answer covers, in words: "since 2022
     (2022-2026 regular seasons)" or "in his 18th season (2021 regular
     season)" when the question named it that way - the same phrasing
-    ``ResolvedSpan.during`` gives ``game_log`` and ``player_stat`` (``ResolvedSpan.since``,
+    ``ResolvedSpan.during`` gives ``PLAYER_LOG`` and ``PLAYER_LINE`` (``ResolvedSpan.since``,
     ``ResolvedSpan.ordinal``).
 
     record_when and streak build their heading off the relation's own

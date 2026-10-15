@@ -3,7 +3,7 @@ teams, read into a :class:`~association.query.result.Result` - the two
 players' lines over their meetings as a comparison (a
 :class:`~association.query.result.Grouped` body by ``subject``, one row per
 player in the question's order) and the newest meetings as a detail part
-(:class:`~association.query.result.Rows`) - ``player_matchup``'s own point.
+(:class:`~association.query.result.Rows`) - ``PLAYER_MEETINGS``'s own point.
 Phase 2's slice (ii): the compiler already read the meetings (the ``pair``
 shape, :func:`~association.query.compose.core._compile_pair` over the pair
 relation) and the retired template's words said them through a presenter;
@@ -49,7 +49,7 @@ where the question named no count.
 def _pair_covered(scope: Filtered) -> Any:
     """The span both names resolve over: the question's own - or, where a
     date names the game, the career, since a date replaces the season the
-    way ``game_log``'s own date does (the season is usually the "current"
+    way ``PLAYER_LOG``'s own date does (the season is usually the "current"
     default, and a date from an earlier season looked for in that one finds
     nothing)."""
     if scope.cuts.date:
@@ -75,7 +75,7 @@ def _pair_meeting(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``player_matchup``'s own point - the ``pair`` shape - read as the two
+    """``PLAYER_MEETINGS``'s own point - the ``pair`` shape - read as the two
     players' lines over the meetings the compiled statement finds, the
     head-to-head record, and the newest meetings, with the games between
     their teams that have no box score as a note. A game in which they were

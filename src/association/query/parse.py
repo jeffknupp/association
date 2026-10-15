@@ -450,7 +450,7 @@ def _model_reading(slots: dict[str, Any]) -> Reading:
 def _two_teams(subject: Subject, question: str | lexicon.GrammarText, slots: dict[str, Any]) -> Subject:
     """Two teams meeting (ISSUES.md #235): a team subject set against a
     second team, no player named, and a meeting word between them - the
-    ``teams`` kind the reading only gives under ``head_to_head`` today.
+    ``teams`` kind the reading only gives under ``TEAM_MEETINGS`` today.
     Read over the question's words, or over the grammar's text, where a
     window of games and an opponent's versus word stand as the taggers
     typed them."""
@@ -1166,11 +1166,11 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       read as a team ranking and ranked regular-season records since 2017.
       The warehouse holds every playoff game and no table of titles; a
       champion is derivable (the winner of a postseason's last game) and
-      nothing derives it yet. "Title odds" is ``team_outlook``'s projection
+      nothing derives it yet. "Title odds" is ``TEAM_OUTLOOK``'s projection
       and is left alone. Was ``refusals.by_question``.
     - a player named on a question whose shape has no reading for one
       (``no_player_reading``, :data:`~association.query.reading.TEAM_ONLY_ASKS`):
-      "alperen şengün alltime record" read as ``team_leaderboard`` and
+      "alperen şengün alltime record" read as ``TEAM_RANKING`` and
       answered the league standings, Sengun never read (yardstick-v2 F111) -
       the one player the words name and no real team
       (:func:`~association.query.subject.player_named_on_a_team_only_question`).
@@ -1638,7 +1638,7 @@ def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
 def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
     """A team's count of its players' triple-doubles or double-doubles, as a
     ranking with the team filed: "oklahoma city thunder all-time triple
-    doubles vs west" reads as ``leaderboard`` with ``team`` and ``stat:
+    doubles vs west" reads as ``PLAYER_RANKING`` with ``team`` and ``stat:
     triple_double``, and the ranking's decline would name the wrong cause
     ("no ranking reads triple_double") - one player's triple-doubles ARE
     counted; what is not read is the team's aggregate of them."""

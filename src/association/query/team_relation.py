@@ -427,7 +427,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
     them: that exclusion is :func:`association.query.team_metrics.games_scope`'s,
     for a win-loss RECORD, and a plain game list or count is not one - the
     cup final is a real game the team played, the same reasoning
-    ``team_record``'s own cup-final mention already carries.
+    ``TEAM_RECORD``'s own cup-final mention already carries.
 
     ``opponent`` is passed rather than read from ``scope`` because a caller
     that has already resolved the team (it needs the name for its answer
@@ -436,8 +436,8 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
     resolved here, so a clarification about the team comes back as the answer
     either way. ``venue``, ``game_n`` and the window are read from
     ``scope`` because no caller has a reason to resolve any of them first - a
-    caller that must NOT honor one (``game_log``'s team half already lists its
-    own games with its own LIMIT; ``head_to_head`` slices the window itself from
+    caller that must NOT honor one (``PLAYER_LOG``'s team half already lists its
+    own games with its own LIMIT; ``TEAM_MEETINGS`` slices the window itself from
     its one read rather
     than a window of them) passes a scope without it, the same way both
     already do for every cell but ``venue``.

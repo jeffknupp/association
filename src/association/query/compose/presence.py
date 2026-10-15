@@ -3,7 +3,7 @@ played against the games they missed, side by side, with the subject's
 averages in each where a player is named - read into a
 :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Grouped` body by ``presence`` (one row
-per team and side). Phase 2's slice (iv): the retired ``with_without``
+per team and side). Phase 2's slice (iv): the retired ``PRESENCE_SPLIT``
 template's read (``templates.splits._with_without_read``, said through the
 presenter ``compose.present._present_with_without`` until then) moved here,
 its games now the team compiler's ``presence`` statement
@@ -45,7 +45,7 @@ from .team import TeamQuery, compile_team_presence, team_coverage_refusal
 
 
 def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
-    """``with_without``'s point - the team relation's ``presence`` group -
+    """``PRESENCE_SPLIT``'s point - the team relation's ``presence`` group -
     read: the teammates (``without``, ``with_player``, a ``conditions``
     role, or the one name beside a team), the subject where a player is
     named, the team where one is, resolved against the box scores; the

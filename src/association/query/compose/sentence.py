@@ -104,7 +104,7 @@ def _span_phrase(span: Any, player_seasons: tuple[int, int] | None = None) -> st
 
 #: The view's rates stored as fractions (0.57). ``usage_pct`` is NOT one:
 #: ``player_advanced_stats`` computes it as ``100.0 * ...`` - already a
-#: percent, the figure ``player_splits``' USG% column averages and prints as
+#: percent, the figure ``PLAYER_SPLITS``' USG% column averages and prints as
 #: it is (``templates.splits.SPLIT_EXTRA_STATS``). Scaled again here, one
 #: game's 24.4 printed as "2435.5%" (#222).
 _FRACTION_COLUMNS = frozenset({"ts_pct", "efg_pct"})

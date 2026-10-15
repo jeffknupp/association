@@ -1,7 +1,7 @@
 """The streak reader: a named player's longest runs of consecutive games one
 condition held along, or the league's longest one per player, read into a
 :class:`~association.query.result.Result` with a :class:`~association.query.result.Runs`
-body (``streak``'s own point on the player relation). Phase 2's slice
+body (``LINE_RUNS``'s own point on the player relation). Phase 2's slice
 (ii): the compiler already read the runs (the ``run`` shape,
 :func:`~association.query.compose.core._compile_run`) and the retired
 template's words said them through a presenter; the reader executes that
@@ -52,7 +52,7 @@ def _settled_open(runs: tuple[Run, ...]) -> tuple[Run, ...]:
 
 
 def read_streak(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``streak``'s own point on the player relation - the ``run`` shape -
+    """``LINE_RUNS``'s own point on the player relation - the ``run`` shape -
     read as the longest runs the compiled statement finds: a named
     player's longest and any that tie it, over the games the relation
     narrowed to ("longest run of 20+ point games vs Boston" is a run over
@@ -150,7 +150,7 @@ def _streak_league_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
 
 
 def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
-    """``streak``'s point on the team relation - the ``run`` shape - read
+    """``LINE_RUNS``'s point on the team relation - the ``run`` shape - read
     as the runs the team compiler's statement finds
     (:func:`~association.query.compose.team.compile_team_run`): a named
     team's longest run of wins or losses within a season and any that tie

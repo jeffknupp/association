@@ -3,7 +3,7 @@ result, by month or (a player's) by starting and coming off the bench, read
 into a :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Grouped` body - one row per group of each
 split asked for, with the record and the per-game line in it. Phase 2's
-slice (i): the retired ``player_splits`` template's two branches
+slice (i): the retired ``PLAYER_SPLITS`` template's two branches
 (``templates.splits._player_splits_from`` and ``_player_splits_team``, said
 by ``_player_splits_answer``) moved here whole, their remarks as kinds and
 facts; the sayer (:mod:`association.query.compose.say`) words both.
@@ -50,7 +50,7 @@ _SPLIT_LINE_STATS: dict[str, frozenset[str]] = {
 SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
     "usage_pct": ("usage_pct", "USG%", "AVG(p.usage_pct)"),
 }
-"""``player_splits`` extra-column stats, keyed by the stat's name (the
+"""``PLAYER_SPLITS`` extra-column stats, keyed by the stat's name (the
 router's stat name when this was written).
 
 .. versionadded:: 4.4.0

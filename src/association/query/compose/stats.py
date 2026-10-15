@@ -3,7 +3,7 @@ averages against one opponent, at home, as a starter, on one date - read
 into a :class:`~association.query.result.Result` whose headline part is a
 :class:`~association.query.result.Scalar` (the whole narrowed set reduced
 to one line) and, against one opponent, a second part listing the newest
-meetings behind it. Phase 2's slice (i), ``player_stat``'s narrowed point:
+meetings behind it. Phase 2's slice (i), ``PLAYER_LINE``'s narrowed point:
 the retired template's read (``templates.players._box_score_player_stat``,
 a hand-written aggregate over the relation) is gone, and the statement run
 is the compiler's - the point compiled with the ``line`` aggregate (each
@@ -36,10 +36,10 @@ from association.query.season_line import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SH
 
 from .core import _MADE_RATE, Compiled, Query, _compile_rows, compile_query, rows_of
 
-#: A shooting percentage ``player_stat`` names, as the compiler's rate - the
+#: A shooting percentage ``PLAYER_LINE`` names, as the compiler's rate - the
 #: ratio of the sums the answer states ("168 of 306").
 SHOOTING_RATES: dict[str, str] = {"fieldGoalPct": "fg_pct", "threePointFieldGoalPct": "three_pct", "freeThrowPct": "ft_pct", "twoPointFieldGoalPct": "two_pct"}
-"""``player_stat``'s shooting stat -> the compiler's rate measure.
+"""``PLAYER_LINE``'s shooting stat -> the compiler's rate measure.
 
 .. versionadded:: 5.0.0
 """
@@ -56,7 +56,7 @@ _MEETING_MEASURES: tuple[str, ...] = ("points", "rebounds", "assists")
 
 
 def _player_stat_measures(q: Query) -> list[str] | None:
-    """The measures ``player_stat``'s own narrowed point reads: the shooting
+    """The measures ``PLAYER_LINE``'s own narrowed point reads: the shooting
     rate a percentage names, or the stats wanted (the one named, or the
     default line) where they are the point's own - else ``None``, and the
     compiler's sentence answers. A stat with no per-game column is the
@@ -74,7 +74,7 @@ def _player_stat_measures(q: Query) -> list[str] | None:
 
 
 def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``player_stat``'s narrowed point - a per-game scalar over a named
+    """``PLAYER_LINE``'s narrowed point - a per-game scalar over a named
     player's box scores, where an opponent, a venue, a date, a starter half
     or a condition sent the read there - read as one line: each stat's
     per-game figure and total (a made count's makes and attempts where it
@@ -131,7 +131,7 @@ def _player_stat_meetings(con: duckdb.DuckDBPyConnection, q: Query, compiled: Co
     Product decision (2026-09-19): "stats vs X" is the averages over every
     meeting in scope, the game count, and a short footer of the meetings
     themselves - which is what makes "in 1 game" honest, and what a reader
-    asking "vs X" is usually after. A per-game log is still ``game_log``'s,
+    asking "vs X" is usually after. A per-game log is still ``PLAYER_LOG``'s,
     for a question that says log, each game or last N."""
     assert compiled.player is not None
     meetings = replace(q, skeleton="rows", aggregate=Aggregate.NONE, measures=[*_MEETING_MEASURES, *compiled.measures], order="date", direction="desc", limit=RECENT_MEETINGS, offset=0)

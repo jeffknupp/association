@@ -179,7 +179,7 @@ def _head_to_head_unread(q: TeamQuery, a: Entity) -> Refusal | None:
 
 
 def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
-    """``head_to_head``'s point - two teams' meetings - read: the two teams
+    """``TEAM_MEETINGS``'s point - two teams' meetings - read: the two teams
     from the scope's ``teams``, ``team`` and ``opponent``, every meeting in
     the season (the current one where none is named), on one date, or over a
     since-bounded or whole-career span, from the first team's side. A

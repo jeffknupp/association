@@ -569,7 +569,7 @@ def validated_until(until: int | None, since: int | None) -> int | None:
     decade, or a named range like "2019-20 to 2023-24"; nor did the router),
     so a caller checks this before ``since`` has necessarily reached
     :func:`span_of` itself (a reader that reads ``since`` through its own
-    code path, the way ``team_leaderboard``'s did for a non-record metric, would otherwise drop
+    code path, the way ``TEAM_RANKING``'s did for a non-record metric, would otherwise drop
     ``until`` silently rather than refusing it - the failure shape AGENTS.md
     warns against).
 
@@ -997,7 +997,7 @@ def scoped_games(
     refused any the relation cannot honor, and a reader steps aside for one
     its words do not state, so nothing arrives here that is not claimed.
 
-    ``opponent`` is passed because ``game_log`` may have rewritten it (a
+    ``opponent`` is passed because ``PLAYER_LOG`` may have rewritten it (a
     ``team`` beside a named player is his opponent) and a reader that needs
     the team's name before the read passes it already resolved; ``measures``
     because each reader decides what a bare ``threshold`` means before any
@@ -1184,7 +1184,7 @@ def condition_player(
     resolved, the same way :func:`player_stat` does it - and defaults to none
     so a caller that does not pass any keeps reading every game in scope.
     ``opponent`` is the team the games are against when the caller has
-    already resolved it - ``player_splits`` does, so that a clarification
+    already resolved it - ``PLAYER_SPLITS`` does, so that a clarification
     about the team comes before one about the player - and is handed to
     :func:`scoped_games` as it is, never resolved a second time; left None,
     the scope's own ``opponent`` is read.

@@ -1065,7 +1065,7 @@ def narrow_to_available(
 
     ``source`` may be several tables, for an answer read from more than one,
     and a row in ANY of them keeps a candidate, because a row in any of them is
-    an answer. ``player_netpoints`` is the case in point: its two tables
+    an answer. ``NETPOINTS_RATINGS`` is the case in point: its two tables
     disagree about who they hold.
 
     Elimination, never preference. It drops the candidates who cannot be the

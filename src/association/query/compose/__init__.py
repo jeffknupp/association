@@ -1,8 +1,6 @@
 """One compiler over the player-games and team-games relations: the only
-answer a shape the words ask for has (every key the grammar names;
-``compose.COMPILED_INTENTS`` listed the 25 intents' names until Phase 3,
-step 4), and the last step
-before a refusal naming why.
+answer a shape the words ask for has (every key the grammar names), and
+the last step before a refusal naming why.
 
 The pipeline is parser -> planner -> a reader and the sayer, or the
 compiler's own sentence -> refusal. :func:`answer`
@@ -17,16 +15,14 @@ sayer (``compose.logs``, ``compose.runs``, ``compose.presence``, ... and
 :mod:`~association.query.compose.team`, and any other point through the
 compiler's own SQL (:mod:`~association.query.compose.core`) and sentence
 (:mod:`~association.query.compose.sentence`). Which of the three answered
-is not visible in the answer. The presenters that called the retired
-templates' bodies are gone (``compose/present.py``, deleted with Phase 2's
-slice (iv)).
+is not visible in the answer.
 
 Every correctness rule a reader on the relation carries - the scoping the
-relation narrows by, the rebuilt-line guard, binding parity, the
+relation narrows by, the rebuilt-line guard, the availability a name is settled over, the
 starter/bench category - is read from the relation exactly once, in
 :mod:`association.query.player_relation` and :mod:`association.query.player_games`,
-which is what lets this package answer them all through one compiler instead
-of a template per shape. See ``core.py``'s module docstring for the rules
+which is what lets this package answer them all through one compiler
+rather than a statement per shape. See ``core.py``'s module docstring for the rules
 themselves and where each is enforced.
 
 Nothing here reaches ollama, and nothing here reads the question:
@@ -160,7 +156,7 @@ def answer(
     :func:`~association.query.compose.team.run_team`, a point by its
     shape's reader and the sayer (the planned shape,
     :func:`~association.query.compose.plan.planned_shape`: the answer side
-    reads no intent), and the rest by the
+    reads no label), and the rest by the
     compiler's own sentence, with the box-score caveats
     :func:`~association.query.compose.core.run` reads appended (#197); the
     answering loop appends :func:`~association.query.coverage.coverage_caveat`
@@ -231,7 +227,7 @@ def _read_log(read: Callable[[], Result | Unanswered | None]) -> Answer | None:
     the planner says (a :class:`~association.query.reading.ShapeDeclined`,
     or a point reading's cause a shared step raised,
     :class:`~association.query.reading.PointRefused`) keeps its cause, where
-    it was a sentence headed "relation:" until Phase 5, step 5."""
+    never a sentence."""
     try:
         read_log = read()
     except Unsupported as exc:
@@ -240,18 +236,17 @@ def _read_log(read: Callable[[], Result | Unanswered | None]) -> Answer | None:
 
 
 def _read_only(read: Callable[[], Result | Unanswered | None], shape: PointShape) -> Result | Unanswered:
-    """A shape whose reader is the point's only answer, as its retired
-    template was: a cell the reader refuses while reading is the compiler's
-    decline with the reader's own reason (no prefix), and a point it does
-    not read is declined too, named by the planned shape (``planned``, said
-    in its words, :func:`~association.query.compose.say.asked_as`; the
-    retired intent's name, ``name``, until Phase 4, step 2), never handed
+    """A shape whose reader is the point's only answer: a cell the reader
+    refuses while reading is the compiler's decline with the reader's own
+    reason (no prefix), and a point it does not read is declined too, named
+    by the planned shape (``planned``, said in its words,
+    :func:`~association.query.compose.say.asked_as`), never handed
     to the compiler's sentence - by a cause the planner says
     (``no_reading_of_point``, :class:`~association.query.reading.ShapeDeclined`)."""
     try:
         found = read()
     except ShapeDeclined:
-        # A decline by a cause the planner says (Phase 5, step 5) keeps it.
+        # A decline by a cause the planner says keeps it.
         raise
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
@@ -272,7 +267,7 @@ class _Route:
 
 
 #: The readers, by the shape the point declares (:class:`~association.query.reading.PointShape`):
-#: the one table the answer side chooses by - never by an intent.
+#: the one table the answer side chooses by - never by a label.
 _ROUTES: dict[PointShape, _Route] = {
     PointShape("player_games", "rows", "date"): _Route(read_player_log),
     PointShape("player_games", "scalar", "line"): _Route(read_player_stat),
@@ -324,8 +319,7 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
     cell its words do not state when it is asked (a team's own season,
     ``declined="read"``); one that steps aside has a cell it refuses said
     by its cause where it declines by one, and with ``relation:`` before it
-    where it does not (:func:`_read_log`). Until Phase 3, step 2's closing slice each
-    reader made the check itself, over the ``stated=`` set it was handed."""
+    where it does not (:func:`_read_log`); no reader makes the check itself."""
     route = _ROUTES.get(shape)
     if route is None:
         return None
@@ -339,9 +333,8 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
 
 
 def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | ShotQuery) -> Answer:
-    """A point on a declared relation (NetPoints, located shots; Phase 2,
-    slice (v)) read, drawn and said - its only answer, as its retired
-    template was, and after the same coverage floor: a season before the
+    """A point on a declared relation (NetPoints, located shots) read, drawn
+    and said - its only answer, after the coverage floor: a season before the
     table begins is refused, never read. A chart is drawn to the answering
     loop's output directory between the read and the sayer
     (:func:`~association.query.compose.netpoints.draw_fingerprint`,
@@ -370,9 +363,9 @@ def _said(read: Result | Unanswered | Answer | None) -> Answer | None:
 def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery) -> tuple[Answer | None, Unsupported | None]:
     """A team's own season read for a point planned on another relation (a
     team's own total, "how many 3-pointers have the Magic made"): the same
-    scope on the team-season relation first, as the retired template was
-    tried before the compiler - its answer, or its decline's reason, which
-    is the one said where every reader declines."""
+    scope on the team-season relation first, before the compiler - its
+    answer, or its decline's reason, which is the one said where every
+    reader declines."""
     season_query = TeamSeasonQuery(**query.filters(), relation="team_snapshots" if shape.relation == "team_snapshots" else "team_seasons", shape="grouped" if shape.shape == "ranking" else "scalar")
     try:
         return _said(_read(con, shape, season_query)), None
@@ -396,7 +389,7 @@ def _answer_point(
     games, or a player's - each the shape's reader, then the compiler's own
     sentence where it steps aside. :func:`answer`'s tail."""
     # The team-season reader's decline is the one said where every reader
-    # declines: the retired template's reason was, since it ran first.
+    # declines, since it runs first.
     season_declined: Unsupported | None = None
     try:
         if trace is not None:
@@ -444,7 +437,7 @@ def _answer_point(
     # milwaukee 2001 playoffs".
     # Each note on its own line: glued to the sentence with a space, a caveat
     # landed on the last row of a table ("... points 26.9 5 of these games
-    # have no box score ...") - seen on the rendered page, 2026-09-24.
+    # have no box score ...").
     for each_note in out["notes"]:
         answer_text += f"\n{each_note}"
     return Answer(data=_point_data(query, out, headline), text=answer_text, artifacts=[])

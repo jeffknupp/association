@@ -291,7 +291,7 @@ def _names_a_period_subject(working: _Working) -> bool:
     as the team's quarter with no player at all, and which the exemption for
     a team's own quarter must not cover: measured after the 5.0.0 prompt
     shrink, "How many points did Jokic score in the 3rd quarter against
-    Boston?" arrived as ``team_quarter_points`` for the Nuggets and the
+    Boston?" arrived as ``TEAM_PERIOD_TOTAL`` for the Nuggets and the
     exemption kept it there. The same reader and the same team guard as
     :func:`_period_subject`, so "did the 76ers score" stays the team's."""
     return working.grammar is not None and not is_team_name(working.grammar)

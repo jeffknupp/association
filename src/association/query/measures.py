@@ -208,13 +208,13 @@ def stat_measure(measure: Measure | None) -> str | None:
 
 
 STAT_LINE: tuple[str, ...] = ("points", "rebounds", "assists")
-"""The season line a bare ``player_stat`` question reads, by name.
+"""The season line a bare ``PLAYER_LINE`` question reads, by name.
 
 .. versionadded:: 5.0.0
 """
 
 SPLIT_LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "steals", "blocks", "turnovers", "threePointFieldGoalsMade", "fg_pct")
-"""The measures a ``player_splits`` read carries, by name.
+"""The measures a ``PLAYER_SPLITS`` read carries, by name.
 
 .. versionadded:: 5.0.0
 """

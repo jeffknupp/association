@@ -113,7 +113,7 @@ class AlignmentNarrowing:
 
     A sibling of :class:`CalendarNarrowing`, read by :func:`parse_alignment`
     rather than :func:`parse_situation` - kept as a second function rather
-    than folded into the first because ``team_record``'s own ``situation``
+    than folded into the first because ``TEAM_RECORD``'s own ``situation``
     reading (the retired ``templates/teams.py``, over the standings table
     rather than either relation) called :func:`parse_situation` directly and
     typed its result as :class:`CalendarNarrowing` alone; widening that

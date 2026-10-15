@@ -1,6 +1,6 @@
 """The ranking reader: a season's or a career's leaders by one metric over
 the season line (``player_season_stats_deduped`` and the season-shaped
-NetPoints tables) - ``leaderboard``'s own point, read into a
+NetPoints tables) - ``PLAYER_RANKING``'s own point, read into a
 :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Grouped` body by ``player``, ranked by the
 metric (``Grouped.ranked_by``). Phase 2's slice (iii) (``ROADMAP.md``,
@@ -255,7 +255,7 @@ def _leaderboard_metric(scope: Filtered, career: bool) -> str | None:
 
 
 def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
-    """``leaderboard``'s own point - the league's (or a team's players')
+    """``PLAYER_RANKING``'s own point - the league's (or a team's players')
     leaders by one season-line metric, over a season or a career - read into
     a Result through the season line's door
     (:func:`~association.query.season_line.rank_season_line`). ``None`` where

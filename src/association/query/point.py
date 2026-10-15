@@ -907,13 +907,13 @@ def _threshold_line(scope: Filtered) -> list[tuple[str, str, Any]]:
 
 
 def _default_player_stat(scope: Filtered) -> Reading:
-    """``player_stat``'s default point: a per-game average over box scores
+    """``PLAYER_LINE``'s default point: a per-game average over box scores
     where a narrowing (or a date) sends the read there
     (:func:`~association.query.reading.scope_reads_box_scores`), and the
     season line (``on="player_seasons"``) for an unnarrowed season or career. A
     window ("Jokic averages last 10 games") is the log of exactly those
     games with averages beneath - the shape the question has - so the point
-    is ``game_log``'s."""
+    is ``PLAYER_LOG``'s."""
     if not _named_player_in(scope):
         raise Unsupported("player_stat needs a player")
     col = stat_column(scope.measure)
@@ -934,7 +934,7 @@ def _default_player_stat(scope: Filtered) -> Reading:
 
 
 def _default_player_splits(scope: Filtered) -> Reading:
-    """``player_splits``'s default point: a record by venue, or by starter and
+    """``PLAYER_SPLITS``'s default point: a record by venue, or by starter and
     bench. A named half ("as a starter") narrows the games (the relation's own
     ``started``) while the category shown is still starter/bench; by venue it
     read the half's games split by home/away instead."""
@@ -945,7 +945,7 @@ def _default_player_splits(scope: Filtered) -> Reading:
 
 
 def _default_record_when(scope: Filtered) -> Reading:
-    """``record_when``'s default point: the record in games clearing one line.
+    """``LINE_RECORD``'s default point: the record in games clearing one line.
     A line of 0 is every game he played: never a record "when". Refused by
     the fact missing - the stat, a stat with no per-game column, the number,
     or a number every game clears - where it named one line only in part."""
@@ -977,7 +977,7 @@ def _default_record_when(scope: Filtered) -> Reading:
 
 
 def _default_period_split(scope: Filtered) -> Reading:
-    """``period_split``'s default point: a named player's games in date
+    """``PERIOD_LOG``'s default point: a named player's games in date
     order, each read as the quarter's or half's line (the relation's
     ``period``/``half`` cells), measuring the column the period's line
     rebuilds (:func:`~association.query.measures.period_split_measure`) -
@@ -1017,7 +1017,7 @@ def _default_period_split(scope: Filtered) -> Reading:
 
 
 def _default_threshold_count(scope: Filtered) -> Reading:
-    """``threshold_count``'s default point: a count of a named player's games
+    """``GAMES_COUNTED``'s default point: a count of a named player's games
     clearing one line - the threshold, or a below/above phrase that is the
     whole line ("Sga games with under 14 fta": the relation narrows by it,
     and the count is of the games left), read the one way the count's
@@ -1051,7 +1051,7 @@ def _default_threshold_count(scope: Filtered) -> Reading:
 
 
 def _default_single_game_high(scope: Filtered) -> Reading:
-    """``single_game_high``'s default point: a named player's top games by
+    """``GAME_HIGHS``'s default point: a named player's top games by
     one stat, the measure first. A league-wide high is the point reader's
     own move (a ranking of games), declined here. The decline names the
     fact that is missing - the stat, or the player - never both where one
@@ -1092,7 +1092,7 @@ def _streak_season(scope: Filtered) -> int | None:
 
 
 def _default_streak(scope: Filtered) -> Reading:
-    """``streak``'s default point: the longest run of consecutive games
+    """``LINE_RUNS``'s default point: the longest run of consecutive games
     meeting one condition (the ``run`` shape), on the relation the question
     names. A named player's is over his games (a stat at or above its
     threshold, or his team's wins in games he played); a named team's is
@@ -1137,10 +1137,10 @@ def _default_streak(scope: Filtered) -> Reading:
 
 
 def _default_player_matchup(scope: Filtered) -> Reading:
-    """``player_matchup``'s default point: two named players' lines over the
+    """``PLAYER_MEETINGS``'s default point: two named players' lines over the
     games they met in, on opposite teams (the ``pair`` shape), the names
     settled over the box scores, and over the career when a date names the
-    game (a date replaces the season, the way ``game_log``'s own does).
+    game (a date replaces the season, the way ``PLAYER_LOG``'s own does).
     Fewer or more than two names is declined; the narrowings a matchup
     cannot take are the planner's, and two names that resolve to one
     person are declined as the pair is settled (``compose.core._resolve_pair``).
@@ -1189,7 +1189,7 @@ def _default_with_without(scope: Filtered) -> Reading:
 
 
 def _default_head_to_head(scope: Filtered) -> Reading:
-    """``head_to_head``'s default point: two teams' meetings - a record on
+    """``TEAM_MEETINGS``'s default point: two teams' meetings - a record on
     the team relation grouped by which team won each (``compose.meetings``).
     The two teams are the scope's ``teams``, ``team`` and ``opponent``, read
     by the meetings' reader; a narrowing its words do not state is the
@@ -1201,7 +1201,7 @@ def _default_head_to_head(scope: Filtered) -> Reading:
 
 
 def _default_team_quarter_points(scope: Filtered) -> Reading:
-    """``team_quarter_points``' default point: a team's figure in one quarter
+    """``TEAM_PERIOD_TOTAL``' default point: a team's figure in one quarter
     or half - a total on the team relation over its games, the period the
     relation's own narrowing (``compose.periods.read_team_quarter_points``,
     which reads the stat, the period and the team from the scope and
@@ -1213,7 +1213,7 @@ def _default_team_quarter_points(scope: Filtered) -> Reading:
 
 
 def _default_period_leaderboard(scope: Filtered) -> Reading:
-    """``period_leaderboard``'s default point: the league's players (or one
+    """``PERIOD_RANKING``'s default point: the league's players (or one
     team's) ranked per game by a stat in one quarter or half, or by their
     points in each quarter - a grouped read by player on the league-wide
     relation, the period the relation's own narrowing
@@ -1254,7 +1254,7 @@ def _default_team_game_high(scope: Filtered) -> Reading:
 
 
 def _default_team_record(scope: Filtered) -> Reading:
-    """``team_record``'s default point: a team's games won and lost - a
+    """``TEAM_RECORD``'s default point: a team's games won and lost - a
     record on the team relation (``compose.team_records``, which reads the
     team, the opponent, the span, the venue, a month or calendar narrowing,
     a game of each series and a split by month from the scope, and reads a
@@ -1266,7 +1266,7 @@ def _default_team_record(scope: Filtered) -> Reading:
 
 
 def _default_player_netpoints(scope: Filtered) -> Reading:
-    """``player_netpoints``' default point: one player's NetPoints - a season's
+    """``NETPOINTS_RATINGS``' default point: one player's NetPoints - a season's
     ratings and the play-type split behind them, or one game's - on the
     NetPoints relation (``compose.netpoints``, which reads the player, the
     season, its type, the unit and a first or last game from the scope).
@@ -1552,9 +1552,9 @@ def team_read_point(scope: Filtered, question: str, subject: Subject) -> Reading
 
 TEAM_SEASON_POINTS: frozenset[PointShape] = frozenset({TEAM_LINE, TEAM_SEASON_HISTORY, TEAM_RANKING, TEAM_OUTLOOK})
 """What the words ask that a team's own season answers - each key the shape of that point:
-one team's line on ``team_season_stats`` (``team_stat``), every team ranked
-by one metric of it or of the standings (``team_leaderboard``), and one
-team's place in ESPN's power index (``team_outlook``). Read where the
+one team's line on ``team_season_stats`` (``TEAM_LINE``), every team ranked
+by one metric of it or of the standings (``TEAM_RANKING``), and one
+team's place in ESPN's power index (``TEAM_OUTLOOK``). Read where the
 question's words read no other point for the key - and a point the words
 DO read under one of these keys (a team's own total, "how many 3-pointers
 have the Magic made", :func:`team_read_point`) is read and said as this
@@ -1687,7 +1687,7 @@ def read_point(reading: Reading, question: str) -> Reading:
 
 
 def _leaderboard_declines(scope: Filtered, subject: Subject) -> None:
-    """What a ``leaderboard`` point is not, declined before any move - split
+    """What a ``PLAYER_RANKING`` point is not, declined before any move - split
     out of :func:`_read_point` to keep it inside the complexity gate."""
     if scope.measure is not None and scope.measure.key in ("triple_double", "double_double") and scope.who.kind in ("team", "team_players") and not subject.players:
         # A TEAM's total of its players' triple-doubles ("oklahoma city

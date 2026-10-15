@@ -3,7 +3,7 @@ one team, in a postseason, since a season, in game N of each playoff
 series, in one calendar month or on a weekday or holiday, against a
 conference or a division, broken out by
 month, both season types together, or across every season the warehouse
-holds - ``team_record``'s point, read into a
+holds - ``TEAM_RECORD``'s point, read into a
 :class:`~association.query.result.Result`. Phase 2's slice (iv): the
 retired template (``templates.teams.team_record``) and everything it
 reached moved here and into :mod:`~association.query.compose.standings`,
@@ -142,7 +142,7 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Enti
 
 
 def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
-    """``team_record``'s point read: which of its shapes the settled slots
+    """``TEAM_RECORD``'s point read: which of its shapes the settled slots
     pick out - a standings season or career, a tally of the team's games, a
     table by month, or both season types together - with the refusals that
     are the record's own. A

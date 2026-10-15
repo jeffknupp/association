@@ -9,18 +9,11 @@ consumes this record and reads nothing from the question again. The planner
 point on a relation; the agent logs it as the trace line that says where
 every value came from.
 
-ROADMAP plan item 6. Step (a) made the record and planned the compiler's
-point from it; step (b) made the parser that builds it; step (d) typed it -
-the scoping as fields rather than a slot dict, every field a closed type the
-checkers hold every construction to. Since Phase 3, step 4, slice (b) those
-fields are the Reading's own (:class:`Filtered`, the base every planned query
-inherits too), and the ``Scope`` record they stood on is gone with its slot
-door (which the tests kept, ``tests/slots.py``, until Phase 4, step 0, when
-every test came to state its reading typed). Since slice (c) the typed
-values are the shape a reading is recorded and traced in: the projection
-back to the slot dict (``to_slots``, ``scope_record``, ``projected``) went
-with it, and a decline says each cell by what the words asked under it
-(:func:`cell_facts`, since the Phase 3 review's cleanup).
+The scoping is typed fields, every field a closed type the checkers hold
+every construction to: the Reading's own filters (:class:`Filtered`, the
+base every planned query inherits too), which are the shape a reading is
+recorded and traced in, and by which a decline says each cell as the
+words asked it (:func:`cell_facts`).
 
 .. versionadded:: 5.0.0
 """
@@ -75,7 +68,7 @@ power index for it (``team_snapshots``), NetPoints and the located shots.
 Named by the point reader (:attr:`Reading.read_as`). Beside it :data:`Relation`
 still says which compiler plans the point and whether its subject is
 everyone - the second said again by the typed subject's kind
-(:class:`Subject`, since Phase 3, step 2), which did not retire it.
+(:class:`Subject`).
 
 .. versionadded:: 6.0.0
 """
@@ -84,7 +77,7 @@ everyone - the second said again by the typed subject's kind
 class Aggregate(StrEnum):
     """How the rows are reduced - a closed set, which the planner derives
     (``compose.plan.aggregate_of``, from what the point is read as and its
-    measure, since Phase 5, step 4) and the compiler's readers name by
+    measure) and the compiler's readers name by
     member, and the compiler reads by member
     (``compose.core``'s ``_agg`` and ``_scalar_selects``), so no reducer is
     spelled as text on either side. A single game's high is no aggregate:
@@ -115,7 +108,7 @@ Group = Literal["none", "venue", "starter", "season", "season_type", "month", "m
 """``"none"`` or a key of :data:`~association.query.compose.core.GROUPS` (a
 test holds the two to the same names) - or ``"presence"``, the team
 relation's own group: a team's games divided by whether named teammates
-played (``with_without``'s retired template, ``compose.team.compile_team_presence``)
+played (``compose.team.compile_team_presence``)
 - or ``"period"``, the player relation's own: each game divided into its
 four quarters, one group per quarter over the same games
 (``compose.core._compile_by_period``; "Jokic points by quarter").
@@ -188,9 +181,7 @@ class ScopeError(ValueError):
     the wrong type or outside its closed set, a window of fewer than one
     game. Raised where a typed value is built (each checks its own values)
     or where the model's names and stat come in as slots
-    (:meth:`Subject.from_slots`, :meth:`Measure.from_slots`; the tests' slot
-    door, ``tests/slots.py``, until Phase 4, step 0, and
-    ``Scope.from_slots`` until Phase 3, step 4), so
+    (:meth:`Subject.from_slots`, :meth:`Measure.from_slots`), so
     the question is refused the way a reader's refusal is rather than
     an answer quietly leaving the narrowing out.
 
@@ -201,10 +192,7 @@ class ScopeError(ValueError):
 @dataclass(frozen=True, kw_only=True)
 class Span:
     """The seasons a question covers and the season type it reads, as the
-    words gave them - ``ROADMAP-TYPES.md``'s ``Span``, the first filter
-    family typed (Phase 3, step 2). One value in place of six slots
-    (``season``, ``season_type``, ``season_type_unstated``, ``span``,
-    ``since``, ``until``), read by one tagger
+    words gave them - ``ROADMAP-TYPES.md``'s ``Span``: one value, read by one tagger
     (:func:`~association.query.span.read_span`) and resolved by one step
     per relation (:func:`~association.query.player_relation.span_of`).
     Each field at its default is the part unstated, which the relation
@@ -213,7 +201,7 @@ class Span:
 
     The parts are fields rather than one union over ``one | range | career``
     because the words name them separately and the readings hold them
-    together: measured on the 2,710 readings of 2026-10-09, a career beside a
+    together: measured on the 2,710 readings, a career beside a
     named season (3, refused as "a career span and the 2001 season at
     once"), a career beside a range (8, the range wins), both season types
     beside a season (4), a range (3) or a career (8). A union would have to
@@ -284,8 +272,8 @@ class Span:
         return replace(self, career=True, season=None)
 
     def without_range(self) -> Span:
-        """This span with no range: what a read whose retired body took the
-        season or the career alone covers (the league's longest run, the
+        """This span with no range: what a read that takes the season or
+        the career alone covers (the league's longest run, the
         with/without split's teammates) - the planner has refused the range
         for it before it is read."""
         return replace(self, since=None, until=None)
@@ -300,9 +288,7 @@ class Span:
 @dataclass(frozen=True, kw_only=True)
 class Window:
     """Which rows a read keeps and from which end, as the words gave them -
-    ``ROADMAP-TYPES.md``'s ``Window``, the second filter family typed
-    (Phase 3, step 2). One value in place of four slots (``order``,
-    ``limit``, ``rank``, ``ranked_by``), read by one tagger
+    ``ROADMAP-TYPES.md``'s ``Window``: one value, read by one tagger
     (:func:`~association.query.window.read_window`) and cut by one step per
     relation (:func:`~association.query.player_relation.relation_window`,
     which both relations read). Each field at its default is the part
@@ -311,7 +297,7 @@ class Window:
 
     The parts are fields rather than the draft's ``order: recent | first |
     top | bottom``, because the readings hold them apart: measured on the
-    2,710 readings of 2026-10-09 (``~/association-research/stages/window_family.py``),
+    2,710 readings (``~/association-research/stages/window_family.py``),
     a count stands with no end 102 times ("top 5", a history's seasons,
     "last 10 home games" on a reader with no window of its own) and an end
     never stands without a count (0); "top" and "bottom" name no end of the
@@ -389,8 +375,8 @@ class Minimum:
     """A ranking's qualifier as the question states it - "minimum 100 games
     played", "at least 300 gp", "with at least 400 attempts", "with atleast
     1000 fg attempted" - ``ROADMAP-TYPES.md``'s ``Minimum`` (the draft
-    Reading's ``minimum``, "a qualifier the question states"), declared by
-    the change that first reads it (ISSUES.md #377, 2026-10-11). Read by the
+    Reading's ``minimum``, "a qualifier the question states"; ISSUES.md
+    #377). Read by the
     window tagger (:func:`~association.query.window.read_minimum`, over
     :data:`~association.query.lexicon.MINIMUM`), kept by the key's reading
     on the keys that rank players
@@ -447,8 +433,8 @@ class Situation:
     the parsed halves and never the words again.
 
     One value for the three rather than three cells, because the cell the
-    relations declare is the ``situation`` (the one slot it was): measured on the 2,710
-    readings of 2026-10-09 (``~/association-research/stages/cuts_family.py``),
+    relations declare is the ``situation``: measured on the 2,710
+    readings (``~/association-research/stages/cuts_family.py``),
     96 carry one - 42 a calendar narrowing, 21 an alignment, 33 neither.
 
     .. versionadded:: 6.0.0
@@ -471,9 +457,7 @@ class Cuts:
     """Which games of a span a read sees, as the words gave them -
     ``ROADMAP-TYPES.md``'s ``Opponent``, ``Tenure``, ``Venue``, ``OnDate``,
     ``DateRange``, ``Calendar``, ``Round``, ``GameOfSeries`` and
-    ``SeasonOfCareer``, the third filter family typed (Phase 3, step 2).
-    One value in place of eight slots (``opponent``, ``own_team``, ``venue``,
-    ``date``, ``situation``, ``round``, ``game_n``, ``season_n``), read by
+    ``SeasonOfCareer``: one value, read by
     one tagger (:func:`~association.query.cuts.read_cuts`) from the words -
     the opponent and the tenure taken from the subject reading, the one
     reader of who stands against or beside the subject - and applied by one
@@ -483,7 +467,7 @@ class Cuts:
 
     The parts are fields rather than the draft's nine types, because the
     readings hold them together and a relation applies each as one more
-    clause over the same rows: measured on the 2,710 readings of 2026-10-09
+    clause over the same rows: measured on the 2,710 readings
     (``~/association-research/stages/cuts_family.py``), an opponent beside
     a venue 32 times, a round beside a situation 5, a game of a series
     beside a round 3 and beside an opponent 2, a date beside its own month 4.
@@ -541,8 +525,7 @@ class Cuts:
 def situation_of(text: str) -> Situation:
     """The :class:`Situation` ``text`` names: its words, and the calendar
     narrowing or - read only where there is none, as the relations read it
-    - the alignment they parse to. The cuts tagger's one reader of it (and
-    the tests' slot door's, until Phase 4, step 0).
+    - the alignment they parse to. The cuts tagger's one reader of it.
 
     .. versionadded:: 6.0.0
     """
@@ -553,25 +536,21 @@ def situation_of(text: str) -> Situation:
 @dataclass(frozen=True, kw_only=True)
 class Period:
     """What a read SEES of each game, as the words gave it -
-    ``ROADMAP-TYPES.md``'s ``Reading.period`` ("a quarter or half"), the
-    fourth filter family typed (Phase 3, step 2). One value in place of two
-    slots (``period``, a quarter 1-4 - or an overtime period by number, 5
-    and up, which the relation labels and nothing reads from the words -
-    and ``half``, 1-2), read by one tagger
+    ``ROADMAP-TYPES.md``'s ``Reading.period`` ("a quarter or half"): one
+    value (a quarter 1-4 - or an overtime period by number, 5 and up, which
+    the relation labels and nothing reads from the words - or a half, 1-2),
+    read by one tagger
     (:func:`~association.query.period.read_period`) and applied by one step
     per relation (:func:`~association.query.player_relation.apply_period`,
     ``team_relation._team_games_apply_period``), which narrows every read
     to the period's line of each game rather than to which games are read.
     None on the Reading is the whole game.
 
-    One cell, ``period``, not two: measured on the 2,710 readings of
-    2026-10-09 (``~/association-research/stages/period_family.py``), 120
-    carry one - 79 quarters and 41 halves, never both - the two relations
-    apply a quarter and a half through one step (``narrow_periods``), and
-    each reader's exclusion rows paired the two slots under one reason in
-    two wordings. A decline says the quarter or half asked ("the 2nd half",
-    :func:`cell_facts`); the slot name that was set (``period`` or
-    ``half``) until the Phase 3 review's cleanup (b)3.
+    One cell, ``period``, not two: measured on the 2,710 readings
+    (``~/association-research/stages/period_family.py``), 120 carry one - 79
+    quarters and 41 halves, never both - and the two relations apply a
+    quarter and a half through one step (``narrow_periods``). A decline
+    says the quarter or half asked ("the 2nd half", :func:`cell_facts`).
 
     .. versionadded:: 6.0.0
     """
@@ -628,22 +607,19 @@ career ranking (``season``: "averaged 30 ppg") - or his total over it
 @dataclass(frozen=True, kw_only=True)
 class Line:
     """A stat reached, missed or equaled in a game, as the words gave it -
-    ``ROADMAP-TYPES.md``'s ``Line(measure, op, value, who, period)``, the
-    fifth filter family typed (Phase 3, step 2): "30+ points", "under 14
-    fta", "with 25 minutes", "scores 30", "fouled out" (fouls at six), "one
-    three in the first quarter". One value in place of the five carriers a
-    line had: the ``stat``/``threshold`` slot pair, the ``above`` and
-    ``below`` phrases kept whole, the point's re-reading of the number's
-    words into a predicate, a companion's ``reached`` entry and the
-    ``period_condition``. Whose line it is lives where the value does: on
+    ``ROADMAP-TYPES.md``'s ``Line(measure, op, value, who, period)``: "30+
+    points", "under 14 fta", "with 25 minutes", "scores 30", "fouled out"
+    (fouls at six), "one three in the first quarter". One value for a line
+    wherever it stands - the subject's, a companion's ``reached`` role, a
+    period's condition. Whose line it is lives where the value does: on
     the :class:`Filtered` it is the subject's, on a :class:`Companion` the
     companion's (the draft's ``who``).
 
-    Built from the words, never from the slot pair: measured on the 2,710
-    readings of 2026-10-09 (``~/association-research/stages/line_family.py``),
-    in 11 of them the slot pair contradicted the words ("20+ point 5+
-    assist" read ``stat: assists, threshold: 20``; the relation narrowed by
-    the words and the pair went unread).
+    Built from the words, never from the model's stat beside a number:
+    measured on the 2,710 readings
+    (``~/association-research/stages/line_family.py``), in 11 of them the
+    model's pair contradicts the words ("20+ point 5+ assist" as ``stat:
+    assists, threshold: 20``).
 
     .. versionadded:: 6.0.0
     """
@@ -667,19 +643,15 @@ class Line:
     #: Whether the shape is KEYED on this line - a count of the games over
     #: it, a record above and below it, a run holding it, a high ranked by
     #: its stat (the draft's ``line(Line)`` dimension, ``Runs.line``): read
-    #: into the point's predicate by the shape's reader. The ``threshold``
-    #: slot until Phase 3, step 2; the shape's line moves to the point's
-    #: ``by`` when the measure is typed.
+    #: into the point's predicate by the shape's reader.
     keyed: bool = False
     #: Whether the RELATION narrows the games by this line as a filter: a
     #: phrase kept under or over a number ("under 14 fta", "with 25
     #: minutes"), or one of two or more "N+ stat" pairs on one game ("20+
-    #: point 5+ assist games"). The ``below`` and ``above`` phrases until
-    #: Phase 3, step 2. A line that is neither keyed nor narrowing is read
+    #: point 5+ assist games"). A line that is neither keyed nor narrowing is read
     #: and applied by nothing but the league's multi-line listing - the
-    #: second and later bare "N stat" lines of "20 pts, 10 reb, 5 ast",
-    #: which the stages read the first of and dropped the rest (ISSUES.md,
-    #: "A second bare line on a count is dropped").
+    #: second and later bare "N stat" lines of "20 pts, 10 reb, 5 ast"
+    #: (ISSUES.md, "A second bare line on a count is dropped").
     narrows: bool = False
     #: What the line's figure is (:data:`LinePer`): one game's, where the
     #: relation keeps the games past it; or the season line's - a player's
@@ -768,7 +740,7 @@ holds the same five on the relation's side).
 class Companion:
     """A player named beside the subject with the role the question gives him
     in the games asked about - ``ROADMAP-TYPES.md``'s ``Companion(player,
-    side, predicate)``, the fifth filter family typed (Phase 3, step 2):
+    side, predicate)``:
     "without KD" (``absent``), "when Embiid and Paul George play"
     (``played``), "when Embiid starts" (``started``), "with Tatum off the
     bench" (``bench``), "in games Maxey had 20+ points" (``reached``, with
@@ -799,10 +771,8 @@ class Companion:
 
     #: The family's one cell on the companions, which both relations' tables
     #: name (``player_relation.RELATION_SCOPING``): a player beside the
-    #: subject with a role. Declared under two slot names until Phase 3,
-    #: step 2 (``without`` for an absence, ``conditions`` for the rest), and
-    #: never honored or refused apart - no table named one without the
-    #: other - so one cell, which a decline says by each companion's name
+    #: subject with a role. No table honors or refuses one role without the
+    #: others, so one cell, which a decline says by each companion's name
     #: and role (:func:`cell_facts`).
     CELLS: ClassVar[frozenset[str]] = frozenset({"companion"})
 
@@ -823,9 +793,9 @@ class Companion:
         return self.predicate == "absent" and self.side == "own"
 
     def to_slot(self) -> dict[str, Any]:
-        """The ``conditions`` entry this companion was recorded as until
-        Phase 3, step 2: the player, the side, the predicate, and a reached
-        role's stat and threshold."""
+        """The ``conditions`` entry the trace records this companion as: the
+        player, the side, the predicate, and a reached role's stat and
+        threshold."""
         line = {}
         if self.line is not None:
             line = {key: value for key, value in (("stat", self.line.measure), ("threshold", self.line.value)) if value is not None}
@@ -857,17 +827,14 @@ MeasureSide = Literal["offense", "defense", "total"]
 @dataclass(frozen=True, kw_only=True)
 class Measure:
     """What a question asks about - ``ROADMAP-TYPES.md``'s
-    ``Measure(key, how, whose, category, side)``, the sixth filter family
-    typed (Phase 3, step 2): one value in place of the seven slots that
-    carried it (``stat``, ``rate``, ``per_game``, ``side``, ``shot_value``,
-    ``fields``, ``kind``). The ``key`` is one of the catalog's
+    ``Measure(key, how, whose, category, side)``: one value. The ``key`` is one of the catalog's
     (:data:`association.query.measure.CATALOG`), which says how the measure
     is read on each relation - as a game column or a derived measure, as the
     season line's column, as a ranking's metric, as a team's metric - and
-    what it is called; the six vocabularies the slot was read against are
-    lookups into it (:func:`association.query.measure.key_of`).
+    what it is called; every spelling of a measure is a lookup into it
+    (:func:`association.query.measure.key_of`).
 
-    Measured first on the 2,710 readings of 2026-10-09
+    Measured on the 2,710 readings
     (``~/association-research/stages/measure_family.py``): a ``stat`` on
     1,004 readings in 69 spellings - 23 the model's, 37 the words', and the
     team metrics' alias texts for the rest ("fgm", "ppg", "defensive
@@ -916,13 +883,12 @@ class Measure:
     #: named outright (``assist_o_net_pts``); None otherwise.
     category: str | None = None
     #: A run's result (the streak shape): True for a run of wins, False for
-    #: losses, read from the words ("losing streak", "skid") - the ``kind``
-    #: slot until Phase 3, step 2, written on every run and read by the
-    #: run's reader only where no stat line is.
+    #: losses, read from the words ("losing streak", "skid"), written on
+    #: every run and read by the run's reader only where no stat line is.
     won: bool | None = None
     #: The columns a ranking asks to see beside its measure ("with their
     #: rebounds and assists", "the team they play for"): catalog keys, or
-    #: ``team`` - the ``fields`` slot until Phase 3, step 2.
+    #: ``team``.
     beside: tuple[str, ...] = ()
 
     #: The family's one cell a relation's table declares and a decline
@@ -958,9 +924,7 @@ class Measure:
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Measure | None:
         """The measure the seven slot values name (the parser reads the
-        model's stat through it; the tests' slot door, ``tests/slots.py``,
-        read a slot dict through it until Phase 4, step 0, and
-        ``Scope.from_slots`` until Phase 3, step 4): the ``stat`` resolved through the
+        model's stat through it): the ``stat`` resolved through the
         catalog (:func:`association.query.measure.key_of`), ``rate`` as
         the unit and its reading, ``per_game`` as the per-game ``how``,
         ``side``, ``shot_value``, ``fields`` as ``beside``, ``kind`` as
@@ -1007,9 +971,7 @@ def _how_of_unit(unit: str) -> MeasureHow | None:
 @dataclass(frozen=True)
 class Subject:
     """Who a read is about - ``ROADMAP-TYPES.md``'s ``Subject(kind, names,
-    position, of_team)``, the seventh family typed (Phase 3, step 2): one
-    value in place of the four slots that carried the names (``player``,
-    ``players``, ``team``, ``teams``) and the point's ``position``. Written
+    position, of_team)``: one value for the names and the position group. Written
     by the subject reading alone (:func:`~association.query.subject.apply_subject`,
     over what the grammar's rules settled from it), and read by the point reader and
     the relations' readers - who the read narrows to; resolving a name
@@ -1020,14 +982,13 @@ class Subject:
     own spelling of a name the model completed, a span the model copied and
     nothing placed, the player a count's grammar names where the model
     dropped him, the companion whose line a team's record is keyed on - in
-    the question's order: ONE is the player a reader reads (:attr:`player`;
-    the ``player`` slot), two or more a comparison or a pair (the
-    ``players`` slot). ``teams`` the same for teams: one is the team the
+    the question's order: ONE is the player a reader reads (:attr:`player`),
+    two or more a comparison or a pair. ``teams`` the same for teams: one is the team the
     read is about, or whose players it ranks (the draft's ``of_team``: "most
     points by a 76ers power forward"), or a team named beside a player that
-    the reading placed nowhere (:attr:`team`; the ``team`` slot); two or
-    more are teams a slot dict named as a list (the router-era ``teams``
-    slot - the parser never writes one: 0 of the 2,710 readings), and two
+    the reading placed nowhere (:attr:`team`); two or more are teams the
+    model's names list (:meth:`from_slots` - the parser never writes one:
+    0 of the 2,710 readings), and two
     teams meeting are the first team and the games' opponent
     (:attr:`Cuts.opponent`), as the relations apply them. ``position`` is
     the position group the words name ("centers", "a shooting guard";
@@ -1038,16 +999,15 @@ class Subject:
     The names are fields beside the kind rather than the draft's one
     ``names`` tuple, and the kind is the reading's rather than what the
     names say, because the readings hold them apart: measured on the 2,710
-    readings of 2026-10-10 (``~/association-research/stages/subject_family.py``),
+    readings (``~/association-research/stages/subject_family.py``),
     players and a team together on 43 (22 team records keyed on a
     companion's line, 21 a team named beside a player that nothing placed),
     a player under a ``team`` kind on 23, a player under ``everyone`` on 11
     (the grammar's subject a count or a high settles where the reading named
     nobody), a team beside a position group on 9, a position group under a
-    ``player`` kind on 1. One player is never carried in the plural slot,
-    two never in the singular, and a list of teams never at all (players:
-    1,439 one, 122 two, 1 three; teams: 382 one), so the count said which
-    slot a name was carried in. No cell: no relation table
+    ``player`` kind on 1; a list of teams never (players: 1,439 one, 122
+    two, 1 three; teams: 382 one), so the count says whether one player or
+    several is read. No cell: no relation table
     declares, honors or refuses a name - a reader narrows to whom it is
     about, and a name nothing resolves is the relation's refusal
     (:attr:`CELLS`).
@@ -1098,9 +1058,7 @@ class Subject:
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Subject:
         """The subject four slot values name (the parser reads the model's
-        names through it; the tests' slot door, ``tests/slots.py``, read a
-        slot dict through it until Phase 4, step 0, and
-        ``Scope.from_slots`` until Phase 3, step 4): ``player`` then ``players`` as the players,
+        names through it): ``player`` then ``players`` as the players,
         ``team`` then ``teams`` as the teams, each name once, the kind
         what they hold - two or more players a ``pair``, one a ``player``,
         then two or more teams ``teams``, one a ``team``, else
@@ -1145,7 +1103,8 @@ def _kind_named(players: tuple[str, ...], teams: tuple[str, ...]) -> SubjectKind
 class Claim:
     """The characters of the question one reader rule read - ``start`` and
     ``end`` as a slice of the question, and ``what`` it read them as
-    (``season``, ``season_type``, ``career``, ``range``, ``intent``, ...).
+    (``season``, ``season_type``, ``career``, ``range``, ``intent`` - what
+    the words ask - ...).
     A tagger claims each span it read once, cut to the words its reading
     depends on (:func:`~association.query.span.needed`); a rule over the
     whole question claims the words its decision turned on
@@ -1161,9 +1120,8 @@ class Claim:
     what: str
 
 
-#: The typed filters' field names, in the order the ``Scope`` held them until
-#: Phase 3, step 4, slice (b) - the
-#: order :meth:`Filtered.filters` hands them in and a record holds them.
+#: The typed filters' field names, in the order :meth:`Filtered.filters`
+#: hands them in and a record holds them.
 _FILTER_FIELDS: tuple[str, ...] = ("who", "cuts", "companions", "lines", "measure", "span", "split", "period", "window", "minimum")
 
 
@@ -1192,16 +1150,13 @@ class Filtered:
     the fields the Reading (:class:`Reading`) and every planned query
     (``compose.core.Query``, ``compose.team.TeamQuery``, ...) hold as their
     own. A field at its default (None, empty, False) is the family absent -
-    the reading every reader already takes of a falsy slot (:meth:`cells`
+    the reading every reader already takes of a falsy value (:meth:`cells`
     asks whether each typed value sets its cells, and the split whether it
     is truthy). The names are here too, as the question gave them; resolving
     them against the warehouse happens where each is read.
 
-    Never held as a record of its own: until Phase 3, step 4, slice (b) it
-    was ``Scope``, a record the Reading and the queries held (``.scope``),
-    built from a slot dict by ``Scope.from_slots`` (the door the tests kept,
-    ``tests/slots.py``, until Phase 4, step 0). A reader of the filters
-    takes the Reading or the query itself.
+    Never held as a record of its own: a reader of the filters takes the
+    Reading or the query itself.
 
     .. versionadded:: 6.0.0
        ``Scope`` (5.0.0) folded into the Reading and the queries; its
@@ -1209,46 +1164,34 @@ class Filtered:
     """
 
     #: Who the read is about: one typed value (:class:`Subject` - the kind,
-    #: the players, the teams, the position group; the four slots
-    #: ``player``, ``players``, ``team`` and ``teams`` and the point's
-    #: ``position`` until Phase 3, step 2), written by the subject reading
-    #: alone. ``Scope.subject`` until Phase 3, step 4, slice (b): the
-    #: Reading's ``subject`` is the subject reading's own record.
+    #: the players, the teams, the position group), written by the subject
+    #: reading alone. The Reading's ``subject`` is the subject reading's own
+    #: record.
     who: Subject = field(default_factory=Subject)
-    #: Which games of the span: one typed value (:class:`Cuts`; the eight
-    #: slots ``opponent``, ``own_team``, ``venue``, ``date``, ``situation``,
-    #: ``round``, ``game_n`` and ``season_n`` until Phase 3, step 2).
+    #: Which games of the span: one typed value (:class:`Cuts`).
     cuts: Cuts = field(default_factory=Cuts)
     #: Who stands beside the subject, each with his role: one typed value
-    #: per player (:class:`Companion`; the three slots ``with_player``,
-    #: ``without`` and ``conditions`` until Phase 3, step 2), written by the
-    #: subject reading alone.
+    #: per player (:class:`Companion`), written by the subject reading alone.
     companions: tuple[Companion, ...] = ()
-    #: The lines on a stat the subject's games are kept past (:class:`Line`;
-    #: the ``threshold`` slot beside ``stat``, the ``above`` and ``below``
-    #: phrases and the ``period_condition`` until Phase 3, step 2), in the
-    #: question's order.
+    #: The lines on a stat the subject's games are kept past (:class:`Line`),
+    #: in the question's order.
     lines: tuple[Line, ...] = ()
-    #: What is measured: one typed value (:class:`Measure`; the seven slots
-    #: ``stat``, ``fields``, ``per_game``, ``rate``, ``side``, ``shot_value``
-    #: and ``kind`` until Phase 3, step 2), None where the question says
+    #: What is measured: one typed value (:class:`Measure`), None where the question says
     #: nothing about its measure (a line's own measure is the :class:`Line`'s).
     measure: Measure | None = None
     #: When: the seasons and the season type, one typed value
-    #: (:class:`Span`; six slots until Phase 3, step 2).
+    #: (:class:`Span`).
     span: Span = field(default_factory=Span)
     split: Split | None = None
     #: What a read sees of each game: one typed value (:class:`Period`, a
-    #: quarter or a half; the two slots ``period`` and ``half`` until
-    #: Phase 3, step 2), None for the whole game.
+    #: quarter or a half), None for the whole game.
     period: Period | None = None
     #: Which rows are kept, and from which end: one typed value
-    #: (:class:`Window`; the four slots ``order``, ``limit``, ``rank`` and
-    #: ``ranked_by`` until Phase 3, step 2).
+    #: (:class:`Window`).
     window: Window = field(default_factory=Window)
     #: A ranking's qualifier as the question states it (:class:`Minimum`),
     #: None where it states none - the ranking's default is the reader's
-    #: decision. No cell (ISSUES.md #377, 2026-10-11).
+    #: decision. No cell (ISSUES.md #377).
     minimum: Minimum | None = None
 
     #: Every cell a scope can set, by name: each typed family's
@@ -1272,8 +1215,7 @@ class Filtered:
     def stated(self) -> dict[str, Any]:
         """The filters away from their defaults, by field, each typed value as
         the fields it sets (a nested value the same way) - what the trace
-        prints, where it printed the slot dict until Phase 3, step 4, slice
-        (c). A tuple of values prints each so; a sequence or a value with
+        prints. A tuple of values prints each so; a sequence or a value with
         nothing set is left out.
 
         .. versionadded:: 6.0.0
@@ -1339,11 +1281,8 @@ def cell_facts(scope: Filtered, cell: str) -> dict[str, Any]:
     """What the words asked under ``cell`` on ``scope``, as the plain facts a
     decline is said with (``say.cell_phrase``): the cell's name and its
     typed value's parts - the window's end and count, the range's first and
-    last season, the opponent, the lines, the companions and their roles.
-    Until the Phase 3 review's cleanup (b)3 a decline said the slot names
-    each cell was declared under before Phase 3, step 2 ("cannot honor
-    ['order']", ``cell_slots``), 87 mentions of a name that was no field or
-    cell anywhere (ISSUES.md #281).
+    last season, the opponent, the lines, the companions and their roles -
+    never a name that is no field or cell (ISSUES.md #281).
 
     .. versionadded:: 6.0.0
     """
@@ -1449,43 +1388,43 @@ CAUSES: frozenset[str] = frozenset(
         "team_boolean_count",
         "cannot_honor",
         "no_reading_of_point",
-        # Phase 5, step 1: a word of meaning the reading defaulted past
+        # A word of meaning the reading defaulted past
         # (:attr:`Reading.defaulted`), one kind per class.
         "unread_number",
         "unread_stat",
         "unread_window",
         "unread_date",
-        # Phase 5, step 5: a team-season reader's declines, said by the
+        # A team-season reader's declines, said by the
         # planner as the shapes' own are (ShapeDeclined).
         "no_team_metric",
         "team_seasons_unsummed",
         "team_venue_unsplit",
         "since_record_unsplit",
-        # Phase 5, step 5: a team named as its own opponent (ISSUES.md #277).
+        # A team named as its own opponent (ISSUES.md #277).
         "own_opponent",
-        # Phase 5, step 5: a read that needs a name the reading has none of.
+        # A read that needs a name the reading has none of.
         "name_missing",
-        # Phase 5, step 5: a reader's declines the "relation:" wrapper said.
+        # A reader's own declines, each by its cause.
         "span_and_season",
         "no_season_column",
         "franchise_career_ranking",
-        # Phase 5, step 5: words that ask for no shape a reader reads.
+        # Words that ask for no shape a reader reads.
         "no_shape",
-        # Phase 5, step 5: the point reader's declines, causes it refuses by.
+        # The point reader's declines, causes it refuses by.
         "period_relations_question",
         "team_relations_question",
         "team_only_question",
         "no_subject_reading",
-        # Phase 5, step 6: a team named beside a player that no read placed
+        # A team named beside a player that no read placed
         # (ISSUES.md #436).
         "team_not_read",
-        # Phase 5, step 6 (lane L): the best single season across years,
+        # The best single season across years,
         # which no league read ranks.
         "single_season_ranking",
-        # Phase 5, step 6 (lane L): a ranking of players whose words name
+        # A ranking of players whose words name
         # no measure it reads (ISSUES.md #421), never the points default.
         "ranking_needs_stat",
-        # Phase 5, step 6 (lane L): two measures combined by an arithmetic
+        # Two measures combined by an arithmetic
         # word, which no measure reads (ISSUES.md #424).
         "measures_combined",
     }
@@ -1566,47 +1505,38 @@ missing thing, never only the slot"):
   (``period_as_condition``: ``shape``), a team's quarter of a stat
   nothing holds (``team_period_stat``: ``shape``, ``stat``), bench points
   (``bench_points``: ``shape``), a team's total of its players'
-  triple-doubles (``team_boolean_count``: ``shape``, ``stat``). Each was
-  ``refusals.unanswerable``'s check, asked by the answering loop with the
-  question until Phase 3, step 0; the page shows the kind beside the
-  sentence (``refused``; with the page's label, ``intent``, until Phase 4,
-  step 2);
+  triple-doubles (``team_boolean_count``: ``shape``, ``stat``). The page
+  shows the kind beside the sentence (``refused``);
 - a narrowing the point's shape cannot honor beyond its relation's cells
   (``cannot_honor``: ``shape``, the ``cells`` it sets as the words
   asked them, ``without`` - ``player`` or ``team or player`` where the
   cell needs a named subject the point has none of - and ``reason``, the
-  :class:`DeclineReason` its shape's row gives, which the sayer words;
-  ``why``, the row's sentence, until Phase 5, step 5), and a point a
-  shape's only reader reads nothing of (``no_reading_of_point``:
-  ``shape``, ``planned``). Declines the user saw as "Nothing here answers
-  this question: ..." until Phase 3, step 4; said in that sentence, and
-  only where the floor and the reading's own causes did not speak first,
-  as the decline was (:class:`ShapeDeclined`) - the shape in its words
-  since Phase 4, step 2, by the page's label before it.
-- a team-season reader's decline, said as the shapes' own are (Phase 5,
-  step 5; sentences the answering loop gave the question up with until
-  then): a stat no team metric holds, or no metric named
+  :class:`DeclineReason` its shape's row gives, which the sayer words),
+  and a point a shape's only reader reads nothing of
+  (``no_reading_of_point``: ``shape``, ``planned``) - said as "Nothing here
+  answers this question ...", the shape in its words, and only where the
+  floor and the reading's own causes do not speak first
+  (:class:`ShapeDeclined`).
+- a team-season reader's decline, said as the shapes' own are: a stat no
+  team metric holds, or no metric named
   (``no_team_metric``: ``stat``), a metric summed over a span of seasons
   (``team_seasons_unsummed``: ``metric``) or split by venue
   (``team_venue_unsplit``: ``metric``, ``venue``), and a since-bounded
   record split by venue (``since_record_unsplit``); a team named as its
   own opponent (``own_opponent``: ``team``); a read that needs a name the
   reading has none of (``name_missing``: ``needs`` - ``player``, ``team``
-  or ``teammate``), which each reader said naming its retired template
-  ("shot_chart needs a player name"); a career or a since-bounded span and
+  or ``teammate``); a career or a since-bounded span and
   a named season at once (``span_and_season``: ``season``, ``since``), a
   stat the season line has no column of (``no_season_column``: ``stat``),
-  a team's own career ranking (``franchise_career_ranking``) -
-  each said headed "relation:" until then; words that ask for no shape
-  a reader reads, and name nothing that nothing reads (``no_shape``:
-  ``shape``, None), which the answering loop gave the question up with;
+  a team's own career ranking (``franchise_career_ranking``); words that
+  ask for no shape a reader reads, and name nothing that nothing reads
+  (``no_shape``: ``shape``, None);
   and the point reader's own (``point.py``: a quarter or half asked of a
   read that is not the period relation's, ``period_relations_question``; a
   team's, an opponent's or a franchise's figure asked of the league's
   players, ``team_relations_question``; a team-only shape on the player
   relation, ``team_only_question``; no player and no ranking or position
-  group to read, ``no_subject_reading`` - each ``shape``), declines
-  (``Reading.point_declined``) until then.
+  group to read, ``no_subject_reading`` - each ``shape``).
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.
@@ -1619,10 +1549,7 @@ entry here and a sentence there.
 class Cause:
     """Why a point reading refuses: a kind from :data:`CAUSES` and the plain
     facts its sentence needs - never the sentence, which is the answer
-    side's to build (``ROADMAP-TYPES.md``: ``Refusal(cause, facts)``). Until
-    5.0.0's last change the reader built the refusal's ``Reply``
-    itself and the Reading carried it (``ROADMAP.md``, Phase 1, the
-    ``read_point`` move, step 4).
+    side's to build (``ROADMAP-TYPES.md``: ``Refusal(cause, facts)``).
 
     .. versionadded:: 5.0.0
     """
@@ -1654,9 +1581,8 @@ class LeftOut:
 
 @dataclass(frozen=True)
 class PointShape:
-    """What a planned point is read and said as (``ROADMAP-TYPES.md``,
-    "Where today's 25 intents land": the draft's ``Query.relation``,
-    ``shape`` and ``by``): the ``relation`` it reads (:data:`PointRelation`),
+    """What a planned point is read and said as (``ROADMAP-TYPES.md``: the
+    draft's ``Query.relation``, ``shape`` and ``by``): the ``relation`` it reads (:data:`PointRelation`),
     its ``shape`` (:data:`Shape`) and what one row is ``by`` (or, for a
     scalar, how it is reduced; ``""`` for a point no reader takes). The
     answer side chooses a reader, its stated scoping and the coverage
@@ -1682,126 +1608,125 @@ class PointShape:
     by: str = ""
 
 
-# What a question's words ask for (Phase 3, step 4): the shape the grammar
+# What a question's words ask for: the shape the grammar
 # names - the parent grammar by the subject's kind
 # (``parse.PARENT_GRAMMAR``), the child grammars (``subject._CHILD_GRAMMARS``)
 # and the grammar's rules before the taggers (``grammar.settle``) - as the
 # point it means before any typed filter moves it, in the target's own
 # vocabulary: the relation its reader reads first, the shape and what it is
-# ``by``. One key per retired intent, the intent's own default point's (a
-# player's, where a team's reads another relation: the point reader moves a
-# team's log to ``team_games``, an unnarrowed line stays on the season line
-# and a narrowed one moves to the games), so the page's label was one
-# lookup (``SHAPE_NAMES``, until Phase 4, step 2). Measured first (``~/association-research/stages/
-# intent_family.py``, the 2,710 readings): an intent maps to up to four
-# planned keys, since ``on`` and sometimes the shape follow the typed
-# filters, and two planned keys are reached by more than one intent - so
-# the key is what the words ASK, and the planned key what the point IS.
+# ``by``: the key's own default point (a player's, where a team's reads
+# another relation: the point reader moves a team's log to ``team_games``,
+# an unnarrowed line stays on the season line and a narrowed one moves to
+# the games). Measured on the 2,710 readings
+# (``~/association-research/stages/intent_family.py``): a key the words ask
+# reaches up to four planned keys, since ``on`` and sometimes the shape
+# follow the typed filters, and two planned keys are reached from more than
+# one asked key - so the key is what the words ASK, and the planned key
+# what the point IS.
 # ``None`` is the grammar's "no shape": the words name nothing a reader
 # reads (``other``).
 
 PLAYER_LOG = PointShape("player_games", "rows", "date")
-"""A player's games, newest first (``game_log``): a team's log moves to
+"""A player's games, newest first: a team's log moves to
 ``team_games``, the league's or a position group's stays here.
 
 .. versionadded:: 6.0.0
 """
 PLAYER_LINE = PointShape("player_seasons", "scalar", "line")
-"""A player's line (``player_stat``): the season line unnarrowed, his games
+"""A player's line: the season line unnarrowed, his games
 narrowed or windowed.
 
 .. versionadded:: 6.0.0
 """
 PLAYER_SPLITS = PointShape("player_games", "split", "splits")
-"""A player's (or a team's) four splits (``player_splits``).
+"""A player's (or a team's) four splits.
 
 .. versionadded:: 6.0.0
 """
 LINE_RECORD = PointShape("player_games", "split", "line")
-"""A record above and below a line (``record_when``).
+"""A record above and below a line.
 
 .. versionadded:: 6.0.0
 """
 PERIOD_LOG = PointShape("player_periods", "rows", "date")
-"""A player's quarter or half (``period_split``).
+"""A player's quarter or half.
 
 .. versionadded:: 6.0.0
 """
 GAMES_COUNTED = PointShape("player_games", "scalar", "count")
-"""A count of games over a line (``threshold_count``).
+"""A count of games over a line.
 
 .. versionadded:: 6.0.0
 """
 GAME_HIGHS = PointShape("player_games", "rows", "measure")
-"""Single games ranked by a measure (``single_game_high``).
+"""Single games ranked by a measure.
 
 .. versionadded:: 6.0.0
 """
 LINE_RUNS = PointShape("player_games", "runs", "line")
-"""The longest runs of games a predicate holds along (``streak``).
+"""The longest runs of games a predicate holds along.
 
 .. versionadded:: 6.0.0
 """
 PLAYER_MEETINGS = PointShape("player_games", "comparison", "met")
-"""Two players' meetings (``player_matchup``).
+"""Two players' meetings.
 
 .. versionadded:: 6.0.0
 """
 PRESENCE_SPLIT = PointShape("team_games", "split", "presence")
-"""A team's record with and without named teammates (``with_without``).
+"""A team's record with and without named teammates.
 
 .. versionadded:: 6.0.0
 """
 TEAM_MEETINGS = PointShape("team_games", "comparison", "opponent")
-"""Two teams' meetings (``head_to_head``).
+"""Two teams' meetings.
 
 .. versionadded:: 6.0.0
 """
 TEAM_PERIOD_TOTAL = PointShape("team_periods", "scalar", "total")
-"""A team's quarter or half (``team_quarter_points``).
+"""A team's quarter or half.
 
 .. versionadded:: 6.0.0
 """
 PERIOD_RANKING = PointShape("player_periods", "ranking", "player")
-"""Players ranked by a quarter or half (``period_leaderboard``).
+"""Players ranked by a quarter or half.
 
 .. versionadded:: 6.0.0
 """
 TEAM_RECORD = PointShape("team_games", "scalar", "record")
-"""A team's record (``team_record``).
+"""A team's record.
 
 .. versionadded:: 6.0.0
 """
 TEAM_GAME_HIGHS = PointShape("team_games", "rows", "measure")
 """A team's own games, or every team's, ranked by one box-score figure - a
 team's best single game ("most 3s made in a game by the 76ers", "most 3s
-made in a single game by a team"). The first key added after the freeze
-(decision D4), by Jeff's lifting of it for #364's remainder, 2026-10-13.
+made in a single game by a team"; ISSUES.md #364).
 
 .. versionadded:: 6.0.0
 """
 NETPOINTS_RATINGS = PointShape("netpoints", "scalar", "ratings")
-"""A player's NetPoints (``player_netpoints``).
+"""A player's NetPoints.
 
 .. versionadded:: 6.0.0
 """
 NETPOINTS_FINGERPRINT = PointShape("netpoints", "chart", "fingerprint")
-"""A player's fingerprint, drawn (``fingerprint``).
+"""A player's fingerprint, drawn.
 
 .. versionadded:: 6.0.0
 """
 SHOT_CHART = PointShape("shots", "chart", "shots")
-"""A player's shot chart, drawn (``shot_chart``).
+"""A player's shot chart, drawn.
 
 .. versionadded:: 6.0.0
 """
 SHOT_DISTANCE = PointShape("shots", "scalar", "distance")
-"""A player's average shot distance (``shot_distance``).
+"""A player's average shot distance.
 
 .. versionadded:: 6.0.0
 """
 PLAYER_RANKING = PointShape("player_seasons", "ranking", "player")
-"""Players ranked by a measure (``leaderboard``): the season line, or the
+"""Players ranked by a measure: the season line, or the
 games where the line does not read it.
 
 .. versionadded:: 6.0.0
@@ -1809,23 +1734,22 @@ games where the line does not read it.
 PLAYERS_COUNTED = PointShape("player_seasons", "scalar", "count")
 """How many players a season line holds ("how many players averaged 30 ppg
 in 2026", ISSUES.md #390): the season ranking kept past the line, counted
-- the 26th key the words can ask, D4 lifted for it by Jeff on 2026-10-13.
 Read as the ranking is (``point``'s keyed readings), said as a count.
 
 .. versionadded:: 6.0.0
 """
 PLAYER_COMPARISON = PointShape("player_seasons", "comparison", "subject")
-"""Two or more players' lines side by side (``player_compare``).
+"""Two or more players' lines side by side.
 
 .. versionadded:: 6.0.0
 """
 SEASON_HISTORY = PointShape("player_seasons", "split", "season")
-"""A player's stat season by season (``player_history``).
+"""A player's stat season by season.
 
 .. versionadded:: 6.0.0
 """
 TEAM_LINE = PointShape("team_seasons", "scalar", "line")
-"""A team's own season line (``team_stat``).
+"""A team's own season line.
 
 .. versionadded:: 6.0.0
 """
@@ -1833,25 +1757,25 @@ TEAM_SEASON_HISTORY = PointShape("team_seasons", "split", "season")
 """A team's season line season by season over a range or every season on
 record, with the range's total beneath - the team counterpart of
 :data:`SEASON_HISTORY` ("raptors last 5 seasons", "ppg season bulls
-all-time", "how many games did the heat play 2009 to 2023"): the 28th key,
-D4 lifted for it by Jeff on 2026-10-14 (ISSUES.md #372). Named by the
+all-time", "how many games did the heat play 2009 to 2023"; ISSUES.md
+#372). Named by the
 child grammar under a team's season line and by the point reader for a
 team's season line whose span is more than one season.
 
 .. versionadded:: 6.0.0
 """
 TEAM_RANKING = PointShape("team_seasons", "ranking", "team")
-"""Teams ranked by a season metric or the standings (``team_leaderboard``).
+"""Teams ranked by a season metric or the standings.
 
 .. versionadded:: 6.0.0
 """
 TEAM_OUTLOOK = PointShape("team_snapshots", "scalar", "projection")
-"""A team's place in ESPN's power index (``team_outlook``).
+"""A team's place in ESPN's power index.
 
 .. versionadded:: 6.0.0
 """
 TEAM_COACH = PointShape("team_seasons", "scalar", "coach")
-"""A team's coach (``coach``): a fact of a team's season the warehouse holds
+"""A team's coach: a fact of a team's season the warehouse holds
 no column for, so its point is refused by that cause (``no_coach_table``)
 and no reader takes it.
 
@@ -1863,10 +1787,8 @@ def key_path(shape: PointShape | None) -> str:
     """A shape as the trace and the records name it: ``relation/shape/by``
     ("player_games/scalar/count"), ``"none"`` where the words name no shape -
     the decisions' values and reasons about what the words ask, and the
-    trace's ``(parser)`` and ``(compose)`` lines. Since Phase 4, step 2,
-    where the retired intent's name stood (``SHAPE_NAMES``, ``asked_label``:
-    "threshold_count", ``"other"``); a sentence names a shape in its words
-    (``compose.say.asked_as``).
+    trace's ``(parser)`` and ``(compose)`` lines; a sentence names a shape
+    in its words (``compose.say.asked_as``).
 
     .. versionadded:: 6.0.0
     """
@@ -2059,7 +1981,7 @@ class ShapeCells:
 
     def __post_init__(self) -> None:
         """A row's reasons are :class:`DeclineReason` members, never a
-        sentence: the sayer words each (Phase 5, step 5)."""
+        sentence: the sayer words each."""
         for cell, why in self.unstated.items():
             if not isinstance(why, DeclineReason):
                 raise TypeError(f"the reason for {cell!r} is {why!r}, not a DeclineReason")
@@ -2127,8 +2049,7 @@ class Reading(Filtered):
     #: What the point measures, typed (:class:`Measure`, by the catalog's
     #: key): the box-score columns or derived measures a read reports,
     #: which the compiler names once, as the planner hands it the point
-    #: (``compose.core.measure_names``). The compiler's names until Phase
-    #: 4, step 3, built at each of the point reader's sites.
+    #: (``compose.core.measure_names``).
     #:
     #: .. versionchanged:: 6.0.0
     #:    A tuple of :class:`Measure` where it was a list of the compiler's names.
@@ -2142,16 +2063,15 @@ class Reading(Filtered):
     limit: int | None = None
     #: The minimum games a group needs to be kept, for a ranking.
     minimum_games: int | None = None
-    #: Binding parity with the retired template a reader mirrors (see
-    #: :class:`~association.query.compose.core.Query`).
+    #: Which table narrows an ambiguous name to the players with rows in it
+    #: (game logs or box scores; see :class:`~association.query.compose.core.Query`).
     available: Availability | None = None
     #: The span the subject is settled in and his games read over, where
     #: the point reader settles it apart from the scope's own: over the
     #: career for a date that names its own game (the name settled over
     #: every season, the date the scope), this season outright for a run
     #: (never a defaulted one, so an empty run is refused and not
-    #: redirected). ``None`` is the scope's own span. Until Phase 3, step 2
-    #: this was the slot pair ``span``/``season`` beside the scope's.
+    #: redirected). ``None`` is the scope's own span.
     #:
     #: .. versionadded:: 6.0.0
     subject_span: Span | None = None
@@ -2160,8 +2080,7 @@ class Reading(Filtered):
     #: grammar's keys - :data:`PLAYER_LOG`, :data:`PLAYER_LINE`, ...), named
     #: by the parent grammar, the child grammars or the grammar's rules, and read by
     #: the point reader, the subject reading's sets and the answering loop;
-    #: ``None`` where the words name no shape. Since Phase 3, step 4 - an
-    #: intent string until then.
+    #: ``None`` where the words name no shape.
     #:
     #: .. versionadded:: 6.0.0
     asked: PointShape | None = None
@@ -2171,8 +2090,7 @@ class Reading(Filtered):
     evidence: tuple[str, ...] = ()
     #: What the parser decided on the way, as values - who the question is
     #: about, and each name, role, tenure or position group it wrote into
-    #: the scope (in the parser's last step, ``parse._reading``;
-    #: ``parse.reading_from_route`` until Phase 3, step 4, slice (b)) - kept
+    #: the scope (in the parser's last step, ``parse._reading``) - kept
     #: on the answer beside the trace line each one prints.
     decisions: tuple[Decision, ...] = ()
     #: The model's names the question never held that nothing in it could
@@ -2181,9 +2099,9 @@ class Reading(Filtered):
     #: never mentioned (AGENTS.md: "When it cannot be repaired, say so by name").
     misread: tuple[str, ...] = ()
     #: The characters of the question each reader rule read
-    #: (:class:`Claim`), in the question's order: each tagger's since Phase
-    #: 3, step 2, cut to what its reading depends on and joined by the
-    #: grammars', the grammar's rules' and the point reader's since step 3. What they
+    #: (:class:`Claim`), in the question's order: each tagger's, cut to what
+    #: its reading depends on, and the grammars', the grammar's rules' and
+    #: the point reader's. What they
     #: leave unclaimed is :attr:`unread`.
     #:
     #: .. versionadded:: 6.0.0
@@ -2207,7 +2125,7 @@ class Reading(Filtered):
     #: on the relation it names (:func:`~association.query.point.read_point`),
     #: read once, by the parser, so the compiler only plans and runs it
     #: (:func:`~association.query.compose.answer`). A Reading of its
-    #: own, since it reads words the retired templates never saw: its scope may carry
+    #: own, since it reads words the default point does not: its scope may carry
     #: a career the question's "ever" or "how many times" implies. ``None``
     #: where the compiler has no reading of the point - ``point_declined``
     #: says why - or a refusal of its own to give (``point_refusal``: its
@@ -2221,8 +2139,8 @@ class Reading(Filtered):
     #: reading for one (:data:`CAUSES`: ``championship``,
     #: ``no_player_reading``) - said before any reader runs, by the planner
     #: (:func:`~association.query.compose.plan.plan_point`). Read by the
-    #: parser (``parse._reading_from_route_refused``); until Phase 3, step 0
-    #: the answering loop re-read the question for each.
+    #: parser (``parse._reading_from_route_refused``); nothing after the
+    #: parser reads the question for one.
     #:
     #: .. versionadded:: 6.0.0
     refused: Cause | None = None
@@ -2241,13 +2159,12 @@ class Reading(Filtered):
     #: A fingerprint's "vs" the reading holds one side of
     #: (:class:`LeftOut`): which names the question's words name beyond the
     #: players it holds, said beside the polygon it draws. Read by the
-    #: parser; until Phase 3, step 0 the answering loop re-read the question
-    #: for it (``entities.compared_but_unmatched``).
+    #: parser.
     #:
     #: .. versionadded:: 6.0.0
     left_out: LeftOut | None = None
-    #: A word that carries a meaning the reading defaulted past (Phase 5,
-    #: step 1): an unread number that is no unit, season or read line
+    #: A word that carries a meaning the reading defaulted past: an unread
+    #: number that is no unit, season or read line
     #: (``unread_number``), an unread stat word naming a measure other than
     #: the one read (``unread_stat``), an unread window word where no window
     #: was read (``unread_window``), an unread month or slashed day where no
@@ -2275,24 +2192,21 @@ class Reading(Filtered):
         )
 
 
-# What the subject reading needs to know about what the words ask - moved
-# here from templates/common.py on 2026-10-02 so the reader does not import
-# the answer side for them (ROADMAP.md, Phase 1: the reader's imports of the
-# answer side); templates.common re-exported each under its old name until
-# Phase 2, step 6. Sets of intent names until Phase 3, step 4: sets of the
-# grammar's keys (:class:`PointShape`) since.
+# What the subject reading needs to know about what the words ask, here so
+# the reader does not import the answer side for them: sets of the
+# grammar's keys (:class:`PointShape`).
 
 PLAYER_REQUIRED_ASKS: frozenset[PointShape] = frozenset({LINE_RECORD, PERIOD_LOG, SHOT_DISTANCE, SEASON_HISTORY})
 """What the words ask that no reader answers at all without a player
-(``record_when``, ``period_split``, ``shot_distance``, ``player_history``),
+(``LINE_RECORD``, ``PERIOD_LOG``, ``shot_distance``, ``SEASON_HISTORY``),
 so a player the model left out is worth restoring from the question.
 
 Deliberately not every shape that reads one: where the player is optional -
-``threshold_count``, ``single_game_high`` - an empty slot means "the league", and
+``GAMES_COUNTED``, ``GAME_HIGHS`` - an empty slot means "the league", and
 filling it would turn a league question into a question about somebody the
 question may only appear to name ("best" is Travis Best).
 
-``record_when`` has a team branch too (ISSUES.md #144) - a threshold on a
+``LINE_RECORD`` has a team branch too (ISSUES.md #144) - a threshold on a
 TEAM's own scoring is a real, player-less question - which is why the restore
 that reads this set (``subject._apply_restored_player``) puts a name back
 only where the reading settled on exactly ONE player, subject or companion,
@@ -2313,11 +2227,10 @@ and never a stray name found elsewhere in the question.
 
 SUBJECT_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({GAME_HIGHS, GAMES_COUNTED, PLAYER_SPLITS})
 """What the words ask where a player left out changes the answer
-(``single_game_high``, ``threshold_count``, ``player_splits``), but is not required -
-an empty slot means "the league" (or, for ``player_splits``, the team's own
-splits: "show me Embiid's splits against boston" arrived as the 76ers and
-the Celtics meeting with Embiid dropped, once the intent left the router's
-prompt in 5.0.0, and a model's names may still drop him) - so a name is restored only where the
+(a single game's high, a count over a line, a player's splits), but is not
+required - no player means "the league" (or, for splits, the team's own
+splits: "show me Embiid's splits against boston" can arrive as the 76ers
+and the Celtics meeting with Embiid dropped from the model's names) - so a name is restored only where the
 question's own words name exactly one player and that naming survives
 :func:`~association.query.subject._named_only_by_a_team_word` and
 :func:`~association.query.subject._named_only_by_a_common_word`.
@@ -2325,26 +2238,23 @@ question's own words name exactly one player and that naming survives
 Separate from :data:`PLAYER_REQUIRED_ASKS` on purpose: those shapes'
 readers cannot answer at all without a player, while these two have a real,
 different answer with none (the league's leaders) - "kawhi most threes in a
-game" (yardstick-v2 F093) used to answer that league ranking, Kawhi Leonard's
-own 7 never mentioned, because ``single_game_high`` was never taught to read
-a subject named with no scoring verb and no possessive
-(``router._SUBJECT_OF_HIGH`` needed one of those, as
-:data:`~association.query.lexicon.SUBJECT_OF_HIGH` does; "NAME most/highest
-STAT" has neither).
+game" (yardstick-v2 F093) names Kawhi Leonard with no scoring verb and no
+possessive, which :data:`~association.query.lexicon.SUBJECT_OF_HIGH`
+needs, and unrestored answers the league ranking, his own 7 never
+mentioned.
 
-Measured before shipping, per AGENTS.md's own discipline for this exact
-trap ("best" is Travis Best): both ``scripts/check_routing.py``'s cases and
+Measured per AGENTS.md's own discipline for this exact trap ("best" is
+Travis Best): a corpus of real questions with
 ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`` (380
-questions together) were run through the restoring grammar
-(the subject reading) with the two intents here as
-the only ones it could touch. 5 false-positive candidates turned up in the
+questions together) run through the restoring grammar (the subject
+reading) with the shapes here as the only ones it could touch. 5 false-positive candidates turned up in the
 WHOLE corpus - "Best true shooting percentage last season?" (Travis Best),
 "Best record from 2010-11 to 2018-19 nba" and "Best NBA record since
 January 31st 201" (both Travis Best again), "Celtics vs Bulls head to head
 record" (Luther Head), and "Aaron gordan vs 76ers log" (a typo landing on
-Gordan Giricek instead of Aaron Gordon) - and NONE of the five routed to
-``single_game_high`` or ``threshold_count``, so restricting to this pair
-alone cleared the measured corpus with zero false positives. The
+Gordan Giricek instead of Aaron Gordon) - and NONE of the five asks for a
+single game's high or a count over a line, so restricting to this pair
+alone clears the measured corpus with zero false positives. The
 ``best``/``head`` pair is still excluded by
 :func:`~association.query.subject._named_only_by_a_common_word` as a
 forward-looking gate, since a future question asking either could still
@@ -2361,26 +2271,27 @@ or more).
 """
 
 TEAM_ONLY_ASKS: frozenset[PointShape] = frozenset({TEAM_RECORD, TEAM_RANKING, TEAM_LINE, TEAM_SEASON_HISTORY, TEAM_OUTLOOK})
-"""What the words ask with no player-shaped reading at all (``team_record``,
-``team_leaderboard``, ``team_stat``, ``team_outlook``) - absent from
+"""What the words ask with no player-shaped reading at all (a team's
+record, its season line or history, teams ranked, a team's outlook) - absent from
 :data:`PLAYER_ASKS`, and so never checked by
 ``subject.apply_subject`` or the answering loop against a stray player name.
 
 A question naming exactly one real player and no team, read as one of
 these, is answering a different subject than the one named -
-yardstick-v2 F111, "alperen şengün alltime record" routed to
-``team_leaderboard`` with no player and no team slot at all, and answered
-the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
-where the shape cannot be about the subject" is exactly this shape;
+yardstick-v2 F111, "alperen şengün alltime record" read as teams ranked
+with no player and no team would answer the league standings, entirely
+off Sengun. AGENTS.md's "When it cannot be repaired, say so by name" is
+exactly this shape;
 ``subject.player_named_on_a_team_only_question`` is the check, read by the
 parser into the Reading's ``no_player_reading`` refusal
 (:attr:`Reading.refused`), which the planner says before any reader runs -
 naming the player it read rather than answering the wrong one.
 
-Deliberately not every team-shaped key: ``head_to_head`` is only ever
-two teams meeting - the parser reads a player's record against a team as
-his own games (``player_splits``, #163) from the subject's kind - and
-``coach`` reads no point (a cause, ``no_coach_table``) and already refuses on its own terms -
+Deliberately not every team-shaped key: two teams' meetings
+(``TEAM_MEETINGS``) are only ever two teams - the parser reads a player's
+record against a team as his own games (``PLAYER_SPLITS``, #163) from the
+subject's kind - and a coach (``TEAM_COACH``) reads no point (a cause,
+``no_coach_table``) and already refuses on its own terms -
 neither needs a second, more general check that could only disagree with
 the first.
 
@@ -2394,13 +2305,12 @@ the first.
 """
 
 DECLARED_RELATIONS: frozenset[PointRelation] = frozenset({"netpoints", "shots"})
-"""The declared relations (``ROADMAP.md``, Phase 2, step 5, and the decision
-"Charts are declared shapes"): what the words ask on one of them is read
-from its own default point rather than declined "no adapter for" - a
+"""The declared relations (the decision "Charts are declared shapes"):
+what the words ask on one of them is read from its own default point - a
 player's NetPoints (a scalar and a split by category) and his fingerprint
 (a chart), each on ``netpoints``; a player's shot chart (a chart) and his
 average shot distance (a scalar), each on ``shots``. No word of the question
-moves their point - the retired templates read their slots alone - so it is
+moves their point, so it is
 the asked shape's default (:data:`~association.query.point.DEFAULT_POINTS`),
 before any move that reads a player's games (:func:`on_a_declared_relation`).
 
@@ -2411,7 +2321,7 @@ before any move that reads a player's games (:func:`on_a_declared_relation`).
 
 def on_a_declared_relation(asked: PointShape | None) -> bool:
     """Whether the words ask for a shape on a declared relation
-    (:data:`DECLARED_RELATIONS`): ``player_netpoints``, ``fingerprint``,
+    (:data:`DECLARED_RELATIONS`): ``NETPOINTS_RATINGS``, ``fingerprint``,
     ``shot_chart``, ``shot_distance``.
 
     .. versionadded:: 6.0.0
@@ -2483,8 +2393,8 @@ def ordinal_word(n: int) -> str:
 
 
 def _career_scope(scope: Filtered) -> Filtered:
-    """The point reader's rule (the router's ``route()``'s own, before it) for a count by a player
-    (:data:`~association.query.lexicon.HOW_MANY_OR_OFTEN`, step 2 B5): with no season named, "how many ...
+    """The point reader's rule for a count by a player
+    (:data:`~association.query.lexicon.HOW_MANY_OR_OFTEN`): with no season named, "how many ...
     has he" is his career."""
     return scope if scope.span.named else replace(scope, span=scope.span.as_career())
 
@@ -2562,8 +2472,7 @@ class ShapeDeclined(Unsupported):
     def under(cause: Cause, asked: PointShape | None) -> Cause:
         """``cause`` under the key the words ask (``asked``), which the
         sentence names in the shape's words (``"Nothing here answers this
-        question as a ranking of teams: ..."``, ``compose.say.asked_as``;
-        the page's label, ``asked_label``, until Phase 4, step 2).
+        question as a ranking of teams: ..."``, ``compose.say.asked_as``).
 
         .. versionchanged:: 6.0.0
            ``labeled(cause, intent)``, which carried the label itself, until
@@ -2649,7 +2558,7 @@ def scope_reads_box_scores(scope: Filtered, measures: list[Any]) -> bool:
 
 
 # The cells that narrow WHICH games an answer covers, every one a typed
-# value's since Phase 3, step 2 (:attr:`Filtered.CELLS`). A reader that ignores
+# value's (:attr:`Filtered.CELLS`). A reader that ignores
 # one gives a different answer, not a broader one, and says nothing -
 # confirmed three times ("his last game" charting a whole season, and so
 # on). The reader reads these CORRECTLY in each case, so nothing upstream
@@ -2683,9 +2592,7 @@ def unhonored_cells(scope: Filtered, honored: frozenset[str]) -> list[str]:
     relation's own check of a cell set against its table
     (``compose.core._check_relation_scoping``).
 
-    Over :meth:`Filtered.cells`, every family's and the split's; it read the
-    untyped slots' list (``SCOPING_SLOTS``) beside the typed families until
-    Phase 3, step 2's closing slice.
+    Over :meth:`Filtered.cells`, every family's and the split's.
 
     .. versionadded:: 6.0.0
     """
@@ -2696,10 +2603,9 @@ def unhonored_cells(scope: Filtered, honored: frozenset[str]) -> list[str]:
 # What the words ask whose reader reads a player name at all - resolving it,
 # filtering on it, or refusing because of it. A name the question does not
 # support is only worth refusing over where the answer would actually be about
-# that player; for `team_record` and `head_to_head` the name is not read, so a
-# stray one changes nothing. Checked against the retired templates' own source
-# while they existed (test_no_template_outside_player_intents_reads_a_player,
-# gone with them); no test reads the readers' source for it.
+# that player; for a team's record and two teams' meetings the name is not
+# read, so a stray one changes nothing. No test reads the readers' source
+# for it.
 PLAYER_ASKS: frozenset[PointShape] = frozenset(
     {
         NETPOINTS_FINGERPRINT,
@@ -2732,7 +2638,7 @@ PLAYER_ASKS: frozenset[PointShape] = frozenset(
 
 OWN_TEAM_RESTORABLE_ASKS: frozenset[PointShape] = PLAYER_ASKS - {PLAYER_RANKING, PLAYER_COMPARISON, PLAYER_MEETINGS, TEAM_PERIOD_TOTAL}
 """What the words ask where a player's OWN team, named beside him, is his
-tenure (``Cuts.tenure``, the ``own_team`` slot until Phase 3, step 2): every
+tenure (``Cuts.tenure``): every
 shape a reader reads one player by - never a ranking, a comparison or a
 pair's meetings, whose players are several. The relation narrows by it
 (``player_relation._narrow_player_games``), and a shape whose words do not
@@ -2740,8 +2646,8 @@ state it is declined by the planner's one check by the cell
 (``compose.plan.cells_unhonored``), naming the team - never answered over
 every game.
 
-"lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
-current (Lakers) season, "Miami" never read at all. The subject reading
+"lebron stats as a starter for Miami" (yardstick-v2 F166) is his Miami
+seasons, never his current (Lakers) one with "Miami" unread. The subject reading
 reads "for <team>", "with <team>", "as a <team>", the team beside his name
 (``subject._team_after_for``, ``_team_beside_player``) and, with no season
 also named, defaults ``span`` to "career" too - a historical team names a

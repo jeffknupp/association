@@ -3,7 +3,7 @@
 them from, the per-row figures summed over exactly the rows shown, and the
 remarks as kinds and facts. The sayer (:mod:`association.query.compose.say`)
 words it. Phase 2's first slice (``ROADMAP.md``, "Phase 2, the expected
-steps", step 0): the body of the retired ``game_log`` template, which the
+steps", step 0): the body of the retired ``PLAYER_LOG`` template, which the
 presenter ``compose.present._present_game_log`` called over the compiler's
 settled player and narrowing until 2026-10-03, moved here whole and split
 into what reads and what says - numbers identical by construction, the
