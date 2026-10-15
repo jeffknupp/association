@@ -261,7 +261,10 @@ def _everyone_threshold_predicates(scope: Filtered, measure: str | None, predica
     if line is None or int(line.value) <= 0:
         return predicates
     column = line.measure or stat_measure(scope.measure)
-    if column and column != measure:
+    if column and (column != measure or any(name in BOOLEAN_MEASURES for name, _, _ in predicates)):
+        # Beside a yes/no measure the line is a second predicate on the same
+        # game ("30 point triple doubles", ISSUES.md #437), whatever stat the
+        # words also name.
         return [*predicates, (column, ">=", int(line.value))]
     return predicates
 
@@ -318,7 +321,10 @@ def _everyone_boolean_game_ranking(asked: PointShape | None, question: str, scop
     .. versionadded:: 4.4.0
     """
     boolean = [name for name, _, value in predicates if name in BOOLEAN_MEASURES and value is True]
-    if not boolean:
+    if not boolean or (asked == GAMES_COUNTED and threshold_line(scope) is not None):
+        # (The count's own line beside the yes/no measure - "most 30 point
+        # triple doubles" - is who had the most such games, ISSUES.md #437,
+        # never the games ranked by the line's stat.)
         return None
     # "Most triple-doubles" is a COUNT per player (the season line's own
     # metric, leaderboard's retired reader): the games are ranked only where
@@ -787,7 +793,14 @@ def _move_boolean_count(question: str, measure: str | None, asked: PointShape | 
         # very line ``fouled_out`` is defined as (DERIVED) - so the keyed
         # line's own count is this one, and threshold_count's default point says it.
         return None
-    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), group="none", predicates=[(measure, "=", True)])
+    predicates: list[tuple[str, str, Any]] = [(measure, "=", True)]
+    line = threshold_line(career)
+    if asked == GAMES_COUNTED and line is not None and line.measure is not None and int(line.value) > 0:
+        # "how many 30 point triple doubles does jokic have": the games the
+        # yes/no measure holds over the line, both on the same game (ISSUES.md
+        # #437) - the line was dropped and every triple-double counted.
+        predicates.append((line.measure, ">=", int(line.value)))
+    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), group="none", predicates=predicates)
 
 
 def _move_boolean_count_is_line(measure: str, scope: Filtered) -> bool:

@@ -3569,7 +3569,10 @@ CHILD_THRESHOLD_COUNT = ask(
     # the line, then the most times it was reached - the players' count of
     # games over it (ISSUES.md #370: the scoring leaders answered, "40"
     # unread).
-    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+\s+(?:the\s+)?most(?:\s+(?:times|often|games))?\b",
+    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+\s+(?:the\s+)?most(?:\s+(?:times|often|games))?\b"
+    # "30 point triple doubles": the games a yes/no measure holds over a
+    # line, counted (ISSUES.md #437: three single games were listed).
+    rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+[\s-]+(?:triple|double)[\s-]?doubles?\b",
     re.IGNORECASE,
 )
 """A count of games over a line.

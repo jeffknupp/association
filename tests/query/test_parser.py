@@ -1592,3 +1592,21 @@ def test_a_teams_figure_given_up_is_the_team_compilers_total(con: duckdb.DuckDBP
     reading = _read(con, question)
     assert reading.point is not None and reading.point.relation == "team"
     assert reading.measure is not None and reading.measure.whose == "opponent"
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "read_as"),
+    [
+        ("most 30+ point triple doubles", [], PointShape("player_games", "ranking", "count")),
+        ("most 30 point triple doubles in the last 3 years", [], PointShape("player_games", "ranking", "count")),
+        ("how many 30 point triple doubles does jokic have", ["Nikola Jokic"], GAMES_COUNTED),
+    ],
+)
+def test_a_count_of_a_yes_no_measure_over_a_line_keeps_both(con: duckdb.DuckDBPyConnection, question: str, names: list[str], read_as: PointShape) -> None:
+    """ISSUES.md #437: "most 30+ point triple doubles" listed three single
+    games, and a count of a player's 30-point triple-doubles counted every
+    triple-double. The count's child grammar reads "N stat triple doubles"
+    as its games, and the line is a second predicate on the same game."""
+    reading = _read(con, question, names)
+    assert reading.point is not None and reading.point.read_as == read_as
+    assert ("triple_double", "=", True) in reading.point.predicates and ("points", ">=", 30) in reading.point.predicates
