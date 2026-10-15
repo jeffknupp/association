@@ -2,11 +2,9 @@
 result, by month or (a player's) by starting and coming off the bench, read
 into a :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Grouped` body - one row per group of each
-split asked for, with the record and the per-game line in it. Phase 2's
-slice (i): the retired ``PLAYER_SPLITS`` template's two branches
-(``templates.splits._player_splits_from`` and ``_player_splits_team``, said
-by ``_player_splits_answer``) moved here whole, their remarks as kinds and
-facts; the sayer (:mod:`association.query.compose.say`) words both.
+split asked for, with the record and the per-game line in it - a
+player's and a team's, their remarks as kinds and facts; the sayer
+(:mod:`association.query.compose.say`) words both.
 
 .. versionadded:: 5.0.0
 """
@@ -33,7 +31,7 @@ from association.query.team_relation import condition_team_no_games, team_games,
 from .core import Compiled, Query, compile_over, compile_query, rows_of, unread_note
 from .team import TeamQuery, compile_team_over
 
-# Stat name (the router's, kept as the measure's spelling) -> the standard split line's own key: naming one of these
+# Stat name (the measure's spelling) -> the standard split line's own key: naming one of these
 # changes nothing about which columns are shown, since _PLAYER_LINE/_TEAM_LINE
 # already carry it. Kept apart from SPLIT_EXTRA_STATS below so a stat that IS
 # already on the table is neither refused nor given a redundant second column.
@@ -50,8 +48,7 @@ _SPLIT_LINE_STATS: dict[str, frozenset[str]] = {
 SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
     "usage_pct": ("usage_pct", "USG%", "AVG(p.usage_pct)"),
 }
-"""``PLAYER_SPLITS`` extra-column stats, keyed by the stat's name (the
-router's stat name when this was written).
+"""``PLAYER_SPLITS`` extra-column stats, keyed by the stat's name.
 
 .. versionadded:: 4.4.0
 """
@@ -157,8 +154,8 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     compiler's settled player and narrowing (#228). ``None`` where the point
     is not the splits' own (a grouped record by venue or by starter on the
     player relation with no predicate), or names a stat the line has no column for (the
-    compiler's own point, said by its sentence); the retired template's own
-    early refusals stand (a window, a home/away split beside a venue). A
+    compiler's own point, said by its sentence); the splits' own early
+    refusals stand (a window, a home/away split beside a venue). A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal.
 
@@ -237,7 +234,7 @@ def _player_splits(
 
 
 def _player_notes(con: duckdb.DuckDBPyConnection, covered: Any, base: str, params: Any, first: int | None, kinds: list[str], unread: Note | None) -> tuple[Note, ...]:
-    """The remarks, in the order the template wrote them: the unseen games,
+    """The remarks, in their order: the unseen games,
     the columns rebuilt lines could not fill (``unread``), the floor, then
     what the table's words mean."""
     notes: list[Note] = []
@@ -305,7 +302,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
         # player-games relation these narrow - so a line on a box-score
         # column, a playoff-series game, an ordinal season or a teammate's
         # absence (or role) have nowhere to apply. Refused by name rather
-        # than silently ignored ("76ers splits without Embiid" once answered
+        # than silently ignored ("76ers splits without Embiid" would answer
         # the whole season).
         raise Unsupported("player_splits cannot honor below/above, game_n, season_n, without or conditions for a team with no player named")
     if scope.split == "starter_bench" or scope.split in _STARTER_BENCH_SIDES:

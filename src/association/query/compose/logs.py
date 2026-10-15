@@ -2,14 +2,9 @@
 :class:`~association.query.result.Result` - rows, the count the window cut
 them from, the per-row figures summed over exactly the rows shown, and the
 remarks as kinds and facts. The sayer (:mod:`association.query.compose.say`)
-words it. Phase 2's first slice (``ROADMAP.md``, "Phase 2, the expected
-steps", step 0): the body of the retired ``PLAYER_LOG`` template, which the
-presenter ``compose.present._present_game_log`` called over the compiler's
-settled player and narrowing until 2026-10-03, moved here whole and split
-into what reads and what says - numbers identical by construction, the
-sentence reproduced word for word.
+words it.
 
-Two reads, as the template had: one season type
+Two reads: one season type
 (:func:`_player_log`, :func:`_team_log`), and "last N games" naming no
 season type, where each type is read on its own and the rows merged by
 date (:func:`_player_log_mixed`, :func:`_team_log_mixed`), saying how many
@@ -48,8 +43,8 @@ from .team import TEAM_BOX_COLUMNS, TEAM_GAME_OWN, TeamQuery, compile_team_count
 
 # A player's log columns, by header -> player_game_log column. The four in
 # _LOG_BASE are always shown, and a named stat adds its own: "luka ft log" and
-# "kyle kuzma last 7 games fgm" are real queries, and the log used to show
-# points, rebounds and assists whatever was asked.
+# "kyle kuzma last 7 games fgm" are real queries, which points, rebounds and
+# assists alone would not answer.
 LOG_COLUMNS: dict[str, str] = {
     "MIN": "minutes",
     "PTS": "points",
@@ -100,8 +95,8 @@ def log_key(header: str) -> str:
 def _game_log_lines(scope: Filtered) -> list[MeasureFilter]:
     """The lines a log keeps games under or over - the lines the relation
     narrows by (:func:`~association.query.lines.measure_filters`). A bare
-    threshold line beside them is the retired template's own refusal (it
-    never read one), unless it is one of those lines' own number, which
+    threshold line beside them is the log's own refusal (it reads none),
+    unless it is one of those lines' own number, which
     the model filed twice."""
     measures = measure_filters(scope)
     threshold = threshold_of(scope)

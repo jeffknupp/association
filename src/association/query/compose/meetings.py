@@ -2,13 +2,11 @@
 since-bounded range or every season on record, tallied once, read into a
 :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Grouped` body - one row per team, its
-wins (``ROADMAP-TYPES.md``: ``head_to_head``, "scalar (wins per team)").
-Phase 2's slice (iv): the retired ``templates.games.head_to_head``'s read
-moved here whole - the two teams named across ``teams``, ``team`` and
-``opponent``, the first team's own rows of the team relation narrowed to
+wins (``TEAM_MEETINGS``). The two teams are named across ``teams``,
+``team`` and ``opponent``, and the first team's own rows of the team relation narrowed to
 the other (:func:`association.query.team_relation.team_games`), executed
 as the team compiler's ``rows`` read (:func:`~association.query.compose.team.compile_team_over`) - and its
-sentences to the sayer (:func:`association.query.compose.say.say_head_to_head`).
+sentences are the sayer's (:func:`association.query.compose.say.say_head_to_head`).
 
 .. versionadded:: 5.0.0
 """
@@ -212,8 +210,8 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
     window = _head_to_head_window(scope)
     if window is not None and date is None and scope.span.season is None and not career and since is None and until is None:
         # "last 10 home games" with no season named: the newest N meetings on
-        # record, as the team log reads "last 10 games vs the Nets" (Phase 5,
-        # step 7, the yardstick's F108; the cell was declined since #352).
+        # record, as the team log reads "last 10 games vs the Nets" (the
+        # yardstick's F108).
         career = True
     if since is not None or career or until is not None:
         return _head_to_head_over_span(con, replace(q, shape="rows"), a, b, venue, season_type, since=since, until=until, career=career, window=window)

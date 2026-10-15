@@ -6,13 +6,10 @@ at home or on the road - read over the team-season relation
 :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Scalar` record body (``how="record"``)
 and, for a season with a home/road split, a
-:class:`~association.query.result.Grouped` part by venue. Phase 2's slice
-(iv): the retired ``TEAM_RECORD`` template's standings reads
-(``templates.teams._standings_season``, ``_standings_career``) moved here,
-their statements into the relation, their sentences to the sayer
-(:func:`association.query.compose.say.say_team_record`); since Phase 4,
-step 5 the relation runs them too (:mod:`association.query.standings`), and
-this module reads only what it hands back.
+:class:`~association.query.result.Grouped` part by venue. The statements
+are the relation's, which runs them (:mod:`association.query.standings`),
+and this module reads only what it hands back; the sentences are the
+sayer's (:func:`association.query.compose.say.say_team_record`).
 
 The standings are the authoritative source for a regular season's record:
 their "Home" and "Road" strings agree with a tally of the game list for

@@ -10,9 +10,9 @@ unchanged.
 Kept apart from ``core.py``'s player compiler on purpose: nothing here is
 imported by, or imports from, its player-subject functions
 (:func:`~association.query.compose.core.compile_query`,
-:func:`~association.query.compose.core._resolve_named`, ...), so every K1/K2
-rule measured for the player subject stays exactly as it was - the same
-reason :class:`association.query.team_games.TeamNarrowed` is its own
+:func:`~association.query.compose.core._resolve_named`, ...), so no rule
+of the player subject moves with a team's question - the same reason
+:class:`association.query.team_games.TeamNarrowed` is its own
 dataclass rather than a subclass of
 :class:`association.query.player_games.Narrowed`.
 
@@ -21,8 +21,8 @@ season line and box scores:
 
 - **Unnarrowed** ("how many 3-pointers have the Magic made this season") -
   the season's own TOTAL, read straight from ``team_season_stats``
-  (:data:`SEASON_MEASURES`) - the same table ``templates.teams.team_stat``
-  reads, but its raw total rather than the per-game average
+  (:data:`SEASON_MEASURES`) - the same table a team's line reads
+  (``compose.team_stats``), but its raw total rather than the per-game average
   ``team_metrics.TEAM_METRICS`` carries. "This season" answered with a
   per-game figure is the wrong-shape bug this module exists to fix (F127,
   ISSUES.md): 11.7 threes a game is the right number for a different
@@ -43,8 +43,7 @@ ISSUES.md #403), saying how many games had none; a percentage or a figure
 no game carries is declined by name rather than answered as the season. A
 "last N games" question naming no
 season type (F128/F129's own shape) is answered by the team's log
-(``compose.logs._team_log_mixed``, ``templates.games.team_game_log``'s
-``_team_game_log_mixed`` until Phase 2, which reads both season types and
+(``compose.logs._team_log_mixed``, which reads both season types and
 merges by date) rather than duplicated here; this module's narrowed reader
 is one season type at a time.
 
@@ -113,8 +112,8 @@ GAME_MEASURES: dict[str, str] = {
 #: A team measure name -> its ``team_season_stats`` column, for an
 #: UNNARROWED read - the season's own raw total. A whitelist, like
 #: ``THRESHOLD_STAT_COLUMNS`` keeps for a player's box columns: a stat key
-#: can be model-generated text (the normalizer's stat, the router's ``stat``
-#: slot before it), and this is the only place it can reach SQL.
+#: can be model-generated text (the normalizer's stat), and this is the
+#: only place it can reach SQL.
 SEASON_MEASURES: dict[str, str] = {
     "points": "points",
     "rebounds": "rebounds",
@@ -211,7 +210,7 @@ def team_metric(measure: Measure) -> str:
     key (``points``, ``record``, the box-score columns of
     :data:`SEASON_MEASURES`). Built here, once, as the planner hands the
     team compiler its point: the point reader states the measure typed
-    (``Reading.measures``, Phase 4, step 3).
+    (``Reading.measures``).
 
     .. versionadded:: 6.0.0
     """
@@ -253,7 +252,7 @@ class TeamQuery(Filtered):
     """
 
     #: A key of :data:`GAME_MEASURES` and/or :data:`SEASON_MEASURES`: what
-    #: the team compiler sums (``measure`` until Phase 3, step 4, slice (b)).
+    #: the team compiler sums.
     metric: str = "points"
     #: How the point reduces its games (:class:`~association.query.reading.Aggregate`):
     #: ``TOTAL``, a sum, where none is named; ``RECORD``, wins and losses
@@ -270,8 +269,8 @@ class TeamQuery(Filtered):
     #: A ``"grouped"`` shape's group: ``"none"`` for the team's own splits
     #: (``PLAYER_SPLITS``' team half, which compiles one read per kind by a
     #: key of :data:`TEAM_GROUPS`), or ``"presence"`` - the team's games
-    #: divided by whether named teammates played (``PRESENCE_SPLIT``'s retired
-    #: template, compiled by :func:`compile_team_presence`).
+    #: divided by whether named teammates played (``PRESENCE_SPLIT``,
+    #: compiled by :func:`compile_team_presence`).
     group: str = "none"
 
 
@@ -398,7 +397,7 @@ def _season_total(con: duckdb.DuckDBPyConnection, team: Entity, season: int, sea
     """``column``'s value and the games it covers, from one team-season row -
     or ``None`` where the warehouse has no such row: the team-season
     relation's read (:func:`~association.query.team_seasons.read_team_season_total`),
-    which runs the statement this ran itself until Phase 4, step 5."""
+    which runs the statement."""
     return read_team_season_total(con, team.id, season, season_type, column)
 
 
@@ -436,8 +435,8 @@ def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Ent
 
 
 def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, both: bool = False) -> tuple[TeamNarrowed, Entity, ResolvedSpan]:
-    """``team``'s games, narrowed exactly as ``templates.games.team_quarter_points``
-    narrows its own - through :func:`~association.query.team_relation.scoped_team`
+    """``team``'s games, narrowed as every team reader narrows its own -
+    through :func:`~association.query.team_relation.scoped_team`
     and :func:`~association.query.team_relation.team_games`, never a
     clause written here. Resolves the team itself too (rather than reusing
     :func:`_resolved_team_subject`'s separate lookup), so the name and the
@@ -636,8 +635,8 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
     :func:`~association.query.conditions._longest_runs_sql`'s, partitioned
     by ``(team_id, season)``: a team's run is counted within one season, as
     the record book counts them. The games the runs are read over are kept
-    as ``run_rows`` for :func:`compile_team_range`. ``LINE_RUNS``'s retired
-    team and league branches (ROADMAP plan item 6, step (g)).
+    as ``run_rows`` for :func:`compile_team_range`. ``LINE_RUNS`` for a
+    team and the league's teams.
 
     .. versionadded:: 5.0.0
     """
@@ -713,8 +712,8 @@ def compile_team_presence(
     a player is named, and whether the game has a box score - the relation
     cell :func:`~association.query.conditions.presence_games_sql`, over the
     team relation narrowed to the windows' teams and the opponent.
-    ``PRESENCE_SPLIT``'s retired template (ROADMAP plan item 6, step (g));
-    read by ``compose.presence.read_with_without``, which keeps the games
+    ``PRESENCE_SPLIT``'s statement, read by
+    ``compose.presence.read_with_without``, which keeps the games
     inside the windows (:func:`~association.query.conditions.presence_games`).
 
     .. versionadded:: 5.0.0
@@ -750,8 +749,7 @@ def compile_team_high(narrowed: TeamNarrowed, team: Entity | None, span: Resolve
     game with no figure left out. ``limit`` of them. Each row carries the
     game's team (``team``, its name in that season) beside the opponent, the
     date and the result. The reader of a team's best single game
-    (``compose.highs.read_team_game_high``; D4 lifted for it, Jeff
-    2026-10-13, ISSUES.md #364).
+    (``compose.highs.read_team_game_high``; ISSUES.md #364).
 
     .. versionadded:: 6.0.0
     """
@@ -816,7 +814,7 @@ def _compile_team_grouped(q: TeamQuery, narrowed: TeamNarrowed, team: Entity | N
 #:   and the warehouse's ``turnovers`` is a DIFFERENT number, the player-box
 #:   sum repaired in at load time. 2018 is short here: 2,134 of that regular
 #:   season's rows and 146 of its postseason carry a real box score with
-#:   ``totalTurnovers`` NULL (the 2026-09-20 warehouse), counted back by the
+#:   ``totalTurnovers`` NULL, counted back by the
 #:   blank-figure count (:func:`compile_team_count`).
 #: - ``minutes`` has none: a team has no minutes total.
 TEAM_BOX_COLUMNS: dict[str, str] = {

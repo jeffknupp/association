@@ -1,10 +1,9 @@
 """The NetPoints relation's readers: a player's NetPoints (``NETPOINTS_RATINGS``)
 and his play-type fingerprint (``fingerprint``), read from ESPN Analytics'
-NetPoints tables into a :class:`~association.query.result.Result` -
-Phase 2's slice (v) (``ROADMAP.md``, step 5, and the decision "Charts are
-declared shapes": each keeps its own reader and renderer, declared with its
-relation; the relation's own module, :mod:`association.query.netpoints`,
-holds its statements since Phase 4, step 5).
+NetPoints tables into a :class:`~association.query.result.Result` (the
+decision "Charts are declared shapes": each keeps its own reader and
+renderer, declared with its relation; the relation's own module,
+:mod:`association.query.netpoints`, holds its statements).
 
 ``fingerprint`` is a chart (:class:`~association.query.result.Chart`):
 one or more players' play-type fingerprints - a season's, from
@@ -20,9 +19,9 @@ between this reader and the sayer that writes the page.
 ``net_points_player`` and the categories behind them from
 ``net_points_player_fingerprint`` (a :class:`~association.query.result.Scalar`
 and a :class:`~association.query.result.Grouped` by ``category``), or one
-game's from ``net_points_player_game``. The retired template's three
-statements are the NetPoints relation's (:mod:`association.query.netpoints`,
-since Phase 4, step 5), which builds them and executes them through the
+game's from ``net_points_player_game``. The three statements are the
+NetPoints relation's (:mod:`association.query.netpoints`), which builds
+them and executes them through the
 compiler's one door; this module reads what they return into the Result
 and runs no statement of its own. The sayer
 (:mod:`association.query.compose.say`) words each.
@@ -95,7 +94,7 @@ class NetPointsQuery(Filtered):
     (``"scalar"``: a season's ratings and the split by play type behind
     them, or one game's) or his fingerprint (``"chart"``). The reader reads
     the player, the season, its type, the unit, the side and a first or
-    last game from the scope, as the retired templates read their slots.
+    last game from the scope.
 
     .. versionadded:: 5.0.0
     """
@@ -131,10 +130,9 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> 
     relation's refusal (an ambiguous name); ``None`` where the point is not
     a scalar.
 
-    NetPoints existed only as leaderboard metrics - ways to rank the league -
-    so a question about one player had nowhere to land until the retired
-    template, and a guard that turns a wrong answer into a slow one needs
-    something to fall through TO.
+    Without this reader NetPoints would be only ranking metrics - ways to
+    rank the league - and a question about one player would have nowhere
+    to land.
 
     Raises ``Unsupported`` with no player named, and where the
     per-game table a game's NetPoints come from is missing.

@@ -4,10 +4,9 @@ series, in one calendar month or on a weekday or holiday, against a
 conference or a division, broken out by
 month, both season types together, or across every season the warehouse
 holds - ``TEAM_RECORD``'s point, read into a
-:class:`~association.query.result.Result`. Phase 2's slice (iv): the
-retired template (``templates.teams.team_record``) and everything it
-reached moved here and into :mod:`~association.query.compose.standings`,
-its statements into the relations, its sentences to the sayer
+:class:`~association.query.result.Result`, with
+:mod:`~association.query.compose.standings`; the statements are the
+relations', the sentences the sayer's
 (:func:`association.query.compose.say.say_team_record`,
 :func:`~association.query.compose.say.say_team_record_by_month`).
 
@@ -98,7 +97,7 @@ def _team_record_month_and_split(split: str | None, situation: Situation | None,
             raise Unsupported("a month split already covers every month; narrowing it further to one weekday or holiday is not built")
     if limit and split is None and month is None and narrowing is None and alignment is None:
         # Measured over the corpus, a month narrowing or a by-month split
-        # never carried a real limit of its own (the router filled a default),
+        # never carries a real limit of its own,
         # so only a bare limit is read as "last N games".
         raise Unsupported("a record over a limited set of games is a game_log question")
     return _RecordCut(split=split, month=month, calendar=narrowing, alignment=alignment)

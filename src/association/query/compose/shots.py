@@ -2,17 +2,16 @@
 averaged by distance from the rim (``shot_distance``): a declared relation
 with its own reader (``ROADMAP.md``, "Charts are declared shapes"), not
 ported onto the player-games relation; its statements are the shot
-relation's (:mod:`association.query.shots`) since Phase 4, step 5.
+relation's (:mod:`association.query.shots`).
 
-The reader is the retired templates' read, moved whole
-(``templates/shots.py``, Phase 2, step 5): the player and the span settled
+The player and the span are settled
 through the shared steps (:func:`~association.query.player_relation.scoped_player`),
 the games a narrowing or a window sends the read to taken from the
 player-games relation's own reader
 (:func:`~association.query.player_games.games_subquery`, through
 :func:`~association.query.player_relation.scoped_games`), and the shots
 read off ``shot_chart`` - every statement the shot relation's
-(:mod:`association.query.shots`, since Phase 4, step 5), which builds them
+(:mod:`association.query.shots`), which builds them
 and executes them through the compiler's one door; this module reads what
 they return into the Result and runs no statement of its own.
 The chart is a :class:`~association.query.result.Chart` - the marks, the
@@ -236,7 +235,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result |
     came from). ``None`` where the point is not that; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (a name, a season, no games, an unseparable season),
-    and ``Unsupported`` what the template refused outright: a
+    and ``Unsupported`` what the reader refuses outright: a
     career and a window at once, a free throw's distance.
 
     .. versionadded:: 5.0.0
@@ -451,8 +450,8 @@ def _shot_chart_nothing_found(name: str, span: ResolvedSpan, games: _ShotChartGa
     the narrowed window's phrase (the span and the relation's narrowing, as
     a drawn chart's context says it), or the span alone: the season as the
     question named or defaulted it, a "since", or for a career any season
-    of the type on record. Until this the sentence blamed "the given
-    filters", which a bare season never gave, and named no season."""
+    of the type on record - never "the given filters", which a bare season
+    never gives."""
     kind = _shot_value_noun(shot_value)
     if games.event_id is not None:
         return Refusal(kind="no_shots", facts={"player": name, "kind": kind, "during": None, "game": game or f"game {games.event_id}"})
@@ -479,8 +478,8 @@ def _shot_chart_drawn(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     if refused is not None:
         return Chart(kind="shot_chart", title=player.name), [], None, refused
     # The games pinned, as an IN list even for one: these ids came FROM the
-    # relation, and a bare equality on the game is the shape the relation
-    # templates' source check forbids a reader to write.
+    # relation, and a bare equality on the game is the shape the readers'
+    # source check (tests/query/test_templates.py) forbids a reader to write.
     pinned = (games.event_id,) if games.event_id is not None else games.event_ids
     rows = chart_shots(con, player.id, season, season_type, pinned, shot_value)
     kept = [r for r in rows if shot_value is None or r[8] == shot_value]
@@ -507,7 +506,7 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result | Un
     it). ``None`` where the point is not that; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (no such player, which one, no games), and
-    ``Unsupported`` what the template refused outright: no name, a
+    ``Unsupported`` what the reader refuses outright: no name, a
     career and a window at once. Its remarks: the shots a value filter left
     out or derived, the other names that matched (``also_matched``), and
     for a career the floor's note, or for a defaulted season that drew

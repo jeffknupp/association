@@ -1,7 +1,7 @@
-"""One sentence per skeleton, carrying what the retired templates' sentences
-carried - the subject, the span, every narrowing the relation applied
+"""One sentence per skeleton, carrying what a reader's sentence carries -
+the subject, the span, every narrowing the relation applied
 (:meth:`~association.query.player_games.Narrowed.filters`), the measure names,
-and the count of games the numbers rest on. Not their exact wording;
+and the count of games the numbers rest on. Not a reader's exact wording;
 the shape a reader needs to see what was answered and correct it with a
 follow-up (`AGENTS.md`, "a default that chooses reasonably ...").
 
@@ -74,8 +74,8 @@ def _span_phrase(span: Any, player_seasons: tuple[int, int] | None = None) -> st
     *plain* career by them instead of the relation's floor: "(1994 on)" is
     true of every player and names nothing about the one asked about, where a
     question naming its own ``since``/``until`` already says exactly what it
-    covers and keeps that wording (ISSUES.md, "The compiler's career span
-    says '(1994 on)' where the template named the player's own seasons").
+    covers and keeps that wording; a plain career is named by the player's
+    own seasons, never "(1994 on)".
 
     .. versionchanged:: 4.4.0
        A closed range says "(2020-2022)" rather than "(2020 on)" - the numbers
@@ -105,8 +105,8 @@ def _span_phrase(span: Any, player_seasons: tuple[int, int] | None = None) -> st
 #: The view's rates stored as fractions (0.57). ``usage_pct`` is NOT one:
 #: ``player_advanced_stats`` computes it as ``100.0 * ...`` - already a
 #: percent, the figure ``PLAYER_SPLITS``' USG% column averages and prints as
-#: it is (``templates.splits.SPLIT_EXTRA_STATS``). Scaled again here, one
-#: game's 24.4 printed as "2435.5%" (#222).
+#: it is (``compose.splits.SPLIT_EXTRA_STATS``). Scaled again here, one
+#: game's 24.4 would print as "2435.5%" (#222).
 _FRACTION_COLUMNS = frozenset({"ts_pct", "efg_pct"})
 
 
@@ -130,8 +130,8 @@ def _fmt(v: Any, name: str) -> str:
 
 #: How a line on a stat is said, by its comparison: "with 30+ points",
 #: "with under 5 free throw attempts", "with 10 or fewer rebounds",
-#: "with more than 3 steals", "with exactly 0 turnovers" - the way the
-#: retired count's words said it, not the raw ``points >= 30`` the point
+#: "with more than 3 steals", "with exactly 0 turnovers" - the way a count's
+#: words say it, not the raw ``points >= 30`` the point
 #: carries (ISSUES.md #257).
 _LINE_WORDS: dict[str, str] = {
     ">=": "{value}+ {label}",

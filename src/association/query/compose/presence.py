@@ -3,10 +3,7 @@ played against the games they missed, side by side, with the subject's
 averages in each where a player is named - read into a
 :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Grouped` body by ``presence`` (one row
-per team and side). Phase 2's slice (iv): the retired ``PRESENCE_SPLIT``
-template's read (``templates.splits._with_without_read``, said through the
-presenter ``compose.present._present_with_without`` until then) moved here,
-its games now the team compiler's ``presence`` statement
+per team and side), its games the team compiler's ``presence`` statement
 (:func:`~association.query.compose.team.compile_team_presence`) executed
 through the one door; the sayer (:mod:`association.query.compose.say`,
 ``say_with_without``) words it.
@@ -172,7 +169,7 @@ def _with_without_groups(games: list[dict[str, Any]], team_names: dict[str, str]
 
 
 def _with_without_notes(named: list[str], tenure: list[dict[str, str]], asked_without: bool, unknown: int, subject: Entity | None) -> list[Note]:
-    """The remarks under the table, in the template's order: the tenure
+    """The remarks under the table, in order: the tenure
     counted, what "played" (or "out") means for one teammate against two,
     the games with no box score, and a player subject's columns."""
     notes = [Note("definition", {"term": "tenure_counted", "names": named, "stints": tenure})]
@@ -241,8 +238,8 @@ def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str],
         found = resolved_player(con, text, available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
         if isinstance(found, Unanswered):
             return found
-        # A teammate may stand among the players too (the router often
-        # repeated one in `player`); that is not a subject.
+        # A teammate may stand among the players too (a model may repeat one
+        # among the names); that is not a subject.
         if found.id not in {m.id for m in mates} and found.id not in {s.id for s in subjects}:
             subjects.append(found)
     if len(subjects) > 1:

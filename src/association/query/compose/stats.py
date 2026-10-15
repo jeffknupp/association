@@ -3,9 +3,7 @@ averages against one opponent, at home, as a starter, on one date - read
 into a :class:`~association.query.result.Result` whose headline part is a
 :class:`~association.query.result.Scalar` (the whole narrowed set reduced
 to one line) and, against one opponent, a second part listing the newest
-meetings behind it. Phase 2's slice (i), ``PLAYER_LINE``'s narrowed point:
-the retired template's read (``templates.players._box_score_player_stat``,
-a hand-written aggregate over the relation) is gone, and the statement run
+meetings behind it - ``PLAYER_LINE``'s narrowed point. The statement run
 is the compiler's - the point compiled with the ``line`` aggregate (each
 measure per game, the sums a line is said from, the seasons it spans:
 :func:`~association.query.compose.core._line_selects`), and the meetings as
@@ -59,8 +57,8 @@ def _player_stat_measures(q: Query) -> list[str] | None:
     """The measures ``PLAYER_LINE``'s own narrowed point reads: the shooting
     rate a percentage names, or the stats wanted (the one named, or the
     default line) where they are the point's own - else ``None``, and the
-    compiler's sentence answers. A stat with no per-game column is the
-    retired template's own decline, kept: ``None``, as its presenter returned."""
+    compiler's sentence answers. A stat with no per-game column is declined:
+    ``None``."""
     stat = spelled(q.measure)
     if stat is not None and stat in ADVANCED_STATS:
         return None
@@ -128,7 +126,7 @@ def _player_stat_meetings(con: duckdb.DuckDBPyConnection, q: Query, compiled: Co
     same rebuilt-line rule the line was read under, with the line's own
     measures beside the three each meeting shows.
 
-    Product decision (2026-09-19): "stats vs X" is the averages over every
+    A product decision: "stats vs X" is the averages over every
     meeting in scope, the game count, and a short footer of the meetings
     themselves - which is what makes "in 1 game" honest, and what a reader
     asking "vs X" is usually after. A per-game log is still ``PLAYER_LOG``'s,

@@ -3,29 +3,22 @@ the season line (``player_season_stats_deduped`` and the season-shaped
 NetPoints tables) - ``PLAYER_RANKING``'s own point, read into a
 :class:`~association.query.result.Result` with a
 :class:`~association.query.result.Grouped` body by ``player``, ranked by the
-metric (``Grouped.ranked_by``). Phase 2's slice (iii) (``ROADMAP.md``,
-"Phase 2, the expected steps", step 3): until 2026-10-05 the presenter
-``compose.present._present_leaderboard`` handed the point to the retired
-template's body (``templates.players._leaderboard_ranking``), which read
-and worded it; the read is the season line's own door now
+metric (``Grouped.ranked_by``). The read is the season line's own door
 (:func:`~association.query.season_line.rank_season_line` - the floors that
 need no refusal, the traded-player dedup, the qualifier, the career pool),
-moved and not re-derived, and the words are the sayer's
+and the words are the sayer's
 (:func:`~association.query.compose.say.say_leaderboard`).
 
-What the words added beyond the ranking's result object, measured on the 67
-recorded presenter answers before the move
-(``~/association-research/stages/leaderboard_measure.py``: 67 of 67 rows and
-minimums identical to the result objects called directly), and where each is
-now: the qualifier (58) - the ``minimum`` decision it already was; the
-career pool (1) - a ``floor`` note on the season line; the most-recent-team
-remark (4) - a ``definition`` note; the "also" columns and the team column
-(2 and 4) - values on each row; the team filter (6) - :class:`~association.query.result.RankingFacts`' ``team``; the
-season, named (12) or defaulted (54) - the span, unsaid when defaulted as it
-was. The coverage floors (the missing season and the unrepresentative one,
+What the ranking carries beside its rows, and where each is: the qualifier
+- the ``minimum`` decision; the career pool - a ``floor`` note on the
+season line; the most-recent-team remark - a ``definition`` note; the
+"also" columns and the team column - values on each row; the team filter -
+:class:`~association.query.result.RankingFacts`' ``team``; the season,
+named or defaulted - the span, unsaid when defaulted. The coverage floors
+(the missing season and the unrepresentative one,
 ``nba.coverage.Floor.unrepresentative``) are refusals the answering loop
-gives before any reader runs (``coverage.check_coverage``, over
-``RANKING_INTENTS``), unchanged.
+gives before any reader runs (``coverage.check_coverage``, over a planned
+``ranking``).
 
 .. versionadded:: 5.0.0
 """
@@ -57,7 +50,7 @@ DEFAULT_LEADERBOARD_LIMIT = 10
 
 def _leaderboard_is_own_point(q: Query) -> bool:
     """Whether ``q`` is the league's ranking on the season line - the point
-    the retired presenter took, and no other."""
+    this reader takes, and no other."""
     return q.subject == "everyone" and q.source == "seasons" and q.skeleton == "grouped" and q.group == "player" and not q.predicates
 
 
@@ -117,8 +110,7 @@ def _as_ranking(q: Query) -> Query:
 
 def read_players_counted(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """How many players a season line holds - "how many players averaged 30
-    ppg in 2026" (ISSUES.md #390, the 26th key, D4 lifted for it by Jeff on
-    2026-10-13) - read as the season ranking kept past the line
+    ppg in 2026" (ISSUES.md #390) - read as the season ranking kept past the line
     (:func:`read_leaderboard`) and counted: a
     :class:`~association.query.result.Scalar` body ``how="players"`` with
     the count, and the ranking's players as the next part. ``None`` where
@@ -156,8 +148,7 @@ def seasons_counted_reads(q: Query) -> bool:
 def read_seasons_counted(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """The players with the most seasons a season line holds - "most seasons
     averaging 30 ppg", "most 25 point seasons", "most seasons with 2000
-    points" (ISSUES.md #391; D4 lifted for the season ranking's shapes by
-    Jeff, 2026-10-13) - read through the season line's door
+    points" (ISSUES.md #391) - read through the season line's door
     (:func:`~association.query.season_line.rank_seasons_counted`) into a
     :class:`~association.query.result.Grouped` ranking by ``player`` whose
     ``ranked_by`` is ``seasons``, as a count of games over a line ranks by
@@ -195,12 +186,11 @@ def _seasons_body(rows: list[dict[str, Any]]) -> Grouped:
 
 def _leaderboard_career(scope: Filtered) -> bool:
     """True for a career ranking, False for a one-season one; raises for a
-    career with a year named. The router kept a year the question named
-    alongside "career", so "most points ever in a game in 2024" (that
+    career with a year named: "most points ever in a game in 2024" (that
     season), "career leaders since 2015" (a range) and "career points
-    through 2010" (a cutoff) all arrived as the same two slots - answering
-    any of them as one of the others is the substitution this refuses
-    (``templates.players._career_span`` until the template's words moved)."""
+    through 2010" (a cutoff) can all reach here as a career beside a year -
+    answering any of them as one of the others is the substitution this
+    refuses."""
     if not scope.span.career:
         return False
     if scope.span.season is not None:
@@ -213,8 +203,8 @@ def _leaderboard_refuse_a_player(scope: Filtered) -> None:
     team, never one person ("Klay Thompson's 3pt percentage over the past 4
     seasons" came back with the league's true-shooting leaders, Klay
     silently dropped). A position group, which the game-level ranking reads
-    (F056), is the planner's (:func:`leaderboard_reads`), and was checked
-    first, as the template had it."""
+    (F056), is the planner's (:func:`leaderboard_reads`), and is checked
+    first."""
     if scope.who.player is not None:
         raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.who.player!r})")
 
@@ -223,9 +213,9 @@ def _leaderboard_fields(scope: Filtered, metric: str) -> list[str]:
     """The extra columns a ranking was asked to show beside its metric - a
     box-score average (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`)
     or ``"team"`` (F017, ISSUES.md). An unknown field is refused rather than
-    dropped ("top 10 in NetPoints ALONGSIDE their points per game" was once
-    answered without the second half, silently); a repeated one (the
-    router's slip, when this was written) is said once, and one restating
+    dropped ("top 10 in NetPoints ALONGSIDE their points per game" without
+    its second half would be a silent narrowing); a repeated one is said
+    once, and one restating
     the ranked metric is
     left out (it rendered the same 33.5 twice under two headings)."""
     requested = scope.measure.beside if scope.measure is not None else ()
@@ -261,8 +251,8 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     (:func:`~association.query.season_line.rank_season_line`). ``None`` where
     the point is not that, names a stat no season-line metric reads, or
     ranks a position group: the game-level
-    ranking answers those, as it did behind the retired template's refusal
-    (planned so: :func:`leaderboard_reads`). A :class:`~association.query.result.Refusal` back is the ranking's own
+    ranking answers those (planned so: :func:`leaderboard_reads`). A
+    :class:`~association.query.result.Refusal` back is the ranking's own
     refusal (a shot-distance ranking); a
     ``Unsupported`` the relation's decline (an unknown field, an
     ambiguous team, a career list with columns or a franchise's).
@@ -341,8 +331,8 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
         if scope.span.season is None:
             # The season was the reader's choice (the latest on record), not
             # the question's: recorded as the decision it is, said by the
-            # span the heading names anyway (Jeff, 2026-10-05: the default is
-            # visible there and a season named reaches the alternative).
+            # span the heading names anyway (the default is visible there and
+            # a season named reaches the alternative).
             decisions = (*decisions, Decided(kind="season_default", field="season", chose=found.season, why="latest_on_record", facts={"season_type": found.season_type or 2}))
     return Result(subject="every player", relation="everyone", span=span, parts=(Part(body=ranking.body),), notes=notes, decisions=decisions, facts=facts)
 
@@ -364,7 +354,7 @@ def _leaderboard_career_refusals(scope: Filtered, fields: list[str]) -> None:
     """What a career ranking declines: columns beside the metric, and a
     franchise's list - which sums the per-team rows by team, and where a
     franchise moved, which years are the franchise's is a question of its
-    own. Declined until that is decided, rather than answered with the
+    own. Declined, rather than answered with the
     league's list under the team's name."""
     if fields:
         raise Unsupported("a career leaderboard cannot add per-game columns")

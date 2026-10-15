@@ -1,15 +1,13 @@
 """The record-over-a-line reader: a player's team's record in the games he
 reached a line, the games he fell short, and all of them, read into a
 :class:`~association.query.result.Result` with a :class:`~association.query.result.Grouped`
-body (``LINE_RECORD``'s own point). Phase 2's slice (i): the retired
-template's read (``templates.splits._record_when_query``) moved here, then
-replaced by the compiled statement - the point as a grouped read by the
-line, the compiler's ``line`` group - its remarks as kinds and facts; the
+body (``LINE_RECORD``'s own point), from the compiled statement - the
+point as a grouped read by the line, the compiler's ``line`` group - its
+remarks as kinds and facts; the
 sayer (:mod:`association.query.compose.say`) words it. The team
 branch - a team's record above and below its OWN line - is
 :func:`read_team_record_when`, over the team compiler's ``line`` statement
-(:func:`~association.query.compose.team.compile_team_line`), since the
-team slice (the presenter ``compose.present.present_team`` until then).
+(:func:`~association.query.compose.team.compile_team_line`).
 
 .. versionadded:: 5.0.0
 """
@@ -43,7 +41,7 @@ from .team import TEAM_BOX_COLUMNS, TeamQuery, compile_team_count, compile_team_
 def _group(by_hit: dict[str, dict[str, Any]], *keys: str) -> dict[str, Any]:
     """The record over the groups named - ``reached``; ``short``; or all
     three, since a blank-stat game still has a real result and "every game"
-    counts it too. A loss is a game not won, as the template counted them."""
+    counts it too. A loss is a game not won."""
     rows = [by_hit[k] for k in keys if k in by_hit]
     games = sum(int(r["games"]) for r in rows)
     wins = sum(int(r["wins"]) for r in rows)
@@ -96,9 +94,8 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     if line is None:
         return None
     stat, _column, threshold = line
-    # The retired template's own scope - what names the span in the heading,
-    # the floor note and the unseen-games count - read off the same filters
-    # the same way.
+    # The record's own scope - what names the span in the heading, the
+    # floor note and the unseen-games count - read off the same filters.
     covered = condition_scope(scope.span.as_career() if scope.cuts.season_n else scope.span, _PLAYER_GAME_TABLES)
     compiled = compile_query(con, replace(q, skeleton="grouped", group="line", measures=["margin"]))
     if compiled.player is None:
@@ -131,7 +128,7 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Filtered, covered: Any
             {"key": "all", **_group(by_hit, "reached", "short", "blank")},
         ),
     )
-    # The remarks, in the order the template wrote them: the unseen games
+    # The remarks, in their order: the unseen games
     # and the blank stat (its caveat), the pool, the floor.
     notes: list[Note] = []
     box = box_source(con)
@@ -165,9 +162,7 @@ def _team_record_when_needs_player(scope: Filtered) -> None:
     (its row's ``taken``: a teammate's role, a line on a box-score column, an
     ordinal season) - each a fact about a named PLAYER's game, which a team's
     record has no player settled to check it against. Let through by the
-    planner so this sentence, naming the missing player, is the refusal
-    (``conditions.condition_needs_player_refusal`` until Phase 3, step 2's
-    closing slice)."""
+    planner so this sentence, naming the missing player, is the refusal."""
     # A line on the opponents' figure is the team's own reading (ISSUES.md #426).
     taken = TEAM_RELATION_SCOPING_EXCLUDED[_TEAM_RECORD_LINE_SHAPE].taken - ReadLine.OPPONENT_CELLS
     claimed = [cell for cell in CELL_ORDER if cell in taken and cell_set(scope, cell)]
@@ -271,7 +266,7 @@ def _record_when_team_result(
 ) -> Result:
     """The three rows - the line held (``reached``, by its ``op``), not
     held, every game with a figure - and
-    the remarks in the order the template wrote them: the games with no
+    the remarks in their order: the games with no
     figure for the stat (never for ``points``, which reads the score), the
     pool, the box-score floor."""
     by_hit = {("reached" if row["reached"] else "short"): row for row in found}

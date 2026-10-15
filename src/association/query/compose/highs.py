@@ -2,13 +2,8 @@
 or the league's - ``GAME_HIGHS``'s own point, read into a
 :class:`~association.query.result.Result` whose body is a
 :class:`~association.query.result.Rows` of games ranked by the measure
-(``Rows.by``). Phase 2's slice (ii) (``ROADMAP.md``, "Phase 2, the
-expected steps", step 2): the compiler already read these games, and the
-presenter ``compose.present._present_single_game_high`` said them in the
-retired template's words (``templates.players._single_game_high_answer``,
-``_phrase_single_game_high`` and ``_single_game_high_redirect``) until
-2026-10-04; the words are the sayer's now
-(:mod:`association.query.compose.say`), and what they added beyond the
+(``Rows.by``). The words are the sayer's
+(:mod:`association.query.compose.say`), and what they need beyond the
 compiled rows - the span's own seasons, the floor, the empty box scores,
 the withheld stat, the rebuilt top game, and the defaulted season's
 redirect, a decision - are values, notes and a
@@ -17,9 +12,7 @@ redirect, a decision - are values, notes and a
 The statement is the planned point, compiled and executed
 (:func:`~association.query.compose.core.compile_query`,
 :func:`~association.query.compose.core.rows_of`) - :func:`~association.query.compose.core.run`'s
-extras are nothing this shape reads. Measured first
-(``~/association-research/stages/slice2a_measure.py``): the compiled rows
-are the presenter's on 18 of the 18 recorded answers it gave.
+extras are nothing this shape reads.
 
 .. versionadded:: 5.0.0
 """
@@ -50,8 +43,8 @@ from .team import TeamQuery, compile_team_high
 
 def _single_game_high_column(q: Query) -> str | None:
     """The column ``q`` ranks games by where it is ``GAME_HIGHS``'s
-    own point - the stat the reading measures (the measure tagger's; the
-    router's own stat until 5.0.0), whitelisted, first among the
+    own point - the stat the reading measures (the measure tagger's),
+    whitelisted, first among the
     measures, top games first, nothing the question's words added - else
     ``None``."""
     stat = spelled(q.measure)
@@ -116,7 +109,7 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Result | 
 
 
 def _single_game_high_notes(games: list[dict[str, Any]], label: str, season: int | None, name: str | None, empty: tuple[int, int | None, int | None], withheld: int) -> list[Note]:
-    """The high's notes after its span's, in the template's order: a stat
+    """The high's notes after its span's, in order: a stat
     withheld from rebuilt lines (a DECISION, not a gap, said where nothing
     was found), a league-wide career is not all-time, the empty box scores
     (not where the withheld stat already explains the gap - "empty box
@@ -172,10 +165,7 @@ def read_team_game_high(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result 
     Result of :class:`~association.query.result.Rows` by the measure, each
     game's team, date, opponent and figure. A refusal back is the
     relation's own (no such team, a coverage floor); a measure no game of a
-    team carries is refused by name (``Unsupported``). D4 lifted for it
-    (Jeff, 2026-10-13; ISSUES.md #364): a team's own best game was refused
-    ``TEAM_GAME_HIGHS``, and the league's form read the teams' season
-    ranking.
+    team carries is refused by name (``Unsupported``; ISSUES.md #364).
 
     .. versionadded:: 6.0.0
     """

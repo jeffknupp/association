@@ -1,13 +1,8 @@
 """The period reader: a named player's figure in one quarter or half, game by
 game, or his four quarters side by side, read into a
-:class:`~association.query.result.Result` - ``PERIOD_LOG``'s own point.
-Phase 2's slice (i) (``ROADMAP.md``, "Phase 2, the expected steps", step 1,
-sub-step (e)): the retired template's per-period read
-(``templates.games._period_split_from``, which the presenter
-``compose.present._present_period_split`` called over the compiler's
-settled player until 2026-10-04) and its by-quarter wording
-(``_period_split_by_quarter_from``) replaced by the compiled statement and a
-sayer (:mod:`association.query.compose.say`).
+:class:`~association.query.result.Result` - ``PERIOD_LOG``'s own point -
+from the compiled statement, worded by the sayer
+(:mod:`association.query.compose.say`).
 
 Two shapes, two statements, both the compiler's:
 
@@ -15,18 +10,13 @@ Two shapes, two statements, both the compiler's:
   game in the span in date order, the period's whole line
   (:data:`~association.query.player_games.PERIOD_COLUMNS`) and the
   opponent's name as its measures: the relation applies the period
-  (``player_games._period_source``), so every figure is the period's own.
-  Measured before it replaced the template's read
-  (``~/association-research/stages/period_split_measure.py``): the same
-  games, dates, sides, opponents and figures on 18 of the 18 recorded
-  questions the template answered, once the compiler gained the
-  ``opponent_name`` measure (the template named the team where the
-  compiler's fixed columns carry its abbreviation).
+  (``player_games._period_source``), so every figure is the period's own;
+  the ``opponent_name`` measure names the team where the compiler's fixed
+  columns carry its abbreviation.
 - **The four quarters** - the planned ``grouped`` read by ``period``
-  (:func:`~association.query.compose.core._compile_by_period`), executed as
-  it was by the presenter.
+  (:func:`~association.query.compose.core._compile_by_period`).
 
-The order of the template's refusals is kept: a season whose per-period
+The refusals come in order: a season whose per-period
 figures cannot be trusted is refused before any name is resolved
 (:func:`~association.query.player_games.period_distrust`), and again off
 the game a date names once it is found.
@@ -384,8 +374,8 @@ def _period_quarters_season(scope: Filtered, rows: list[dict[str, Any]], measure
     """The season the four quarters are labeled and caveated by: the one
     asked, or - for a date - the season the dated game falls in, read off
     the rows as the one-quarter read does, and refused off it where its
-    figures cannot be trusted. Labeled "2026 regular season on 2014-11-01"
-    and caveated by 2026's agreement until 2026-10-04 (ISSUES.md #302)."""
+    figures cannot be trusted - never "2026 regular season on 2014-11-01",
+    caveated by 2026's agreement (ISSUES.md #302)."""
     if scope.cuts.date is None:
         return scope.span.season or current_season()
     season = int(min(row["first_season"] for row in rows if row["first_season"] is not None))
@@ -655,8 +645,8 @@ _PERIOD_LEADERBOARD_BY_QUARTER_LIMIT = 10
 def _period_leaderboard_minimum(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Filtered, default: int) -> tuple[int, int | None]:
     """The games a player needs to rank, and - where the pool is narrowed to
     an opponent or a venue and the season's minimum is too many - the most
-    anyone played in it, which the minimum is half of (#185, Jeff's call,
-    2026-09-30: a share of the narrowed games, never over the season's own
+    anyone played in it, which the minimum is half of (#185, Jeff's call:
+    a share of the narrowed games, never over the season's own
     minimum and never under one)."""
     if not (scope.cuts.opponent or scope.cuts.venue):
         return default, None

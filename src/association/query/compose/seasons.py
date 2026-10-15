@@ -2,17 +2,14 @@
 career, or a computed advanced stat), his stat season by season, and two or
 more players' lines side by side - read from the season-line relation
 (:mod:`association.query.season_line`) into a
-:class:`~association.query.result.Result`. Phase 2's slice (iii)
-(``ROADMAP.md``): the retired templates' reads
-(``templates.players._player_stat_season_line``, ``_player_history_read``,
-``_player_compare_lines``, called by three presenters) are gone, and their
-statements are the relation's, built AND run there, through the
-compiler's one door (:func:`~association.query.compose.core.values_of`):
-a reader here names the read it takes (``season_line.season_row``,
-``career_row``, ``advanced_row``, ``history_rows``, ``history_total``),
-a comparison's NetPoints rows the NetPoints relation's
+:class:`~association.query.result.Result`. The statements are the
+relation's, built AND run there, through the compiler's one door
+(:func:`~association.query.compose.core.values_of`): a reader here names
+the read it takes (``season_line.season_row``, ``career_row``,
+``advanced_row``, ``history_rows``, ``history_total``), a comparison's
+NetPoints rows the NetPoints relation's
 (:func:`~association.query.netpoints.netpoints_row`), and executes nothing
-itself (Phase 4, step 5). The sayer
+itself. The sayer
 (:mod:`association.query.compose.say`) words each.
 
 Each answer is two or more statements (a line and the season redirect, a
@@ -75,7 +72,7 @@ def player_line_reads(q: Query) -> bool:
     """Whether ``q`` is ``PLAYER_LINE``'s own unnarrowed point on the season
     line: a per-game scalar for one named player and the reading's own stat
     - the default point's measures, or the question's word for that same
-    stat ("3pt percentage" is three_pct, which the router filed as
+    stat ("3pt percentage" is three_pct, which a model may file as
     threePointFieldGoalPct). A measure the words moved in is a point the
     season line does not say; a narrowing beyond what its words state is
     the planner's check beside it (``compose.plan.cells_unhonored``).
@@ -89,10 +86,7 @@ def player_line_reads(q: Query) -> bool:
     """
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates or q.source != "seasons":
         return False
-    # At call time: written when the point reader imported this package for
-    # an adapter (``compose.adapt``, deleted in Phase 2), where a
-    # module-level import would cycle; the point reader imports nothing from
-    # ``compose`` since, and the import was left where it stands.
+    # At call time, which no import cycle requires today.
     from association.query.point import default_point
 
     try:
@@ -156,7 +150,7 @@ def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
     where the stat has a total column, a made count's attempts and a
     percentage's makes and attempts (``sums``), all as stored. A season with
     no row is an empty scalar - the table holds no row of zero games (0 of
-    25,168, 2026-10-05) - with the seasons the player IS on record for as a
+    25,168) - with the seasons the player IS on record for as a
     decision where the season was defaulted rather than named."""
     season = span.season or current_season()
     columns, attempted_col = line_columns(wanted, shooting)
@@ -206,8 +200,8 @@ def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
     (:func:`~association.query.season_line.career_row`): the games,
     each wanted stat's career per-game figure (``values``) and its total
     where there is one, a made count's attempts, a percentage's makes and
-    attempts (``sums``), as summed - the sayer rounds them as the retired
-    template did. No season on record is an empty scalar."""
+    attempts (``sums``), as summed - the sayer rounds them. No season on
+    record is an empty scalar."""
     row, attempted_col = career_row(con, player.id, span.season_type, wanted, shooting)
     if row is None or not row[0]:
         return Result(subject=player.name, relation="player", span=Span(season_type=span.season_type, career=True, source="seasons"), parts=(Part(body=Scalar(games=0, how="season")),), facts=facts)
@@ -275,8 +269,8 @@ def _advanced_empty(con: duckdb.DuckDBPyConnection, player: Entity, span: Resolv
     season are empty (every Chicago and New Orleans game from 2013 to 2018,
     which the rate is computed from), or nothing is on record - never "box
     scores start in 1994", which the coverage floor refuses before this
-    reads and which was said of a retired player's defaulted season and of
-    an empty 2015 alike (ISSUES.md #293)."""
+    reads and which would be said of a retired player's defaulted season
+    and of an empty 2015 alike (ISSUES.md #293)."""
     facts: dict[str, Any] = {"player": player.name, "label": spec.label, "during": span.during()}
     if span.season is not None and EMPTY_BOX_SEASONS[0] <= span.season <= EMPTY_BOX_SEASONS[1]:
         # Only a season the fault touches is asked, so a fixture with no box
@@ -460,7 +454,7 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
 
 def _player_compare_lines(con: duckdb.DuckDBPyConnection, players: list[Entity], wanted: list[str], season: int, season_type: int) -> dict[str, dict[str, Any]]:
     """Each player's line for the season, by name - two players sharing a
-    name are one entry, the later one's, as the retired table keyed them."""
+    name are one entry, the later one's."""
     columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
     lines: dict[str, dict[str, Any]] = {}
     for player in players:
@@ -477,8 +471,7 @@ def _player_compare_netpoints(con: duckdb.DuckDBPyConnection, players: list[Enti
     supplementary rather than required: a player with no row contributes
     nothing and a season with no rows at all drops the section. That is
     also why ``net_points_player`` is deliberately NOT among the comparison's
-    declared tables (``coverage.SOURCES``; ``TEMPLATE_SOURCES`` until Phase 2,
-    step 6) - listing it would put a 2019 coverage floor on every
+    declared tables (``coverage.SOURCES``) - listing it would put a 2019 coverage floor on every
     comparison and refuse the 1994-2018 ones outright."""
     found: dict[str, dict[str, Any]] = {}
     for player in players:

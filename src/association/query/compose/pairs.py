@@ -4,10 +4,9 @@ players' lines over their meetings as a comparison (a
 :class:`~association.query.result.Grouped` body by ``subject``, one row per
 player in the question's order) and the newest meetings as a detail part
 (:class:`~association.query.result.Rows`) - ``PLAYER_MEETINGS``'s own point.
-Phase 2's slice (ii): the compiler already read the meetings (the ``pair``
-shape, :func:`~association.query.compose.core._compile_pair` over the pair
-relation) and the retired template's words said them through a presenter;
-the reader executes that statement, and the sayer
+The reader executes the compiled statement (the ``pair`` shape,
+:func:`~association.query.compose.core._compile_pair` over the pair
+relation), and the sayer
 (:mod:`association.query.compose.say`) words it.
 
 Where a teammate's absence emptied the meetings, the reader compiles the

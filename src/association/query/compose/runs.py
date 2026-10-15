@@ -1,17 +1,15 @@
 """The streak reader: a named player's longest runs of consecutive games one
 condition held along, or the league's longest one per player, read into a
 :class:`~association.query.result.Result` with a :class:`~association.query.result.Runs`
-body (``LINE_RUNS``'s own point on the player relation). Phase 2's slice
-(ii): the compiler already read the runs (the ``run`` shape,
-:func:`~association.query.compose.core._compile_run`) and the retired
-template's words said them through a presenter; the reader executes that
-statement, carries the span, the rule and the still-open run as values,
+body (``LINE_RUNS``'s own point on the player relation). The reader
+executes the compiled statement (the ``run`` shape,
+:func:`~association.query.compose.core._compile_run`), carries the span,
+the rule and the still-open run as values,
 and the sayer (:mod:`association.query.compose.say`) words it. A team's
 run of wins or losses, and the league's one per team-season, are the team
 compiler's ``run`` shape (:func:`~association.query.compose.team.compile_team_run`),
 read by :func:`read_team_streak` into the same ``Runs`` body - one reader
-per relation, one sayer for every subject (Phase 2's slice (iv): the
-presenter ``compose.present._present_team_streak`` until then).
+per relation, one sayer for every subject.
 
 .. versionadded:: 5.0.0
 """
@@ -43,10 +41,10 @@ from .team import TeamCompiled, TeamQuery, compile_team_range, compile_team_run,
 def _settled_open(runs: tuple[Run, ...]) -> tuple[Run, ...]:
     """The runs with ``still_open`` meaning what the answer says of it: a run
     that reached its partition's last game is still going only where that
-    partition is the season on record now (ISSUES.md #297). Before, the
-    flag was the SQL's alone - the run reached the last game - so a run that
-    ended with a finished season, or at a retired player's last game, was
-    listed "(still going)" wherever the sayer did not guard it."""
+    partition is the season on record now (ISSUES.md #297): the SQL's flag
+    alone - the run reached the last game - would list a run that ended with
+    a finished season, or at a retired player's last game, as "(still
+    going)"."""
     now = current_season()
     return tuple(replace(run, still_open=run.still_open and run.last_season == now) for run in runs)
 
@@ -224,8 +222,8 @@ def _streak_league_teams_result(con: duckdb.DuckDBPyConnection, q: TeamQuery, co
     span = compiled.span
     names = _names(con, "teams", "team_id", [row["team_id"] for row in rows])
     # Every run lies inside one season, so each is named as its team was
-    # that season. This used to add "franchises are named as they are
-    # today" to every all-seasons answer, which is what it was.
+    # that season, so no "franchises are named as they are today" remark
+    # is needed.
     runs = _settled_open(tuple(run_of(row, season_name(row["team_id"], int(row["season"]), names[row["team_id"]]) + (f" ({row['season']})" if span.season is None else "")) for row in rows))
     notes: list[Note] = []
     if runs:

@@ -3,12 +3,8 @@ who in the league cleared it most often - ``GAMES_COUNTED``'s own point,
 read into a :class:`~association.query.result.Result`. A named player's
 count is a :class:`~association.query.result.Scalar` (``how="count"``); the
 league's is a :class:`~association.query.result.Grouped` ranking by
-``player``. Phase 2's slice (ii) (``ROADMAP.md``, "Phase 2, the expected
-steps", step 2): the compiler already read these rows, and the presenter
-``compose.present._present_threshold_count`` said them in the retired
-template's words (``templates.players._phrase_threshold_count`` and
-``_threshold_count_notes``) until 2026-10-04; the words are the sayer's now
-(:mod:`association.query.compose.say`), and what they added beyond the
+``player``. The words are the sayer's
+(:mod:`association.query.compose.say`), and what they need beyond the
 compiled rows - the span's own seasons, the floor, the empty box scores,
 the withheld stat, the leader's rebuilt games - are values and notes here.
 
@@ -17,10 +13,8 @@ The statement is the planned point, compiled and executed
 :func:`~association.query.compose.core.rows_of`): each row's own rebuilt
 count is its ``rebuilt_shown`` column, which is all the shape needs of
 :func:`~association.query.compose.core.run`'s extras, so ``run`` - and the
-box-score notes, total and own seasons it reads beside the rows, which the
-presenter discarded - is not called. Measured first
-(``~/association-research/stages/slice2a_measure.py``): the compiled rows
-are the presenter's on 31 of the 31 recorded answers it gave.
+box-score notes, total and own seasons it reads beside the rows - is not
+called.
 
 .. versionadded:: 5.0.0
 """
@@ -79,9 +73,7 @@ def box_score_span(con: duckdb.DuckDBPyConnection, season: int | None, season_ty
     FIRST: Michael Jordan's career began in 1984-85, and his "career high"
     from box scores that begin in 1993-94 is 55, not 69 - so a career that
     began before them is answered for the part they hold, and says so
-    before the number (``templates.players._game_span`` was the read and
-    the words both, until the count's and the high's sayers took the
-    words).
+    before the number.
 
     .. versionadded:: 5.0.0
     """

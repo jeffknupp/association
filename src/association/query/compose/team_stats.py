@@ -1,7 +1,7 @@
 """A team's own season, read: its line and where it ranks (``TEAM_LINE``),
 every team ranked by one metric of the line or the standings
 (``TEAM_RANKING``), and its place in ESPN's power index
-(``team_outlook``) - the two team-season relations of ``ROADMAP-TYPES.md``
+(``TEAM_OUTLOOK``) - the two team-season relations of ``ROADMAP-TYPES.md``
 (``team_seasons``, ``team_snapshots``), beside the team-games relation the
 team compiler reads (:mod:`~association.query.compose.team`).
 
@@ -68,8 +68,8 @@ class TeamSeasonQuery(Filtered):
     relation (``team_seasons`` for the line and the standings,
     ``team_snapshots`` for the power index) and the shape (one team's
     ``scalar``, or every team ``grouped`` by the metric ranked). Which
-    metric the ``stat`` slot names is the reader's to resolve, as it was the
-    retired templates'. The team-season counterpart of
+    metric the measure names is the reader's to resolve. The team-season
+    counterpart of
     :class:`~association.query.compose.team.TeamQuery`.
 
     .. versionadded:: 5.0.0
@@ -94,8 +94,8 @@ def conference_refusal(scope: Filtered) -> Unanswered | None:
 
 
 def _team_season_subject(con: duckdb.DuckDBPyConnection, shape: PointShape, scope: Filtered) -> Entity | Unanswered:
-    """The team a one-team team-season read is about, after the checks the
-    answering loop and the retired template made first, in their order: a
+    """The team a one-team team-season read is about, after the checks that
+    come first, in order: a
     narrowing the words do not state (a decline, the answer side's before
     the reader is asked), the coverage floor, a conference or division in a
     team slot, then the team itself (a clarifying question, or a decline
@@ -131,8 +131,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Res
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (a conference named as a team, an ambiguous team).
 
-    ``templates.teams.team_outlook`` was this, with its words; its two
-    statements are the relation's, built and run there
+    Its two statements are the relation's, built and run there
     (:mod:`association.query.team_seasons`).
 
     .. versionadded:: 5.0.0
@@ -175,7 +174,7 @@ def _team_outlook_missing_notes(team: Entity, season: int, snapshots: list[tuple
 
 def _team_outlook_described(snapshots: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
     """The facts each snapshot is described by in a note - its kind, date and
-    team count - as the retired template recorded them."""
+    team count."""
     return [{key: value for key, value in each.items() if key != "holds"} for each in snapshot_facts(snapshots)]
 
 
@@ -253,9 +252,8 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result
     cannot give is the facts' ``short``: the team the answer names, its
     listed and played games, and how many other teams are short.
 
-    ``templates.teams.team_stat`` was this, with its words; its statements
-    are the relation's (``team_metrics.season_table`` and ``record_table``,
-    moved whole).
+    Its statements are the relation's (``team_metrics.season_table`` and
+    ``record_table``).
 
     .. versionadded:: 5.0.0
 
@@ -312,8 +310,7 @@ _TEAM_HISTORY_DEFAULT_SEASONS = 4
 
 def read_team_history(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result | Unanswered:
     """A team's season line season by season - ``team_seasons/split/season``,
-    the team counterpart of a player's history (ISSUES.md #372; D4 lifted
-    for it, Jeff 2026-10-14) - from the team-season relation
+    the team counterpart of a player's history (ISSUES.md #372) - from the team-season relation
     (:func:`~association.query.team_seasons.read_team_history_rows`), as a
     :class:`~association.query.result.Grouped` by ``season``, oldest first:
     each season's games, its record and the metric named (or the default
@@ -435,8 +432,7 @@ DEFAULT_TEAM_LEADERBOARD_LIMIT = 10
 
 
 def _team_leaderboard_checks(scope: Filtered) -> Unanswered | None:
-    """What the answering loop and the retired template checked before
-    reading, in their order: a narrowing the words do not state (a
+    """What is checked before reading, in order: a narrowing the words do not state (a
     decline, the answer side's before the reader is asked), the coverage
     floor, a conference or division in a team slot."""
     refused = coverage_refusal(TEAM_RANKING, scope)
@@ -474,8 +470,7 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) ->
     why (no home or road split in that season's standings, the metric's
     first season, a team short of games for points allowed).
 
-    ``templates.teams.team_leaderboard`` was this, with its words; its
-    statements are the relation's (:mod:`association.query.team_seasons`).
+    Its statements are the relation's (:mod:`association.query.team_seasons`).
 
     .. versionadded:: 5.0.0
 
@@ -491,8 +486,8 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) ->
     key = resolve_team_metric(scope.measure)
     if key is None:
         stat = spelled(scope.measure)
-        # A cause the planner says (Phase 5, step 5); "for stat None" where
-        # the words named no metric until then.
+        # A cause the planner says, never "for stat None" where the words
+        # name no metric.
         raise ShapeDeclined("no_team_metric", {"stat": stat}, f"no team metric for stat {stat!r}" if stat else "the words name no team metric")
     # `season` still settles to a real year under `since` - unread by the
     # since-bounded read, and here only for the named team's own-season name
