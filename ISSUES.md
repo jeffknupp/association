@@ -3828,3 +3828,4 @@ those were found.
 - **Next step:** point each comment at the heading that holds its rule ("A model invents names", "say so by name"; for `span.py` and `compose/core.py`, find what the comment meant - the span's both-season-type rule and the empty box scores' count are the likely ones), in one comment-only commit with its `CHANGES.md` line.
 - **Source:** ours.
 - **Priority:** P4 - comments.
+- **GitHub:** #444
