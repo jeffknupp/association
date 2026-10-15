@@ -1,10 +1,9 @@
-"""Regression tests for `association data check`.
+"""Tests for `association data check`.
 
-Covers two real bugs from the same incident: the reported "missing" game
-count didn't account for locally-resolved (postponed/canceled) games, making
-even a fully-accounted-for season look incomplete; and the live schedule
-cross-check re-hit ESPN's API every run even for seasons already verified
-complete by `pull`.
+The reported "missing" game count accounts for locally-resolved
+(postponed/canceled) games, so a fully-accounted-for season does not look
+incomplete; and the live schedule cross-check does not re-hit ESPN's API for
+seasons already verified complete by `pull`.
 """
 
 from pathlib import Path
@@ -41,9 +40,9 @@ def test_run_check_no_local_data_prints_guidance(tmp_path: Path, capsys: pytest.
 
 
 def test_run_check_offline_accounts_for_resolved_games_in_have_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Regression: a season with 2 real games + 1 postponed game used to
-    report a misleading "2/?" (or "2/4" live) instead of counting the
-    postponed game as accounted-for, not missing."""
+    """A season with 2 real games + 1 postponed game counts the postponed
+    game as accounted-for, not missing, rather than reporting a misleading
+    "2/?" (or "2/4" live)."""
     _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_1.parquet", [{"season": 2024, "season_type": 2, "event_id": "1"}])
     _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_2.parquet", [{"season": 2024, "season_type": 2, "event_id": "2"}])
     resolved_dir = tmp_path / "_resolved" / "season=2024" / "season_type=2"
@@ -149,15 +148,13 @@ def test_run_check_reports_net_points_daily_count(tmp_path: Path, capsys: pytest
 
 
 def test_run_check_scans_each_table_once_regardless_of_how_many_seasons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Regression: the counts were gathered with one filtered query per cell of
-    the report, and none of these trees is hive partitioned, so `WHERE season =
-    ...` pruned no files - every query re-read the whole table. A full check
-    scanned all 40,558 `games` files once per row and took 454s; it now takes
-    16.6s and prints the identical table.
+    """None of these trees is hive partitioned, so `WHERE season = ...` prunes
+    no files: a count gathered with one filtered query per cell of the report
+    re-reads the whole table each time (a full check scanning all 40,558
+    `games` files once per row takes 454s, against 16.6s counted once).
 
     Counted at the connection rather than at the helper, so this measures the
-    scans actually issued rather than that a particular helper was called - the
-    old shape passes any test written against the new one's name.
+    scans actually issued rather than that a particular helper was called.
 
     Asserted as "does not grow with the report" rather than as a fixed number:
     the per-cell scan is what made this quadratic, and a fixed number would

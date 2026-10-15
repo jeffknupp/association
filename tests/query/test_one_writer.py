@@ -1,11 +1,12 @@
-"""The parser is the one writer of a question's slots (ROADMAP plan item 6,
-step (d), part 3c): the router-era repairs that ran after every reading -
-``override_nicknames``, ``restore_dropped_players``, ``undo_name_completion``
-- are gone, and what the parser's reading still needed of them is its own.
+"""The parser is the one writer of who a question is about: no repair
+runs on the names after its reading, and the reading itself cuts a
+completed surname back, keeps every player the question named and files
+each side where the words put it.
 
-Each check here goes through the whole agent on a small warehouse, with the
-normalizer's reply stubbed the way the rehearsal replays recorded ones, so
-it is the template's own view of the slots that is asserted.
+Most checks here go through the whole agent on a small warehouse, with the
+normalizer's reply stubbed the way the stage snapshots replay recorded
+ones, so it is the Reading the answer side is handed that is asserted; the
+last reads the parser's output directly.
 """
 
 from __future__ import annotations
@@ -56,8 +57,8 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
         seen.append((reading.asked, reading.who.player, reading.who.players if len(reading.who.players) > 1 else ()))
         return Answer(data={}, text="answered")
 
-    # Every intent is the compiler's (compose.COMPILED_INTENTS): the
-    # Reading reaches compose.answer, through agent._run_compiled.
+    # Every shape is the compiler's: the Reading reaches compose.answer,
+    # through agent._run_compiled.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: record(ctx, reading))
 
     def run(question: str, names: list[str], stat: str = "") -> list[tuple[PointShape | None, str | None, tuple[str, ...]]]:
@@ -71,15 +72,14 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
 
 def test_a_surname_the_model_completed_is_asked_about(ask: Any) -> None:
     """ "brown" is three players here, and the model filling in Jaylen is the
-    prominence tiebreak this project rejected: the template sees the
-    question's own word and asks. Was ``undo_name_completion``, run after
-    the router; now the parser cuts the model's completion back itself."""
+    prominence tiebreak this project rejected: the parser cuts the model's
+    completion back to the question's own word, and the reader asks."""
     assert ask("how many points does brown average?", ["Jaylen Brown"], "points") == [(PLAYER_LINE, "Brown", ())]
     assert ask("who is better, tatum or brown", ["Jayson Tatum", "Jaylen Brown"]) == [(PLAYER_COMPARISON, None, ("Jayson Tatum", "Brown"))]
 
 
 def test_a_completion_that_names_nobody_still_reaches_the_player(ask: Any) -> None:
-    """ "derozan" came back "Derozan Valenčić" (day5), a surname no player
+    """ "derozan" completed as "Derozan Valenčić", a surname no player
     has. The part the question holds reaches DeMar DeRozan by itself - the
     parser's cut takes it there, and so does the reading, which replaces a
     name the question never held with the one it does: an outcome check,
@@ -97,40 +97,33 @@ def test_a_completion_that_changes_no_answer_is_kept(ask: Any) -> None:
 
 def test_a_typod_surname_is_read_not_cut_back(ask: Any) -> None:
     """ "Bam Adeyebu" is the question's own spelling, which the reading reads
-    as Bam Adebayo. The router-era cut ran after the reading and saw the
-    corrected "Adebayo" as a word the question lacks - so it cut the name to
-    the ambiguous "Bam" and asked (the day10 paraphrase "Jan 19 Bam
-    Adeyebu"). The parser's cut runs on the model's own spelling instead."""
+    as Bam Adebayo: the parser's cut runs on the model's own spelling, before
+    the reading respells it, so the corrected "Adebayo" is never cut back to
+    the ambiguous "Bam"."""
     assert ask("Jan 19 Bam Adeyebu", ["Bam Adeyebu"]) == [(PLAYER_LINE, "Bam Adebayo", ())]
 
 
 def test_a_fingerprint_keeps_every_player_the_question_named(ask: Any) -> None:
     """Two polygons on shared axes IS the comparison: a reply that dropped
     the second name still draws both, because the reading takes the names
-    from the question. Was ``restore_dropped_players``, for a router that
-    returned one."""
+    from the question."""
     both = [(NETPOINTS_FINGERPRINT, None, ("Joel Embiid", "Nikola Jokic"))]
     assert ask("compare fingerprints for embiid vs jokic in 2026", ["embiid", "jokic"]) == both
     assert ask("compare fingerprints for embiid vs jokic in 2026", ["embiid"]) == both
-    # Said without a comparison word, which the router-era restoration was
-    # gated on, and so lost the second name.
+    # Said without a comparison word, the second name is still drawn.
     assert ask("plot jokic and embiid fingerprints", ["jokic"]) == [(NETPOINTS_FINGERPRINT, None, ("Nikola Jokic", "Joel Embiid"))]
 
 
 def test_an_ordinary_word_is_no_second_fingerprint(ask: Any) -> None:
     """ "best" is Travis Best's whole surname and an ordinary word here: the
-    fingerprint is Jokic's alone - the reason the router-era restoration
-    needed a comparison word before it added anybody."""
+    fingerprint is Jokic's alone."""
     assert ask("plot jokic's fingerprint from his best season", ["jokic"]) == [(NETPOINTS_FINGERPRINT, "Nikola Jokic", ())]
 
 
 def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ "for me" after a player is who is asking, not his own team: "Memphis"
-    starts with "me", and read as the team it made "show kat's average
-    points for me" his career with the Grizzlies - who he never played for.
-    The router-era nickname repair hid it by rewriting "kat" to a name the
-    question does not hold, so the own-team reading never matched; with the
-    name as typed it did (a day10 paraphrase, plan item 6 step (d) part 3c)."""
+    starts with "me", but "show kat's average points for me" reads no
+    tenure, while "for Miami" after a player is his own team."""
     from association.query.entities import teams_of
     from association.query.subject import _team_after_for
 
@@ -159,7 +152,7 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
 
 @pytest.fixture
 def league() -> duckdb.DuckDBPyConnection:
-    """Players and teams enough for the shapes the router used to scramble."""
+    """Players and teams enough for the team-and-opponent shapes the parser files."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
@@ -192,9 +185,9 @@ def league() -> duckdb.DuckDBPyConnection:
 
 
 def _sides_of(reading: Reading) -> dict[str, Any]:
-    """Each side the reading filed, by the slot it was carried in: one player
-    as ``player`` and two or more as ``players``, the one team as ``team``,
-    the opponent, and the teammates absent as ``without``."""
+    """Each side the reading filed, by the typed field that carries it: one
+    player as ``player`` and two or more as ``players``, the one team as
+    ``team``, the opponent, and the teammates absent as ``without``."""
     sides: dict[str, Any] = {}
     if len(reading.who.players) == 1:
         sides["player"] = reading.who.players[0]
@@ -224,7 +217,7 @@ def _sides_of(reading: Reading) -> dict[str, Any]:
         ("luka dončić last 15 games vs. magic", ["luka dončić", "magic"], PLAYER_LOG, {"player": "Luka Doncic", "opponent": "Orlando Magic"}),
         ("steve adam's vs kings last 10 games", ["steve adam's", "kings"], PLAYER_LOG, {"player": "Steven Adams", "opponent": "Sacramento Kings"}),
         ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], PLAYER_LOG, {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
-        # A log against a player is his own games with the other on the far side (ROADMAP step 3); the bare pair is the matchup.
+        # A log against a player is his own games with the other on the far side; the bare pair is the matchup.
         ("jay huff game log vs Embiid", ["jay huff", "Embiid"], PLAYER_LOG, {"player": "Jay Huff"}),
         ("jay huff vs Embiid", ["jay huff", "Embiid"], PLAYER_MEETINGS, {"players": ("Jay Huff", "Joel Embiid")}),
         # A teammate named with "without" narrows; the team is the opponent.
@@ -236,14 +229,11 @@ def _sides_of(reading: Reading) -> dict[str, Any]:
         ),
     ],
 )
-def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb.DuckDBPyConnection, question: str, names: list[str], asked: PointShape, sides: dict[str, Any]) -> None:
-    """The team-and-opponent shapes the router got wrong - a team in
-    ``players``, the two sides swapped, a player in ``team``, a player
-    displaced by his own team - each once had a repair after the router
-    (``subject.apply_subject``'s opponent-team, team-slot and team-subject
-    passes). Measured over 628 recorded questions, the parser's output never
-    needed one (ROADMAP plan item 6, step (d), part 3c), because it files
-    each side from its own reading; these are those questions, read here."""
+def test_the_parser_files_each_side_of_a_team_and_opponent_question(league: duckdb.DuckDBPyConnection, question: str, names: list[str], asked: PointShape, sides: dict[str, Any]) -> None:
+    """A team the subject plays against, two teams meeting, a player against
+    a team or another player, an absent teammate: the parser files each side
+    from its own reading - the subject, the opponent, the companions - with
+    no name misread, whatever the model's names held."""
     from association.query.parse import read_route
 
     reading = read_route(names_of(league), question, names, "")

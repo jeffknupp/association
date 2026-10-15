@@ -195,11 +195,9 @@ def check_install_pins(current: str, version: str, root: Path = ROOT) -> list[Pa
 def rewrite_install_pins(files: list[Path], current: str, version: str, root: Path = ROOT) -> None:
     """Rewrite ``@v<current>`` to ``@v<version>`` in every file :func:`check_install_pins` flagged.
 
-    This is the fix for #60: install commands in ``README.md``,
-    ``docs/installation.rst`` and ``docs/usage.rst`` used to keep pointing at
-    an old release tag because nothing rewrote them automatically, and a human
-    updating them by hand immediately before a bump was the only thing that
-    ever made them correct. After rewriting, no ``@v<current>`` pin may survive
+    An install command in ``README.md``, ``docs/installation.rst`` or
+    ``docs/usage.rst`` that pins a release tag points at an old release unless
+    something rewrites it at each bump (#60). After rewriting, no ``@v<current>`` pin may survive
     anywhere in ``root`` - checked with a second ``git grep`` rather than
     trusted, so a bug here fails loudly instead of leaving a stale pin behind.
 

@@ -1,17 +1,10 @@
-"""``player_stat`` honors a teammate's role (ROADMAP plan item 6, step (d)
-follow-up): "maxey points when embiid starts" used to answer his whole
-season, the teammate nowhere in it.
+"""A player's line honors a teammate's role: "maxey points when embiid
+starts" reads the games Embiid started from the box scores, never the whole
+season's line with the teammate dropped. A companion is one of the
+narrowings that send a player's line to the box scores rather than the
+season line, even with nothing else narrowing it.
 
-``check_scope`` already lets ``conditions`` through for ``player_stat`` -
-``HONORED_SCOPING["player_stat"]`` is the relation's own
-``RELATION_SCOPING``, which has carried ``conditions`` since the player
-condition landed (ROADMAP plan item 3) - but
-``templates.players._player_stat_reads_box_scores`` never counted
-``scope.conditions`` among the narrowings that send the read to box scores
-rather than the season line, so a question with nothing else narrowing it
-silently answered the season line with the condition dropped.
-
-Measured against the real warehouse (2026-09-27, read-only): Tyrese Maxey's
+In the real warehouse Tyrese Maxey's
 2025 regular-season line is 26.3 points in 52 games
 (``player_season_stats_deduped``); narrowed to the 16 games Joel Embiid
 started that season, his average is 23.8. The fixture below is a small,
@@ -30,7 +23,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import Routed, ask_routed
-from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
+from test_readers import player_line
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -69,8 +62,8 @@ def pstat_conditions_ctx(tmp_path: Path) -> AnswerContext:
     ====  ==============================  =================
 
     Season total: 96 in 4 games, average 24.0 - ``player_season_stats_deduped``
-    carries that line, so a bug that keeps reading it despite a ``conditions``
-    slot is caught rather than coincidentally reproduced. "Started" (e1, e2)
+    carries that line, so a read that keeps reading it despite a companion
+    is caught rather than coincidentally reproduced. "Started" (e1, e2)
     averages 23.0 over 2 games; "off the bench" (e4) is 20.0 over 1; "reached
     20+ points" (e1: 30, e2: 28, e4: 25 - not e3, where Embiid has no row to
     read a threshold off) averages 22.0 over 3 - three counts, each different
@@ -133,42 +126,41 @@ def _maxey_points(*companions: Companion) -> Reading:
     return Reading(who=Who(kind="player", players=("Tyrese Maxey",)), companions=companions, measure=Measure(key="points", as_typed="points"))
 
 
-def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_slot_narrows(pstat_conditions_ctx: AnswerContext) -> None:
-    """The bug itself: a bare ``conditions`` entry, nothing else narrowing,
-    used to answer the season line (24.0 in 4 games) with Embiid nowhere in
-    it. Also pins the unnarrowed season line, so a future change cannot make
-    this pass by coincidence (both branches reading the same number)."""
-    season = player_stat(pstat_conditions_ctx, Reading(who=Who(kind="player", players=("Tyrese Maxey",)), measure=Measure(key="points", as_typed="points")))
+def test_a_players_line_with_only_a_companion_reads_box_scores_not_the_season_line(pstat_conditions_ctx: AnswerContext) -> None:
+    """A companion with nothing else narrowing reads Maxey's games beside
+    Embiid from the box scores, never the season line (24.0 in 4 games).
+    Also pins the unnarrowed season line, so a change cannot make this pass
+    by coincidence (both branches reading the same number)."""
+    season = player_line(pstat_conditions_ctx, Reading(who=Who(kind="player", players=("Tyrese Maxey",)), measure=Measure(key="points", as_typed="points")))
     assert season.text == f"Tyrese Maxey averaged 24 points per game in 4 games in the {SEASON} regular season. That is 96 in total."
 
-    started = player_stat(pstat_conditions_ctx, _maxey_points(_embiid("started")))
+    started = player_line(pstat_conditions_ctx, _maxey_points(_embiid("started")))
     assert started.data["stats"] == {"gamesPlayed": 2, "avgPoints": 23.0, "points": 46}
     assert started.text == f"Tyrese Maxey averaged 23 points per game in 2 games with Joel Embiid starting in the {SEASON} regular season. That is 46 in total."
 
 
-def test_player_stat_honors_a_bench_condition(pstat_conditions_ctx: AnswerContext) -> None:
-    result = player_stat(pstat_conditions_ctx, _maxey_points(_embiid("bench")))
+def test_a_players_line_honors_a_bench_companion(pstat_conditions_ctx: AnswerContext) -> None:
+    result = player_line(pstat_conditions_ctx, _maxey_points(_embiid("bench")))
     assert result.data["stats"] == {"gamesPlayed": 1, "avgPoints": 20.0, "points": 20}
     assert result.text == f"Tyrese Maxey averaged 20 points per game in 1 game with Joel Embiid off the bench in the {SEASON} regular season. That is 20 in total."
 
 
-def test_player_stat_honors_a_reached_condition(pstat_conditions_ctx: AnswerContext) -> None:
+def test_a_players_line_honors_a_reached_companion(pstat_conditions_ctx: AnswerContext) -> None:
     """Embiid reached 20+ points in e1 (30), e2 (28) and e4 (25) - not e3,
     where he has no box row to read a threshold off at all, so the EXISTS
     clause a "reached" condition compiles to correctly excludes a game he
     did not play rather than crediting it to a threshold of zero."""
-    result = player_stat(pstat_conditions_ctx, _maxey_points(_embiid("reached", Line(measure="points", value=20))))
+    result = player_line(pstat_conditions_ctx, _maxey_points(_embiid("reached", Line(measure="points", value=20))))
     assert result.data["stats"] == {"gamesPlayed": 3, "avgPoints": 22.0, "points": 66}
     assert result.text == f"Tyrese Maxey averaged 22 points per game in 3 games in games Joel Embiid had 20+ points in the {SEASON} regular season. That is 66 in total."
 
 
 def test_the_default_point_also_reads_box_scores_for_a_condition() -> None:
-    """``point._default_player_stat`` takes the same test
-    (``_player_stat_reads_box_scores``) to decide its default point's
-    ``on`` - fixed by the same one-line change, not a second copy of the
-    bug. Unnarrowed, the point is the season line (``on="player_seasons"``); a
-    bare ``conditions`` entry now switches it to box scores
-    (``on="player_games"``), the same as ``without`` already did."""
+    """A player's line's default point (``point._default_player_stat``)
+    takes the same test (``reading.scope_reads_box_scores``) to decide its
+    relation. Unnarrowed, the point is the season line
+    (``player_seasons``); a companion alone switches it to box scores
+    (``player_games``)."""
     season = default_point(PLAYER_LINE, _maxey_points())
     assert season.read_as.relation == "player_seasons"
     narrowed = default_point(PLAYER_LINE, _maxey_points(_embiid("started")))
@@ -227,13 +219,12 @@ def _agent_warehouse(tmp_path: Path) -> Path:
 
 
 def test_agent_with_a_recorded_route_also_honors_the_condition(tmp_path: Path) -> None:
-    """End to end through the real ``Agent``, not a direct template call -
-    AGENTS.md's own reason to check this separately: the agent path adds the
-    coverage caveat and the name-reading machinery on top of the template's
-    own answer, so a template called directly can look like it works while
-    the fuller path still drops the condition somewhere on the way in. The
-    route is given as recorded (``Agent.ask(route=...)``), so no model is
-    asked."""
+    """End to end through the real ``Agent``, not a direct reader call: the
+    agent path adds the coverage caveat and the name readings on top of the
+    reader's own answer, so a reader called directly can look like it works
+    while the fuller path drops the companion somewhere on the way in. The
+    route is given as recorded (``tests/routed.py``'s ``ask_routed``), so
+    no model is asked."""
     from association.query.agent import Agent
 
     db_path = _agent_warehouse(tmp_path)

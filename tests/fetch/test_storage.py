@@ -28,12 +28,12 @@ def test_write_rows_empty_list_is_noop(tmp_path: Path) -> None:
 
 
 def test_a_narrow_first_row_does_not_truncate_the_file(tmp_path: Path) -> None:
-    """The real shape, and the bug it caused. ESPN's career endpoint leaves a
-    scoreless season out of its `totals` category, so a career whose earliest
-    line is a one-game stint parses to a narrow first row followed by full ones.
-    Arrow infers its schema from the first row, so the file lost all 25 totals
-    columns - and five players, Seth Curry among them, vanished from the career
-    points leaderboard because of it. Nothing raised; the data was simply gone."""
+    """The real shape: ESPN's career endpoint leaves a scoreless season out of
+    its `totals` category, so a career whose earliest line is a one-game stint
+    parses to a narrow first row followed by full ones. Arrow infers its
+    schema from the first row, so without care the file loses all 25 totals
+    columns - and the player (Seth Curry among five) vanishes from the career
+    points ranking, with nothing raised."""
     path = tmp_path / "career.parquet"
     storage.write_rows(
         path,

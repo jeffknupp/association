@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write, and compare, each stage's output for every recorded question.
 
-ROADMAP.md, Phase 0: the proof of a change to the query pipeline. ``run``
+The proof of a change to the query pipeline (AGENTS.md, "While the pipeline is rebuilt"). ``run``
 answers each recorded question through the whole ``Agent`` with the
 normalizer's RECORDED reply in place of the model (no ollama, no network) and
 writes one JSON line per question holding what each stage produced - the
@@ -22,11 +22,11 @@ from a worktree resolves the INSTALLED package unless ``PYTHONPATH`` says
 otherwise, and a green comparison of a tree against itself proves nothing -
 and the versions of Python, DuckDB and ollama with the model's digest: the
 recorded replies this run stands in for the model with were said by one
-ollama build on one machine (53 of 628 moved between two, 2026-10-02), and
+ollama build on one machine (another build moves some of them), and
 a lowering or a sort can move with the interpreter or the engine.
 ``compare`` warns when two runs differ in any of them.
 
-``run --feed`` answers the fourth population instead (ISSUES.md #332): the
+``run --feed`` answers the fourth population instead: the
 2,082 questions the readings population (``reader_pop.py``) reads beyond
 the corpus - the StatMuse feed's 2,067 distinct questions of three or more
 words and 15 franchise and companion wordings - from the replies
@@ -50,7 +50,7 @@ sentences out (``stages.WORDING``): for a change allowed to reword an answer
 but not to move a number. ``--ignore <stage.path>`` (repeatable) leaves one
 field out of the comparison and lists its values on each side by count -
 only for a field the commit names as added to, or deleted from, a record
-(``reading.point.by``, Phase 3, step 1); everything else stays compared
+(``reading.point.by``, say); everything else stays compared
 whole. Run the baseline twice and compare it with itself before reading
 anything into a difference.
 
@@ -126,11 +126,10 @@ def run(args: argparse.Namespace) -> int:
     replies = _recorded_replies(args.recorded)
     questions = [q for q in replies if not args.match or any(word.lower() in q.lower() for word in args.match)]
     if args.workers > 1 and not args.shard:
-        # D12 (2026-10-14): the feed run is the one proof per push, so it is
+        # The feed run is the one proof per push (decision D12), so it is
         # sharded across processes - each question is answered on its own
         # and every worker reads the warehouse read-only, so N workers give
-        # the same records as one, in the same order, in about 1/N the time
-        # (290s -> ~80s with 4 on the OVH box).
+        # the same records as one, in the same order, in about 1/N the time.
         return _run_sharded(args, questions)
     if args.shard:
         which, of = (int(part) for part in args.shard.split("/"))
@@ -145,8 +144,8 @@ def run(args: argparse.Namespace) -> int:
 
     normalizer.normalize = recorded  # type: ignore[assignment]
     # The agent's chart output and history go to a scratch directory removed
-    # when the run ends, however it ends: a bare mkdtemp left one behind per
-    # run - 663 of them, 748 MB on the shared /tmp by 2026-10-05 (#335).
+    # when the run ends, however it ends: a bare mkdtemp would leave one
+    # behind per run on the shared /tmp (#335).
     with tempfile.TemporaryDirectory(prefix="stages-") as scratch_name:
         scratch = Path(scratch_name)
         agent = Agent(str(args.db_path), scratch / "out", history_dir=scratch / "history", trace=lambda _line: None)
@@ -395,7 +394,7 @@ def compare_calls(args: argparse.Namespace) -> int:
         if len(found) > args.lines:
             print(f"    ... and {len(found) - args.lines} more")
     compared = len(before.keys() & after.keys())
-    boundaries = Counter(row["boundary"].split(":")[0] if row["boundary"].startswith("template:") else row["boundary"] for row in before.values())
+    boundaries = Counter(row["boundary"] for row in before.values())
     print(f"\n{compared} calls compared (tolerance {args.tolerance}): {compared - len(moved)} identical, {len(moved)} differ, {len(only)} in one run only ({len(tests_only)} tests)")
     print("calls by boundary (before): " + ", ".join(f"{name} {count}" for name, count in boundaries.most_common()))
     if not compared:

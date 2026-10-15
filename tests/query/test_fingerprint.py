@@ -3,8 +3,8 @@
 The bug shape these guard against is the one the whole project keeps producing:
 a plot that renders beautifully while showing something other than what was
 asked. A radar is especially exposed to it - a wrong axis order, a percentile
-computed against the wrong pool, a value scaled per-axis, or (as happened here
-first time round) a whole side of the ball missing all look like a perfectly
+computed against the wrong pool, a value scaled per-axis, or a whole side of
+the ball missing all look like a perfectly
 ordinary shape.
 """
 
@@ -13,13 +13,14 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
 import pytest
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
-from association.query.answer import RenderResult
+from association.query.answer import Artifact
 from association.query.compose.netpoints import NetPointsQuery, draw_fingerprint, fingerprint_result, read_fingerprint
 from association.query.compose.say import refusal_phrase, say
 from association.query.entities import Entity, collect_name_readings
@@ -38,15 +39,24 @@ from association.query.reading import Subject as Who
 from association.query.result import Result, Unanswered
 
 
-def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | Unanswered | None) -> RenderResult:
+@dataclass(frozen=True)
+class Drawn:
+    """A fingerprint said and drawn: the message, and the file written -
+    ``None`` where nothing was drawn, which is still an answer."""
+
+    message: str
+    artifact: Artifact | None
+
+
+def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | Unanswered | None) -> Drawn:
     """A fingerprint read, drawn and said, as ``compose.answer`` does it: the
     message and the file, or the reader's refusal said, with nothing drawn."""
     if read is None:
-        return RenderResult("", None)
+        return Drawn("", None)
     if isinstance(read, Unanswered):
-        return RenderResult(say(read).text or "", None)
+        return Drawn(say(read).text or "", None)
     said = say(draw_fingerprint(read, out_dir))
-    return RenderResult(said.text, said.artifacts[0] if said.artifacts else None)
+    return Drawn(said.text, said.artifacts[0] if said.artifacts else None)
 
 
 def _unavailable(load: Callable[[], object]) -> str:
@@ -59,24 +69,22 @@ def _unavailable(load: Callable[[], object]) -> str:
 
 def _render(
     con: duckdb.DuckDBPyConnection, out_dir: Path, players: list[Entity], ambiguous: list[str], season: int, *, view: str = "total", scale: str = "percentile", order: str | None = None
-) -> RenderResult:
-    """Already-resolved players' fingerprints read, drawn and said - what the
-    retired ``fingerprint.render_for_players`` did, through the NetPoints
-    relation's reader (``compose.netpoints.fingerprint_result``), its draw
-    step and the sayer."""
+) -> Drawn:
+    """Already-resolved players' fingerprints read, drawn and said, through
+    the NetPoints relation's reader (``compose.netpoints.fingerprint_result``),
+    its draw step and the sayer."""
     return _said(con, out_dir, fingerprint_result(con, players, ambiguous, season, view=view, scale=scale, order=order))
 
 
-def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season: int) -> RenderResult:
+def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season: int) -> Drawn:
     """A fingerprint asked for by name - one, or several split on " vs " -
-    through the reader's resolution (``compose.netpoints.read_fingerprint``),
-    as the retired ``fingerprint.render_fingerprint`` took them."""
+    through the reader's resolution (``compose.netpoints.read_fingerprint``)."""
     split = [name.strip() for name in names.split(" vs ")]
     scope = Reading(who=Who(kind="pair", players=tuple(split)), span=Span(season=season)) if len(split) > 1 else Reading(who=Who(kind="player", players=(split[0],)), span=Span(season=season))
     return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(**scope.filters(), shape="chart")))
 
 
-def _drawn(result: RenderResult) -> Path:
+def _drawn(result: Drawn) -> Path:
     """The file a render wrote. Asserting it is not None here rather than in
     every caller keeps the "nothing was drawn" case from silently becoming an
     AttributeError three lines later."""
@@ -237,12 +245,9 @@ def test_a_season_where_nobody_qualifies_says_so_rather_than_ranking_against_not
 
 
 def test_a_named_player_missing_from_a_populated_season_is_not_reported_as_a_missing_season(con: duckdb.DuckDBPyConnection) -> None:
-    """The bug this file's header describes, in its other direction: a fluent
-    answer to a question nobody asked. "Show me a fingerprint for Maxey" was
-    answered "No NetPoints fingerprint on record for season 2026" - a claim
-    about league-wide coverage, produced because the name had resolved
-    best-match to Marlon Maxey (retired 1994) rather than Tyrese, who is in
-    that season along with 565 others.
+    """The refusal names the player who is missing, never the season: a
+    season with rows is no coverage gap, and "No NetPoints fingerprint on
+    record for season 2026" beside a populated season names the wrong cause.
     """
     message = _unavailable(lambda: load_fingerprints(con, [Entity(id="99", name="Ghost Player")], 2026))
     assert "Ghost Player" in message
@@ -462,7 +467,7 @@ def test_render_fingerprint_says_how_it_read_a_near_spelling(con: duckdb.DuckDBP
 
 
 def test_render_fingerprint_reports_an_unknown_name_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert _asked(con, tmp_path, "Nobody At All", season=2026) == RenderResult(
+    assert _asked(con, tmp_path, "Nobody At All", season=2026) == Drawn(
         "No player found matching 'Nobody At All'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record.",
         None,
     )
@@ -523,9 +528,8 @@ def game_con_with_result(game_con: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPy
 
 
 def test_a_single_game_fingerprint_names_the_game_not_just_its_date(game_con_with_result: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    """ISSUES.md #155: the same shape as the shot chart's bare event id, one
-    step narrower - a bare date named WHICH game but not what happened in it.
-    The subtitle and the message now read the opponent and result too."""
+    """#155: a single game's fingerprint names the game by its opponent and
+    result, in the subtitle and the message, never by a bare date alone."""
     result = _render(game_con_with_result, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
 
     assert "2026-03-05 vs POR, W 118-104" in result.message
@@ -535,7 +539,7 @@ def test_a_single_game_fingerprint_names_the_game_not_just_its_date(game_con_wit
 
 def test_a_single_game_fingerprint_falls_back_to_the_bare_date(game_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """`game_con` alone has no `player_game_log`/full `games` row, the shape a
-    warehouse built before this existed or a minimal fixture takes - the
+    warehouse without those tables or a minimal fixture takes - the
     subtitle keeps naming the date rather than crashing or going blank."""
     result = _render(game_con, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
 
@@ -570,13 +574,10 @@ def test_a_game_under_the_possessions_floor_cannot_set_the_league_best(game_con:
 
 
 def test_a_duplicated_possession_row_is_still_one_game(game_con: duckdb.DuckDBPyConnection) -> None:
-    """net_points_player_game used to hold duplicate (event_id, athlete_id)
-    pairs - 611 in 2026 alone, every one disagreeing with its twin, from two
-    NetPoints dates resolving to one ESPN game. That is fixed where it was
-    caused (``NetPointsGameIndex``) rather than worked around here, so this no
-    longer asserts which twin wins.
-
-    What it does assert is that a duplicate cannot silently resize the
+    """A duplicate (event_id, athlete_id) pair in net_points_player_game
+    (two NetPoints dates resolving to one ESPN game, which
+    ``NetPointsGameIndex`` prevents at load) does not decide which twin wins
+    here; what is asserted is that a duplicate cannot silently resize the
     percentile pool the whole plot is scaled against, since the join to this
     table is a plain one.
     """

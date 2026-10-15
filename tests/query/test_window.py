@@ -1,11 +1,10 @@
-"""The window family, typed (Phase 3, step 2's second slice): the one tagger
+"""The window family, typed: the one tagger
 that reads which rows a question keeps and from which end
 (:func:`association.query.window.read_window`), the characters it claims,
 the typed value's door and projection (:class:`association.query.reading.Window`),
 the relation's one resolution of it (:func:`association.query.player_relation.relation_window`,
 :func:`association.query.season_line.history_seasons`), and the behavioral
-check contract 4 asks for: applying the window cell on each relation changes
-the result.
+check that applying the window cell on each relation changes the result.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ import itertools
 from typing import Any
 
 import pytest
-from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
+from test_readers import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
@@ -132,7 +131,7 @@ def test_a_misspelled_games_after_a_count_is_the_windows_games(question: str, ex
 
 
 def test_one_game_of_a_players_line_is_the_end_and_a_count_of_one() -> None:
-    """ "his last game" on player_stat is one game at one end of the span,
+    """ "his last game" on a player's line is one game at one end of the span,
     which the line answers by handing the question to the log - and the
     log needs BOTH parts, since an end alone would list his last ten."""
     assert _read("how many points did curry score in his last game", PLAYER_LINE) == Window(order="recent", count=1)
@@ -143,21 +142,21 @@ def test_one_game_of_a_players_line_is_the_end_and_a_count_of_one() -> None:
 
 
 def test_an_end_the_grammar_missed_is_read_on_a_reader_that_honors_one() -> None:
-    """On an intent whose reader honors an end (ORDER_ASKS) the looser
+    """On a key whose reader honors an end (ORDER_ASKS) the looser
     ORDER_WORDS fill one the grammar read none for; on the four where an
     end means ONE game it stands only beside a game the words name."""
     assert _read("curry's latest games", PLAYER_LOG) == Window(order="recent")
     assert _read("curry's latest games", PLAYER_LINE) == Window()
-    # A filler end costs a chart the season (#153): "a shot chart of steph curry's
-    # 2025 season for 3 point shots" drew one game where 2025 held hundreds.
+    # A filler end would cost a chart the season (#153): "a shot chart of steph curry's
+    # 2025 season for 3 point shots" is the season's shots, not one game's.
     assert _read("show a shot chart of steph curry's 2025 season for 3 point shots", SHOT_CHART) == Window()
     assert _read("Create a shot chart for steph curry's last two games of the regular season", SHOT_CHART) == Window(count=2)
     assert _read("show me a fingerprint for steph curry's last game in 2026", NETPOINTS_FINGERPRINT) == Window(order="recent", count=1)
-    # One game named as his in a phrasing the grammar misses is that game on these readers too (2026-10-09: the
-    # chart drew the season's home games, the log listed ten, with nothing saying "last" went unread).
+    # One game named as his in a phrasing the grammar misses is that game on these readers too, not the season's
+    # home games or the log's ten.
     assert _read("curry's shot chart for his last home game", SHOT_CHART) == Window(order="recent", count=1)
     assert _read("jokic game log for his first road game", PLAYER_LOG) == Window(order="first", count=1)
-    # Two teams' meetings honor a window since Phase 5, step 7 (the last N meetings), so an end alone is one meeting there too.
+    # Two teams' meetings honor a window (the last N meetings), so an end alone is one meeting there too.
     assert _read("curry's shot chart for his last home game", TEAM_MEETINGS) == Window(order="recent", count=1)
     # A quarter's ordinal sits where that rule allows two words: the period readers never take it.
     assert _read("harrison barnes's first quarter per game against the magic", PERIOD_LOG) == Window()
@@ -167,9 +166,8 @@ def test_an_end_the_grammar_missed_is_read_on_a_reader_that_honors_one() -> None
 
 def test_an_end_on_a_reader_with_no_window_of_its_own_stands() -> None:
     """An end stands on a reader that refuses one, whatever word follows the
-    count, for the planner to refuse by name (ISSUES.md #352: "Warriors vs
-    Mavs record last ten games" tallied this season's three meetings once
-    its end went)."""
+    count, for the planner to refuse by name (#352), rather than tally
+    every meeting of the season."""
     assert _read("lakers vs mavs record last 10 home games played", TEAM_MEETINGS) == Window(order="recent", count=10)
     assert _read("Warriors vs Mavs record last ten games", TEAM_MEETINGS) == Window(order="recent", count=10)
     assert _read("lamelo ball last 7 home games vs suggs", PLAYER_MEETINGS) == Window(order="recent", count=7)
@@ -278,7 +276,7 @@ def test_relation_window_reads_an_end_or_a_bare_count_as_the_newest() -> None:
     assert history_seasons(Reading()) == 4 and history_seasons(Reading(span=Span(career=True))) is None
 
 
-# ---------------- contract 4: applying the cell changes the result ----------------
+# ---------------- applying the cell changes the result ----------------
 
 
 def _player_games(ctx: AnswerContext, window: Window) -> tuple[int, int]:

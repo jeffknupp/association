@@ -1,10 +1,8 @@
 """The NetPoints relation's reads (:mod:`association.query.netpoints`), each
 over a fixture warehouse in the shape of the real tables: the three a
 player's NetPoints are read from, the three a fingerprint is, and a
-comparison's NetPoints rows (from ``season_line``, the same day). Phase 4,
-step 5 moved the statements here from ``compose.netpoints`` and
-``fingerprint``; these hold what each returns, apart from the readers that
-say it.
+comparison's NetPoints rows (from ``season_line``, the same day). These hold
+what each returns, apart from the readers that say it.
 """
 
 from __future__ import annotations

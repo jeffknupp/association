@@ -43,7 +43,7 @@ saved
 partial_seasons
 phantom_seasons
 
-# association/query/answer.py: public API (versionadded 2.0.0) for callers that
+# association/query/answer.py: public API for callers that
 # dispatch on Artifact.kind; nothing in this repo needs to.
 ARTIFACT_KINDS
 
@@ -59,12 +59,6 @@ attrs
 # lookup (`from . import compose; compose.answer(...)`, so tests can
 # monkeypatch it), which vulture cannot see as a call.
 answer
-
-# association/query/reading.py, Scope: a field read by name, never by
-# attribute - a marker that makes check_scope refuse (it reads every name in
-# SCOPING_SLOTS with getattr), so the compiler answers a triple-double
-# ranking instead (compose.core.COMPILER_SLOTS).
-ranked_by
 
 # pytest: an autouse fixture, entered around every test (tests/conftest.py).
 _names_loaded

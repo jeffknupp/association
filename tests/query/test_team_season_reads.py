@@ -1,15 +1,14 @@
 """The team-season relation's reads, called over the team fixture warehouse
-(``test_team_templates.team_ctx``): each statement the team-season readers
+(``test_team_readers.team_ctx``): each statement the team-season readers
 (``compose.team_stats``) and the team compiler's season total
 (``compose.team``) take is built AND run on the relation
-(:mod:`association.query.team_seasons`), and handed back read (Phase 4,
-step 5: the readers ran each statement themselves until then).
+(:mod:`association.query.team_seasons`), and handed back read.
 """
 
 from __future__ import annotations
 
 import pytest
-from test_team_templates import S, team_ctx  # noqa: F401 - the fixture, by name
+from test_team_readers import S, team_ctx  # noqa: F401 - the fixture, by name
 
 from association.query.answer import AnswerContext
 from association.query.team_metrics import TeamRecord

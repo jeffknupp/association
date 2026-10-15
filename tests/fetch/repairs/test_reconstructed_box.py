@@ -156,8 +156,8 @@ def test_assists_steals_and_blocks_go_to_the_second_participant(tmp_path: Path) 
 
 def test_a_player_in_no_play_is_absent_rather_than_zero(tmp_path: Path) -> None:
     """Minutes are gone, so "did not play" and "played and did nothing" cannot
-    be told apart. A zero for both would recreate the bug this view exists for:
-    a zero that reads as a real performance."""
+    be told apart. A zero for both is what this view exists to prevent: a
+    zero that reads as a real performance."""
     con = _build(tmp_path)
     bench = _row(con, "bench")
     con.close()

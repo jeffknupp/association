@@ -1,10 +1,10 @@
-"""The span family, typed (Phase 3, step 2): the one tagger that reads the
+"""The span family, typed: the one tagger that reads the
 seasons a question covers and the season type it reads
 (:func:`association.query.span.read_span`), the characters it claims, the
 typed value's door and projection (:class:`association.query.reading.Span`),
 the relation's one resolution of it (:func:`association.query.player_relation.span_of`),
-and the behavioral check contract 4 asks for: applying each span cell on
-each relation changes the result.
+and the behavioral check that applying each span cell on each relation
+changes the result.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import itertools
 from typing import Any
 
 import pytest
-from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
+from test_readers import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
@@ -78,8 +78,8 @@ def _read(question: str, shape: PointShape | None = PLAYER_LINE, **context: Any)
         ("games between 2020 and 2024", Span(season_type=2, since=2020, until=2024)),
         ("sga 20+ point games 2024-2026", Span(season_type=2, since=2024, until=2026)),
         ("knicks record by month 2024 2025", Span(season_type=2, since=2024, until=2025)),
-        # Two bare years joined by "to"/"through", or two adjacent ones by "and" (ISSUES.md #345,
-        # #289): each was read as no season until Phase 3, step 3, and the current one answered.
+        # Two bare years joined by "to"/"through", or two adjacent ones by "and" (#345, #289), are the
+        # range between them, not the current season.
         ("most three pointers from 2002 to 2004", Span(season_type=2, since=2002, until=2004)),
         ("how many games did miami heat play 2009 through 2023", Span(season_type=2, since=2009, until=2023)),
         ("2024 and 2025 Knicks record by month", Span(season_type=2, since=2024, until=2025)),
@@ -87,8 +87,8 @@ def _read(question: str, shape: PointShape | None = PLAYER_LINE, **context: Any)
         ("knicks record in 2020 and 2024", Span(season_type=2)),
         # A second year that opens a season span is the span's ("2001-02" is 2002).
         ("tmac 2001 to 2001-02", Span(season=2002, season_type=2)),
-        # A span to a bare year is the range to the season the year names (ISSUES.md #382,
-        # the feed's unread numbers): the year was read by nothing, and the span's season answered.
+        # A span to a bare year is the range to the season the year names (#382): the year is read,
+        # not left for the span's own season to answer.
         ("curry playoff stats 2014-15 to 2017", Span(season_type=3, since=2015, until=2017)),
         ("how many games did miami heat play 2008-09 to 2025", Span(season_type=2, since=2009, until=2025)),
         ("kobe stats 1999-00 through 2002", Span(season_type=2, since=2000, until=2002)),
@@ -215,8 +215,8 @@ def test_no_two_claims_overlap(question: str) -> None:
 def test_claimed_folds_a_nested_claim_and_joins_a_partial_overlap() -> None:
     """A claim inside another is the same reading; two that share a word are
     one claim named for both readings - "his last game 7" is the window's
-    "last game" and the postseason's "game 7", and until 2026-10-09 it raised
-    out of the reader ("lebron's last game 7" was a traceback, not an answer)."""
+    "last game" and the postseason's "game 7", one joined claim and no
+    error out of the reader."""
     assert claimed([Claim(10, 30, "both"), Claim(20, 28, "season_type")]) == (Claim(10, 30, "both"),)
     assert claimed([Claim(10, 20, "range"), Claim(15, 25, "season")]) == (Claim(10, 25, "range+season"),)
     assert claimed([Claim(15, 25, "season"), Claim(10, 20, "range"), Claim(22, 30, "career")]) == (Claim(10, 30, "range+season+career"),)
@@ -275,7 +275,7 @@ def test_span_of_resolves_each_cell_and_refuses_a_contradiction() -> None:
     assert condition_scope(Span(career=True), ("player_game_log",)).season is None and condition_scope(Span(), ("player_game_log",)).season == S
 
 
-# ---------------- contract 4: applying each cell changes the result ----------------
+# ---------------- applying each cell changes the result ----------------
 
 
 def _player_games(ctx: AnswerContext, span: Span) -> int:

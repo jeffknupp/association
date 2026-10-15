@@ -1,6 +1,6 @@
 """``scripts/stage_snapshots.py``: the corpus run that writes each stage's
-output per question, and the comparison a pipeline change is proven by
-(ROADMAP.md, Phase 0). The comparison's exit status is the guard, so every
+output per question, and the comparison a pipeline change is proven by.
+The comparison's exit status is the guard, so every
 test here is of a way it must come back 1."""
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def _compare(monkeypatch: pytest.MonkeyPatch, before: Path, after: Path, *flags:
 
 def test_an_ignored_field_is_left_out_and_its_values_listed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """``--ignore stage.path`` is for a field a commit ADDS to a record (the
-    point's ``by``, Phase 3, step 1): the comparison leaves exactly that
+    point's ``by``): the comparison leaves exactly that
     field out, says it did, and lists the values each run holds there by
     count - so the addition is enumerated, not hidden. Anything else that
     differs is still a difference."""

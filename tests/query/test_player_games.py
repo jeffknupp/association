@@ -1,5 +1,5 @@
 """The ``player_game`` relation's properties, read directly: what every
-box-score template inherits by reading through it."""
+reader over the box scores inherits by reading through it."""
 
 from pathlib import Path
 
@@ -71,22 +71,20 @@ def test_the_aggregate_counts_exactly_the_rows_the_log_lists(con: duckdb.DuckDBP
 
 def test_a_logs_total_counts_every_game_the_narrowing_keeps_before_the_window(con: duckdb.DuckDBPyConnection) -> None:
     """The relation's read of how many games a log was cut from, and their
-    first and last season (Phase 4, step 5: ``compose.logs``' read until
-    then): the window comes off - the newest one game of a three-game
+    first and last season: the window comes off - the newest one game of a three-game
     career is "1 of 3" - and the rebuilt line counts only when the read
     counts it."""
     narrowed = _career()
     narrowed.window = ("recent", 1)
     assert log_total(con, narrowed, rebuilt=False) == (3, 1994, current_season())
-    assert narrowed.window is None, "the window is off the narrowed games themselves, as whole_span always took it"
+    assert narrowed.window is None, "the window is off the narrowed games themselves, as whole_span takes it"
     assert log_total(con, _career(), rebuilt=True) == (4, 1994, current_season())
     nobody = Narrowed(base=["pgl.athlete_id = ?"], base_params=["nobody"])
     assert log_total(con, nobody, rebuilt=False) == (0, None, None)
 
 
 def test_a_narrowing_that_emptied_the_games_is_told_from_a_span_that_held_none(con: duckdb.DuckDBPyConnection) -> None:
-    """Phase 4, step 5: the relation's read (``compose.splits``' until then)
-    - the player has games once the opponent comes off, so it is the
+    """The relation's read: the player has games once the opponent comes off, so it is the
     opponent that left none; with no narrowing, or no games at all, it is
     not."""
     against = _career()
@@ -124,11 +122,10 @@ def test_the_played_guard_is_stated_in_every_read(tmp_path: Path) -> None:
 
 def test_same_date_rows_are_broken_by_event_then_player_name(con: duckdb.DuckDBPyConnection) -> None:
     """A league-wide or position-group log lists several players' games on
-    the same date, and ``rows_sql``'s ORDER BY used to be the caller's date
-    alone - so two players' rows on the same date, in the same game, came
-    out in DuckDB's parallel scan order, which is not stable run to run
-    (ISSUES.md, "A game log's same-date rows come out in an unstable
-    order"). :data:`~association.query.player_games.ROWS_TIEBREAK` breaks
+    the same date; ordered by the caller's date alone, two players' rows on
+    the same date, in the same game, would come out in DuckDB's parallel
+    scan order, which is not stable run to run.
+    :data:`~association.query.player_games.ROWS_TIEBREAK` breaks
     the tie after the caller's own order - event, then player name - inside
     :func:`rows_sql` itself, so every caller gets it. Inserted in reverse
     alphabetical order here (Z before A) to prove the ORDER BY is doing the
@@ -141,8 +138,7 @@ def test_same_date_rows_are_broken_by_event_then_player_name(con: duckdb.DuckDBP
     names = [r[0] for r in con.execute(sql, params).fetchall()]
     assert names == ["Amy Player", "Zeke Player"]
     # Run twice: the tiebreak makes a second run come back identical, which
-    # is the property the ISSUES.md entry says DuckDB's scan order alone
-    # does not guarantee.
+    # DuckDB's scan order alone does not guarantee.
     assert con.execute(sql, params).fetchall() == con.execute(sql, params).fetchall()
 
 

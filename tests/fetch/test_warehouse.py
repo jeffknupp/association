@@ -1,4 +1,4 @@
-"""Regression + sanity tests for the DuckDB warehouse builder."""
+"""Tests for the DuckDB warehouse builder."""
 
 import logging
 from pathlib import Path
@@ -13,10 +13,10 @@ from association.fetch import warehouse
 
 
 def test_build_ignores_directory_names_uses_embedded_columns(tmp_path: Path) -> None:
-    """Regression: files live under season=X/season_type=Y directories, and
-    each row ALSO embeds its own season/season_type columns. Reading with
-    hive_partitioning=True made duckdb infer a SECOND copy of those columns
-    from the directory names (typed int32) that collided with the embedded
+    """Files live under season=X/season_type=Y directories, and each row ALSO
+    embeds its own season/season_type columns. Reading with
+    hive_partitioning=True makes duckdb infer a SECOND copy of those columns
+    from the directory names (typed int32) that collides with the embedded
     data columns (typed int64), raising ArrowTypeError. Only one copy, from
     the embedded data, should ever end up in the table."""
     data_dir = tmp_path / "parquet"
@@ -38,10 +38,9 @@ def test_build_ignores_directory_names_uses_embedded_columns(tmp_path: Path) -> 
 
 
 def test_build_merges_files_with_differing_column_types(tmp_path: Path) -> None:
-    """Regression: an early-season power-index snapshot had every stat as
-    None (ESPN hadn't computed them yet), so that file's column typed as
-    null; a later, fully-populated season's file typed the same column as
-    double. union_by_name must merge these without raising."""
+    """An early-season power-index snapshot has every stat as None (ESPN
+    hasn't computed them yet), so that file's column types as null; a later,
+    fully-populated season's file types the same column as double. union_by_name must merge these without raising."""
     data_dir = tmp_path / "parquet"
     d1 = data_dir / "team_power_index" / "season=2021"
     d2 = data_dir / "team_power_index" / "season=2024"
@@ -92,10 +91,10 @@ def test_build_creates_current_season_macro_unconditionally(tmp_path: Path) -> N
 
 
 def test_build_creates_player_season_stats_deduped_view(tmp_path: Path) -> None:
-    """Regression-shaped: a traded player has one player_season_stats row per
-    team stint plus a combined row (team_id IS NULL) - ad hoc SQL that forgets
-    the QUALIFY dedup pattern double/triple-counts them. This view bakes that
-    pattern in once so run_sql doesn't have to re-derive it per query."""
+    """A traded player has one player_season_stats row per team stint plus a
+    combined row (team_id IS NULL) - SQL that forgets the QUALIFY dedup
+    pattern double/triple-counts them. This view bakes that pattern in once
+    so no reader has to re-derive it per query."""
     data_dir = tmp_path / "parquet"
     _write_table_fixture(data_dir, "players", {"athlete_id": "1", "display_name": "Traded Player"})
     d = data_dir / "player_season_stats"
@@ -172,12 +171,10 @@ _ADVANCED_STATS_PLAYER_BOX_ROW = {
 
 
 def test_player_game_log_gains_advanced_columns(tmp_path: Path) -> None:
-    """Regression: a model asking for a single game's ts_pct naturally tried
-    player_game_log first (the documented per-game convenience view) and got
-    told the column didn't exist there - player_game_log never joined
-    player_advanced_stats at all. No --advanced-stats opt-in anymore - these
-    columns are there on a plain build whenever player_box_stats has what
-    the formulas need."""
+    """player_game_log, the per-game convenience view, joins
+    player_advanced_stats, so a single game's ts_pct is there: the columns
+    are there on a plain build whenever player_box_stats has what the
+    formulas need."""
     data_dir = tmp_path / "parquet"
     fixtures: dict[str, dict] = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},
@@ -244,7 +241,7 @@ def test_build_with_unknown_table_raises(tmp_path: Path) -> None:
 
 
 def test_partial_reload_still_builds_views_from_previously_loaded_tables(tmp_path: Path) -> None:
-    """Regression-shaped: reloading just player_box_stats after teams/players/
+    """Reloading just player_box_stats after teams/players/
     games were already loaded in a prior full build must still (re)build
     player_game_log - the view's dependency check has to look at what's
     actually in the DB, not just what this particular call loaded."""
@@ -275,7 +272,7 @@ def test_partial_reload_still_builds_views_from_previously_loaded_tables(tmp_pat
 def test_advanced_stats_views_survive_a_partial_reload(tmp_path: Path) -> None:
     """A partial `--tables player_box_stats` reload should still (re)build the
     advanced-stats views rather than tearing them down or leaving them stale -
-    no flag to forget to repeat anymore, they're just always kept current."""
+    with no flag to forget to repeat, they are always kept current."""
     data_dir = tmp_path / "parquet"
     _write_table_fixture(
         data_dir,
@@ -366,11 +363,9 @@ def test_build_loads_net_points_daily_tables(tmp_path: Path) -> None:
 
 
 def test_build_loads_through_a_connection_that_does_not_preserve_insertion_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A full rebuild of `plays` from 17,500 Parquet files died with "could not
-    allocate block of size 32.0 KiB (12.4 GiB/12.4 GiB used)" until this was
-    turned off - and because each table is its own statement, the rebuild
-    aborted with the earlier tables already replaced and the rest left at their
-    old contents. Row order carries no meaning in any of these tables.
+    """A full rebuild of `plays` from 17,500 Parquet files dies with "could not
+    allocate block of size 32.0 KiB (12.4 GiB/12.4 GiB used)" with insertion
+    order preserved. Row order carries no meaning in any of these tables.
 
     Asserted on the connection `build` itself loads through: the setting is
     per-session, so a fresh connection opened afterwards would report the
@@ -502,16 +497,16 @@ def test_player_game_log_abbreviates_each_team_as_it_was_that_season(tmp_path: P
     rows = con.execute("SELECT season, team_abbr, opponent_abbr FROM player_game_log ORDER BY season").fetchall()
     con.close()
     # 1997, not 2005: the Grizzlies were already in Memphis by 2005, so a 2005
-    # row reads MEM with or without the rename, and reverting the opponent
-    # column went unnoticed until the fixture moved to a Vancouver season.
+    # row reads MEM with or without the rename, and could not catch the
+    # opponent column reverted.
     assert rows == [(1997, "NJ", "VAN"), (2020, "BKN", "MEM")]
 
 
 def test_a_full_rebuild_that_raises_leaves_the_existing_warehouse_untouched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A full rebuild interrupted partway - an OOM kill, or any other error -
     must not leave the warehouse half-replaced. See AGENTS.md, "A full
-    warehouse.build() is memory-hungry": each table used to be its own
-    statement against `db_path` directly, so a kill mid-build left earlier
+    warehouse.build() is memory-hungry": a table loaded by its own statement
+    against `db_path` directly would leave, after a kill mid-build, earlier
     tables at their new contents and the rest at their old ones."""
     data_dir = tmp_path / "parquet"
     _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})

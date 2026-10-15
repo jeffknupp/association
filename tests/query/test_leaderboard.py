@@ -1,9 +1,8 @@
-"""Regression + sanity tests for run_leaderboard and the shot-chart renderer.
+"""Regression and sanity tests for ``run_leaderboard`` and the season lines a
+ranking of players reads.
 
-Ported from the retired agent toolbox's tests (5.0.0): the tool faces are
-gone, and these call the same functions the templates do. ``lb`` returns what
-the tool returned - the result as a dict, or a LeaderboardError's message -
-so every assertion reads as it did.
+``lb`` returns ``run_leaderboard``'s result as a dict, or a LeaderboardError's
+message.
 """
 
 import json
@@ -85,9 +84,8 @@ def con(db_path: str) -> duckdb.DuckDBPyConnection:
 
 
 def lb(con: duckdb.DuckDBPyConnection, **kwargs: Any) -> Any:
-    """run_leaderboard's result in the shape the retired tool returned it: a
-    dict (through JSON, so a Decimal or a date reads as the page would read
-    it), or the error's message."""
+    """run_leaderboard's result as a dict (through JSON, so a Decimal or a
+    date reads as the page would read it), or the error's message."""
     try:
         result = run_leaderboard(con, **kwargs)
     except LeaderboardError as exc:
@@ -113,12 +111,12 @@ def lb(con: duckdb.DuckDBPyConnection, **kwargs: Any) -> Any:
 # ---------------- get_leaderboard ----------------
 
 
-def test_get_leaderboard_unknown_metric_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_unknown_metric_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
     result = lb(con, metric="not_a_real_metric")
     assert "unknown metric" in result
 
 
-def test_get_leaderboard_unknown_metric_suggests_closest_match(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_unknown_metric_suggests_closest_match(con: duckdb.DuckDBPyConnection) -> None:
     """Regression: a real run guessed metric='points' instead of the actual
     enum value 'avg_points', which sent the model on an unrelated multi-turn
     detour that eventually recovered but dropped the team/fields it had
@@ -128,12 +126,12 @@ def test_get_leaderboard_unknown_metric_suggests_closest_match(con: duckdb.DuckD
     assert "Did you mean 'avg_points'?" in result
 
 
-def test_get_leaderboard_invalid_season_type_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_invalid_season_type_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
     result = lb(con, metric="usage_pct", season_type=7)
     assert "season_type must be" in result
 
 
-def test_get_leaderboard_applies_default_minimum_sample(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_applies_default_minimum_sample(con: duckdb.DuckDBPyConnection) -> None:
     """Regression: a real query for top usage rate with no minimum surfaced a
     3-game stint at 90% ahead of a real, sustained 30% leader (confirmed live
     with Izaiah Brockington). Klay's 3-game/90% row must not outrank or even
@@ -145,14 +143,14 @@ def test_get_leaderboard_applies_default_minimum_sample(con: duckdb.DuckDBPyConn
     assert result["min_sample_column"] == "games_played"  # the unit: ts_pct's floor is attempts
 
 
-def test_get_leaderboard_min_sample_override_widens_the_pool(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_min_sample_override_widens_the_pool(con: duckdb.DuckDBPyConnection) -> None:
     result = lb(con, metric="usage_pct", season=2026, min_sample=1)
     names = [r["display_name"] for r in result["rows"]]
-    assert names == ["Klay Thompson", "Stephen Curry"]  # Klay's 90% now qualifies and ranks first
+    assert names == ["Klay Thompson", "Stephen Curry"]  # at a floor of 1, Klay's 90% qualifies and ranks first
     assert result["min_sample_applied"] == 1
 
 
-def test_get_leaderboard_defaults_to_current_season(monkeypatch: pytest.MonkeyPatch, con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_defaults_to_current_season(monkeypatch: pytest.MonkeyPatch, con: duckdb.DuckDBPyConnection) -> None:
     # the season default lives in season_line.run_leaderboard
     monkeypatch.setattr("association.query.season_line.current_season", lambda: 2026)
     result = lb(con, metric="usage_pct")
@@ -160,7 +158,7 @@ def test_get_leaderboard_defaults_to_current_season(monkeypatch: pytest.MonkeyPa
     assert [r["display_name"] for r in result["rows"]] == ["Stephen Curry"]
 
 
-def test_get_leaderboard_dedups_traded_player_to_one_combined_row(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_dedups_traded_player_to_one_combined_row(con: duckdb.DuckDBPyConnection) -> None:
     """Regression: player_season_stats gives a traded player one row per team
     stint plus one combined row (team_id IS NULL) - without dedup a traded
     player is double/triple-counted. Only the combined row should survive."""
@@ -170,9 +168,9 @@ def test_get_leaderboard_dedups_traded_player_to_one_combined_row(con: duckdb.Du
     assert klay_rows[0]["value"] == 13.8
 
 
-def test_get_leaderboard_netpoints_total_translates_season_type_to_string(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_netpoints_total_translates_season_type_to_string(con: duckdb.DuckDBPyConnection) -> None:
     """net_points_player uses its own string net_points_season_type column, not
-    the numeric season_type every other table uses - the tool must translate
+    the numeric season_type every other table uses - run_leaderboard translates
     the model's normal integer season_type (2) to 'Regular Season' itself."""
     result = lb(con, metric="netpoints_total", season=2026, season_type=2)
     names = [r["display_name"] for r in result["rows"]]
@@ -180,7 +178,7 @@ def test_get_leaderboard_netpoints_total_translates_season_type_to_string(con: d
     assert "Klay Thompson" in names  # no minimum sample for a season total
 
 
-def test_get_leaderboard_netpoints_per_100_applies_default_minimum_minutes(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_netpoints_per_100_applies_default_minimum_minutes(con: duckdb.DuckDBPyConnection) -> None:
     """Regression: NetPoints per-100-possessions is a rate too - a live rerun of
     the same question with --think produced a leaderboard dominated by tiny-
     minutes players once this column was used unqualified. Klay's 40 minutes
@@ -191,7 +189,7 @@ def test_get_leaderboard_netpoints_per_100_applies_default_minimum_minutes(con: 
     assert result["min_sample_applied"] == 500
 
 
-def test_get_leaderboard_fingerprint_metric_has_no_season_type(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_fingerprint_metric_has_no_season_type(con: duckdb.DuckDBPyConnection) -> None:
     """Regression: a real query for a NetPoints fingerprint category (e.g. rim
     scoring) never used net_points_player_fingerprint at all - it isn't
     exposed as a get_leaderboard metric, so the model fell back to an
@@ -205,26 +203,26 @@ def test_get_leaderboard_fingerprint_metric_has_no_season_type(con: duckdb.DuckD
     assert result["min_sample_applied"] is None  # no default floor for a fingerprint total
 
 
-def test_get_leaderboard_fingerprint_metric_accepts_explicit_min_sample(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_fingerprint_metric_accepts_explicit_min_sample(con: duckdb.DuckDBPyConnection) -> None:
     result = lb(con, metric="rim_o_net_pts", season=2026, min_sample=1000)
     names = [r["display_name"] for r in result["rows"]]
-    assert names == ["Stephen Curry"]  # Klay's 800 minutes no longer qualifies
+    assert names == ["Stephen Curry"]  # Klay's 800 minutes do not qualify at 1000
     assert result["min_sample_applied"] == 1000
 
 
-def test_get_leaderboard_fields_adds_box_score_columns(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_fields_adds_box_score_columns(con: duckdb.DuckDBPyConnection) -> None:
     result = lb(con, metric="usage_pct", season=2026, fields=["points", "rebounds"])
     row = result["rows"][0]
     assert row["display_name"] == "Stephen Curry"
     assert row["points"] == 28.5
 
 
-def test_get_leaderboard_unknown_field_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_unknown_field_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
     result = lb(con, metric="usage_pct", fields=["not_a_real_field"])
     assert "unknown field" in result
 
 
-def test_get_leaderboard_team_filter_by_abbreviation(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_team_filter_by_abbreviation(con: duckdb.DuckDBPyConnection) -> None:
     """Both Curry and Klay played for the Warriors that season (Klay's first
     of two stints) - both should show up, ranked by their season value."""
     result = lb(con, metric="avg_points", season=2026, min_sample=1, team="Warriors")
@@ -232,7 +230,7 @@ def test_get_leaderboard_team_filter_by_abbreviation(con: duckdb.DuckDBPyConnect
     assert names == ["Stephen Curry", "Klay Thompson"]
 
 
-def test_get_leaderboard_team_filter_includes_traded_player_who_stopped_there(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_team_filter_includes_traded_player_who_stopped_there(con: duckdb.DuckDBPyConnection) -> None:
     """A traded player's DEDUPED/combined row has team_id IS NULL (see the
     dedup test above) - filtering on that column directly would wrongly
     exclude them from every team's roster even though they really did play
@@ -245,12 +243,12 @@ def test_get_leaderboard_team_filter_includes_traded_player_who_stopped_there(co
     assert result["rows"][0]["value"] == 13.8
 
 
-def test_get_leaderboard_unknown_team_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_unknown_team_is_rejected(con: duckdb.DuckDBPyConnection) -> None:
     result = lb(con, metric="avg_points", team="Not A Real Team")
     assert "no team found" in result
 
 
-def test_get_leaderboard_missing_table_reports_requires_hint(con: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_missing_table_reports_requires_hint(con: duckdb.DuckDBPyConnection) -> None:
     """usage_pct/ts_pct/efg_pct need player_advanced_stats, which needs a
     warehouse rebuild after player_box_stats was fetched - if that view is
     missing, say so instead of a bare DuckDB error the model has no way to
@@ -260,7 +258,8 @@ def test_get_leaderboard_missing_table_reports_requires_hint(con: duckdb.DuckDBP
 
 
 def test_double_and_triple_doubles_are_registered_metrics() -> None:
-    from association.query.measure import measure_of
+    from routed import measure_of
+
     from association.query.measures import resolve_metric
     from association.query.metrics import LEADERBOARD_METRICS
 
@@ -284,7 +283,7 @@ def seeded(db_path: str) -> duckdb.DuckDBPyConnection:
     return connect_read_only(db_path)
 
 
-def test_get_leaderboard_limit_is_clamped(seeded: duckdb.DuckDBPyConnection) -> None:
+def test_run_leaderboard_limit_is_clamped(seeded: duckdb.DuckDBPyConnection) -> None:
     """A direct caller's count is held to the reader's one cap
     (``reading.MAX_LIMIT``) in the SQL itself - 200 players qualify."""
     from association.query.reading import MAX_LIMIT
@@ -314,7 +313,7 @@ def test_the_season_lines_door_ranks_with_ties_sharing_a_place(db_path: str) -> 
     assert not ranking.traded
 
 
-# ---------------- a ranking kept past season lines (ISSUES.md #390) ----------------
+# ---------------- a ranking kept past season lines (#390) ----------------
 
 
 def _season_line(measure: str, op: LineOp, value: float, typed: str) -> Line:
@@ -356,7 +355,7 @@ def test_season_lines_are_said_as_what_the_players_did() -> None:
 
 
 def test_players_are_ranked_by_how_many_of_their_seasons_a_season_line_holds(tmp_path: Path) -> None:
-    """ISSUES.md #391: "most seasons averaging 25 ppg" - each season's
+    """#391: "most seasons averaging 25 ppg" - each season's
     deduped row (a traded player's combined one), a season average held to
     the per-game ranking's floor of games, most first, with how many
     players held one at all."""
@@ -378,7 +377,7 @@ def test_players_are_ranked_by_how_many_of_their_seasons_a_season_line_holds(tmp
 
 
 def test_a_ranking_from_the_bottom_orders_the_lowest_first(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #350: the season ranking ordered by the figure, highest
-    first, whatever the words asked - "the lowest" answered the leaders."""
+    """#350: the season ranking orders by the figure the way the words ask -
+    "the lowest" is lowest first, never the leaders."""
     assert [row["display_name"] for row in run_leaderboard(con, "avg_points", season=2026, min_sample=1, ascending=True).rows] == ["Klay Thompson", "Stephen Curry"]
     assert [row["display_name"] for row in run_leaderboard(con, "avg_points", season=2026, min_sample=1).rows] == ["Stephen Curry", "Klay Thompson"]

@@ -1,6 +1,6 @@
-"""The in-memory name index (query/names.py) answers what the SQL it replaced
-answered: DuckDB's own lowering, tokenizing, distance and ILIKE, the tables'
-order, and the errors a partial warehouse raised - and a question reads each
+"""The in-memory name index (query/names.py) answers as DuckDB's own SQL
+answers: DuckDB's lowering, tokenizing, distance and ILIKE, the tables'
+order, and the errors a partial warehouse raises - and a question reads each
 table once."""
 
 from __future__ import annotations
@@ -136,10 +136,10 @@ def test_a_word_starts_where_re2_says_it_does() -> None:
 def test_ilike_is_duckdbs_on_either_kind_of_column(plain: bool) -> None:
     """An all-ASCII column is matched by DuckDB's ASCII-only ILIKE, so a
     pattern with any other character finds nothing in it; one accented value
-    anywhere in the column changes that. One departure from the statements
-    the index replaced, which had no escape at all: since ISSUES.md #315 a
-    backslash makes the next character literal (``entities._literal`` writes
-    one before a ``%`` or ``_`` the question typed), asserted outright below
+    anywhere in the column changes that. One departure from an ILIKE with no
+    ``ESCAPE`` clause (ISSUES.md #315): a backslash makes the next character
+    literal (``entities._literal`` writes one before a ``%`` or ``_`` the
+    question typed), asserted outright below
     - DuckDB's own ``ESCAPE`` clause takes its full-Unicode path, so it is no
     reference for the ASCII-only matching this reproduces."""
     c = duckdb.connect()
@@ -224,7 +224,7 @@ def test_a_lookup_outside_a_block_is_refused_and_a_new_block_reads_a_changed_tab
         assert find_players(players_of(con), "wembanyama") == [Entity("5", "Victor Wembanyama")]
 
 
-def test_a_warehouse_without_teams_raises_what_the_sql_raised() -> None:
+def test_a_warehouse_without_teams_raises_duckdbs_own_error() -> None:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('4', 'Nikola Jokic')")
@@ -234,12 +234,11 @@ def test_a_warehouse_without_teams_raises_what_the_sql_raised() -> None:
         find_teams(teams_of(c), "lakers")
 
 
-def test_a_teams_without_its_name_columns_raises_what_the_sql_raised() -> None:
+def test_a_teams_table_without_its_name_columns_raises_duckdbs_own_error() -> None:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO teams VALUES ('22', 'POR', 'Portland Trail Blazers')")
-    # No `name` column: the nickname reading's statement failed to bind, and
-    # its caller reads that as finding nothing.
+    # No `name` column: the nickname reading finds nothing.
     assert entities._by_nickname(teams_of(c), "Portland Blazers", None) is None
     assert entities._team_named(teams_of(c), "trailblazers") == Entity("22", "Portland Trail Blazers")
     bare = duckdb.connect(":memory:")
@@ -248,7 +247,7 @@ def test_a_teams_without_its_name_columns_raises_what_the_sql_raised() -> None:
         entities._team_named(teams_of(bare), "lakers")  # no `abbreviation`, and nothing caught that
 
 
-def test_a_warehouse_without_players_raises_what_the_sql_raised() -> None:
+def test_a_warehouse_without_players_raises_duckdbs_own_error() -> None:
     c = duckdb.connect(":memory:")
     with pytest.raises(duckdb.CatalogException):
         players_named_in(players_of(c), "how did jokic do")
@@ -257,10 +256,9 @@ def test_a_warehouse_without_players_raises_what_the_sql_raised() -> None:
 
 def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDBPyConnection) -> None:
     """A team named by one whole word of its name, and a team's
-    abbreviation: the three statements the parser, the subject reading and
-    the team compiler still issued per word after the entity module's own
-    went to the index. One read of ``teams`` inside the block serves them
-    all, and each gives what its SQL gave."""
+    abbreviation, as the parser, the subject reading and the team compiler
+    look them up: one read of ``teams`` inside the block serves them all,
+    and each gives what DuckDB's SQL gives."""
     from association.query.entities import team_abbreviations, teams_named_by_word
     from association.query.parse import _classify_span_abbreviation
     from association.query.subject import _team_abbreviation, team_named_in
@@ -275,7 +273,7 @@ def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDB
         assert _team_abbreviation(teams_of(counting), "POR record 2026") == "Portland Trail Blazers" and _team_abbreviation(teams_of(counting), "por record") is None  # type: ignore[arg-type]
         assert _classify_span_abbreviation(teams_of(counting), "ind") and not _classify_span_abbreviation(teams_of(counting), "indy")  # type: ignore[arg-type]
     assert counting.statements == ["SELECT * FROM teams"]
-    # A team with no abbreviation has none, and a warehouse with no teams raises what the SQL raised.
+    # A team with no abbreviation has none, and a warehouse with no teams raises DuckDB's own error.
     con.execute("INSERT INTO teams VALUES ('99', NULL, 'Seattle SuperSonics', 'Seattle', 'SuperSonics')")
     assert "none" not in team_abbreviations(teams_of(con)) and len(team_abbreviations(teams_of(con))) == 3
     bare = duckdb.connect(":memory:")

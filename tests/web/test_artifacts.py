@@ -79,10 +79,10 @@ def test_a_name_that_is_not_a_chart_name_gets_nothing(name: str, served: tuple[T
     a path: a distinct status for "not allowed" would answer the question the
     probing was asking.
 
-    Measured, not assumed: with `artifact_path`'s checks removed, most of these
-    still 404 because the router never matches a path parameter containing a
-    separator. This test pins the endpoint's behavior end to end; the one below
-    pins the guard, which is what would still be holding if the route were ever
+    With `artifact_path`'s checks removed, most of these still 404 because
+    the router never matches a path parameter containing a separator. This
+    test pins the endpoint's behavior end to end; the one below pins the
+    guard, which is what would still be holding if the route were ever
     declared as `{name:path}`.
     """
     client, _ = served

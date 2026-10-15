@@ -1,16 +1,14 @@
-"""Regression test for ISSUES.md #144 / the follow-up filed alongside it:
-`record_when`'s team branch used to be preempted by the team compiler
-(``compose.team``), which reads a plain season or window total and has no
-notion of a threshold - so "what was the celtics record when they scored 120
-points" silently answered the season's whole point total, the threshold
-dropped, instead of a win-loss record split by the line asked about.
+"""A team's record over a line (#144): "what was the celtics record when they
+scored 120 points" is a win-loss record split by the line asked about, never
+the season's whole point total with the line dropped - the team compiler
+(``compose.team``), which reads a plain season or window total, declines a
+point carrying a line.
 
 Kept apart from ``tests/query/test_conditions.py`` and
 ``tests/query/test_compose.py``: this is the one place the FULL agent path is
-exercised end to end, the way #144's own question is actually asked - the
-team subject's own readers declining a threshold, and the compiler answering
-it through ``record_when``'s own team reader
-(``compose.records.read_team_record_when``, the presenter ``compose.present.present_team`` until slice (iv); ROADMAP plan item 6, step (d), part 4).
+exercised end to end, the way #144's own question is asked - the team
+subject's own readers declining a line, and the compiler answering it
+through the team's record reader (``compose.records.read_team_record_when``).
 """
 
 from __future__ import annotations
@@ -33,14 +31,14 @@ S = current_season()
 def _agent_with_a_team_threshold_split(tmp_path: Path) -> Agent:
     """A small warehouse: the Celtics have two 120+ point games (one win, one
     loss) and two games under 120 (one win, one loss), all against the same
-    opponent - real enough for `record_when`'s team branch
-    (`compose.records.read_team_record_when`) to answer a threshold record for
-    real, rather than merely proving the compiler declines.
+    opponent - real enough for the team's record reader
+    (``compose.records.read_team_record_when``) to answer a record over a
+    line for real, rather than merely proving the compiler declines.
 
     ``team_season_stats`` also carries a season total - a decoy, deliberately
-    unlike anything a threshold record could produce (9,999 points, 10
-    games), so the pre-fix behavior (the team compiler answering a plain
-    season total with the threshold dropped, #144's own bug) reads as a
+    unlike anything a record over a line could produce (9,999 points, 10
+    games), so the team compiler answering a plain season total with the
+    line dropped reads as a
     wrong but fluent answer here too, not merely an exception from a table
     this fixture never built."""
     db_path = tmp_path / "test.duckdb"
@@ -73,14 +71,10 @@ def _agent_with_a_team_threshold_split(tmp_path: Path) -> Agent:
 
 
 def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tmp_path: Path) -> None:
-    """ISSUES.md #144's own wording. "what was the celtics record when they
-    scored 120 points" routes `record_when {'stat': 'points', 'team': 'Boston
-    Celtics', 'season_type': 2, 'threshold': 120}` - and because the
-    compiler answered `record_when` first, the team compiler used to answer
-    it with no notion of a threshold, silently reading the plain season/window
-    total and dropping the threshold. `run_team` declines a
-    point whose scope carries a ``threshold``, and the compiler answers it
-    with `record_when`'s own team reader, as the record it actually asked
+    """#144's own wording, "what was the celtics record when they scored 120
+    points", read as a record over a line (points, 120, the Boston Celtics).
+    ``run_team`` declines a point carrying a line, and the compiler answers
+    it with the team's record reader, as the record asked
     for: g1 (125, W) and g2 (130, L) reach 120+ (1-1, margin +15 and -5); g3
     (110, W) and g4 (95, L) fall short (1-1, margin +10 and -10). No model
     call is needed - the fast path answers on its own."""
@@ -122,11 +116,11 @@ def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tm
     ],
 )
 def test_a_teams_line_under_a_number_splits_the_games_by_its_own_comparison(tmp_path: Path, op: LineOp, held: str, missed: str, reached: tuple[int, int], short: tuple[int, int]) -> None:
-    """ISSUES.md #325: "warriors' record last season when committing 10 or
-    fewer turnovers" answered the whole season. The team's record over its
-    own line reads the line's comparison, so a line under a number ("N or
-    fewer", "under N") or over it ("more than N") splits the games by it
-    and says it, never as the "N+" split it read every line as."""
+    """#325 ("warriors' record last season when committing 10 or fewer
+    turnovers"): the team's record over its own line reads the line's
+    comparison, so a line under a number ("N or fewer", "under N") or over
+    it ("more than N") splits the games by it and says it, never as an
+    "N+" split."""
     agent = _agent_with_a_team_threshold_split(tmp_path)
     answer = ask_routed(
         agent,
@@ -152,9 +146,9 @@ def test_a_teams_line_under_a_number_splits_the_games_by_its_own_comparison(tmp_
 
 
 def test_a_teams_record_over_its_opponents_line_splits_the_games_by_their_score(tmp_path: Path) -> None:
-    """ISSUES.md #426: "celtics record when allowing 100+ points" answered
-    the Celtics' record when THEY scored 100+ - the line read on their own
-    points. A line on the opponents' figure (``Line.whose``) splits the
+    """#426: "celtics record when allowing 100+ points" is a line on the
+    opponents' figure (``Line.whose``), never on the Celtics' own points,
+    and splits the
     games by the opponents' score: at 110+, g1 (allowed 110, W) and g2
     (135, L) reach it (1-1, margins +15 and -5), g3 (100, W) and g4 (105,
     L) do not (1-1, +10 and -10) - where the Celtics' own score put g1 and

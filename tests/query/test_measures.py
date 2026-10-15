@@ -6,8 +6,7 @@ from association.query import measures
 
 
 def test_the_sql_that_computes_each_measure_is_keyed_by_the_names_the_reader_reads() -> None:
-    """ROADMAP.md, Phase 1, the read_point move, step 2: the measures are
-    closed by name in ``measures`` (what the reader reads a question into)
+    """The measures are closed by name in ``measures`` (what the reader reads a question into)
     and computed on the answer side under exactly those names - one
     definition each, held together here rather than by the reader importing
     the SQL."""
@@ -18,10 +17,10 @@ def test_the_sql_that_computes_each_measure_is_keyed_by_the_names_the_reader_rea
     assert frozenset(DERIVED) == measures.DERIVED_MEASURES
     assert measures.BOOLEAN_MEASURES <= measures.DERIVED_MEASURES
     assert frozenset(GAME_MEASURES) == measures.TEAM_GAME_MEASURES and frozenset(SEASON_MEASURES) == measures.TEAM_SEASON_MEASURES
-    # The whole line's history (ISSUES.md #387) is read where no stat is named, never by a stat's name.
+    # The whole line's history (#387) is read where no stat is named, never by a stat's name.
     assert frozenset(HISTORY_COLUMNS) - {HISTORY_LINE} == measures.HISTORY_STATS
-    # Phase 2, step 1: the season line's and the threshold's stat names, and
-    # the log's extra columns, closed in measures too.
+    # The season line's and the threshold's stat names, and the log's extra
+    # columns, are closed in measures too.
     from association.query.player_games import STARTER_SIDES, THRESHOLD_STAT_COLUMNS
     from association.query.reading import STARTER_SIDES as READING_STARTER_SIDES
     from association.query.season_line import PLAYER_STAT_COLUMNS

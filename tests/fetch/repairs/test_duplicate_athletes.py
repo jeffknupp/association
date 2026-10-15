@@ -209,9 +209,9 @@ def test_more_career_minutes_wins_even_with_fewer_total_rows() -> None:
 
 
 def test_a_shared_name_that_never_shares_a_game_is_left_alone() -> None:
-    """Two different real people can share a display name (ISSUES.md #21) -
-    that is not this module's fault to fix, and merging on the name alone
-    would be exactly the mistake #21 already made once. Never co-occurring in
+    """Two different real people can share a display name (#21) - that is
+    not this module's fault to fix, and merging on the name alone would
+    merge them. Never co-occurring in
     the same team's box score for the same game is what keeps them apart."""
     con = _build(
         [

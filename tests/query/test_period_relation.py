@@ -1,4 +1,4 @@
-"""The period relation (ROADMAP plan item 4): a quarter or a half as a narrowing
+"""The period relation: a quarter or a half as a narrowing
 of the player-games relation, its line rebuilt from the shots and the plays.
 
 The rules each have a measured reason (``player_games.PERIOD_AGREEMENT`` and
@@ -15,11 +15,11 @@ from typing import Any
 
 import duckdb
 import pytest
-from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
+from routed import measure_of
+from test_readers import team_period_total
 
 from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
-from association.query.measure import measure_of
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, most_games, period_line_sql, period_quarter, period_ranking, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.reading import (
@@ -205,7 +205,7 @@ def test_a_game_the_shot_table_does_not_cover_is_no_game(con: duckdb.DuckDBPyCon
 
 
 def test_a_period_as_a_condition_keeps_the_games_whose_period_held_the_line_and_reads_the_whole_game(con: duckdb.DuckDBPyConnection) -> None:
-    """ROADMAP step 2, #275 ("three points made per game after making one
+    """#275 ("three points made per game after making one
     three in first quarter"): the condition is on the period's own rebuilt
     line and the read is the WHOLE game's. g1's first quarter holds one made
     three and g2's none, so "1+ threes in the 1st quarter" keeps g1 alone -
@@ -232,7 +232,7 @@ def test_a_period_as_a_condition_keeps_the_games_whose_period_held_the_line_and_
 
 
 def test_the_leagues_period_reads_are_the_relations_own(con: duckdb.DuckDBPyConnection) -> None:
-    """Phase 4, step 5: the three reads a league's period ranking makes are
+    """The three reads a league's period ranking makes are
     the relation's, run there through the one door - the ranking by a
     quarter's stat, one quarter of the points-by-quarter table, and the most
     games anyone played in a narrowed pool - each over the quarter's own
@@ -249,7 +249,7 @@ def test_the_leagues_period_reads_are_the_relations_own(con: duckdb.DuckDBPyConn
 
 def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
     """The season line has no quarter in it: a condition on one narrows the
-    GAMES, and `player_stat` reads them from box scores as it does for an
+    GAMES, and a player's line reads them from box scores as it does for an
     opponent or a teammate's role (#212's shape, guarded)."""
     from association.query.reading import Line, Period, scope_reads_box_scores
 
@@ -267,7 +267,7 @@ def test_the_scope_narrows_to_a_half_or_a_quarter_through_the_typed_period() -> 
 def test_period_is_a_relation_cell_and_every_exclusion_says_why() -> None:
     assert Period.CELLS <= RELATION_SCOPING
     for shape, row in RELATION_SCOPING_EXCLUDED.items():
-        assert "half" not in row.unstated, f"{shape}: a half is the period cell since Phase 3, step 2"
+        assert "half" not in row.unstated, f"{shape}: a half is the period cell, not a cell of its own"
         if "period" in row.unstated:
             assert row.unstated["period"].strip(), f"{shape} excludes period without a reason"
 
@@ -308,7 +308,7 @@ def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read
 
 
 # ---------------------------------------------------------------------------
-# The team half (ISSUES.md #161): a team's period line is its players' lines
+# The team half (#161): a team's period line is its players' lines
 # plus its own plays, and its points are the linescore's.
 # ---------------------------------------------------------------------------
 
@@ -414,7 +414,7 @@ def test_a_team_game_the_shot_table_does_not_cover_has_no_rebuilt_line(team_con:
 
 
 def test_a_teams_period_games_are_the_relations_own_read(team_con: duckdb.DuckDBPyConnection) -> None:
-    """Phase 4, step 5: a team's quarter or half is read by the relation,
+    """A team's quarter or half is read by the relation,
     through the one door - each game's Eastern date, the linescore's points
     for the half, a rebuilt column beside them, the opponent and the
     season it was played in, in date order."""
@@ -427,9 +427,9 @@ def test_a_teams_period_games_are_the_relations_own_read(team_con: duckdb.DuckDB
 
 
 def test_a_teams_games_without_the_narrowing_are_the_relations_own_read(team_con: duckdb.DuckDBPyConnection) -> None:
-    """Phase 4, step 5: what a team's empty log names as missing - its games
+    """What a team's empty log names as missing - its games
     in the span, or the match - is read by the team-games relation with the
-    narrowing off (``compose.logs``' read until then), the first and last
+    narrowing off, the first and last
     season a postseason's calendar year where the read is one. The team
     fixture borrowed: g1 and g2, Eastern 2025-10-31 and 2025-11-01."""
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season = ?"], base_params=["9", SEASON], extra=["tg.opponent_id = ?"], extra_params=["nobody"])
@@ -447,7 +447,7 @@ def test_period_is_a_team_relation_cell_and_every_exclusion_says_why() -> None:
     assert Period.CELLS <= TEAM_RELATION_SCOPING
     for shape in (TEAM_RECORD, TEAM_MEETINGS, TEAM_RANKING):
         assert TEAM_RELATION_SCOPING_EXCLUDED[shape].unstated["period"].strip(), f"{shape} excludes period without a reason"
-        assert "half" not in TEAM_RELATION_SCOPING_EXCLUDED[shape].unstated, f"{shape}: a half is the period cell since Phase 3, step 2"
+        assert "half" not in TEAM_RELATION_SCOPING_EXCLUDED[shape].unstated, f"{shape}: a half is the period cell, not a cell of its own"
 
 
 def test_the_team_agreement_table_names_only_period_columns_and_real_percentages() -> None:
@@ -457,11 +457,11 @@ def test_the_team_agreement_table_names_only_period_columns_and_real_percentages
             assert season >= 2002 and 0 <= pct < 99.05, f"{column} {season}: {pct} (the table lists seasons under 99% only)"
 
 
-def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+def test_a_teams_period_total_answers_a_rebuilt_stat_with_its_seasons_caveat(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """ "home team first half turnovers": the relation's rebuilt column, per
     game and averaged, and the season's measured agreement said beside it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
     )
     assert (result.data["total"], result.data["stat"], [g["turnovers"] for g in result.data["games"]]) == (5, "turnovers", [5, 0])
@@ -470,13 +470,13 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
     assert listed is None or f"{listed:.1f}% of the time in {SEASON}" in (result.text or "")
 
 
-def test_team_quarter_points_answers_the_opponents_rebuilt_stat_from_the_other_side(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    """ISSUES.md #427: an opponent's figure in a period ("opp turnovers in
-    the first half") was refused as not on record, though the plays rebuild
-    both teams' lines. The Away Team's opponents are the Home Team, whose
+def test_a_teams_period_total_answers_the_opponents_rebuilt_stat_from_the_other_side(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """#427: an opponent's figure in a period ("opp turnovers in
+    the first half") is read from the plays, which rebuild both teams'
+    lines. The Away Team's opponents are the Home Team, whose
     first-half turnovers are 5 in g1 and none in g2."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx,
         Reading(
             who=Who(kind="team", teams=("Away Team",)),
@@ -489,37 +489,37 @@ def test_team_quarter_points_answers_the_opponents_rebuilt_stat_from_the_other_s
     assert "The Away Team's opponents averaged 2.5 turnovers in the 1st half" in (result.text or "")
 
 
-def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_teams_period_total_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "turnovers", {SEASON: 60.6})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
     )
     assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.text or "")
 
 
-def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempts(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+def test_a_teams_period_total_answers_a_shooting_percentage_as_makes_over_attempts(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """A team's free throw percentage in a half is the ratio of its rebuilt
-    makes and attempts over the games (ROADMAP step 2): 1 of 2 in g1's first
+    makes and attempts over the games: 1 of 2 in g1's first
     half (Player One's pair), none attempted in g2 - 50.0% over both, each
     game listed as made-attempted. A "most" question is refused rather than
     naming g1 a record over two attempts, and a season either column
     rebuilds badly refuses the percentage with it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
     scope = Reading(who=Who(kind="team", teams=("Home Team",)), measure=measure_of("freeThrowPct"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
-    result = team_quarter_points(ctx, scope)
+    result = team_period_total(ctx, scope)
     assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["average"]) == ("ft_pct", 1, 2, 50.0)
     assert [(g["freeThrowsMade"], g["freeThrowsAttempted"], g["ft_pct"]) for g in result.data["games"]] == [(1, 2, 50.0), (0, 0, None)]
     answer = result.text or ""
     assert "The Home Team shot 1 of 2 (50.0%) on free throws in the 1st half across 2 2026 regular season games:" in answer and "1-2  50.0%" in answer and "0-0  -" in answer
-    most = team_quarter_points(ctx, replace(scope, window=Window(rank="most")))
+    most = team_period_total(ctx, replace(scope, window=Window(rank="most")))
     assert "extreme" not in most.data and "is not ranked" in (most.text or "")
 
 
-def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_teams_period_total_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "freeThrowsAttempted", {SEASON: 70.0})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx,
         Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="freeThrowPct", as_typed="freeThrowPct"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True)),
     )

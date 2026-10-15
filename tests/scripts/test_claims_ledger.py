@@ -1,5 +1,5 @@
 """``scripts/claims_ledger.py``: which of a question's words the reading
-depends on, measured by deleting each one (ROADMAP.md, contract 2)."""
+depends on, measured by deleting each one."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def test_one_word_is_deleted_and_the_gap_closed() -> None:
 
 
 def test_the_ledger_counts_by_the_rule_the_reading_states_its_unread_words_by() -> None:
-    """One rule, the lexicon's (Phase 3, step 3): the ledger's content
+    """One rule, the lexicon's: the ledger's content
     words are the package's, so its count and ``Reading.unread`` count the
     same words."""
     question = "How many threes did Steph Curry's team make against the Celtics in the playoffs?"
@@ -58,7 +58,7 @@ def test_a_name_the_reading_settled_on_counts_as_read() -> None:
             "subject": {"players": ["Stephen Curry"], "teams": [], "opponent": "Boston Celtics", "own_team": None},
         }
     }
-    # A teammate who played counts on the with/without split alone, and only with nobody absent - as the slot era carried him.
+    # A teammate who played counts on the with/without split alone, and only with nobody absent.
     assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Draymond Green", "Stephen Curry", "Boston Celtics"]
     whole["reading"]["asked"] = {"relation": "team_games", "shape": "split", "by": "presence"}
     assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Draymond Green", "Stephen Curry", "Boston Celtics"]
@@ -72,7 +72,7 @@ def test_a_name_the_reading_settled_on_counts_as_read() -> None:
 def test_a_run_reports_the_words_the_reading_does_not_depend_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The whole instrument over an empty warehouse. "what did the lakers
     coach say last night": deleting "coach" changes the reading (it is what
-    names the intent), deleting "night" does not; the Reading's own unread
+    names the key the words ask), deleting "night" does not; the Reading's own unread
     words are recorded beside the deletion's."""
     import duckdb
 
@@ -123,7 +123,7 @@ def test_the_report_names_each_question_the_reading_and_the_deletion_disagree_on
 
 
 def test_the_held_disagreements_pass_and_one_that_clears_fails_until_it_is_removed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Jeff's ruling (2026-10-10): the subject reading's three holdouts are
+    """The subject reading's three holdouts are
     held by question text; another question differing fails the report, and
     so does a held one that agrees now (it leaves the list with its fix)."""
     import argparse
@@ -142,7 +142,7 @@ def test_the_held_disagreements_pass_and_one_that_clears_fails_until_it_is_remov
 
 
 def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    """Jeff's ruling (2026-10-10): a partial overlap joins into one claim
+    """A partial overlap joins into one claim
     named for both readings, and the joins are held by kind and count
     (``HELD_JOINS``): a new kind or a grown count fails the report, and so
     does one that fell or vanished, on a run of every recorded question,
@@ -155,12 +155,12 @@ def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: py
         path.write_text("".join(json.dumps(row) + "\n" for row in rows))
         return int(ledger.report(argparse.Namespace(ledger=path, top=5, show=0)))
 
-    # The table is empty since slice (c): any join on the 628 is new.
+    # The table is empty: any join on the 628 is new.
     assert ledger.HELD_JOINS == {} and report([]) == 0
     assert report(["window+period"]) == 1 and "NEW: window+period 0 -> 1" in capsys.readouterr().out
-    # The kinds Phase 3, step 4, slices (b) and (c) made one reading are gone from the table: one back is new.
+    # A kind the table does not hold is new.
     assert report(["intent+line"]) == 1 and "NEW: intent+line 0 -> 1" in capsys.readouterr().out
-    # A held table, as slice (b) left one: a grown count and a vanished kind each fail.
+    # A held table: a grown count and a vanished kind each fail.
     monkeypatch.setattr(ledger, "HELD_JOINS", {"companion+intent": 2, "refused+measure": 1})
     held = [what for what, count in ledger.HELD_JOINS.items() for _ in range(count)]
     assert report(held) == 0
@@ -176,7 +176,7 @@ def _held_run(tmp_path: Path, population: str, rows: list[dict[str, Any]]) -> Pa
 
 
 def test_a_whole_populations_unread_words_and_numbers_are_held(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Phase 3 review's cleanup (b)5 (ISSUES.md #382): the unread words
+    """The unread words
     and the questions holding an unread number are held per population
     (``HELD_PATH``) - a grown count or a question new to the list fails the
     report, and so does one that fell or left it, on a run of the whole
@@ -223,7 +223,7 @@ def test_a_whole_populations_unread_words_and_numbers_are_held(tmp_path: Path, c
 
 def test_the_feeds_disagreements_and_joins_are_held_by_question_and_kind(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """The feed's questions whose Reading and deletion disagree are held by
-    question (91 when the review measured them, 2026-10-11), and its joins
+    question, and its joins
     by kind and count (#354's ``situation+date``): a new one fails, and a
     held one gone fails until it is removed."""
     import argparse
@@ -264,8 +264,7 @@ def test_the_held_file_holds_both_populations() -> None:
 def test_shrink_keeps_a_questions_own_characters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``report --shrink`` writes the held questions as typed - "dončić", not
     its escape - and the lists sorted, so a lowered file differs from the one
-    before only where a count fell or a question left (found 2026-10-14 by
-    the sweep's lane T3, whose hand-lowered file ``--shrink`` rewrote whole)."""
+    before only where a count fell or a question left."""
     import argparse
 
     held = tmp_path / "held.json"

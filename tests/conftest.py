@@ -1,12 +1,10 @@
 """Suite-wide test configuration: the day the tests are run "on".
 
-Fifteen tests encode the 2025-26 season - a fixture's game dates beside
+Tests encode the 2025-26 season - a fixture's game dates beside
 ``current_season()``, an expected ISO date, a sentence naming "2026" - and
-call the reader or a template directly, where the season is the calendar's.
-Run on or after 2026-10-01 they failed for a reason that is not the code:
-the calendar's season had turned over (measured 2026-09-30 with the date
-pinned to October 5: 15 failed, 2,373 passed). The suite is a fixed world,
-so its "today" is pinned here, once. A test about another day sets
+call the reader or a relation directly, where the season is the calendar's,
+which turns over on October 1. The suite is a fixed world, so its "today"
+is pinned here, once. A test about another day sets
 ``ASSOCIATION_TODAY`` itself (``monkeypatch.setenv``), and an explicit value
 in the environment wins, so the suite can still be run "on" any date by
 hand.
@@ -16,13 +14,11 @@ stage boundary (``tests/stage_calls.py``).
 
 And no git variable of the environment reaches a test: every ``GIT_*``
 variable is removed before any test runs (:func:`without_git_variables`).
-``git rebase --exec`` exports ``GIT_DIR`` to the command it runs, and on
-2026-10-12 a rebase gated by a suite run handed it to the tests that build a
-scratch repository - ``git init``, ``git config``, ``git commit`` in a
-``tmp_path`` - and to the scripts and the package code they call, which run
-git themselves: they wrote into the real shared repository instead,
-``core.bare=true`` and ``user.name=Test`` in its config and test commits on
-a worktree's HEAD. Removed here, once, for the whole process, rather than
+``git rebase --exec`` exports ``GIT_DIR`` to the command it runs, and a
+test that builds a scratch repository - ``git init``, ``git config``,
+``git commit`` in a ``tmp_path`` - or the scripts and package code it
+calls, which run git themselves, would write into the real repository
+instead: its config and a worktree's HEAD. Removed here, once, for the whole process, rather than
 in each test's ``subprocess.run``: the git a test runs through
 ``scripts/check_changes_per_commit.py``, ``scripts/bump_version.py``,
 ``association.cli.paths`` or ``association.query.history`` inherits the
@@ -56,8 +52,7 @@ def without_git_variables(environ: MutableMapping[str, str]) -> list[str]:
 without_git_variables(os.environ)
 
 # Off unless asked for: every call the suite makes across a stage boundary,
-# written out for comparing two trees (tests/stage_calls.py; ROADMAP.md,
-# Phase 0). Installed here, before any test module is imported, so a test
+# written out for comparing two trees (tests/stage_calls.py). Installed here, before any test module is imported, so a test
 # that imports a boundary by name gets the recording one.
 if os.environ.get("ASSOCIATION_STAGE_CALLS"):
     import sys
@@ -73,7 +68,7 @@ if os.environ.get("ASSOCIATION_STAGE_CALLS"):
 def _names_loaded() -> Iterator[None]:
     """Every test runs inside one ``names.loaded()`` block, as every
     question does inside ``Agent.ask``: a name lookup outside a block is an
-    error (``names.NotLoaded``), so a test that calls a template, a matcher
+    error (``names.NotLoaded``), so a test that calls a reader, a matcher
     or the parser directly needs one. The players' and teams' tables are
     read once per connection per test; a test that changes one of them
     after a lookup opens a block of its own to read it again."""
