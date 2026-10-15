@@ -1,4 +1,4 @@
-"""Regression + sanity tests for the ESPN HTTP client."""
+"""Tests for the ESPN HTTP client."""
 
 import itertools
 from typing import Any
@@ -10,7 +10,7 @@ from association.fetch.client import ESPNClient
 
 
 def test_client_uses_curl_cffi_not_plain_requests() -> None:
-    """Regression: ESPN's CDN does TLS-fingerprint bot mitigation - plain
+    """ESPN's CDN does TLS-fingerprint bot mitigation - plain
     `requests`/`httpx` get a 403 even with a real browser User-Agent header;
     only curl (and curl_cffi's browser TLS impersonation) get through. Guards
     against someone "simplifying" this back to plain `requests` and silently
@@ -207,10 +207,9 @@ class _PagedSession:
 
 
 def test_get_collection_returns_every_item_not_the_first_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The bug this exists for. ESPN's power index answers `count: 90` in pages
-    of 25, and reading page 1 stored 25 rows a season for months - no error, a
-    valid shape, and `DATA.md` recorded the missing 65 as ESPN "keeping only
-    postseason teams"."""
+    """ESPN's power index answers `count: 90` in pages of 25, and reading
+    page 1 alone stores 25 rows a season - no error, a valid shape, the
+    missing 65 easily read as ESPN "keeping only postseason teams"."""
     client = ESPNClient()
     session = _PagedSession(count=90)
     monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
@@ -284,12 +283,11 @@ def test_get_json_stays_quiet_for_a_single_page_response(monkeypatch: pytest.Mon
 
 
 def test_get_collection_warns_and_returns_empty_when_the_first_page_is_rejected(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-    """The bug in GH #90: `_request_json` returns None for a 400 (same as a
-    404), `get_collection` used to hit `if not isinstance(data, dict): break`
-    with `expected` still None, and the declared-vs-fetched check below could
-    not fire because there was never a declared count to compare against. An
-    endpoint that starts rejecting `limit=1000` reproduces the original 25-row
-    power-index bug with nothing in the log. This also pins the docstring's
+    """#90: `_request_json` returns None for a 400 (same as a 404), so a
+    first page rejected leaves `get_collection` no declared count, and the
+    declared-vs-fetched check below cannot fire. An endpoint that starts
+    rejecting `limit=1000` would store a short collection with nothing in
+    the log, so it warns instead. This also pins the docstring's
     claim that `get_collection` returns `[]` exactly where `get_json` would
     return None."""
     client = ESPNClient()

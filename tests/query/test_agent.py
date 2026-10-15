@@ -1,6 +1,5 @@
-"""Regression tests for the answering loop: the fast path's answers, and the
-refusal naming why where nothing here reads a question (the tool-calling
-fall-through it replaced in 5.0.0 is gone)."""
+"""Tests of the answering loop: the fast path's answers, and the refusal
+naming why where nothing here reads a question."""
 
 from pathlib import Path
 from typing import Any
@@ -93,7 +92,7 @@ def _agent(tmp_path: Path, **kwargs: Any) -> Agent:
     con = duckdb.connect(str(db_path))
     # The two tables every warehouse has, empty: the subject reading
     # (query/subject.py) asks them who the question names on every fast-path
-    # answer, where the older repairs only asked once a slot gave them a name.
+    # answer.
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.close()
@@ -108,8 +107,8 @@ def _agent_with_players(tmp_path: Path, *names: str) -> Agent:
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
-    # An empty teams table too: the compiler asks whether a name in the
-    # player slot is a team's before it resolves it as a player's.
+    # An empty teams table too: the compiler asks whether a player's name
+    # is a team's before it resolves it as a player's.
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     for i, name in enumerate(names):
         con.execute("INSERT INTO players VALUES (?, ?)", [str(i), name])
@@ -118,9 +117,10 @@ def _agent_with_players(tmp_path: Path, *names: str) -> Agent:
 
 
 def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Measured live: "compare sga and embiid" routed to Jusuf Nurkic in the
-    second slot and answered with a confident table about him. The template is
-    not reached until the names are the question's."""
+    """A name the model invents is replaced by the one the question holds
+    before the answer side is reached: "compare sga and embiid", with Jusuf
+    Nurkic second in the model's reply, reaches ``compose.answer`` naming
+    the two players the question names."""
     from association.query.answer import Answer
 
     seen: list[str] = []
@@ -129,7 +129,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
         seen.extend(reading.who.players)
         return Answer(data={}, text="templated")
 
-    # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
+    # A comparison of players is the compiler's: the Reading reaches compose.answer.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: record(ctx, reading))
     ask_routed(
         _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"),
@@ -141,9 +141,8 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
 
 def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The subject reading (query/subject.py) runs on every fast-path answer
-    and is recorded as decisions - values on the Answer and a `decisions:`
-    section of the history record - beside the repair chain that still
-    writes the slots. It writes none itself yet."""
+    and is recorded as decisions - values on the Answer and a ``decisions:``
+    section of the history record."""
     from association.query.answer import Answer
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Answer(data={}, text="templated"))
@@ -156,22 +155,21 @@ def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch
     assert "decisions:\n" in record and '"stage": "subject"' in record and "  -> (decision) subject kind: 'pair'" in record
 
 
-def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_league(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """yardstick-v2 F111: "alperen şengün alltime record" routed to
-    team_leaderboard - no player slot, no team slot - and answered the
-    league standings, Sengun never read. The template is not reached at
-    all: team_leaderboard has no reading for a named player, so the
-    question is refused, naming him, rather than answered about the wrong
-    subject. Diacritics ("şengün") are already folded before this runs."""
+def test_a_team_only_shape_naming_one_player_refuses_rather_than_answering_the_league(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """yardstick-v2 F111: "alperen şengün alltime record", read as a ranking
+    of teams with no team named, is refused naming the player rather than
+    answered with the league's standings: a ranking of teams has no reading
+    for a named player, so ``compose.answer`` is never reached. Diacritics
+    ("şengün") are folded before this runs."""
 
     reached = False
 
     def record(ctx: Any, reading: Reading, **_: Any) -> Any:
         nonlocal reached
         reached = True
-        raise AssertionError("team_leaderboard should not run at all")
+        raise AssertionError("a ranking of teams should not be read at all")
 
-    # The compiler answers team_leaderboard (Phase 2, step 4): it is what must not be reached.
+    # The compiler answers a ranking of teams: it is what must not be reached.
     monkeypatch.setattr("association.query.compose.answer", record)
     answer = ask_routed(
         _agent_with_players(tmp_path, "Alperen Sengun"), "alperen şengün alltime record", Routed(TEAM_RANKING, Reading(measure=Measure(key="record", as_typed="record"), window=Window(count=1)))
@@ -181,13 +179,13 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
     assert "a ranking of teams has no reading for one" in answer.text
 
 
-def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A genuine team question - a `team` slot resolving to a REAL
-    franchise - is answered normally (by the compiler, since Phase 2, step 4), whatever player-shaped words
-    happen to also appear. A `teams` table is needed here (unlike
-    `_agent_with_players`'s plain one): `_has_a_real_team` looks the team
-    slot up against it, and a warehouse missing the table entirely reads as
-    "no team found" the same way `entities._team_named` already does."""
+def test_a_team_only_shape_with_a_team_named_is_unaffected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A genuine team question - a team on the Reading's ``who`` resolving to
+    a REAL franchise - is answered normally, by the compiler, whatever
+    player-shaped words also appear. A ``teams`` table holding the team is
+    needed here: ``subject._has_a_real_team`` looks the team up in the name
+    index read from it, and a warehouse missing the table entirely reads as
+    "no team found" the same way ``entities._team_named`` does."""
     import duckdb
 
     from association.query.answer import Answer
@@ -207,11 +205,9 @@ def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.
 
 
 def test_a_model_that_could_not_be_asked_is_refused_saying_why(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A reader failure is a refusal, never an answer. What it must not do is
-    report it as the model having said something unusable: reported from a
-    laptop without the router model pulled, where every question came back
-    "the router returned no usable classification" and nothing pointed at
-    ollama. The normalizer raises the same error the router did."""
+    """A reader failure is a refusal, never an answer, and it names the model
+    ollama could not serve rather than reporting a reply the model never
+    gave ("no usable reply")."""
     from association.query.history import RunHistory
     from association.query.normalizer import RouterUnavailable
 
@@ -229,19 +225,14 @@ def test_a_model_that_could_not_be_asked_is_refused_saying_why(monkeypatch: pyte
     assert answer.answered_by == "refused" and "model 'qwen2.5:3b'" in answer.text
 
 
-def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A team's record in the games a companion reached a line arrives under
-    the team's own intent and is rewritten to record_when - the reading's
-    one reroute (subject._decide_intent). This pins that the ANSWERING PATH
-    moves with the intent, the half that shipped broken once: the handler
-    was resolved from the route's intent before the rewrite, so "Embiid
-    career record vs boston" logged `head_to_head -> with_without` and then
-    ran head_to_head, which refused for wanting two team names. Every
-    offline replay passed, because the replay script looked the handler up
-    afterwards and the real pipeline before - so only a test on this path
-    can catch it. Every intent is the compiler's now
-    (compose.COMPILED_INTENTS): the compiler is asked, under record_when,
-    and never under team_record."""
+def test_a_team_record_rewritten_to_a_record_over_a_line_is_answered_as_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A team's record in the games a companion reached a line arrives as a
+    team's record and is rewritten to a record over a line - the reading's
+    one rewrite of the key (``subject._apply_intent``). The ANSWERING PATH
+    moves with the key: ``compose.answer`` is asked under the record over a
+    line, never under the team's record. Only a test on this path sees a
+    reader chosen before the rewrite, since an offline replay looks the
+    reader up after it."""
     from association.query.answer import Answer
 
     paths: list[str] = []
@@ -273,12 +264,11 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
 
 
 def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Passing it on was measured and is worse: given one of these the agent
-    of the time spent 55 seconds writing a confident fingerprint, percentages
-    included, for "Ronaldo Lopes" - who does not exist. Same reasoning as
-    check_coverage returning its refusal rather than raising it: the refusal
-    is a fast answer naming the player, not the plain refusal for want of a
-    reading."""
+    """A player the model names that the question cannot account for is
+    never passed on to a reader, since an invented name resolves to a real
+    player nobody asked about. Same reasoning as check_coverage returning its
+    refusal rather than raising it: the refusal is a fast answer naming the
+    player, not the plain refusal for want of a reading."""
     from association.query.answer import Answer
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Answer(data={}, text="templated"))
@@ -289,14 +279,12 @@ def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monke
     assert answer.answered_by == "fast" and "templated" not in answer.text
 
 
-def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """head_to_head never looks at a player slot, so an invented one there
+def test_a_stray_name_on_a_shape_that_reads_no_player_changes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Two teams' meetings read no player, so an invented one on the Reading
     cannot make the answer about the wrong person - and refusing over it would
     break a question that works."""
     from association.query.answer import Answer
 
-    # head_to_head is the compiler's (Phase 2, slice (iv)): the stray name
-    # changes nothing on the way to its answer either.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None, declined_by=None: Answer(data={}, text="templated"))
     assert (
         ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "Lakers vs Celtics record", Routed(TEAM_MEETINGS, Reading(who=Who(kind="player", players=("Jusuf Nurkic",))))).text
@@ -305,14 +293,14 @@ def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(mo
 
 
 def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """ "generate fingerprints for embiid vs jolic in 2026" drew Joel Embiid
-    alone. The typo cannot be repaired, so the half-answer has to be stated -
+    """ "generate fingerprints for embiid vs jolic in 2026" draws Joel Embiid
+    alone. The typo cannot be repaired, so the half-answer is stated -
     one polygon where two were asked for, with nothing saying so, is the
     failure shape this project keeps producing."""
     from association.query.answer import Answer
 
-    # The fingerprint is the compiler's (Phase 2, slice (v)): the note is
-    # attached to what compose.answer hands back (agent._unmatched_fingerprint).
+    # The note is attached to what compose.answer hands back
+    # (agent._unmatched_fingerprint).
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Answer(data={}, text="Rendered."))
     answer = ask_routed(
         _agent_with_players(tmp_path, "Joel Embiid"), "generate fingerprints for embiid vs jolic in 2026", Routed(NETPOINTS_FINGERPRINT, Reading(who=Who(kind="player", players=("Joel Embiid",))))
@@ -324,9 +312,9 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
     """The reading reaches the ANSWER, which is the whole condition the default
     is allowed under: "maxey" is Tyrese because he is the only Maxey who still
     plays, and somebody who meant Marlon has to be told what to type instead.
-    Templates are called with a bare connection in 27 places, so the sentence
-    travels by entities.collect_name_readings and is attached here - removing
-    that block leaves a right answer about a player nobody said was chosen."""
+    A reader is called with a bare connection, so the sentence travels by
+    ``entities.collect_name_readings`` and is attached by the answering loop -
+    without it, a right answer about a player nobody said was chosen."""
     from association.query.answer import Answer
     from association.query.entities import Entity, _note_name_reading
 
@@ -334,8 +322,7 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return Answer(data={}, text="Tyrese Maxey averaged 28.0 points.")
 
-    # player_stat is the compiler's (compose.COMPILED_INTENTS): the reading
-    # travels the same way through agent._try_compose.
+    # The name reading travels from compose.answer through agent._try_compose.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: reads_a_name(ctx, reading))
     answer = ask_routed(_agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey"), "how many points does maxey average?", Routed(PLAYER_LINE, Reading(who=Who(kind="player", players=("maxey",)))))
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
@@ -346,10 +333,8 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
 
 
 def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Where no template or compiled reading answers, the answer is a refusal
-    that names why - what --disable-fallthrough used to raise, and the only
-    answer since the SQL-writing agent went (5.0.0). No model is asked past
-    the reader."""
+    """Where no reader answers, the answer is a refusal that names why. No
+    model is asked past the normalizer."""
     from association.query.agent import refusal_text
     from association.query.answer import Answer
 
@@ -360,30 +345,24 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     agent = _agent_with_players(tmp_path)
 
     answer = ask_routed(agent, "who had the most triple-doubles?", Routed(None))
-    # The no_shape cause, said by the planner since Phase 5, step 5, in the
-    # sentence the plain refusal had.
+    # The no_shape cause, said by the planner.
     assert answer.answered_by == "fast" and agent.unanswered is None
     assert answer.text == refusal_text("what its words ask has no reader")
     assert answer.shape is None and answer.data == {"message": answer.text}
 
     # A reader's own refusal while reading, with its reason: a fingerprint of
-    # nobody (the compiler's since Phase 2's slice (v); with_without,
-    # head_to_head and the fingerprint's template, which this used, are gone).
+    # nobody, a cause the planner says naming what the read needs a name of.
     answer = ask_routed(agent, "a question nothing reads", Routed(NETPOINTS_FINGERPRINT))
-    # A cause the planner says since Phase 5, step 5, naming what the read
-    # needs a name of, where the sentence named the retired template.
     assert answer.answered_by == "fast" and agent.unanswered is None
     assert answer.text == "Nothing here answers this question as a NetPoints fingerprint: it needs a player's name, and none was read."
 
-    # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
-    # refused with the compiler's reason where it has no reading: a log of
-    # nobody.
+    # A shape with no reading of the question is refused with the point
+    # reader's cause, in the decline's sentence: a log of nobody.
     answer = ask_routed(agent, "a game log", Routed(PLAYER_LOG))
-    # The point reader's cause since Phase 5, step 5, in the decline's sentence.
     assert answer.answered_by == "fast" and agent.unanswered is None
     assert answer.text == "Nothing here answers this question as a game log: no player subject and no ranking or position-group reading of the question."
     # And says a cause where the reading came to one, as an answer: a count
-    # with no line to count (Phase 2, step 3).
+    # with no line to count.
     answer = ask_routed(agent, "how many games", Routed(GAMES_COUNTED, Reading(measure=Measure(key="points", as_typed="points"))))
     assert answer.answered_by == "fast" and answer.text.startswith("A count of games across the league needs the line it counts")
     assert agent.unanswered is None
@@ -398,15 +377,14 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert (answer.text, answer.answered_by, agent.unanswered) == ("answered", "fast", None)
 
 
-# ---------------- the compiled step between a refusal and the refusal naming why ----------------
+# ---------------- the compiler's answers and the refusals naming why ----------------
 
 
 def test_a_composed_answer_is_returned_as_fast_with_the_trace_line(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The compiler's answer is answered_by="fast", with a trace line naming
     the key the words asked, the planned shape and the point on the relation
     it composed, the way "-> (parser) asked=..." names what the words ask
-    (each a key, ``relation/shape/by``, where the retired intent's name
-    stood until Phase 4, step 2)."""
+    (each a key, ``relation/shape/by``)."""
     from association.query.answer import Answer
 
     def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Answer:
@@ -433,7 +411,7 @@ def test_a_composed_answer_is_returned_as_fast_with_the_trace_line(monkeypatch: 
     assert "rows" not in compose_lines[0]
 
 
-def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_a_clarification_from_the_compiler_is_returned_as_a_fast_answer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A clarification or a no-match from the compiler is an answer, not a
     refusal for want of a reading: it looked at the question and had
     something to say."""
@@ -453,9 +431,8 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
 
 
 def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The compiler reads a name exactly the way a template does - through
-    entities.collect_name_readings - so a default it chose ("maxey" is Tyrese)
-    is visible in the answer here too, not only on the direct template path."""
+    """The compiler reads a name through ``entities.collect_name_readings``,
+    so a default it chose ("maxey" is Tyrese) is visible in the answer."""
     from association.query.answer import Answer
     from association.query.entities import Entity, _note_name_reading
 
@@ -478,10 +455,10 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
 
 def test_words_that_ask_for_no_shape_are_refused_saying_so(tmp_path: Path) -> None:
     """Words that name no shape a reader reads are refused saying so, in
-    seconds ("intent 'other' has no reader" until Phase 4, step 2)."""
+    seconds."""
 
     answer = ask_routed(_agent(tmp_path), "who had the most triple-doubles?", Routed(None))
-    # The no_shape cause, said by the planner since Phase 5, step 5.
+    # The no_shape cause, said by the planner.
     assert answer.answered_by == "fast" and answer.text == "Nothing here answers this question: what its words ask has no reader."
 
 
@@ -491,14 +468,12 @@ def test_a_reader_failure_is_refused_rather_than_erroring(monkeypatch: pytest.Mo
     assert answer.answered_by == "refused" and "the normalizer returned no usable reply" in answer.text
 
 
-def test_the_fast_path_carries_out_the_shape_and_data_it_used_to_discard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The sayer's data existed so a caller could render the answer itself
-    (``Reply.data`` until Phase 4, step 4 folded it into the Answer), and
-    _try_fast_path returned only the text, so nothing ever could.
-    That is the whole reason Phase 0 of the 2.0 plan exists."""
+def test_the_fast_path_carries_out_the_shape_and_the_data(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An answer carries the planned shape and the sayer's data beside its
+    text, so a caller can render the answer itself."""
     from association.query.answer import Answer
 
-    # leaderboard is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
+    # A ranking of players is the compiler's: the Reading reaches compose.answer.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Answer(data={"leaders": ["Jokic"]}, text="Jokic."))
     answer = ask_routed(_agent_with_players(tmp_path), "who leads the league in scoring?", Routed(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"))))
 
@@ -510,10 +485,10 @@ def test_the_fast_path_carries_out_the_shape_and_data_it_used_to_discard(monkeyp
 
 
 def test_an_answer_carries_the_shape_the_answer_side_chose_its_reader_by(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The page renders an answer's data by the planned point's shape
-    (Phase 4, step 1): the one the answer side chose its reader by
-    (``planned_shape`` over ``Agent.query``), carried out beside the data and named in the trace's
-    (compose) line - never re-derived from the label."""
+    """The page renders an answer's data by the planned point's shape: the
+    one the answer side chose its reader by (``planned_shape`` over
+    ``Agent.query``), carried out beside the data and named in the trace's
+    (compose) line - never re-derived from the question."""
     from association.query.answer import Answer
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Answer(data={"leaders": ["Jokic"]}, text="Jokic."))
@@ -529,8 +504,8 @@ def test_an_answer_carries_the_shape_the_answer_side_chose_its_reader_by(monkeyp
 
 
 def test_a_refused_answer_has_no_shape_or_data_rather_than_an_empty_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Only a template or the compiler produces those. None says so; {} would
-    read as "the template ran and found nothing", which is a different claim."""
+    """Only a reader or the compiler produces those. None says so; {} would
+    read as "a reader ran and found nothing", which is a different claim."""
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: None)
     answer = _agent(tmp_path).ask("what is this question")
 
@@ -539,11 +514,11 @@ def test_a_refused_answer_has_no_shape_or_data_rather_than_an_empty_one(monkeypa
     assert answer.data is None
 
 
-def test_a_fast_path_answer_carries_the_chart_the_template_wrote(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_a_fast_path_answer_carries_the_chart_its_reader_drew(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from association.query.answer import Answer, Artifact
 
     drawn = Artifact("shot_chart", tmp_path / "shotchart_x.html")
-    # shot_chart is the compiler's (the shot relation's reader, compose.shots): its answer stands in.
+    # A shot chart is the shot relation's reader's (compose.shots): its answer stands in.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, **_: Answer(data={}, text="Rendered.", artifacts=[drawn]))
     assert ask_routed(_agent(tmp_path), "a chart of x", Routed(SHOT_CHART, Reading(who=Who(kind="player", players=("x",))))).artifacts == [drawn]
 
@@ -565,9 +540,8 @@ def test_the_history_label_comes_from_the_caller_not_the_process(monkeypatch: py
 
 
 def test_a_trace_sink_takes_the_place_of_stderr_entirely(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Including the [history] line, which printed unconditionally - a server
-    that captured the trace but still wrote that one to its own terminal would
-    have gone half-way."""
+    """Including the [history] line: a server that captures the trace sees
+    nothing of it on its own terminal."""
     import duckdb
 
     db_path = tmp_path / "test.duckdb"
@@ -585,10 +559,8 @@ def test_a_trace_sink_takes_the_place_of_stderr_entirely(monkeypatch: pytest.Mon
 
 
 def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -> None:
-    """ "Gave up after too many tool-call iterations" told a reader nothing
-    about their own question, while the agent was still there to give up.
-    The reason the templates declined it says which part of the question has
-    no answer here yet, and the refusal is that reason and nothing else."""
+    """The refusal says which part of the question has no answer here, and
+    is that reason and nothing else."""
     from association.query.agent import refusal_text
 
     agent = _agent_with_players(tmp_path)
@@ -599,9 +571,9 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """After the compiler declines, a shape the warehouse has no column for
     (``Reading.unsupported``, the parser's) is refused with its cause as a
-    fast answer, in the planner's sentence - not with the slot. A playoff
-    round is the worked case: no reader honors the slot, and the games
-    carry no round label."""
+    fast answer, in the planner's sentence - not with the cut. A playoff
+    round is the worked case: no relation honors the ``round`` cut, and the
+    games carry no round label."""
 
     monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
 
@@ -613,11 +585,11 @@ def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.Mon
     assert agent.unanswered is None
 
 
-def test_a_shape_nothing_reads_is_refused_even_where_no_template_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """An intent with no reader is refused by name; what the words name
-    that nothing reads (``Reading.unsupported``) is said first, so "bench points" (routed `other`) is refused with
-    its cause rather than with the intent. Read by the parser from the words
-    (the recognizer reads the measure the words named, slice (c))."""
+def test_words_asking_no_shape_are_refused_by_what_they_name_that_nothing_reads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Words asking no shape are refused saying so; what the words name that
+    nothing reads (``Reading.unsupported``) is said first, so "bench points"
+    is refused with its cause rather than with the missing shape. The parser
+    reads it from the words (the measure the words name)."""
     from association.query.normalizer import Normalized
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized([], "points"))
@@ -648,12 +620,11 @@ def test_an_answer_names_the_history_file_it_was_recorded_to(monkeypatch: pytest
     assert "/" not in answer.history_file
 
 
-def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """ROADMAP plan item 6, step (d), part 4: the four intents the compiler
-    reproduced exactly (every shape the words ask, since Phase 3, step 4) are answered from the
+def test_a_reading_is_planned_and_answered_by_the_compiler_alone(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Every shape the words ask is answered by the compiler from the
     Reading; the trace carries the record ("-> (reading) ..."). Where the
     compiler declines, the question is refused naming the compiler's
-    reason - there is no template behind it any more."""
+    reason."""
     from association.query.answer import Answer
 
     calls: list[str] = []
@@ -695,7 +666,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     assert calls == ["compose"]
     reading_lines = [line for line in seen if "(reading)" in line]
     expected = "  -> (reading) relation=player subject=? shape=scalar by= on=player_games measures=[] group=none predicates=[('points', '>=', 30)] window=date/desc"
-    # The filters print in the Reading's field order, each typed value as the fields it sets, whatever order the slots came in.
+    # The filters print in the Reading's field order, each typed value as the fields it sets, whatever order they were set in.
     who, lines = "'who': {'kind': 'player', 'players': ['Joel Embiid']}", "'lines': [{'measure': 'points', 'value': 30, 'as_typed': '30 points', 'keyed': True}]"
     filters = f"{{{who}, {lines}, 'measure': {{'key': 'points', 'as_typed': 'points'}}}}"
     assert reading_lines == [f"{expected} filters={filters}"]
@@ -715,11 +686,11 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
 
 
 def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The parser (ROADMAP plan item 6, step c): the model only copies the
-    names and picks a stat, and the route comes from the words. The model's
-    span is the question's own word, and the name the template gets is the
-    index's reading of it - the subject reading).filters(), not the model, writes "Joel
-    Embiid"."""
+    """The parser reads the question: the model only copies the names and
+    picks a stat, and what the words ask comes from the words. The model's
+    span is the question's own word, and the name the answer side gets is
+    the name index's reading of it - the subject reading, not the model,
+    writes "Joel Embiid"."""
     import duckdb
 
     from association.query.answer import Answer
@@ -745,18 +716,17 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert (seen["player"], seen["stat"]) == ("Joel Embiid", "points")
 
 
-def test_the_intent_the_parsers_words_assign_reaches_the_answers_decisions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """ISSUES.md #258: "how far away does embiid shoot from" is read under
-    ``player_stat`` by the grammar and settled as ``shot_distance`` by its
-    own words - which only the verbose trace used to say. The move is a
-    decision on the answer, as a value, and in the history record."""
+def test_the_key_the_parsers_words_assign_reaches_the_answers_decisions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#258: "how far away does embiid shoot from" is read as a player's line
+    by the grammar and settled as a shot distance by its own words. The move
+    is a decision on the answer, as a value, and in the history record."""
     import duckdb
 
     from association.query.answer import Answer
     from association.query.normalizer import Normalized
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], ""))
-    # shot_distance is the compiler's (the shot relation's reader, compose.shots): its answer stands in.
+    # A shot distance is the shot relation's reader's (compose.shots): its answer stands in.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, **_: Answer(data={}, text="templated"))
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
@@ -773,11 +743,10 @@ def test_the_intent_the_parsers_words_assign_reaches_the_answers_decisions(monke
     assert "  -> (decision) parser asked: 'player_seasons/scalar/line' -> 'shots/scalar/distance' (the words 'how far' name shots/scalar/distance)" in record
 
 
-def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Path) -> None:
-    """ROADMAP plan item 6, step (f): the reason a compiled intent is refused
-    is the planner's, read at parse time - "the relation cannot honor
-    ['rate']" - and not a template's list consulted afterwards, which named
-    a slot even where the compiler had declined for another cause."""
+def test_a_refusal_names_the_planners_own_reason(tmp_path: Path) -> None:
+    """The reason a reading is refused is the planner's own cause - here the
+    ``rate`` cell, which the relation cannot honor, with its unit - and not
+    a list of cells consulted after it declined."""
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
     answer = ask_routed(
@@ -792,18 +761,16 @@ def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Pat
             ),
         ),
     )
-    # A cause the planner says since Phase 5, step 5 (answered, as a refusal
-    # that names why is), in the sentence the plain decline had.
+    # A cause the planner says, answered as a refusal that names why.
     assert answer.answered_by == "fast" and agent.unanswered is None
     assert answer.text == "Nothing here answers this question as a count of games over a line: a rate per 36 cannot be read here - it would answer for a different span than was asked."
     assert answer.data is not None and answer.data["reason"] == "beyond_words" and answer.data["cells"] == [{"cell": "rate", "unit": "per_36"}]
 
 
-def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """ "stephen curry last 0 games" reads as a window of 0: the typed Scope
-    refuses it at the stages' door (``router.settle``), and the question is
-    refused the way a template's refusal is - never an uncaught error out of
-    ``Agent.ask``. A reading a test builds by hand with such a window fails
+def test_a_window_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ "stephen curry last 0 games" reads as a window of 0, which the typed
+    window refuses, and the question is refused - never an uncaught error
+    out of ``Agent.ask``. A reading a test builds by hand with such a window fails
     at the typed value itself (``reading.Window``), before the answering
     loop sees it."""
     from association.query.normalizer import Normalized
@@ -819,8 +786,8 @@ def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypa
 
 
 def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """ "Tatum rec" used to answer his splits; a question of fewer than three
-    words is refused with the generic sentence and costs no model call
+    """A question of fewer than three words ("Tatum rec") is refused with
+    the generic sentence and costs no model call
     (the parser's first verdict, parse.too_short, said by the planner)."""
 
     def never(model: str, question: str) -> None:
@@ -835,8 +802,8 @@ def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pyte
 
 
 def test_a_question_is_answered_in_the_latest_season_on_record_not_the_calendars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """ISSUES.md P1, 2026-09-30: from October 1 the calendar's season is one
-    the warehouse has no games for. ``Agent.ask`` reads the latest season
+    """From October 1 the calendar's season is one the warehouse has no
+    games for. ``Agent.ask`` reads the latest season
     with a played regular-season or postseason game (a preseason-only or
     unplayed season does not count) and answers inside it; the trace says
     so; and once the question is answered the calendar's season stands
@@ -876,10 +843,10 @@ def test_a_question_is_answered_in_the_latest_season_on_record_not_the_calendars
 
 
 def test_the_point_readers_decline_by_a_cause_waits_for_what_the_words_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Phase 5, step 5: the point reader's declines are causes, said at a
-    decline's place - so what the words name that nothing reads still
-    speaks first ("2013 nba finals" is refused by its playoff round, not by
-    the log's missing player), as it did when they were sentences."""
+    """The point reader's declines are causes, said at a decline's place -
+    so what the words name that nothing reads still speaks first ("2013 nba
+    finals" is refused by its playoff round, not by the log's missing
+    player)."""
     from association.query.normalizer import Normalized
     from association.query.reading import Cause
 

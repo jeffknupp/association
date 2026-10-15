@@ -1,10 +1,10 @@
-"""The period, typed (Phase 3, step 2's fourth slice): the one tagger that
+"""The period, typed: the one tagger that
 reads what a read SEES of each game (:func:`association.query.period.read_period`,
 over :func:`~association.query.period.which_period`), the characters it
 claims, the typed value's door and projection
 (:class:`association.query.reading.Period`), the relations' one resolution
-of it, the cell the tables declare, and the behavioral check contract 4
-asks for: applying the cell on each relation changes what it reads.
+of it, the cell the tables declare, and the behavioral check that applying
+the cell on each relation changes what it reads.
 """
 
 from __future__ import annotations
@@ -76,10 +76,9 @@ def test_the_words_read_as_one_period(question: str, expected: Period | None) ->
 
 
 def test_the_value_is_kept_under_a_reader_that_takes_one_and_dropped_elsewhere() -> None:
-    """Measured on the 2,710 readings: the stages wrote the slot under the
-    three period intents alone, and six readings naming a quarter carry
-    none (their subject unread, the point reader declining them). The tagger
-    keeps that, and claims nothing where it writes nothing."""
+    """The period is kept under the three period keys (``PERIOD_ASKS``)
+    alone, and on no key where the subject is unread; the tagger claims
+    nothing where it writes nothing."""
     assert {PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL} == PERIOD_ASKS
     for shape in PERIOD_ASKS:
         assert period_under(shape, read_period("Damian Lillard first quarter game log")) == PeriodRead(Period(number=1), (Claim(15, 28, "period"),))
@@ -87,7 +86,7 @@ def test_the_value_is_kept_under_a_reader_that_takes_one_and_dropped_elsewhere()
     assert period_under(PERIOD_LOG, read_period("jokic game log")) == PeriodRead(None, ())
 
 
-def test_which_period_is_the_one_reader_the_condition_reader_and_the_stage_share() -> None:
+def test_which_period_is_the_one_reader_the_condition_reader_and_the_tagger_share() -> None:
     """No second copy of "first | second | 1st | 2nd": a period as a condition
     on which games count reads its period through the same function."""
     assert which_period("first quarter") == (Period(number=1), Claim(0, 13, "period"))
@@ -113,9 +112,7 @@ def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route()
 def test_a_teams_half_is_read_from_the_words() -> None:
     """A team's period is the words' to read: "Celtics 2nd half scoring" is
     the second HALF, not the second quarter, and with no period word there
-    is none. Until Phase 4, step 0 the test handed the model's ``period: 2``
-    beside the words, which the stages dropped; the rules take no period
-    at all since."""
+    is none; the grammar's rules take no period from the model."""
     route = settle(TEAM_PERIOD_TOTAL, "Celtics 2nd half scoring this season", who=Who(kind="team", teams=("Boston Celtics",)))
     assert route.period == Period(number=2, half=True)
     route = settle(TEAM_PERIOD_TOTAL, "Celtics scoring this season", who=Who(kind="team", teams=("Boston Celtics",)))
@@ -163,7 +160,7 @@ def test_the_relation_tables_declare_the_period_once() -> None:
         assert "half" not in cells_stated(shape), shape
 
 
-# ---------------- contract 4: applying the cell changes what each relation reads ----------------
+# ---------------- applying the cell changes what each relation reads ----------------
 
 
 def _player_points(con: duckdb.DuckDBPyConnection, scope: Filtered) -> list[tuple[Any, ...]]:  # noqa: F811 - the fixture

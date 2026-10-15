@@ -1,4 +1,4 @@
-"""Regression + sanity tests for association.fetch.parse.
+"""Tests for association.fetch.parse.
 
 Fixtures below are minimal, hand-crafted JSON matching the real ESPN response
 shapes (confirmed live against the actual API) - not full captured payloads,
@@ -37,12 +37,12 @@ def test_num(value: Any, expected: Any) -> None:
     assert parse._num(value) == expected
 
 
-def test_num_empty_string_regression() -> None:
-    """Regression: pyarrow.lib.ArrowInvalid: Could not convert '' with type str:
-    tried to convert to double. ESPN returns value=None + displayValue="" for
-    stats it hasn't computed yet (e.g. early-season BPI projections); this used
-    to leak "" into what pyarrow treats as a double column, crashing the write
-    once mixed with real numeric rows in the same file."""
+def test_num_reads_an_empty_string_as_none() -> None:
+    """ESPN returns value=None + displayValue="" for stats it hasn't computed
+    yet (e.g. early-season BPI projections); a "" in what pyarrow treats as a
+    double column crashes the write once mixed with real numeric rows in the
+    same file (pyarrow.lib.ArrowInvalid: Could not convert '' with type str:
+    tried to convert to double)."""
     assert parse._num("") is None
 
 
@@ -337,9 +337,9 @@ def test_parse_game_summary_completed_game() -> None:
 
 
 def test_parse_game_summary_free_throw_sentinel_coordinate_nulled() -> None:
-    """Regression: free throws (and some other plays) carry an ESPN sentinel
-    "no real coordinate" value instead of a court position or null. Left
-    unfiltered, this produced garbage shot-chart plots and skewed distance
+    """Free throws (and some other plays) carry an ESPN sentinel "no real
+    coordinate" value instead of a court position or null. Left unfiltered,
+    it produces garbage shot-chart plots and skewed distance
     stats. Real shot coordinates must survive; sentinel ones must become None."""
     data = _make_game_data()
     shots = parse.parse_game_summary(data, 2024, 2)["shot_chart"]
@@ -355,11 +355,10 @@ def test_parse_game_summary_free_throw_sentinel_coordinate_nulled() -> None:
 
 
 def test_parse_game_summary_postponed_game_not_completed_but_state_post() -> None:
-    """Regression: a postponed/canceled game has completed=False but
-    state='post' (permanently settled, not pending) - distinct from a
-    still-upcoming game (state='pre'). Conflating the two meant a season could
-    never be marked complete, and the same postponed game got re-fetched on
-    every single pull run forever."""
+    """A postponed/canceled game has completed=False but state='post'
+    (permanently settled, not pending) - distinct from a still-upcoming game
+    (state='pre'). Conflating the two means a season can never be marked
+    complete, and the same postponed game is re-fetched on every pull run."""
     data = _make_game_data(status_name="STATUS_POSTPONED", completed=False, state="post")
     game = parse.parse_game_summary(data, 2024, 2)["game"]
     assert game["status_completed"] is False
@@ -381,8 +380,8 @@ def test_parse_game_summary_handles_missing_data() -> None:
 
 
 # ---------------- parse_standings / parse_team_season_stats / parse_power_index ----------------
-# All three share the same "value or displayValue" extraction that used to leak
-# empty-string placeholders straight into what should be numeric columns.
+# All three share the same "value or displayValue" extraction, which keeps
+# empty-string placeholders out of what should be numeric columns.
 
 
 def test_parse_standings_empty_stat_value_becomes_none() -> None:
@@ -545,7 +544,7 @@ def test_parse_player_season_totals_handles_a_missing_season() -> None:
 
 
 def test_parse_player_season_totals_types_a_count_the_way_the_career_endpoint_does() -> None:
-    """Regression: this endpoint reports every stat as a float (`points` is
+    """This endpoint reports every stat as a float (`points` is
     `444.0`), and writing that beside the career endpoint's ints would leave one
     Parquet file disagreeing with every other about the column's type. Reading
     displayValue reproduces the career endpoint's own int/float split."""
@@ -859,7 +858,7 @@ def test_parse_net_points_daily_resolves_via_team_and_date_not_nba_ids() -> None
 
 
 def test_parse_net_points_daily_reads_an_evening_tip_as_the_previous_days_file() -> None:
-    """Regression: ESPN's games.date is UTC and is a day ahead of the US
+    """ESPN's games.date is UTC and is a day ahead of the US
     Eastern date NetPoints names its files for whenever the tip is after 7pm
     (confirmed live: a real OKC @ NYK game ESPN stores as 2026-03-05T00:00Z is
     filed by NetPoints under 2026-03-04)."""
@@ -870,11 +869,11 @@ def test_parse_net_points_daily_reads_an_evening_tip_as_the_previous_days_file()
 
 
 def test_parse_net_points_daily_picks_the_right_half_of_a_back_to_back() -> None:
-    """Regression, confirmed live: New Orleans played the LA Clippers on both
-    2026-03-19 and 2026-03-20 (ESPN dates), a real back-to-back against the
-    same opponent. Matching NetPoints' 2026-03-19 file on the exact ESPN date
-    used to pick the WRONG, unrelated game - the one played the night before,
-    which ESPN stores under 2026-03-19 because it tipped after 7pm Eastern."""
+    """Confirmed live: New Orleans played the LA Clippers on both 2026-03-19
+    and 2026-03-20 (ESPN dates), a real back-to-back against the same
+    opponent. Matching NetPoints' 2026-03-19 file on the exact ESPN date
+    picks the WRONG, unrelated game - the one played the night before, which
+    ESPN stores under 2026-03-19 because it tipped after 7pm Eastern."""
     data = {"player_box": [{"tmName": "NOR", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
     game_index = parse.NetPointsGameIndex(
         [
@@ -887,14 +886,14 @@ def test_parse_net_points_daily_picks_the_right_half_of_a_back_to_back() -> None
 
 
 def test_parse_net_points_daily_does_not_write_one_game_from_two_dates() -> None:
-    """The mirror of the back-to-back above, and the bug it hid behind.
+    """The mirror of the back-to-back above.
 
     Charlotte played Philadelphia at 7:30pm Eastern on 2025-10-25 (ESPN stores
     it under 2025-10-25, the tip being before 8pm) and Washington at 6pm on
-    2025-10-26. Resolving on the UTC date, NetPoints' 2025-10-25 file looked
-    at date+1 first and took the Washington game, and its own 2025-10-26 file
-    took the same one again: 401809964 was written twice with different
-    numbers, and the Philadelphia game got none at all. Confirmed against the
+    2025-10-26. Resolving on the UTC date, NetPoints' 2025-10-25 file looks
+    at date+1 first and takes the Washington game, and its own 2025-10-26 file
+    takes the same one again: 401809964 is written twice with different
+    numbers, and the Philadelphia game gets none at all. Confirmed against the
     source's own box score - the 10-25 file gives Ryan Kalkbrenner 14 points,
     which is the Philadelphia game, and the 10-26 file gives him 4."""
     data = {"player_box": [{"tmName": "CHA", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
@@ -954,10 +953,10 @@ def test_parse_net_points_daily_ambiguous_or_unmatched_name_leaves_athlete_id_no
 
 
 def test_parse_net_points_daily_keeps_the_name_when_unmatched() -> None:
-    """ISSUES.md #22: an unmatched row used to keep no name at all, so nothing
-    on it said who it was and a query grouping by (event_id, athlete_id)
-    counted every unmatched row on a date as a duplicate of every other. The
-    source displayName (and NBA.com's own plyrID, where the file carries one)
+    """#22: an unmatched row keeps its name - with none, nothing on it says
+    who it was and a query grouping by (event_id, athlete_id) counts every
+    unmatched row on a date as a duplicate of every other. The source
+    displayName (and NBA.com's own plyrID, where the file carries one)
     survive the drop to athlete_id=None."""
     data = {"player_box": [{"tmName": "NYK", "displayName": "Unknown Player", "plyrID": 42, "oNetPts": 1.0}], "team_box": []}
     game_index = parse.NetPointsGameIndex([("1", 2026, 2, "2026-04-12T23:00Z", "18", "30")])
@@ -1054,7 +1053,7 @@ def test_parse_net_points_daily_players_is_long_and_resolved_like_its_sibling() 
 
 
 def test_parse_net_points_daily_players_keeps_the_name_when_unmatched() -> None:
-    """ISSUES.md #22's fix on the sibling parser's own sibling: this file has
+    """#22 on the sibling parser's own sibling: this file has
     no confirmed NBA.com player-id field, but the displayName survives an
     unmatched row exactly the same way."""
     data = [{"deanAbbrev": "NYK", "displayName": "Unknown Player", "actionType": "rim", "oNetPts": 2.0}]

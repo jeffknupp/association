@@ -3,8 +3,7 @@ fixture warehouse (``test_team_readers.team_ctx``): the two checks a
 team's record makes (``compose.team_records``) and the team compiler's
 narrowed total (``compose.team``), each built AND run on the relation's
 shared steps (:mod:`association.query.team_relation`) and handed back as
-rows (Phase 4, step 5: the readers ran each statement themselves until
-then).
+rows.
 """
 
 from __future__ import annotations

@@ -48,7 +48,7 @@ from association.query.standings import career_rows, first_season, season_games,
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 
 line_record = answered_as(LINE_RECORD)
-# The power index's reader and sayer (compose.team_stats, compose.say; Phase 2, step 4).
+# The power index's reader and sayer (compose.team_stats, compose.say).
 team_outlook = answered_as(TEAM_OUTLOOK)
 team_line = answered_as(TEAM_LINE)
 team_ranking = answered_as(TEAM_RANKING)
@@ -187,7 +187,7 @@ def team_ctx(tmp_path: Path) -> AnswerContext:
     ]
     c.executemany(f"INSERT INTO team_power_index VALUES ({', '.join('?' for _ in range(17))})", [(r[0], r[1], r[3], r[2], *r[4:]) for r in bpi])
     # Each team's conference and division in the current season, which "vs the
-    # west" narrows the opponents by (ISSUES.md #341).
+    # west" narrows the opponents by (#341).
     c.execute("CREATE TABLE team_alignment (season INTEGER, team_id VARCHAR, conference VARCHAR, division VARCHAR)")
     c.executemany(
         "INSERT INTO team_alignment VALUES (?, ?, ?, ?)",
@@ -212,7 +212,7 @@ def team_ctx(tmp_path: Path) -> AnswerContext:
 
 
 def test_the_standings_reads_are_the_relations_own(team_ctx: AnswerContext) -> None:
-    """Phase 4, step 5: the four reads a team's record makes of the
+    """The four reads a team's record makes of the
     standings are the relation's (``query/standings.py``), run there through
     the one door - a season's row (none where the standings hold none),
     every season's, the first season they hold for anyone, and the team's
@@ -235,9 +235,9 @@ def test_a_season_record_is_the_standings_line(team_ctx: AnswerContext) -> None:
     assert "last 10: 6-4" in answer and "7 games back" in answer
     assert "116.5 points per game, 110.1 allowed (+6.4)" in answer
     # The sentence names the seed and the streak only when they're worth
-    # naming ("4th seed", "won 3 straight") - the page's record card had
-    # nowhere to read them from before this, since the full sentence is
-    # what team_record's renderer keeps as its caption regardless.
+    # naming ("4th seed", "won 3 straight"), and `data` carries them for the
+    # page's record card, since the full sentence is what a team's record's
+    # renderer keeps as its caption regardless.
     assert result.data["seed"] == 4
     assert result.data["streak"] == 3
     assert result.data["headline"].startswith("The New York Knicks were 53-29")
@@ -257,9 +257,7 @@ def test_a_home_record_is_the_home_record_not_the_season(team_ctx: AnswerContext
     # must be the record asked about, with the season's kept beside them.
     assert (result.data["wins"], result.data["losses"], result.data["win_pct"]) == (30, 10, 0.75)
     assert (result.data["season_wins"], result.data["season_losses"]) == (53, 29)
-    # The venue branch used to rely on the page's first-line fallback for a
-    # headline at all (ROADMAP, "team_record's month/venue/career branches
-    # still rely on the page's first-line fallback"). No gap note for this
+    # The venue branch carries its own headline. No gap note for this
     # season - test_a_record_short_of_its_season_says_so covers one that has
     # one - so the headline is the whole answer here.
     assert result.data["headline"] == result.text
@@ -283,9 +281,9 @@ def test_a_record_short_of_its_season_says_so(team_ctx: AnswerContext) -> None:
 
 def test_a_home_record_short_of_its_season_carries_the_gap_as_a_note(team_ctx: AnswerContext) -> None:
     """The same gap note as the season-total case above, but through the venue
-    branch (`_standings_season_venue`), which did not carry `data["notes"]`
-    at all before this - the note sat only in `answer`, glued onto the
-    headline sentence with a space."""
+    branch (`_standings_season_venue`), which carries it in
+    `data["notes"]`, not only in `answer` glued onto the headline sentence
+    with a space."""
     result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(season=2000)))
     assert result.data["notes"] == ["Note: ESPN's standings do not cover the New York Knicks' whole season in 2000 (80 of 82 games), so this record is short by those games."]
     assert result.data["headline"] + " " + result.data["notes"][0] == result.text
@@ -315,7 +313,7 @@ def test_meetings_are_dated_on_the_eastern_calendar(team_ctx: AnswerContext) -> 
     assert f"{S - 1}-11-20" not in answer
 
 
-def test_the_opponent_can_arrive_in_the_teams_slot(team_ctx: AnswerContext) -> None:
+def test_the_opponent_can_arrive_as_the_second_named_team(team_ctx: AnswerContext) -> None:
     result = team_record(team_ctx, Reading(who=Who(kind="teams", teams=("New York Knicks", "San Antonio Spurs"))))
     assert result.data["opponent"] == "San Antonio Spurs" and result.data["wins"] == 1
 
@@ -376,10 +374,8 @@ def test_an_all_time_record_says_where_the_data_starts(team_ctx: AnswerContext) 
     assert f"147-97 (.602) across the 3 regular seasons from 1989-90 through {LAST}" in answer
     assert "not the franchise's whole history" in answer
     assert "2000 (80 of 82 games)" in answer
-    # `_standings_career` carried no `data["headline"]` at all before this
-    # (ROADMAP, "team_record's month/venue/career branches still rely on the
-    # page's first-line fallback") - the gap note is the one thing beyond the
-    # headline sentence, so it is the one thing in `notes`.
+    # The career branch carries its own headline; the gap note is the one
+    # thing beyond the headline sentence, so it is the one thing in `notes`.
     assert result.data["headline"] + " " + result.data["notes"][0] == answer
     assert "2000 (80 of 82 games)" in result.data["notes"][0]
     assert "2000 (80 of 82 games)" not in result.data["headline"]
@@ -404,9 +400,9 @@ def test_an_all_time_home_record_counts_only_seasons_with_a_split(team_ctx: Answ
 
 
 def test_a_teams_home_games_leave_out_a_neutral_site_game_and_say_so(team_ctx: AnswerContext) -> None:
-    """ISSUES.md #173: the NBA Cup final, played in Las Vegas with the Knicks
-    the designated home side, was one of their "home" games in a log, a
-    split, a streak and a quarter - and not in their home record. A venue
+    """#173: the NBA Cup final, played in Las Vegas with the Knicks the
+    designated home side, is none of their "home" games - in a log, a split,
+    a streak, a quarter or their home record alike. A venue
     narrows every team read to the games on that side NOT at a neutral site,
     and the narrowing's phrase says how many it left out."""
     home = player_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home")))
@@ -434,8 +430,7 @@ def test_a_teams_home_and_road_split_shows_its_neutral_site_games_apart(team_ctx
 def test_a_conference_is_refused_by_name(team_ctx: AnswerContext) -> None:
     """A conference where a team belongs is refused for what is missing - a
     tally of the conference's teams - never "no membership": the warehouse
-    holds every team's conference and division (``team_alignment``), and
-    said otherwise until 2026-10-09 (Phase 3, step 0)."""
+    holds every team's conference and division (``team_alignment``)."""
     answer = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(opponent="Western Conference"))).text
     assert answer == (
         "'Western Conference' is a conference or a division, not a team: a record or a line here is read for one team, "
@@ -448,9 +443,8 @@ def test_a_conference_is_refused_by_name(team_ctx: AnswerContext) -> None:
 
 
 def test_a_record_against_a_conference_is_tallied_from_the_games(team_ctx: AnswerContext) -> None:
-    """ISSUES.md #341: "celtics record vs the west" was refused as "no
-    calendar narrowing" - the standings hold no opponent, but the team's
-    games do, and the relation narrows them to opponents in that conference
+    """#341: "celtics record vs the west" - the standings hold no opponent,
+    but the team's games do, and the relation narrows them to opponents in that conference
     in that game's own season. The Cup final against the Spurs counts in no
     standings and is left out as a plain record leaves it out."""
     result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("vs the west"))))
@@ -507,21 +501,21 @@ def test_a_career_span_and_a_single_season_at_once_falls_through(team_ctx: Answe
         team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=2020, career=True)))
 
 
-def test_the_team_as_its_own_opponent_falls_through(team_ctx: AnswerContext) -> None:
+def test_the_team_as_its_own_opponent_is_declined(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
         team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(opponent="New York Knicks")))
 
 
 def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
-    # The compiler's since Phase 2's slice (iv): its words state these, and the planner declines `order`.
+    # Its words state these, and the planner declines a window.
     assert [cell for cell, _ in cells_unhonored(Reading(cuts=Cuts(opponent="Boston Celtics", venue="home"), span=Span(career=True)), TEAM_RECORD)] == []
     assert [cell for cell, _ in cells_unhonored(Reading(window=Window(order="recent")), TEAM_RECORD)] == ["window"]
 
 
 def test_team_record_honors_situation_and_split_at_the_declaration_level() -> None:
-    """The declaration only says the slot is stated - the reader itself
-    still refuses a `situation` that names no month and a `split` that is not
-    "month" (see the tests above), the same way it always refused `order`."""
+    """The declaration only says the cell is stated - the reader itself
+    refuses a ``situation`` that names no month and a ``split`` that is not
+    "month" (see the tests above)."""
     assert [cell for cell, _ in cells_unhonored(Reading(cuts=Cuts(situation=situation_of("in october")), split="month"), TEAM_RECORD)] == []
 
 
@@ -529,9 +523,9 @@ def test_team_record_honors_situation_and_split_at_the_declaration_level() -> No
 
 
 def test_a_teams_history_is_its_season_lines_one_row_a_season(team_ctx: AnswerContext) -> None:
-    """ISSUES.md #372 (D4 lifted, Jeff 2026-10-14): "raptors last 5 season"
-    and "how many games did miami heat play 2009 to 2023" were refused - a
-    team's season line reads one season. Its history is the line season by
+    """#372: "raptors last 5 season" and "how many games did miami heat play
+    2009 to 2023" are a team's history - a team's season line reads one
+    season, and its history is the line season by
     season, with the record (the standings' for a regular season) and the
     seasons summed beneath: the games, the record where every season has
     one, each per-game figure weighted by its games."""
@@ -553,7 +547,7 @@ def test_a_teams_history_of_one_stat_and_every_season(team_ctx: AnswerContext) -
     assert result.text.endswith(", the New York Knicks: 86 games, 96.1 points per game.")
 
 
-# ---------------- team_stat ----------------
+# ---------------- a team's line ----------------
 
 
 def test_a_team_line_is_a_table_with_league_ranks(team_ctx: AnswerContext) -> None:
@@ -575,8 +569,7 @@ def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: AnswerContext) -
     # The rating note is glued onto the same sentence, not a separate line -
     # `headline` matches it whole (the same string `firstLine(text)` would
     # give) rather than excluding the note into `notes`, which would print it
-    # a second time on a page that shows both (measured on the rendered
-    # page, 2026-09-24: this exact case, before the fix).
+    # a second time on a page that shows both.
     assert result.data["headline"] == answer
     assert result.data["notes"] == []
 
@@ -617,7 +610,7 @@ def test_a_record_stat_is_ranked_from_standings(team_ctx: AnswerContext) -> None
     assert "the 4th-best record of 5 teams" in answer
 
 
-# ---------------- team_leaderboard ----------------
+# ---------------- the team ranking ----------------
 
 
 def _first_row(answer: str) -> str:
@@ -625,7 +618,7 @@ def _first_row(answer: str) -> str:
 
 
 def test_which_team_scores_the_most(team_ctx: AnswerContext) -> None:
-    """Answered with the players' scoring leaders before this existed."""
+    """A ranking of teams by points ranks the teams, never the players' scoring leaders."""
     result = team_ranking(team_ctx, Reading(measure=Measure(key="points", as_typed="points"), window=Window(rank="most")))
     answer = result.text
     assert answer.startswith(f"Points per game, {S} regular season - highest first, of 5 teams:")
@@ -681,7 +674,7 @@ def test_a_ranking_with_a_team_short_of_games_is_refused_not_partial(team_ctx: A
     assert "can't be given" in answer and "4 of the Boston Celtics' 5 games" in answer
 
 
-def test_a_leaderboard_needs_a_stat(team_ctx: AnswerContext) -> None:
+def test_a_team_ranking_needs_a_stat(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
         team_ranking(team_ctx, Reading())
 
@@ -690,43 +683,23 @@ def test_a_leaderboard_needs_a_stat(team_ctx: AnswerContext) -> None:
 
 
 def test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question(tmp_path: Path) -> None:
-    """A boundary guard, not a live bug - and the distinction is the point.
+    """A boundary guard: a same-dated preseason snapshot never answers a
+    regular-season question.
 
     ESPN stamps 2018's preseason and regular-season snapshots on the same day it
     backfilled them (2020-10-12), one minute apart, so the regular season sorts
-    last in the real table and today's answer is right by 60 seconds. This
-    fixture gives them the identical stamp, which is what ESPN would have to
-    write for ordering-by-date alone to hand a regular-season question the
-    preseason rating. Only reachable at all once the paged fetch stores both
-    snapshots: before it, the table held one 25-row page.
+    last in the real table. This fixture gives them the identical stamp, which
+    is what ESPN would have to write for ordering-by-date alone to hand a
+    regular-season question the preseason rating.
 
-    **This test does not fail if the tiebreak is deleted, and cannot be made
-    to.** Measured 2026-09-15 with `scripts/perturb.py`: removing the `CASE`
-    outright leaves the file at 62 passed, while *reversing* it fails here. The
-    reason is that the `CASE` sends preseason to 0 and every other type to 1,
-    and DuckDB already emits the groups in ascending `season_type` - so the
-    guard agrees with the engine's incidental order for every possible pair,
-    and no fixture can separate them. Reordering the inserts was tried and
-    changes nothing.
-
-    That makes the tiebreak a guard against an ordering DuckDB does not
-    promise, which is worth keeping and is not falsifiable through this API.
-    What the test does pin is that the ordering path is exercised and that a
-    reversal is caught. ISSUES.md ("The BPI preseason tiebreak cannot be
-    perturbation-tested through the template") records the gap, so the next
-    reader does not mistake a passing test here for a watched-to-fail guard.
-
-    A regular-season question now reads a regular-season snapshot outright
-    (ISSUES.md #88, and the fixture-based guard is
-    `test_a_regular_season_question_reads_the_regular_season_snapshot_even_when_a_play_in_one_is_later`
-    below) - `team_outlook` finds `season_type == 2` directly rather than by
-    comparing dates, so this fixture's answer no longer depends on ordering at
-    all for the preseason/regular pair specifically. It is kept because it
-    still pins the *observable* outcome (a same-dated preseason snapshot never
-    wins), and the ordering it was written to test remains live for a pairing
-    this fixture does not cover - two non-regular, non-postseason snapshots
-    (preseason and play-in) tied on date with no regular-season snapshot at
-    all, which no season in the warehouse has today.
+    A regular-season question reads a regular-season snapshot outright (#88;
+    ``team_outlook`` finds ``season_type == 2`` directly rather than by
+    comparing dates), so this test does not fail if the SQL's
+    ``CASE season_type`` tiebreak is deleted, and cannot be made to: the
+    ``CASE`` sends preseason to 0 and every other type to 1, and DuckDB emits
+    the groups in ascending ``season_type`` anyway, so no fixture over this
+    pair separates them. It pins the observable outcome; the tiebreak's own
+    guard is the play-in test below.
     """
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
@@ -747,23 +720,17 @@ def test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question(
 
 
 def test_a_same_dated_preseason_and_play_in_snapshot_favors_play_in_with_no_regular_season_snapshot(tmp_path: Path) -> None:
-    """Keeps the SQL tiebreak's *own* guard alive.
+    """The SQL tiebreak's own guard: a preseason and a play-in snapshot tied
+    on date, with **no** regular-season snapshot to read outright, resolve
+    to the play-in one.
 
-    Preferring a direct `season_type == 2` match (added for #88, see the test
-    above) makes `test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question`
-    pass regardless of the `CASE season_type WHEN {BPI_PRESEASON} ...` ordering
-    in `team_outlook`'s SQL - `next()` finds the one `season_type == 2` row no
-    matter where it sorts. Measured with `scripts/perturb.py`: reversing that
-    `CASE` is now MISSED through that test where it used to be CAUGHT, because
-    a season with both a preseason and a regular-season snapshot never reaches
-    the tiebreak's `pre`/`post` lists at all any more.
-
-    The tiebreak's only live pairing left is two non-regular, non-postseason
-    snapshots - preseason and play-in - tied on date with **no** regular-season
-    snapshot to short-circuit past it. No season in the warehouse has that
-    shape today, but the ordering exists to handle it deliberately rather than
-    by accident of `GROUP BY`'s incidental order, and this fixture is what
-    would have to be true for date order alone to decide between them.
+    A season with a regular-season snapshot never reaches the tiebreak's
+    ``pre``/``post`` lists (``team_outlook`` reads ``season_type == 2``
+    directly), so this pairing is the only one the ``CASE season_type WHEN
+    {BPI_PRESEASON} ...`` ordering decides. No season in the warehouse has
+    that shape today; the ordering handles it deliberately rather than by
+    accident of ``GROUP BY``'s incidental order, and reversing the ``CASE``
+    fails here.
     """
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
@@ -784,21 +751,15 @@ def test_a_same_dated_preseason_and_play_in_snapshot_favors_play_in_with_no_regu
 
 
 def test_a_regular_season_question_reads_the_regular_season_snapshot_even_when_a_play_in_one_is_later(tmp_path: Path) -> None:
-    """The real bug (ISSUES.md #88), not the boundary case above.
+    """#88: a regular-season question reads the regular-season snapshot
+    outright whenever it holds the team, never comparing its date to any
+    other snapshot's.
 
-    Once the paging fix gave every power-index snapshot all 30 teams, the
-    play-in snapshot (season type 5) started **postdating** the regular-season
-    one - measured read-only against the live warehouse on 2026-09-17, this is
-    true for every season that has both: 2023 (04-15 vs 04-10), 2025 (04-19 vs
-    04-14) and 2026 (04-18 vs 04-13). A regular-season question ("how good were
-    the Knicks in the 2026 regular season") used to pick "the latest pre-
-    playoff snapshot", which is the play-in one in exactly those seasons -
-    answering a regular-season question from the play-in view, silently and
-    correctly-looking, because the answer still named the snapshot it read.
-
-    A regular-season question now reads the regular-season snapshot outright
-    whenever it holds the team, never comparing its date to any other
-    snapshot's. This fixture reproduces the real ordering (regular dated
+    The play-in snapshot (season type 5) postdates the regular-season one in
+    every season that has both - 2023 (04-15 vs 04-10), 2025 (04-19 vs 04-14)
+    and 2026 (04-18 vs 04-13) - so "the latest pre-playoff snapshot" would
+    answer "how good were the Knicks in the 2026 regular season" from the
+    play-in view. This fixture reproduces the real ordering (regular dated
     *before* play-in) with two BPI values far enough apart that reading the
     wrong one is unmistakable.
     """
@@ -920,7 +881,7 @@ def test_each_question_is_held_to_the_floor_of_the_table_it_reads() -> None:
         (None, None),
     ],
 )
-def test_the_stat_slot_is_read_through_a_whitelist(stat: Any, key: str | None) -> None:
+def test_a_team_metric_is_read_through_a_whitelist(stat: Any, key: str | None) -> None:
     assert resolve_team_metric(measure_of(stat) if stat is not None else None) == key
 
 
@@ -987,11 +948,10 @@ def test_a_named_month_combines_with_venue(team_ctx: AnswerContext) -> None:
 
 
 def test_a_situation_naming_no_calendar_narrowing_is_still_refused(team_ctx: AnswerContext) -> None:
-    """check_scope lets any `situation` value through (see HONORED_SCOPING);
-    team_record itself now reads the full calendar narrowing (step 3, K1: a
-    weekday, a month, a fixed holiday, "since <day>" - not only a bare month,
-    #84's original scope), and refuses only what names none of those - an
-    age, a conference, "since returning"."""
+    """The planner states every ``situation`` on a team's record; the
+    reader reads the full calendar narrowing (a weekday, a month, a fixed
+    holiday, "since <day>"; #84) and refuses only what names none of those -
+    an age, a conference, "since returning"."""
     with pytest.raises(Unsupported):
         team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("18 year old"))))
     with pytest.raises(Unsupported):
@@ -999,8 +959,8 @@ def test_a_situation_naming_no_calendar_narrowing_is_still_refused(team_ctx: Ans
 
 
 def test_since_a_calendar_day_narrows_a_teams_record(team_ctx: AnswerContext) -> None:
-    """Step 3, K1: "since november 20th" is a calendar narrowing the player
-    relation already read (`_SINCE_DAY`) and the team relation now does too.
+    """ "since november 20th" is a calendar narrowing the team relation reads
+    as the player relation does (``_SINCE_DAY``).
     g1 (the Knicks' Nov 19 Eastern-date win over the Spurs) falls BEFORE the
     cutoff and drops out; g2 (Dec 31 Eastern, a loss at San Antonio) and g3
     (Dec 13 Eastern, a neutral-site Cup semifinal win at Boston) fall on or
@@ -1015,7 +975,7 @@ def test_since_a_calendar_day_narrows_a_teams_record(team_ctx: AnswerContext) ->
 
 
 def test_a_weekday_narrows_a_teams_record(team_ctx: AnswerContext) -> None:
-    """Step 3, K1: a weekday narrowing ("on Wednesdays") reads
+    """A weekday narrowing ("on Wednesdays") reads
     `TeamNarrowed.narrow_calendar` too - not only a fixed calendar day. g1's
     Eastern date is computed here rather than hardcoded, so the assertion
     holds whatever `current_season()` happens to be when the suite runs. g1
@@ -1041,9 +1001,8 @@ def test_split_by_month_breaks_the_record_out(team_ctx: AnswerContext) -> None:
         {"season": S, "month": "December", "games": 2, "wins": 1, "losses": 1},
     ]
     assert "January" not in (result.text or "")
-    # `_team_record_by_month` carried no `data["headline"]` at all before
-    # this - the page's first-line fallback happened to read the same title
-    # line off `answer`, but nothing in `data` said so.
+    # `_team_record_by_month` carries its own `data["headline"]`, so the
+    # page reads the title from `data` rather than off the answer's first line.
     assert result.data["headline"] == f"The New York Knicks, record by month, the {S} regular season"
 
 
@@ -1053,10 +1012,9 @@ def test_an_unnamed_split_is_refused(team_ctx: AnswerContext) -> None:
 
 
 def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: AnswerContext) -> None:
-    """The router fills `limit` with a default whether or not the question
-    asked for one, the same shape team_record already treats as noise for a
-    bare "last N games" refusal - but only once a real month narrowing or a
-    by-month split is what is actually driving the answer."""
+    """A bare count of games does not block a month narrowing or a by-month
+    split, which drive the answer; with neither, a count on a team's record
+    is refused as a question for the team's log."""
     assert "1-0" in (team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("in november")), window=Window(count=12))).text or "")
     assert team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), split="month", window=Window(count=12))).data["months"]
     with pytest.raises(Unsupported, match="game_log"):
@@ -1068,24 +1026,21 @@ def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: Ans
 
 def test_team_record_combines_both_season_types_for_one_season(team_ctx: AnswerContext) -> None:
     """F116 ("warriors all-time record including playoff record at away"):
-    `season_type_unstated` (c9930ad's flag on the player relation, honored
-    here for the first time) combines both season types rather than
+    both season types in one read (``Span.both``) combine rather than
     silently answering one. The Knicks' season-S regular record (53-29, from
     standings - `test_a_season_record_is_the_standings_line`) plus their
     postseason series against the Celtics (p1 W, p2 L, p3 W, p4 W - 3-1) sum
     to 56-30, with each component named."""
     result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S, both=True)))
     assert result.data["wins"] == 56 and result.data["losses"] == 30
-    # #204 (ISSUES.md): the regular half reads standings, which carries no
+    # #204: the regular half reads standings, which carries no
     # first_season at all, so it names none; the postseason half always
     # reads games, which does - here trivially the named season itself,
     # since both halves cover the same one year.
     assert result.data["regular_season"] == {"wins": 53, "losses": 29, "first_season": None}
     assert result.data["postseason"] == {"wins": 3, "losses": 1, "first_season": S}
     assert "56-30" in result.text
-    # The regular half's neutral-site game is said inside its own record
-    # (written and not said until Phase 2, slice (iv)).
-    # ISSUES.md #336: the regular half's neutral-site count explains a
+    # #336: the regular half's neutral-site count explains a
     # home/road split this answer does not show, so it is not said here.
     assert "53-29 (.646) regular season," in result.text and "neutral-site" not in result.text
     # One season is said once, in the headline: "from 2025-26" beside
@@ -1101,16 +1056,14 @@ def test_team_record_combined_types_honors_opponent(team_ctx: AnswerContext) -> 
     result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(opponent="Celtics"), span=Span(season=S, both=True)))
     assert result.data["wins"] == 4 and result.data["losses"] == 1
     # An opponent forces both halves through _games_record (never standings),
-    # so both carry the named season as their own first_season - #204,
-    # ISSUES.md.
+    # so both carry the named season as their own first_season (#204).
     assert result.data["regular_season"] == {"wins": 1, "losses": 0, "first_season": S}
     assert result.data["postseason"] == {"wins": 3, "losses": 1, "first_season": S}
 
 
 def test_team_record_combined_career_names_each_halfs_own_start(team_ctx: AnswerContext) -> None:
-    """#204 (ISSUES.md): the combined-season-types sentence used to carry only
-    "Note:" lines from its halves, so the reader could not see that they
-    start in different seasons - true here: the Knicks' standings reach back
+    """#204: the combined-season-types sentence names each half's own first
+    season, since the two can start in different seasons - true here: the Knicks' standings reach back
     to 1990 in this fixture, but their earliest postseason game ("old1") is
     LABELED 1990 and actually played in 1991 - read by the calendar year it
     was played, per team_games.py, not by ESPN's pre-1993-94 started-year
@@ -1135,7 +1088,7 @@ def test_team_record_combined_types_refuses_a_month_split(team_ctx: AnswerContex
         team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(both=True), split="month"))
 
 
-# ---------------- team_record: `until` beside `since` (step 3, K1) ----------------
+# ---------------- team_record: `until` beside `since` ----------------
 
 
 def test_until_bounds_a_since_span_record(team_ctx: AnswerContext) -> None:
@@ -1150,9 +1103,9 @@ def test_until_bounds_a_since_span_record(team_ctx: AnswerContext) -> None:
 
 
 def test_until_with_no_since_is_refused(team_ctx: AnswerContext) -> None:
-    """The slot contract: `until` only ever arrives beside `since` (a decade,
-    or a named range the router files as both at once) - a stray `until` with
-    no `since` is refused rather than silently read as nothing."""
+    """``until`` is read only beside ``since`` (a decade, or a named range
+    read as both at once) - a stray ``until`` with no ``since`` is refused
+    rather than silently read as nothing."""
     with pytest.raises(Unsupported, match="until"):
         team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(until=2020)))
 
@@ -1163,7 +1116,7 @@ def test_until_before_since_is_refused(team_ctx: AnswerContext) -> None:
 
 
 def test_team_record_by_month_spans_since_until_with_one_table_per_season(team_ctx: AnswerContext) -> None:
-    """F095 (ISSUES.md): "Knicks record by month" over a since/until-bounded
+    """F095: "Knicks record by month" over a since/until-bounded
     span - here 1994 through the current season - reads one table PER SEASON
     rather than merging distinct years' Novembers into one row or silently
     keeping only the span's first year. 1994 holds one game (`ph`, January);
@@ -1178,8 +1131,8 @@ def test_team_record_by_month_spans_since_until_with_one_table_per_season(team_c
 
 
 def test_a_by_month_span_says_the_seasons_the_game_list_cannot_reach(team_ctx: AnswerContext) -> None:
-    """ISSUES.md #300: "knicks record by month since 1990" began its tables at
-    1994 in silence. The seasons under the game list's floor are said first;
+    """#300: "knicks record by month since 1990" says the seasons under the
+    game list's floor first, never beginning its tables at 1994 in silence;
     a span that starts at the floor says nothing."""
     result = team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=1990, until=S), split="month"))
     assert result.text.startswith(
@@ -1191,21 +1144,20 @@ def test_a_by_month_span_says_the_seasons_the_game_list_cannot_reach(team_ctx: A
     assert not at_the_floor.text.startswith("Seasons")
 
 
-# ---------------- team_leaderboard: `since` (step 3, C4b) ----------------
+# ---------------- the team ranking: `since` ----------------
 
 
-def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_ctx: AnswerContext) -> None:
-    """ "nba team with least playoff wins since 2022" (ISSUES.md) used to
-    refuse for want of `since`; the relation now tallies wins/losses across
-    the span itself, grouped by team. The fixture's Knicks-Celtics postseason
+def test_a_team_ranking_since_a_season_tallies_the_relation_across_seasons(team_ctx: AnswerContext) -> None:
+    """ "nba team with least playoff wins since 2022": the relation tallies
+    wins/losses across the span itself, grouped by team. The fixture's Knicks-Celtics postseason
     meetings since 1991: the 1991 Finals (labeled 1990 - "old1", Celtics
     won), a 1994 game filed under two season labels and deduped to one
     ("php", Knicks won), and this season's 3-1 Celtics series (p1-p4) -
     Knicks 4-2, Celtics 2-4. Every OTHER franchise in the fixture (San
     Antonio, OKC, Washington, Charlotte) reads 0-0 rather than being left off
-    the ranking (F100, ISSUES.md): a team with no games in the span is a real
+    the ranking (F100): a team with no games in the span is a real
     zero, not a non-participant to drop the way a single-season postseason
-    ranking already drops one."""
+    ranking drops one."""
     result = team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991)))
     assert "since 1991" in (result.text or "")
     teams = {t["team"]: t["display"] for t in result.data["teams"]}
@@ -1219,12 +1171,12 @@ def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_c
     }
 
 
-def test_a_leaderboard_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
+def test_a_team_ranking_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
         team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season=S, season_type=3, since=1991)))
 
 
-def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: AnswerContext) -> None:
+def test_a_team_ranking_since_refuses_a_rate_metric(team_ctx: AnswerContext) -> None:
     """A season line (team_season_stats) has no way to sum across a span of
     seasons yet - refused by name, rather than answered for one season under
     a since-shaped question that asked for a range."""
@@ -1232,15 +1184,15 @@ def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: AnswerContext) -> N
         team_ranking(team_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(since=2020)))
 
 
-def test_a_leaderboard_since_refuses_a_venue_split(team_ctx: AnswerContext) -> None:
+def test_a_team_ranking_since_refuses_a_venue_split(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
         team_ranking(team_ctx, Reading(cuts=Cuts(venue="home"), measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991)))
 
 
-# ---------------- team_leaderboard: `until` beside `since` (step 3, K1) ----------------
+# ---------------- the team ranking: `until` beside `since` ----------------
 
 
-def test_a_leaderboard_until_bounds_the_since_span(team_ctx: AnswerContext) -> None:
+def test_a_team_ranking_until_bounds_the_since_span(team_ctx: AnswerContext) -> None:
     """F103's shape: "best playoff record from 1991 to {S}" reads a BOUNDED
     range. Narrowed to `until=1991` alone the span holds only the 1991
     Finals game (`old1`), where the open-ended `since=1991` test above also
@@ -1258,19 +1210,19 @@ def test_a_leaderboard_until_bounds_the_since_span(team_ctx: AnswerContext) -> N
     assert teams["Charlotte Hornets"] == "0-0"
 
 
-def test_a_leaderboard_until_with_no_since_is_refused(team_ctx: AnswerContext) -> None:
+def test_a_team_ranking_until_with_no_since_is_refused(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported, match="until"):
         team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, until=1991)))
 
 
-# ---------------- team_quarter_points: the team-games relation (step 3, C4b) ----------------
+# ---------------- a team's period total: the team-games relation ----------------
 
 
 @pytest.fixture
 def tqp_ctx(tmp_path: Path) -> AnswerContext:
-    """A fixture built for team_quarter_points' new cells: linescores across
+    """A fixture built for a team's period total's cells: linescores across
     four regular-season games (two home, two away, chronologically ordered
-    for an ``order``/``limit`` window), one earlier regular season for
+    for a window), one earlier regular season for
     ``since``, and a four-game Knicks-Celtics postseason series for
     ``game_n``."""
     c = duckdb.connect(":memory:")
@@ -1300,11 +1252,10 @@ def tqp_ctx(tmp_path: Path) -> AnswerContext:
     return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_quarter_points_window_reads_the_last_n_games(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_window_reads_the_last_n_games(tqp_ctx: AnswerContext) -> None:
     """ "show sixers first quarter scoring for their last 10 games" and
     "trailblazers stats last 10 games 3 point average 1st quarter"
-    (ISSUES.md, live yardstick failures) both refused for want of `order`/
-    `limit` - the relation now cuts to the window before the linescores are
+    read a window: the relation cuts to the window before the linescores are
     summed. The Knicks' last 2 regular-season games by date are e3 (Q1 25)
     and e4 (Q1 15); e1 and e2 are older and must not be counted."""
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S), period=Period(number=1), window=Window(order="recent", count=2)))
@@ -1313,13 +1264,13 @@ def test_a_quarter_points_window_reads_the_last_n_games(tqp_ctx: AnswerContext) 
     assert "last 2 games" in (result.text or "")
 
 
-def test_a_quarter_points_window_oldest_first(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_window_oldest_first(tqp_ctx: AnswerContext) -> None:
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S), period=Period(number=1), window=Window(order="first", count=2)))
     assert [g["points"] for g in result.data["games"]] == [30, 20]
     assert "first 2 games" in (result.text or "")
 
 
-def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_venue_narrows_the_games(tqp_ctx: AnswerContext) -> None:
     """The Knicks' two home games this season are e1 (Q1 30) and e3 (Q1 25);
     e2 and e4, both on the road, must not be counted."""
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(season=S), period=Period(number=1)))
@@ -1328,10 +1279,9 @@ def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: AnswerContext) -> Non
 
 
 def test_a_teams_points_allowed_in_a_quarter_are_the_other_linescores(tqp_ctx: AnswerContext) -> None:
-    """ISSUES.md #427: "celtics points allowed in the 4th quarter" was
-    refused "A team's points allowed by quarter is not on record: ESPN's
-    linescore holds only the score", though the linescore holds both
-    sides'. The Knicks' opponents' first quarters this season: 20 (e1, the
+    """#427: "celtics points allowed in the 4th quarter" is read from the
+    other side's linescore, which holds both sides', never refused as "not
+    on record". The Knicks' opponents' first quarters this season: 20 (e1, the
     Celtics away), 25 (e2, the Lakers at home), 20 (e3), 30 (e4)."""
     allowed = Measure(key="points", as_typed="points allowed", whose="opponent")
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, span=Span(season=S), period=Period(number=1)))
@@ -1343,13 +1293,13 @@ def test_a_teams_points_allowed_in_a_quarter_are_the_other_linescores(tqp_ctx: A
     assert (fewest.text or "").startswith("The New York Knicks' opponents scored 20 in the 1st quarter vs the Boston Celtics on")
 
 
-def test_a_quarter_points_date_reads_one_game(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_date_reads_one_game(tqp_ctx: AnswerContext) -> None:
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
     assert result.data["games"] == [{"date": f"{S}-01-15", "opponent": "Los Angeles Lakers", "points": 25}]
     assert f"{S}-01-15" in (result.text or "")
 
 
-def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_game_n_reads_one_game_of_the_series(tqp_ctx: AnswerContext) -> None:
     """Game 4 of the Knicks-Celtics postseason series is p4 - the Knicks'
     road game, Q1 21 from their own (away) linescore."""
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(game_n=4), span=Span(season=S, season_type=3), period=Period(number=1)))
@@ -1357,13 +1307,13 @@ def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: AnswerCon
     assert "game 4" in (result.text or "")
 
 
-def test_a_quarter_points_game_n_regular_season_is_refused(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_game_n_regular_season_is_refused(tqp_ctx: AnswerContext) -> None:
     """A series has games 1-7; a regular season has nothing "game 4" names."""
     with pytest.raises(Unsupported):
         team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(game_n=4), span=Span(season=S, season_type=2), period=Period(number=1)))
 
 
-def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_since_spans_more_than_one_season(tqp_ctx: AnswerContext) -> None:
     """Every Knicks regular-season game on record since season S-1: d1 (Q1
     40) plus the four season-S games (30, 20, 25, 15) - 130 total across 5
     games, the postseason series left out since this asks for no season type
@@ -1374,9 +1324,9 @@ def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: AnswerContex
     assert f"since {S - 1}" in (result.text or "")
 
 
-def test_a_quarter_points_until_bounds_the_since_span(tqp_ctx: AnswerContext) -> None:
-    """Step 3, K1: "until" reaches team_quarter_points "for free" through
-    `scoped_team` - the same shared step `since` already reaches through.
+def test_a_teams_period_total_until_bounds_the_since_span(tqp_ctx: AnswerContext) -> None:
+    """ "until" reaches a team's period total through ``scoped_team`` - the
+    same shared step ``since`` reaches through.
     Bounded to season {S-1} alone (`since=until={S-1}`), only d1 (Q1 40)
     counts; the open-ended since-only test above also picks up all four
     season-{S} games."""
@@ -1386,9 +1336,9 @@ def test_a_quarter_points_until_bounds_the_since_span(tqp_ctx: AnswerContext) ->
     assert f"from {S - 1} through {S - 1}" in (result.text or "")
 
 
-def test_a_quarter_points_situation_narrows_by_calendar_month(tqp_ctx: AnswerContext) -> None:
-    """Step 3, K1: `situation` reaches team_quarter_points through the same
-    shared `team_games` step every other team template narrows by it -
+def test_a_teams_period_total_situation_narrows_by_calendar_month(tqp_ctx: AnswerContext) -> None:
+    """``situation`` reaches a team's period total through the same shared
+    ``team_games`` step every other team reader narrows by it -
     "november" keeps only e1 (Q1 30), the season's other three games (e2 in
     December, e3 in January, e4 in February) falling out."""
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("in november")), span=Span(season=S), period=Period(number=1)))
@@ -1396,7 +1346,7 @@ def test_a_quarter_points_situation_narrows_by_calendar_month(tqp_ctx: AnswerCon
     assert "in November" in (result.text or "")
 
 
-def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: AnswerContext) -> None:
+def test_a_teams_period_total_opponent_and_venue_compose(tqp_ctx: AnswerContext) -> None:
     """Both narrowings apply together, as every other reader of the relation's
     narrowing composes them: the Knicks' one home game against the Celtics
     this season is e1 (Q1 30); e3 is a home game but against the Lakers."""
@@ -1404,15 +1354,14 @@ def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: AnswerContext) -> 
     assert [g["points"] for g in result.data["games"]] == [30]
 
 
-# ---------------- record_when's team branch: `since`/`game_n` (step 3, C4b) ----------------
+# ---------------- a team's record over a line: `since`/`game_n` ----------------
 
 
-def test_record_when_team_since_tallies_across_seasons(team_ctx: AnswerContext) -> None:
+def test_a_teams_record_over_a_line_since_a_season_tallies_across_seasons(team_ctx: AnswerContext) -> None:
     """The Celtics' postseason scores since 1991 (old1, php, p1-p4): 100, 90,
     100, 101, 95, 110. Four of the six reach a 100-point threshold (old1,
     p1, p2, p4); that pool's own record is 2-2 (old1 W, p1 L, p2 W, p4 L).
-    The two under it, php and p3, are both losses. Refused before (ISSUES.md)
-    for want of `since` on the team branch."""
+    The two under it, php and p3, are both losses."""
     result = line_record(
         team_ctx,
         Reading(
@@ -1429,7 +1378,7 @@ def test_record_when_team_since_tallies_across_seasons(team_ctx: AnswerContext) 
     assert "since 1991" in (result.data["span"] or "")
 
 
-def test_record_when_team_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
+def test_a_teams_record_over_a_line_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
         line_record(
             team_ctx,
@@ -1442,7 +1391,7 @@ def test_record_when_team_since_and_a_named_season_at_once_is_refused(team_ctx: 
         )
 
 
-def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: AnswerContext) -> None:
+def test_a_teams_record_over_a_line_narrows_to_one_game_of_the_series(team_ctx: AnswerContext) -> None:
     """Game 4 of the Knicks-Celtics series is p4, where the Celtics scored
     110 and lost - one game, reaching the threshold, in the loss column."""
     result = line_record(
@@ -1460,7 +1409,7 @@ def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: Ans
     assert result.data["fell_short"]["games"] == 0
 
 
-def test_record_when_team_game_n_regular_season_is_refused(team_ctx: AnswerContext) -> None:
+def test_a_teams_record_over_a_line_refuses_a_game_of_a_regular_season(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
         line_record(
             team_ctx,
@@ -1474,10 +1423,10 @@ def test_record_when_team_game_n_regular_season_is_refused(team_ctx: AnswerConte
         )
 
 
-# ---------------- streak's team/league branches: `since` (step 3, C4b) ----------------
+# ---------------- a team's and the league's runs: `since` ----------------
 
 
-def test_streak_team_since_searches_more_than_one_season(team_ctx: AnswerContext) -> None:
+def test_a_teams_streak_since_a_season_searches_more_than_one_season(team_ctx: AnswerContext) -> None:
     """A team's own streak still runs within ONE season even under `since`
     (:func:`_longest_runs_sql`'s own ``("team_id", "season")`` partition, the
     record-book rule the docstring already states) - `since` widens which
@@ -1490,7 +1439,7 @@ def test_streak_team_since_searches_more_than_one_season(team_ctx: AnswerContext
     assert "since 1991" in (result.data["span"] or "")
 
 
-def test_streak_league_since_reads_every_teams_seasons_in_the_span(team_ctx: AnswerContext) -> None:
+def test_the_leagues_streak_since_a_season_reads_every_teams_seasons_in_the_span(team_ctx: AnswerContext) -> None:
     """The league-wide (no team, no player) win-streak branch, `since`-bounded:
     the Knicks' 3-1 postseason series this year holds a 2-game win streak
     (p1, then p3-p4 after the one loss) - the longest of anyone's since 1991."""
@@ -1500,11 +1449,10 @@ def test_streak_league_since_reads_every_teams_seasons_in_the_span(team_ctx: Ans
 
 
 def test_a_combined_record_says_where_each_halfs_source_starts() -> None:
-    """ "warriors all-time record including playoff record at away" wrote two
+    """ "warriors all-time record including playoff record at away" writes two
     floors - the standings' home/road split from 1993-94, the game list's
-    playoffs from 1989 - and said neither (`stage_snapshots.py remarks`):
-    the combined sentence kept only each half's "Note:" tail. Each floor is
-    said after the half it bounds now, and nothing written goes unsaid."""
+    playoffs from 1989 - and the combined sentence says each after the half
+    it bounds, so nothing written goes unsaid (``stage_snapshots.py remarks``)."""
     from association.query import notes
     from association.query.compose.say import say_team_record
     from association.query.notes import Note

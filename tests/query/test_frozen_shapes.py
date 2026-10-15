@@ -1,30 +1,13 @@
-"""Decision D4 of ``ROADMAP.md``: new shapes are frozen while the pipeline
-is rebuilt. A shape the words can ask, or a per-intent renderer, retires
-with its slice; none is added. The other directions the roadmap set are
-held by ``scripts/check_ratchets.py``.
-
-Phase 3, step 4 retired the freeze of the 25 intents' names with the
-intent itself: the grammar names a :class:`~association.query.reading.PointShape`
-(the relation, the shape and ``by`` the words ask for), and the freeze holds
-those keys - the same 25, in the target's vocabulary.
-
-Phase 2 (2026-10-03 to 2026-10-05) removed what the rest of this file froze:
-the twelve templates, the presenters and ``compose/present.py``, the ten
-adapters and ``compose/adapt.py``, and - with step 6 - ``HONORED_SCOPING``,
-``check_scope`` and the ``templates`` package itself. Their freezes went with
-them. Four scoping declarations remain, and are frozen by module and name
-(:data:`FROZEN_SCOPING_TABLES`): the per-relation cell tables the roadmap
-keeps, one table and one table of shapes' rows per relation. Phase 3, step
-2 deleted the rest one slice at a time - ``coverage._BOX_SCORE_SCOPING``
-with step 1 (the floor follows the planned point's relation),
-``compose.core.COMPILER_SLOTS`` with the window (``ranked_by`` is the typed
-window's ``by``), ``compose.plan.WITH_WITHOUT_STATED`` with the companions
-(a row of the table), ``router._MODEL_SLOTS`` with the subject's own, and
-with the closing slice (the planner's one check of the typed cells against
-the tables, ``compose.plan.cells_unhonored``) the planner's
-``STATED_SCOPING``, ``compose.plan._TEAM_READER_REFUSES``,
-``reading.SCOPING_SLOTS`` and ``conditions._CONDITION_PLAYER_ONLY_CELLS``,
-each now a field of a shape's row (``reading.ShapeCells``)."""
+"""New shapes are frozen: a shape comes only by Jeff's lifting, and brings
+what decision D11 of ``ROADMAP.md`` lists. The grammar names a
+:class:`~association.query.reading.PointShape` (the relation, the shape and
+``by`` the words ask for), and :data:`FROZEN` holds those keys; the page
+holds one renderer per ``reading.Shape``; and the four scoping declarations,
+the per-relation cell tables (one table and one table of shapes' rows per
+relation), are frozen by module and name (:data:`FROZEN_SCOPING_TABLES`).
+``templates/``, ``compose/present.py`` and ``compose/adapt.py`` do not come
+back as source files. The other directions are held by
+``scripts/check_ratchets.py``."""
 
 from __future__ import annotations
 
@@ -35,14 +18,11 @@ from association.query.parse import PARENT_GRAMMAR
 from association.query.reading import PointShape
 from association.query.subject import KIND_ASSIGNED_ASKS
 
-# Every shape the words could ask on 2026-09-30 - the 25 intents the reader
-# named then, keyed since Phase 3, step 4 as (relation, shape, by): the
-# grammar's keys (each named back to the page by the label table,
-# ``reading.SHAPE_NAMES``, until Phase 4, step 2 deleted the label; said in
-# words by the sayer since, ``compose.say.asked_as``, which
+# Every shape the words can ask, as (relation, shape, by): the grammar's
+# keys, each said in words by the sayer (``compose.say.asked_as``, which
 # ``test_say.test_every_key_the_grammar_names_is_said_in_words`` holds to
-# every one). Remove one when its slice deletes it; adding
-# one is a decision the roadmap has to change for.
+# every one). A key the grammar no longer names leaves this set; adding one
+# is Jeff's lifting, with what D11 lists.
 FROZEN = frozenset(
     {
         ("team_seasons", "scalar", "coach"),
@@ -71,14 +51,13 @@ FROZEN = frozenset(
         ("player_games", "scalar", "count"),
         ("team_games", "split", "presence"),
         # How many players a season line holds ("how many players averaged
-        # 30 ppg in 2026", ISSUES.md #390): the 26th, D4 lifted for it by Jeff
-        # on 2026-10-13 - the season ranking kept past the line, counted.
+        # 30 ppg in 2026", #390): the season ranking kept past the line,
+        # counted.
         ("player_seasons", "scalar", "count"),
-        # The 27th: D4 lifted (Jeff, 2026-10-13) for #364's remainder: a team's own
-        # games, or every team's, ranked by one figure.
+        # A team's own games, or every team's, ranked by one figure (#364).
         ("team_games", "rows", "measure"),
-        # The 28th: D4 lifted (Jeff, 2026-10-14) for #372's remainder: a
-        # team's season line season by season over a range or every season.
+        # A team's season line season by season over a range or every
+        # season (#372).
         ("team_seasons", "split", "season"),
     }
 )
@@ -91,17 +70,14 @@ def _named_today() -> set[tuple[str, str, str]]:
 
 def test_no_shape_is_added_to_what_the_words_ask_and_a_retired_one_leaves_the_list() -> None:
     named = _named_today()
-    assert named - FROZEN == set(), "a new shape the words ask: ROADMAP.md decision D4 freezes new shapes until the pipeline is rebuilt"
+    assert named - FROZEN == set(), "a new shape the words ask: a new shape comes only by Jeff's lifting, with what ROADMAP.md decision D11 lists"
     assert FROZEN - named == set(), "a shape retired: remove it from FROZEN so it cannot come back"
 
 
-# Every module-level declaration of which scoping slots a read honors,
-# states, excludes or refuses, by module and name, as it stood after Phase 2
-# (restored 2026-10-05, #330: step 6 deleted this freeze while 12 of its 14
-# entries were still in src; 11 since Phase 3, step 1, 8 after its step 2's
-# family slices, and the four cell tables alone since its closing slice -
-# the debt at 0). Each is labeled with why it is still here:
-CELL_TABLE = "a per-relation cell table: stays through Phase 4"
+# Every module-level declaration of which cells a read honors, states,
+# excludes or refuses, by module and name (#330), each labeled with why it
+# is here:
+CELL_TABLE = "a per-relation cell table"
 FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
     ("player_relation", "RELATION_SCOPING"): CELL_TABLE,
     ("player_relation", "RELATION_SCOPING_EXCLUDED"): CELL_TABLE,
@@ -114,9 +90,8 @@ _LABELS = (CELL_TABLE, "debt, owed by ")
 def _scoping_tables_today() -> set[tuple[str, str]]:
     """Every module-level name under ``query/`` that looks like a scoping
     declaration, read from the source: a table nobody imports yet is still a
-    table. The pattern is the one the freeze had before step 6 (widened
-    2026-10-03, the Phase 1 review, when two tables of cells a reader
-    refuses matched none of its first three words)."""
+    table. The pattern matches a table of cells a reader refuses as well as
+    one it states or honors."""
     import ast
     import re
     from pathlib import Path
@@ -145,12 +120,10 @@ def test_no_scoping_declaration_is_added_and_each_says_why_it_is_here() -> None:
     assert unlabeled == set(), "each scoping declaration is a cell table, or debt naming the step that owes it"
 
 
-# D4 names more than the intents: no new renderer either (Phase 1's order
-# from here, step 4), held the same way - the set as it stands, which may
-# lose a member with its slice and gain none. Phase 4, step 1 keyed the
-# page's renderers by the planned point's shape: the 22 per-intent renderers
-# became one per shape (``reading.Shape``), and a renderer is added only
-# with a shape.
+# No new renderer either, held the same way - the set as it stands, which
+# may lose a member and gain none. The page keys its renderers by the
+# planned point's shape, one per ``reading.Shape``, and a renderer is added
+# only with a shape.
 FROZEN_RENDERERS = frozenset({"scalar", "rows", "ranking", "comparison", "split", "runs", "chart"})
 
 
@@ -177,7 +150,7 @@ def test_the_page_renders_by_the_shapes_and_nothing_else() -> None:
 
 
 def _frozen(name: str, today: set[Any], frozen: frozenset[Any]) -> None:
-    assert today - frozen == set(), f"a new {name}: ROADMAP.md decision D4 freezes new shapes until the pipeline is rebuilt"
+    assert today - frozen == set(), f"a new {name}: a new shape comes only by Jeff's lifting, with what ROADMAP.md decision D11 lists"
     assert frozen - today == set(), f"a {name} retired: remove it from the frozen set so it cannot come back"
 
 
@@ -190,20 +163,15 @@ def _query_sources(pattern: str) -> list[str]:
     return sorted(str(path.relative_to(root)) for path in root.glob(pattern))
 
 
-def test_no_presenter_or_renderer_is_added() -> None:
-    # Every presenter is retired (the player relation's in slice (iii), the
-    # team's - with_without's, a team's streak, a team's record over its own
-    # line - in slice (iv), 2026-10-05), and compose/present.py with them:
-    # each shape is a reader and the sayer, and no presenter comes back. The
-    # templates package went with step 6, the adapters with slice (ii): no
-    # template or adapter comes back either.
+def test_no_template_presenter_or_adapter_comes_back_and_no_renderer_is_added() -> None:
+    # Each shape is a reader and the sayer: no template, presenter or
+    # adapter stands between them, and none comes back.
     #
     # Asked of the source files, never of the import system: an ignored
-    # ``templates/__pycache__`` left behind in a checkout is a namespace
-    # package to ``importlib.util.find_spec``, and failed this test in the
-    # main checkout with nothing wrong in the tree (2026-10-05, #333). A
-    # ``.pyc`` is not a ``.py``, so a stale cache cannot fail it now.
-    assert _query_sources("compose/present.py") == [], "a presenter came back: ROADMAP.md decision D4"
-    assert _query_sources("compose/adapt.py") == [], "an adapter came back: ROADMAP.md decision D4"
-    assert _query_sources("templates/**/*.py") == [], "a template came back: ROADMAP.md decision D4"
+    # ``templates/__pycache__`` left in a checkout is a namespace package to
+    # ``importlib.util.find_spec`` (#333). A ``.pyc`` is not a ``.py``, so a
+    # stale cache cannot fail it.
+    assert _query_sources("compose/present.py") == [], "a presenter came back: each shape is a reader and the sayer"
+    assert _query_sources("compose/adapt.py") == [], "an adapter came back: each shape is a reader and the sayer"
+    assert _query_sources("templates/**/*.py") == [], "a template came back: each shape is a reader and the sayer"
     _frozen("renderer", _renderers_today(), FROZEN_RENDERERS)

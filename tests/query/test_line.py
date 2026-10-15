@@ -1,13 +1,12 @@
-"""The line and the companions, typed (Phase 3, step 2's fifth slice): the
-one tagger that reads the lines on a stat a question keeps the subject's
+"""The line and the companions, typed: the one tagger that reads the lines on a stat a question keeps the subject's
 games past (:func:`association.query.line.read_lines`) and the one that
 reads a line in a quarter or half (:func:`association.query.line.read_period_line`),
 the characters each claims, the typed values' doors and projections
 (:class:`association.query.reading.Line`,
 :class:`association.query.reading.Companion`), the companions the subject
-reading hands the stages with their claims, the cells and the slot names a
-decline still says, the tables declaring each once, and the behavioral
-check contract 4 asks for: applying each cell on its relation changes the
+reading hands the grammar's rules and the taggers with their claims, the
+cells and what a decline says of them, the tables declaring each once, and
+the behavioral check that applying each cell on its relation changes the
 result.
 """
 
@@ -67,8 +66,9 @@ from association.query.reading import Subject as Who
 from association.query.subject import read_subject
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
-#: The slot names the family was carried under until this slice: none may come back as a cell name.
-_SLOT_ERA = ("threshold", "above", "below", "period_condition", "with_player", "without", "conditions")
+#: Names that are no cell of the line's or the companions' family (their cells are ``line``, ``period_line``
+#: and ``companion``): none may be a cell name.
+_NOT_CELL_NAMES = ("threshold", "above", "below", "period_condition", "with_player", "without", "conditions")
 
 
 def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, bool]:
@@ -95,29 +95,28 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
         ("sga games with under 14 fta", GAMES_COUNTED, [("freeThrowsAttempted", "<", 14, "under 14 fta", False, True)], None),
         ("jokic games with at most 5 turnovers", PLAYER_LOG, [("turnovers", "<=", 5, "at most 5 turnovers", False, True)], None),
         ("curry games with 25 minutes", PLAYER_LOG, [("minutes", ">=", 25, "with 25 minutes", False, True)], None),
-        # "N or more minutes" and the lead "playing" are the same floor, on every reader (ISSUES.md #374): "stats when
-        # playing 20 or more minutes" answered every game he played.
+        # "N or more minutes" and the lead "playing" are the same floor, on every reader (#374).
         ("Victor wembanyama stats when playing 20 or more minutes playoffs", PLAYER_LINE, [("minutes", ">=", 20, "playing 20 or more minutes", False, True)], None),
         ("wemby game log with 30 or more minutes", PLAYER_LOG, [("minutes", ">=", 30, "with 30 or more minutes", False, True)], None),
         ("wemby splits playing 30+ minutes", PLAYER_SPLITS, [("minutes", ">=", 30, "playing 30+ minutes", False, True)], None),
         ("wemby stats playing at least 30 minutes", PLAYER_LINE, [("minutes", ">=", 30, "playing at least 30 minutes", False, True)], None),
         ("wemby stats playing 30 minutes", PLAYER_LINE, [("minutes", ">=", 30, "playing 30 minutes", False, True)], None),
-        # "over N minutes" and "more than N minutes" keep the games OVER the number, where the number alone was read as a floor at it.
+        # "over N minutes" and "more than N minutes" keep the games OVER the number, not at it.
         ("collin murray-boyles stats this season when playing over 26 minutes", PLAYER_LINE, [("minutes", ">", 26, "playing over 26 minutes", False, True)], None),
         ("wemby game log with more than 30 minutes", PLAYER_LOG, [("minutes", ">", 30, "with more than 30 minutes", False, True)], None),
         ("wemby game log with no more than 30 minutes", PLAYER_LOG, [("minutes", "<=", 30, "no more than 30 minutes", False, True)], None),
         # Under a record over a line, a floor and no pair beside it is the record's own line - which a narrowing would empty.
         ("victor wembanyama record when playing 30 or more minutes", LINE_RECORD, [("minutes", ">=", 30, "playing 30 or more minutes", True, False)], None),
-        # One "N+ stat" pair on a reader whose shape is not a line is read by nothing - the stages' rule, measured (a team's line carried no threshold).
+        # One "N+ stat" pair on a reader whose shape is not a line is read by nothing.
         ("How many 10+ point leads did the Sacramento Kings have", TEAM_RANKING, [], None),
-        # ... but on a reader of a player's games one line stated outright narrows them (ISSUES.md #357, Phase 3,
-        # step 3), "at least N stat" as well as "N+ stat"; a bare "N stat" there stays unread ("harden 61 points").
+        # ... but on a reader of a player's games one line stated outright narrows them (#357), "at least N stat"
+        # as well as "N+ stat"; a bare "N stat" there stays unread ("harden 61 points").
         ("lebron game log with 20+ points this season", PLAYER_LOG, [("points", ">=", 20, "20+ points", False, True)], None),
         ("anthony edwards log with at least 50 points", PLAYER_LOG, [("points", ">=", 50, "50 points", False, True)], None),
         # A player's line is not among them ("lebron 20+ points this season" can ask whether he averages it).
         ("lebron 20+ points per game this season", PLAYER_LINE, [], None),
-        # ... unless the words set the line on the games, however it is stated (Phase 5, step 2, ISSUES.md #357): his
-        # line, log or splits over the games holding it, where step 1 refused the number by name.
+        # ... unless the words set the line on the games, however it is stated (#357): his line, log or splits over
+        # the games holding it.
         ("2 threes in games Jamal Murray played", PLAYER_LINE, [("threePointFieldGoalsMade", ">=", 2, "2 threes", False, True)], None),
         ("lebron stats in games with 30 points", PLAYER_LINE, [("points", ">=", 30, "30 points", False, True)], None),
         ("lebron 30 point games log", PLAYER_LOG, [("points", ">=", 30, "30 point", False, True)], None),
@@ -173,7 +172,7 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
         ("lebron games with 12 or less fga", PLAYER_LOG, [("fieldGoalsAttempted", "<=", 12, "12 or less fga", False, True)], None),
         ("jokic stats", PLAYER_LINE, [], None),
         # "2pt", "2-point", "2 point" name the two-point shot, as "3 pt" does the three, and a number after "top" is a
-        # ranking's count: no line, even under a shape that is one (Phase 5, step 2: 25 readings typed them as lines).
+        # ranking's count: no line, even under a shape that is one.
         ("sga 2pt percentage this season", GAMES_COUNTED, [], None),
         ("display lebron's 2-point shooting percentage over the last 5 years", GAMES_COUNTED, [], None),
         ("Damian Lillard 2 point attempts", GAMES_COUNTED, [], None),
@@ -208,8 +207,8 @@ def test_the_tagger_claims_the_characters_of_each_line_once() -> None:
     ],
 )
 def test_a_line_after_a_given_up_verb_is_on_the_opponents_figure(question: str, expected: list[tuple[str, str, str]]) -> None:
-    """ISSUES.md #426: "celtics record when allowing 100+ points" read the
-    line on the Celtics' own points - nothing read "allowing". A line right
+    """#426: "celtics record when allowing 100+ points" reads the line on
+    the opponents' points, not the Celtics' own. A line right
     after a given-up verb or "opponents" is on the opponents' figure
     (``Line.whose``), and its claim takes the words that make it so; a pair
     read inside such a line is theirs too."""
@@ -233,7 +232,7 @@ def test_a_line_on_the_opponents_figure_is_a_cell_only_a_teams_record_over_a_lin
         Line(measure="points", value=30, per="season", whose="opponent")
 
 
-def test_threshold_named_is_what_the_intent_stages_ask() -> None:
+def test_threshold_named_is_what_the_grammars_rules_ask() -> None:
     assert threshold_named("how many 30 point games did maxey have") == 30
     assert threshold_named("76ers record when maxey scores 30") == 30
     assert threshold_named("how many times has embiid fouled out") == lexicon.FOUL_OUT_THRESHOLD == 6
@@ -256,9 +255,7 @@ def test_a_line_in_a_quarter_is_read_by_the_parser_with_its_claim() -> None:
 
 def test_a_decline_names_each_companion_by_his_name_side_and_role() -> None:
     """What a decline names of the companion cell: each companion by his
-    name, side and role, in the order the reading holds them. Until Phase
-    4, step 0 this was the tail of a test of the slot door's three
-    companion slots (the door went with the tests' slot dicts)."""
+    name, side and role, in the order the reading holds them."""
     absent = Reading(companions=(Companion(player="Jayson Tatum", predicate="absent"), Companion(player="Jaylen Brown")))
     assert cell_facts(absent, "companion")["companions"] == [
         {"player": "Jayson Tatum", "side": "own", "predicate": "absent"},
@@ -285,7 +282,7 @@ def test_a_line_or_a_companion_the_relation_could_not_read_is_refused() -> None:
 def test_the_cells_and_what_a_decline_says_of_them() -> None:
     assert {"line", "period_line"} == Line.CELLS and {"companion"} == Companion.CELLS
     keyed = Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"))
-    assert keyed.cells() == frozenset() and threshold_of(keyed) == 30 and _shape(threshold_line(keyed) or Line(measure=None))[4]  # the shape's own line sets no cell, as the threshold slot never did
+    assert keyed.cells() == frozenset() and threshold_of(keyed) == 30 and _shape(threshold_line(keyed) or Line(measure=None))[4]  # the shape's own line sets no cell
     below = Reading(lines=(Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="under 14 fta", narrows=True),))
     assert below.cells() == {"line"} and cell_set(below, "line") and unhonored_cells(below, frozenset()) == ["line"]
     assert unhonored_cells(below, frozenset({"line"})) == []
@@ -310,17 +307,17 @@ def test_the_relation_tables_declare_the_cells_once_and_by_the_cell_names() -> N
     assert not (Line.CELLS | Companion.CELLS) & TEAM_RELATION_SCOPING
     assert {"companion", "line"} <= TEAM_RELATION_SCOPING_EXCLUDED[PointShape("team_games", "rows", "date")].taken
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
-        assert all(not set(_SLOT_ERA) & (set(row.unstated) | row.taken | row.refused) for row in table.values()), "an exclusion names a slot-era name"
+        assert all(not set(_NOT_CELL_NAMES) & (set(row.unstated) | row.taken | row.refused) for row in table.values()), "an exclusion names a name that is no cell"
     from association.query import compose
 
-    assert all(not set(_SLOT_ERA) & cells_stated(shape) for shape in compose._ROUTES)
-    assert not set(_SLOT_ERA) & (RELATION_SCOPING | TEAM_RELATION_SCOPING)
+    assert all(not set(_NOT_CELL_NAMES) & cells_stated(shape) for shape in compose._ROUTES)
+    assert not set(_NOT_CELL_NAMES) & (RELATION_SCOPING | TEAM_RELATION_SCOPING)
 
 
 # ---------------- the relation's reading of the lines ----------------
 
 
-def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
+def test_relation_lines_are_the_narrowing_ones_in_the_readings_order() -> None:
     scope = Reading(
         lines=(
             Line(measure="points", value=30, as_typed="30 points", keyed=True),
@@ -350,8 +347,8 @@ def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league
     question = "jaylen brown game log without jayson tatum this season"
     subject = read_subject(names_of(league.con), question, PLAYER_LOG, Reading(who=Who(kind="player", players=("Jaylen Brown",))))
     assert subject.conditions == (Companion(player="Jayson Tatum", predicate="absent"),)
-    # The phrase's claim cut to the words the companion reader needed (Phase 3, step 3,
-    # span.needed): either of "jayson" and "tatum" names him alone, so the keyword is the one
+    # The phrase's claim cut to the words the companion reader needed
+    # (span.needed): either of "jayson" and "tatum" names him alone, so the keyword is the one
     # word it cannot do without; and the season the names are settled in is the reading's too.
     assert [(c.what, question[c.start : c.end]) for c in subject.claims] == [("companion", "without"), ("season", "season")]
     reached = read_subject(names_of(league.con), "celtics record when jayson tatum scores 20+ points", LINE_RECORD, Reading(who=Who(kind="team", teams=("Boston Celtics",))))
@@ -364,10 +361,9 @@ def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league
 
 
 def test_a_count_over_several_lines_reads_the_first_as_the_points_not_the_models_stat(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    """The one moved feed answer: "most games with 20 pt,s 10 reb, 5 ast" -
-    the point's own re-read could not pass the comma and fell back to the
-    model's "rebounds", so it counted games with 20+ rebounds. The lines
-    are read once, by the tagger, and the point's predicate is the first."""
+    """ "most games with 20 pt,s 10 reb, 5 ast" counts games with 20+ points,
+    not the model's "rebounds": the lines are read once, by the tagger, past
+    the comma, and the point's predicate is the first."""
     question = "most games with 20 pt,s 10 reb, 5 ast"
     route = read_route(names_of(league.con), question, [], "rebounds")
     reading = route
@@ -376,7 +372,7 @@ def test_a_count_over_several_lines_reads_the_first_as_the_points_not_the_models
     assert [_shape(line)[:3] for line in reading.lines] == [("points", ">=", 20), ("rebounds", ">=", 10), ("assists", ">=", 5)]
 
 
-# ---------------- contract 4: applying each cell changes the result ----------------
+# ---------------- applying each cell changes the result ----------------
 
 
 def _games(ctx: AnswerContext, scope: Filtered) -> tuple[int, int]:

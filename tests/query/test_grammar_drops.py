@@ -1,4 +1,4 @@
-"""No typed value the grammar's text held is dropped silently (Phase 5, step 2).
+"""No typed value the grammar's text held is dropped silently.
 
 Every reader case is read with the grammar's typed families recorded
 (``tests/grammar_drops.py``): a line, an opponent, a companion, a window or
@@ -6,10 +6,8 @@ a date the parser typed into the grammar's text must land on the Reading,
 or the Reading must carry a cause the planner says, or the drop is held -
 by the rule (a companion who is the subject himself) or by its question in
 ``grammar_drops.HELD`` with its reason. The same rule and list read the
-2,710 readings in ``~/association-research/stages/phase5/grammar_rows_live.py``,
-which read 0 live drops at the step's close (25 held by the rule, 6 by
-their text). A held question that no longer drops fails here, so the list
-only shrinks.
+2,710 readings in ``~/association-research/stages/grammar_rows_dropped.py``.
+A held question that does not drop fails here, so the list only shrinks.
 """
 
 from __future__ import annotations

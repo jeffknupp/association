@@ -1,9 +1,9 @@
-"""The reader's question-to-Reading snapshot cases (Phase 3, step 4, slice
-(c)): each case is one call of the parser's door - a question, the names
-the normalizer copied, its stat key - and its expected value is the typed
-record the stage snapshot writes for the Reading, compared whole. The
-cases, their reasons and the warehouse they read against are
-``tests/reader_cases.py``'s; ``tests/query/reader_cases.json`` holds them.
+"""The reader's question-to-Reading snapshot cases: each case is one call
+of the parser's door - a question, the names the normalizer copied, its
+stat key - and its expected value is the typed record the stage snapshot
+writes for the Reading, compared whole. The cases, their reasons and the
+warehouse they read against are ``tests/reader_cases.py``'s;
+``tests/query/reader_cases.json`` holds them.
 
 A case that moves on purpose is regenerated with the move named in the
 commit, as a population baseline is: nothing here is edited by hand.
@@ -33,14 +33,14 @@ def test_the_reader_reads_the_case_as_recorded(con: duckdb.DuckDBPyConnection, c
 
 
 def test_every_case_names_its_reason_and_a_question() -> None:
-    """A case is a retired test's wording and reason, kept; nothing here is a bare record."""
+    """Every case has a unique name, a question and a reason saying what it checks; nothing here is a bare record."""
     assert len(CASES) == len({case["name"] for case in CASES})
     assert all(case["question"].strip() and case["why"].strip() for case in CASES)
 
 
 def test_the_planned_shape_is_what_the_point_is_read_as_but_the_game_level_move(con: duckdb.DuckDBPyConnection) -> None:
     """The point declares what it is read as, one :class:`PointShape`
-    (``Reading.read_as``, Phase 5, step 4, D9), and the planner plans that
+    (``Reading.read_as``), and the planner plans that
     key as it stands - but in its one move: a season-line point its reader
     does not read, planned at the game level (a ``Query`` whose source is
     the games), is on the player-games relation, its shape and ``by`` kept

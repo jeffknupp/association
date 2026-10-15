@@ -34,9 +34,8 @@ def test_the_local_copy_wins_when_one_exists(tmp_path: Path, monkeypatch: pytest
 
 
 def test_a_worktree_with_no_warehouse_gets_the_main_checkouts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The failure this exists to fix: a worktree has no `nba.duckdb` of its
-    own, and used to fail with "database does not exist" rather than reading
-    the main checkout's."""
+    """A worktree has no `nba.duckdb` of its own, and reads the main
+    checkout's rather than failing with "database does not exist"."""
     main = tmp_path / "main"
     main.mkdir()
     _init_repo(main)

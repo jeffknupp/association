@@ -68,7 +68,7 @@ def test_each_note_kind_has_one_phrase() -> None:
     assert note_phrase(Note("window_short", {"found": 1, "asked": 5, "season": None, "season_type": 2})) == "Only 1 game in his box scores."
     assert note_phrase(Note("definition", {"term": "without", "names": ["Joel Embiid", "Paul George"]})).startswith("Without Joel Embiid and Paul George means games neither of them played")
     assert note_phrase(Note("games_unseen", {"games": 2, "why": "empty_box_score"})) == "Not counted: 2 games in this span whose box score lists him with no minutes and no stats."
-    # ISSUES.md #282: the comparison's missing-season note took "has" of two names, run together with a comma.
+    # #282: the comparison's missing-season note says "have" of two names, joined by "and".
     assert note_phrase(Note("no_data_for", {"names": ["Joel Embiid"], "period": "2027 regular season"})) == "(Joel Embiid has no 2027 regular season numbers in the warehouse.)"
     assert (
         note_phrase(Note("no_data_for", {"names": ["Shai Gilgeous-Alexander", "Joel Embiid"], "period": "2027 regular season"}))
@@ -261,9 +261,9 @@ def test_a_postseason_netpoints_split_is_labeled_the_whole_seasons() -> None:
 
 
 def test_a_gap_note_claims_only_what_a_narrowed_tally_can() -> None:
-    """ISSUES.md #298: a season's game list short by a game made an October
-    road record "off by those games" though the missing game may have been
-    neither; a narrowed tally says the games may or may not be among those
+    """#298: a season's game list short by a game does not make a narrowed
+    tally (an October road record) "off by those games", since the missing
+    game may be neither; a narrowed tally says the games may or may not be among those
     tallied, an unnarrowed one keeps its claim."""
     from association.query.compose.say import note_phrase
 
@@ -275,7 +275,7 @@ def test_a_gap_note_claims_only_what_a_narrowed_tally_can() -> None:
 
 
 def test_the_other_matched_names_are_joined_not_printed_as_a_list() -> None:
-    """ISSUES.md #308: the shot chart's note printed the list itself."""
+    """#308: the shot chart's note joins the other names, never printing the list itself."""
     from association.query.compose.say import decision_phrase
     from association.query.result import Decided
 
@@ -477,11 +477,10 @@ def test_the_cells_a_read_applied_are_typed_and_read_by_type() -> None:
 
 def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
     """``compose.answer`` picks a reader by the planned point's shape
-    (``plan.PointShape``) and ``say`` a sayer by the body - neither reads an
-    intent (the Phase 2 review's cleanup (b)6). Every reader's shape has its
-    words' scoping, every scalar's reduction a sayer, and neither module's
-    code names ``intent``: a branch on it would be the dispatch this
-    replaced, back."""
+    (``plan.PointShape``) and ``say`` a sayer by the body - neither reads a
+    label of what the question is. Every reader's shape has its words'
+    scoping, every scalar's reduction a sayer, and neither module's code
+    names ``intent``: a branch on it would be a dispatch by label."""
     import ast
     import importlib
     import typing
@@ -496,8 +495,7 @@ def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
     compose = importlib.import_module("association.query.compose")
     sayer = importlib.import_module("association.query.compose.say")
     # One key: the routes, the shapes' rows of the two cell tables and the floor's tables; and every
-    # key the words ask has a route but the coach's, which names a shape no reader takes (the label
-    # table, reading.SHAPE_NAMES, held the routes and the asked keys together until Phase 4, step 2).
+    # key the words ask has a route but the coach's, which names a shape no reader takes.
     assert set(compose._ROUTES) == set(RELATION_SCOPING_EXCLUDED) | set(TEAM_RELATION_SCOPING_EXCLUDED) == set(SOURCES)
     assert set(sayer._ASKED_AS) - {TEAM_COACH} <= set(compose._ROUTES)
     assert set(sayer._SCALAR_SAYERS) == set(typing.get_args(typing.get_type_hints(Scalar)["how"]))
@@ -510,8 +508,8 @@ def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
 
 def test_every_key_the_grammar_names_is_said_in_words() -> None:
     """A decline says what the words were read as asking in the shape's
-    words ("Nothing here answers this question as a ranking of teams: ...";
-    the retired intent's name until Phase 4, step 2): every key the grammar
+    words ("Nothing here answers this question as a ranking of teams: ..."):
+    every key the grammar
     can name has its phrase, and so does every shape whose reader is the
     point's only answer, which a ``no_reading_of_point`` decline names."""
     from association.query.compose import _ROUTES
@@ -532,7 +530,7 @@ def test_every_key_the_grammar_names_is_said_in_words() -> None:
 def test_every_decline_reason_is_said_by_one_phrase_and_a_row_holds_no_sentence() -> None:
     """A shape's reason for a cell it cannot honor is a closed key
     (``reading.DeclineReason``), worded once by the sayer, never a sentence
-    on a cell-table row (Phase 5, step 5): every member has its phrase, the
+    on a cell-table row: every member has its phrase, the
     phrase table names nothing else, and a row given a sentence is refused
     where it is built."""
     import pytest

@@ -1,8 +1,7 @@
-"""``player_stat`` answering the stats that are computed rather than served.
+"""A player's line answering the stats that are computed rather than served.
 
-True shooting, effective FG%, usage and game score were rankable and not
-lookup-able: ``leaderboard`` has ranked the first three since 2.1.0, the router
-emits their names correctly, and ``player_stat`` refused them as unknown. The
+True shooting, effective FG%, usage and game score are read on a player's
+line as well as ranked. The
 arithmetic that matters here is the career one - a rate over many seasons is
 weighted by its own volume, never averaged - so the fixture is built so that
 the weighted answer and the mean of the season figures are different numbers.
@@ -70,11 +69,10 @@ def advanced_ctx(tmp_path: Path) -> AnswerContext:
 
 
 def test_an_empty_advanced_season_names_the_zeroed_box_scores_not_the_1994_floor(advanced_ctx: AnswerContext) -> None:
-    """ISSUES.md #293: Noah's 2015 usage was refused "it is computed from box
-    scores, which start in 1994" - the wrong fact - with a ranking's caveat
-    ("missing from this ranking entirely") appended to a one-player lookup.
-    The read names his zeroed box scores, and the caveat keeps its lookup
-    half alone."""
+    """#293: Noah's empty 2015 usage names his zeroed box scores, never "it
+    is computed from box scores, which start in 1994" - the wrong fact - and
+    the caveat keeps its lookup half alone, never a ranking's ("missing from
+    this ranking entirely") on a one-player lookup."""
     con = advanced_ctx.con
     con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     con.execute("INSERT INTO player_box_stats VALUES ('e1', 2015, 2, '11', NULL, FALSE), ('e2', 2015, 2, '11', NULL, FALSE), ('e3', 2015, 2, '10', 30, FALSE)")
@@ -143,8 +141,8 @@ def test_a_stat_with_no_volume_column_refuses_a_career_rather_than_averaging(adv
 
 def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx: AnswerContext) -> None:
     """The season line is not an answer to a question about one opponent -
-    the substitution the module's own docstring exists to stop. The retired
-    template refused the question; the compiler (5.0.0) reads the rate over
+    the substitution the module's own docstring exists to stop. The compiler
+    reads the rate over
     the narrowed games from box scores instead (``compose.core.RATES``, a
     ratio of sums), so its point is on the games relation with that measure
     alone - never the season line. ``tests/query/test_compose.py`` runs one."""

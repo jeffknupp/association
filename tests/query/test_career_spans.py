@@ -1,5 +1,5 @@
-"""The widened leaderboard, and career spans on leaderboard, threshold_count and
-single_game_high.
+"""The ranking of players over every box-score stat, and career spans on a
+ranking of players, a count of games over a line and a single game's high.
 
 Each fixture carries the specific data fault its test is about, because every
 one of them was found in the real warehouse and each produces a fluent wrong
@@ -44,11 +44,10 @@ def _context(tmp_path: Path, players: list[tuple[str, str]], stats: list[tuple[A
     return AnswerContext(con=c, out_dir=tmp_path)
 
 
-# ---------------- the model's stat vocabulary, and the agent's budget ----------------
+# ---------------- the model's stat vocabulary ----------------
 
-#: The box-score categories the router's prompt taught its model - its `stat`
-#: line, read out of the prompt by this test until the model classification
-#: went in 5.0.0.
+#: The box-score categories the model may name as a stat, each of which a
+#: ranking of players has to read by a metric.
 _BOX_SCORE_STAT_NAMES = (
     "points",
     "rebounds",
@@ -68,11 +67,10 @@ _BOX_SCORE_STAT_NAMES = (
 
 
 def test_every_box_score_stat_the_model_may_name_ranks_by_a_metric() -> None:
-    """Turnovers, minutes, fouls, the three makes and the three percentages were
-    all taught to the router and none had a metric, so every leaderboard
-    question naming one fell through. The normalizer's
-    vocabulary (``NORMALIZER_STATS``) holds every one of them, so each still
-    needs a metric, and a career form."""
+    """Every box-score category the normalizer's vocabulary
+    (``NORMALIZER_STATS``) holds - turnovers, minutes, fouls, the three makes
+    and the three percentages among them - ranks by a metric of the ranking
+    of players."""
     names = _BOX_SCORE_STAT_NAMES
     assert len(names) == 14, names
     for name in names:
@@ -82,7 +80,7 @@ def test_every_box_score_stat_the_model_may_name_ranks_by_a_metric() -> None:
         assert career in LEADERBOARD_METRICS and LEADERBOARD_METRICS[career].career is not None, name
 
 
-def test_a_career_reads_a_bare_stat_as_a_total_and_a_season_as_it_always_did() -> None:
+def test_a_career_reads_a_bare_stat_as_a_total_and_a_season_as_an_average() -> None:
     assert resolve_metric(measure_of("points")) == "avg_points"
     assert resolve_metric(measure_of("points"), career=True) == "total_points"
     # A metric name spelled outright keeps its form, so a career average stays reachable.
@@ -90,7 +88,7 @@ def test_a_career_reads_a_bare_stat_as_a_total_and_a_season_as_it_always_did() -
     assert resolve_metric(measure_of("threePointFieldGoalsMade")) == "total_three_pointers_made"
 
 
-# ---------------- season leaderboards ----------------
+# ---------------- season rankings ----------------
 
 
 @pytest.fixture
@@ -137,7 +135,7 @@ def test_a_postseason_copied_from_the_regular_season_is_not_a_postseason(season_
     assert [row["display_name"] for row in leaders] == ["Volume Scorer"]
 
 
-# ---------------- career leaderboards ----------------
+# ---------------- career rankings ----------------
 
 
 @pytest.fixture
@@ -206,13 +204,13 @@ def test_a_career_postseason_leaves_out_the_copied_postseasons(career_ctx: Answe
         {"measure": measure_of("ts_pct"), "span": Span(career=True)},  # needs team context no season row carries
     ],
 )
-def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: AnswerContext, scope: dict[str, Any]) -> None:
+def test_a_career_ranking_refuses_what_it_cannot_answer(career_ctx: AnswerContext, scope: dict[str, Any]) -> None:
     with pytest.raises(Unsupported):
         player_ranking(career_ctx, Reading(**scope))
 
 
 @pytest.mark.parametrize("shape", [PLAYER_RANKING, GAMES_COUNTED, GAME_HIGHS])
-def test_a_career_span_is_honored_by_the_ranking_templates(shape: PointShape) -> None:
+def test_a_career_span_is_honored_by_the_ranking_readers(shape: PointShape) -> None:
     """A career is declared by what each reader's words state (its shape's
     row, ``compose.plan.cells_stated``), beside the relation, which honors
     a career for any named player."""
@@ -327,7 +325,7 @@ def test_the_leagues_best_game_is_not_called_all_time(box_ctx: AnswerContext) ->
 
 
 def test_an_ambiguous_name_is_asked_about_rather_than_counted(box_ctx: AnswerContext) -> None:
-    """It used to be an ILIKE per word: "Curry" counted both and reported the bigger."""
+    """ "Curry" names two players: the count asks which, never counting both or reporting the bigger."""
     answer = games_counted(
         box_ctx,
         Reading(who=Who(kind="player", players=("Curry",)), lines=(Line(measure="points", as_typed="1 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(career=True)),
@@ -338,11 +336,8 @@ def test_an_ambiguous_name_is_asked_about_rather_than_counted(box_ctx: AnswerCon
 @pytest.mark.parametrize("answered", [games_counted, game_highs])
 def test_a_career_with_a_season_named_reads_the_named_season(box_ctx: AnswerContext, answered: Any) -> None:
     """ "Career ... in 2024": a named year is more specific than "career".
-    The compiler, which alone answers these two now, reads the year - the
-    condition templates' reading, the one ISSUES.md records as the useful
-    one - where their retired templates refused ("... since it, or through
-    it"). It answered them first from ROADMAP plan item 6, step (a), so
-    nothing a question reads moved."""
+    The compiler, which answers both a count of games over a line and a
+    single game's high, reads the year rather than the career."""
     result = answered(
         box_ctx, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season=2024, career=True))
     )

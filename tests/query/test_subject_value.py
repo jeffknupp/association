@@ -1,13 +1,11 @@
-"""The subject's own family, typed (Phase 3, step 2's seventh slice): the
-typed subject on the Scope (:class:`association.query.reading.Subject` - the
-kind, the players, the teams, the position group) in place of the four name
-slots and the point's ``position``, its door and its projection; what the
-subject reading hands the grammar's rules (:func:`association.query.grammar.settle`,
+"""The subject's own family, typed: the typed subject on the Reading
+(:class:`association.query.reading.Subject` - the kind, the players, the
+teams, the position group), the door the model's names pass through into
+it; what the subject reading hands the grammar's rules (:func:`association.query.grammar.settle`,
 the typed subject); the words the reading
 reads them by, in the lexicon; the characters it claims for the names it
-settled (:func:`association.query.subject.subject_claims`); and the
-behavioral check contract 4 asks for - the typed subject on each relation
-changes what the read sees.
+settled (:func:`association.query.subject.subject_claims`); and that the
+typed subject on each relation changes what the read sees.
 """
 
 from __future__ import annotations
@@ -35,7 +33,7 @@ from association.query.team_relation import scoped_team
 
 
 @pytest.mark.parametrize(
-    ("slots", "who"),
+    ("names", "who"),
     [
         ({"player": "Joel Embiid"}, Who(kind="player", players=("Joel Embiid",))),
         ({"players": ["Luka Doncic", "Shai Gilgeous-Alexander"]}, Who(kind="pair", players=("Luka Doncic", "Shai Gilgeous-Alexander"))),
@@ -45,19 +43,18 @@ from association.query.team_relation import scoped_team
         ({}, Who()),
     ],
 )
-def test_the_name_slots_pass_the_door_into_the_typed_subject(slots: dict[str, Any], who: Who) -> None:
-    """Every shape of names a slot dict holds - one player or two and more,
-    one team or a list - is the typed subject through its door
+def test_the_models_names_pass_the_door_into_the_typed_subject(names: dict[str, Any], who: Who) -> None:
+    """Every shape of names the model's reply holds - one player or two and
+    more, one team or a list - is the typed subject through its door
     (:meth:`~association.query.reading.Subject.from_slots`, which the
     parser reads the model's names through)."""
-    assert Who.from_slots(slots) == who
+    assert Who.from_slots(names) == who
 
 
-def test_a_router_era_slot_shape_is_typed_by_its_names() -> None:
-    """One name listed in a plural slot, or two teams split between ``team``
-    and ``teams``, are slot dicts no reader of the words writes (0 of the
-    2,710 readings): the typed subject holds the names, each once, and its
-    kind is what they hold (:meth:`~association.query.reading.Subject.from_slots`)."""
+def test_names_split_across_the_plural_fields_are_typed_by_the_names() -> None:
+    """One name listed in a plural field, or two teams split between
+    ``team`` and ``teams``: the typed subject holds the names, each once,
+    and its kind is what they hold (:meth:`~association.query.reading.Subject.from_slots`)."""
     assert Who.from_slots({"players": ["Luka Doncic"]}) == Who(kind="player", players=("Luka Doncic",))
     assert Who.from_slots({"team": "Knicks", "teams": ["Celtics"]}).teams == ("Knicks", "Celtics")
     assert Who.from_slots({"team": "Knicks", "teams": ["Knicks"]}) == Who(kind="team", teams=("Knicks",))
@@ -78,9 +75,7 @@ def test_the_subject_holds_its_kind_its_names_and_its_position_to_their_sets() -
 
 
 def test_the_grammars_rules_take_the_names_typed() -> None:
-    """The rules read the subject the reading hands them, typed - a name is
-    never a slot (``router.settle`` refused one passed as a slot until Phase
-    3, step 4, slice (b), when its slot dict went)."""
+    """The rules read the subject the reading hands them, typed."""
     settled = settle("embiid stats", PLAYER_LINE, subject=Who(kind="player", players=("Joel Embiid",)))
     assert settled.subject.players == ("Joel Embiid",)
 
@@ -144,7 +139,7 @@ def test_the_claims_ride_the_reading(league: AnswerContext) -> None:  # noqa: F8
     assert claimed["jayson tatum"] == "player" and claimed["vs the lakers"] == "opponent"
 
 
-# ---------------- contract 4: the typed subject changes what each relation reads ----------------
+# ---------------- the typed subject changes what each relation reads ----------------
 
 
 def _total(ctx: AnswerContext, scope: Filtered, *, subject: str = "player", position: str | None = None) -> tuple[int, int]:
@@ -161,8 +156,8 @@ def test_the_player_changes_what_the_player_relation_reads(league: AnswerContext
 
 
 def test_the_team_changes_what_the_league_relation_and_the_team_relation_read(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    """The league's read narrowed to a team's players (the draft's
-    ``of_team``), and the team relation's own subject."""
+    """The league's read narrowed to a team's players, and the team
+    relation's own subject."""
     span = Span(season_type=2)
     every = _total(league, Reading(span=span), subject="everyone")
     celtics = _total(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), span=span), subject="everyone")
@@ -190,12 +185,9 @@ def test_two_players_are_the_pair_a_matchup_reads(league: AnswerContext) -> None
 
 def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     """ "display the first quarter scores for the Sixers' most recent 10
-    games" read "first quarter" as the player who scores (the grammar's
-    subject), dropped the Sixers for him and answered "No player found
-    matching 'first quarter' - did you mean Tim Quarterman?"; and "most
-    recent" read as the ranking's "most", so a team's quarter answered the
-    highest of the ten. A period is no subject, and "most recent" is the
-    window's end."""
+    games" is the Sixers' first quarters over their newest ten games: a
+    period is no subject (the grammar's subject is nobody, the Sixers stand),
+    and "most recent" is the window's end, not a ranking's "most"."""
     question = "display the first quarter scores for the Sixers' most recent 10 games"
     assert subject_named_in(question) is None
     route = read_route(names_of(league.con), question, ["Sixers"], "points")
@@ -205,12 +197,10 @@ def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(l
 
 
 def test_a_players_name_after_vs_is_not_a_team_it_only_clips() -> None:
-    """ "KEVIN GARNETT VS TIM DUNCAN GAMES" read "TIM" as the Minnesota
-    Timberwolves (the start of "Timberwolves"), the opponent of a matchup
-    that has none, and refused it ("player_matchup cannot honor
-    ['opponent']"). A word the team only clips that is a name the question
-    gives a player is the player; a team's own word, abbreviation or
-    singular stays the team whoever else shares it."""
+    """ "KEVIN GARNETT VS TIM DUNCAN GAMES" reads no opponent from "TIM",
+    which only clips "Timberwolves": a word the team only clips that is a
+    name the question gives a player is the player; a team's own word,
+    abbreviation or singular stays the team whoever else shares it."""
     import duckdb
 
     from association.query.entities import teams_of
@@ -231,12 +221,10 @@ def test_a_players_name_after_vs_is_not_a_team_it_only_clips() -> None:
 
 
 def test_the_76ers_are_read_from_their_own_spelling(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    """ "76ers", the one team name spelled with a digit, split into the word
-    "ers" every name is read by, and no team was read from it: "giannis
-    stats vs 76ers this season" answered his whole season, "76ers leaders in
-    3s" the league's. Read whole, where the question gives it - in the
-    question's order, so "chicago bulls vs 76ers" is still the Bulls against
-    the 76ers."""
+    """ "76ers", the one team name spelled with a digit, is read whole where
+    the question gives it ("vs 76ers" is the opponent, "76ers leaders in 3s"
+    the team), in the question's order, so "celtics vs 76ers" is the
+    Celtics against the 76ers."""
     from association.query.entities import teams_of
     from association.query.subject import _team_after_versus, _teams_by_word, team_named_in
 

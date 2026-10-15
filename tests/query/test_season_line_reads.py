@@ -1,8 +1,7 @@
 """The season line's reads, called with a fixture warehouse: each statement
 the season line's readers (``compose.seasons``) take is built AND run on the
 relation (:mod:`association.query.season_line`), and handed back as the rows
-or the one row the reader reads by position (Phase 4, step 5: the readers
-ran each statement themselves through the compiler's door until then).
+or the one row the reader reads by position.
 """
 
 from __future__ import annotations

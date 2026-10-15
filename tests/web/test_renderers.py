@@ -2,8 +2,7 @@
 planned point is read and said as - and the readers that produce their data.
 
 The renderers live in JavaScript, in `web/static/index.html`, keyed by the
-answer's planned shape (``Answer.shape``, Phase 4, step 1; by the retired
-label until then), and each draws the bodies its shape's readers say,
+answer's planned shape (``Answer.shape``), and each draws the bodies its shape's readers say,
 reading keys out of `Answer.data`. Nothing in Python or in the browser
 complains when a reader renames one: the body's `needs` check fails, the
 answer falls back to text, and the page looks like it simply never had a
@@ -143,7 +142,7 @@ def _renderers() -> dict[str, dict[str, list[str]]]:
 
 
 def test_the_page_has_one_renderer_per_shape() -> None:
-    """The page renders by the planned point's shape (Phase 4, step 1): one
+    """The page renders by the planned point's shape: one
     renderer per :data:`~association.query.reading.Shape`, and none for a
     label - a renderer keyed "leaderboards" would never fire, and nothing
     else would ever say so."""
@@ -176,11 +175,10 @@ def test_the_pages_fraction_set_matches_the_compilers() -> None:
     and ``efg_pct`` are raw fractions (0.57) needing a ``* 100`` before a "%"
     sign. The page keeps a hand-copied ``FRACTIONS`` Set of the same fact
     (``measureCell``), and one concept in two files under two different
-    names is exactly what `scripts/check_duplicate_names.py` cannot see:
-    ``usage_pct`` drifted into the page's copy and every composed usage rate
-    printed 100x too large - "USG% 2435.5%" (#225). Parsed out of the page
-    rather than hand-copied here, so the two sets cannot drift apart again
-    without this failing.
+    names is exactly what `scripts/check_duplicate_names.py` cannot see: a
+    rate in the page's copy that is not a fraction prints 100x too large -
+    "USG% 2435.5%" (#225). Parsed out of the page rather than hand-copied
+    here, so the two sets cannot drift apart without this failing.
     """
     page = INDEX_HTML.read_text()
     block = re.search(r"const FRACTIONS = new Set\(\[([^\]]*)\]\);", page)
@@ -200,13 +198,13 @@ def test_the_test_cases_here_cover_every_body() -> None:
 @pytest.fixture
 def ctx(tmp_path: Path) -> AnswerContext:
     """A warehouse small enough to reason about, holding whatever every
-    template under test needs to return a populated result."""
+    reader under test needs to return a populated result."""
     con = duckdb.connect()
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players VALUES ('1', 'Ada Star'), ('2', 'Bo Wall')")
     con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR, location VARCHAR, name VARCHAR)")
     con.execute("INSERT INTO teams VALUES ('10', 'Houston Rockets', 'HOU', 'Houston', 'Rockets'), ('11', 'Dallas Mavericks', 'DAL', 'Dallas', 'Mavericks')")
-    # home_linescores/away_linescores are team_quarter_points' source, comma-joined
+    # home_linescores/away_linescores are a team's quarter totals' source, comma-joined
     # per-period points summing to home_score/away_score. neutral_site/venue_city
     # back team_metrics.TEAM_GAMES_SQL's NBA Cup final detection - neither game
     # here is one.
@@ -222,7 +220,7 @@ def ctx(tmp_path: Path) -> AnswerContext:
         "('e1', 2026, 2, '2026-01-02T00:30Z', '10', '11', '10', 110, 100, '28,27,30,25', '24,26,25,25', FALSE, 'Houston'),"
         "('e2', 2026, 2, '2026-01-04T00:30Z', '11', '10', '10', 99, 120, '24,25,25,25', '30,32,28,30', FALSE, 'Dallas')"
     )
-    # real_games is the one filtered view of `games` every template reads
+    # real_games is the one filtered view of `games` every reader reads
     # instead (see conditions.py's module docstring) - a plain copy here, since
     # this fixture holds no placeholder, phantom or duplicate rows to filter.
     con.execute("CREATE VIEW real_games AS SELECT * FROM games")

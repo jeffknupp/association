@@ -1,6 +1,6 @@
 """Pins :func:`association.query.game_label.game_label` - the sentence a
 single-game shot chart or fingerprint uses to say which game was drawn
-(``ISSUES.md`` #155: a bare event id told a reader nothing)."""
+(#155: a bare event id tells a reader nothing)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def test_a_nonexistent_athlete_falls_back_to_none(con: duckdb.DuckDBPyConnection
 
 
 def test_a_warehouse_with_no_player_game_log_falls_back_to_none() -> None:
-    """A minimal test fixture, or a warehouse built before this existed, has
+    """A minimal test fixture, or a warehouse built without them, has
     neither table - a duckdb.CatalogException, not a crash or a 'None vs
     None' sentence."""
     assert game_label(duckdb.connect(":memory:"), "1", "100") is None
@@ -60,8 +60,8 @@ def test_a_score_not_yet_posted_falls_back_to_none(con: duckdb.DuckDBPyConnectio
 
 
 def test_the_row_is_the_player_games_relations_read_keyed_on_the_season(con: duckdb.DuckDBPyConnection) -> None:
-    """The row the label is worded from is the player-games relation's read
-    (Phase 4, step 5's close): the raw stamp, the opponent, the venue, the
+    """The row the label is worded from is the player-games relation's read:
+    the raw stamp, the opponent, the venue, the
     result and the score from the player's side - joined to ``games`` on the
     season as well as the event, so the phantom 1993's copy of an event id
     (a different game, scored differently) is never the one read."""

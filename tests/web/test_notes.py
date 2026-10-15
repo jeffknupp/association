@@ -6,7 +6,7 @@ The route reads AND writes a directory a person owns, the same shape
 the interesting tests here are mostly about what a name is allowed to be. The
 guard itself (`history_file_path`) is tested directly as well as through the
 route, for the same reason `test_artifacts.py` tests `artifact_path` directly:
-measured, most hostile names never reach the guard at all because Starlette
+most hostile names never reach the guard at all because Starlette
 never matches a path parameter containing a separator, so a route-only test
 proves less than it looks like it does.
 """
@@ -86,9 +86,7 @@ def test_a_note_is_appended_to_the_named_history_file(served: tuple[TestClient, 
 
 def test_saving_an_edited_note_again_replaces_the_earlier_line(served: tuple[TestClient, Path]) -> None:
     """One text box per answer means saving twice is editing the note, not
-    adding a second: Jeff saved two notes on 2026-09-24, corrected each and
-    saved again, and expected the file to hold the correction alone. The
-    client passes the line the first save returned as ``replaces``."""
+    adding a second: the file holds the correction alone. The client passes the line the first save returned as ``replaces``."""
     client, history_dir = served
     first = client.post("/api/notes", json={"history_file": HISTORY_NAME, "note": "first draft"}).json()["line"]
     second = client.post("/api/notes", json={"history_file": HISTORY_NAME, "note": "corrected", "replaces": first}).json()["line"]

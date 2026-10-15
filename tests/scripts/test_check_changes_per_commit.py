@@ -1,5 +1,5 @@
 """``scripts/check_changes_per_commit.py``: every commit of a pushed range that
-changes ``src/`` touches ``CHANGES.md`` (ISSUES.md #380) - over a scratch
+changes ``src/`` touches ``CHANGES.md`` (#380) - over a scratch
 repository, so the check reads real commits."""
 
 from __future__ import annotations

@@ -20,11 +20,10 @@ def _warehouse(tmp_path: Path) -> str:
 def test_the_connection_cannot_read_files_off_the_disk(tmp_path: Path) -> None:
     """``read_only=True`` protects the database and nothing else.
 
-    Confirmed against the real warehouse before this was closed:
-    ``read_csv('/etc/passwd')`` returned rows and ``glob('/home/<user>/*')``
-    listed dotfiles, through the same connection every answer reads. Kept
-    after the SQL-writing agent went (5.0.0): no template reads a file, so
-    the guard costs nothing and keeps the warehouse the entire surface.
+    Without the guard, ``read_csv('/etc/passwd')`` returns rows and
+    ``glob('/home/<user>/*')`` lists dotfiles, through the same connection
+    every answer reads. No reader reads a file, so the guard costs nothing
+    and keeps the warehouse the entire surface.
     """
     secret = tmp_path / "secret.txt"
     secret.write_text("sk-not-a-real-key")

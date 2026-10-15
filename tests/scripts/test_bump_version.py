@@ -1,4 +1,4 @@
-"""Tests for the install-pin rewriting `scripts/bump_version.py` added for #60.
+"""Tests for the install-pin rewriting in `scripts/bump_version.py` (#60).
 
 These exercise ``find_pinned_files``, ``check_install_pins`` and
 ``rewrite_install_pins`` directly, against a throwaway git repository built
@@ -57,8 +57,8 @@ def _commit_all(repo: Path) -> None:
 def test_find_pinned_files_locates_every_file_with_a_pin(tmp_path: Path) -> None:
     """`git grep` discovery finds a pin in any tracked file, not just a fixed pair.
 
-    This is the shape of the original bug: a hardcoded README.md/installation.rst
-    list left docs/usage.rst's pin to rot untouched. ``find_pinned_files`` is a
+    A hardcoded README.md/installation.rst list would leave docs/usage.rst's
+    pin to rot untouched. ``find_pinned_files`` is a
     broad, literal-substring prefilter, so it also picks up a file that only
     mentions the bare pattern in prose with no version attached (the way
     docs/releasing.rst itself does, describing the ``git grep`` command) - the
@@ -174,20 +174,18 @@ def test_the_real_repository_is_bumpable() -> None:
     """The check that the fixture tests above cannot make.
 
     Every other test here builds a throwaway repository, so none of them sees
-    what `git grep` returns for THIS one - and against this one the pin check
-    refused outright: `tests/scripts/test_bump_version.py` carries fixture
-    pins like `association@v1.0.0`, `CHANGES.md` names the tags of past
-    releases, and `scripts/bump_version.py` holds the pattern as its own
-    regex. The next real bump would have stopped dead, which is worse than the
-    rotting pins this script exists to prevent.
+    what `git grep` returns for THIS one, where
+    `tests/scripts/test_bump_version.py` carries fixture pins like
+    `association@v1.0.0`, `CHANGES.md` names the tags of past releases, and
+    `scripts/bump_version.py` holds the pattern as its own regex. A pin check
+    that refuses the real tree stops the next bump dead, which is worse than
+    the rotting pins this script exists to prevent.
 
     So this asserts what the real tree resolves to, and that the pre-flight
-    check passes on it. Until 5.0.0 three docs pinned an install command to
-    the release tag and were rewritten at each bump; since 5.0.0 the install
-    commands are PyPI's (``pip install association-py``) and pin nothing, so
-    the raw grep finds only the two docs that mention the pattern with no
-    version attached, and the check rewrites none - a doc that grows a tag
-    pin again would show up in both sets.
+    check passes on it. The install commands are PyPI's (``pip install
+    association-py``) and pin nothing, so the raw grep finds only the two docs
+    that mention the pattern with no version attached, and the check rewrites
+    none - a doc that grows a tag pin would show up in both sets.
     """
     root = Path(__file__).resolve().parents[2]
     candidates = {p.relative_to(root).as_posix() for p in bump_version.find_pinned_files(root)}
@@ -204,9 +202,8 @@ def test_rewriting_tolerates_the_old_pin_surviving_where_it_is_meant_to(tmp_path
 
     A released `CHANGES.md` entry quoting the tag it shipped under is a stale
     pin ON PURPOSE, so a check that greps the whole tree refuses every release
-    whose changelog mentions an install command. It is not hypothetical: this
-    refused the real 4.1.0 bump on a comment inside `bump_version.py` itself,
-    and would have refused the next one on `CHANGES.md`.
+    whose changelog mentions an install command, or a comment inside
+    `bump_version.py` itself.
     """
     repo = _repo(tmp_path)
     (repo / "README.md").write_text("install: git+https://github.com/jeffknupp/association@v1.0.0\n")

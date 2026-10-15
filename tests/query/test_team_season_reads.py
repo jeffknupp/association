@@ -2,8 +2,7 @@
 (``test_team_readers.team_ctx``): each statement the team-season readers
 (``compose.team_stats``) and the team compiler's season total
 (``compose.team``) take is built AND run on the relation
-(:mod:`association.query.team_seasons`), and handed back read (Phase 4,
-step 5: the readers ran each statement themselves until then).
+(:mod:`association.query.team_seasons`), and handed back read.
 """
 
 from __future__ import annotations

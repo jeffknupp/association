@@ -58,11 +58,11 @@ def con() -> duckdb.DuckDBPyConnection:
     c.execute(
         "INSERT INTO players VALUES ('1','Stephen Curry'),('2','Seth Curry'),('3','Luka Doncic'),('4','Jaylen Brown'),('5','Jaylen Brown Jr.'),"
         "('6','Cedric Ceballos'),('7','LaMelo Ball'),('8','Nickeil Alexander-Walker'),('11','Kyle Alexander'),"
-        # 12-15 are the router's inventions and what it invents them next to.
+        # 12-15 are names a model invents and what it invents them next to.
         # John S. Williams is real, and is what a possessive "Jokic's" matches
         # if a stray one-letter word is allowed to name somebody.
         "('12','Joel Embiid'),('13','Jusuf Nurkic'),('14','John S. Williams'),('15','Klay Thompson'),"
-        # 16-17 are the two the measurement caught: "game" lands inside
+        # 16-17 are ordinary words inside a name: "game" lands inside
         # Blossomgame and "with" starts Withey, so an ordinary question reads
         # as naming both unless a span has to equal a whole word.
         "('16','Jaron Blossomgame'),('17','Jeff Withey'),"
@@ -97,22 +97,21 @@ def league_teams() -> duckdb.DuckDBPyConnection:
         ("NOP", "New Orleans Pelicans"),
         ("NYK", "New York Knicks"),
         ("SAS", "San Antonio Spurs"),
-        # The router is asked for full team names and writes this one; ESPN
-        # stores "LA Clippers", so it matched nothing at all.
+        # A full team name people write; ESPN stores "LA Clippers".
         ("Los Angeles Clippers", "LA Clippers"),
     ],
 )
 def test_the_abbreviations_people_use_resolve(league_teams: duckdb.DuckDBPyConnection, text: str, want: str) -> None:
-    """Measured live before this existed: every one of these returned NOTHING,
-    so "Lauri Markkan vs GSW last 5 games" lost the team entirely."""
+    """The abbreviation or full name people write reaches the team ESPN
+    stores under another, so "Lauri Markkan vs GSW last 5 games" keeps its
+    team."""
     assert [e.name for e in find_teams(teams_of(league_teams), text)] == [want]
 
 
 def test_an_abbreviation_outranks_a_team_whose_name_merely_contains_it(league_teams: duckdb.DuckDBPyConnection) -> None:
-    """ "ORL" is Orlando's abbreviation and also a substring of "New Orleans",
-    and both used to come back - an ambiguity offered to the user over a
-    question that names exactly one team, and a chance to answer about the
-    other one."""
+    """ "ORL" is Orlando's abbreviation and also a substring of "New Orleans":
+    the abbreviation wins, so a question naming exactly one team is neither
+    asked back nor answered about the other."""
     assert [e.name for e in find_teams(teams_of(league_teams), "ORL")] == ["Orlando Magic"]
 
 
@@ -124,7 +123,7 @@ def test_two_teams_in_one_city_stay_ambiguous(league_teams: duckdb.DuckDBPyConne
 
 
 def test_resolve_player_refuses_to_guess_between_two_real_players(con: duckdb.DuckDBPyConnection) -> None:
-    """ "Curry" is Seth and Stephen. A leaderboard row attributed to the wrong
+    """ "Curry" is Seth and Stephen. A ranking's row attributed to the wrong
     one is indistinguishable from a right answer, so this must not pick."""
     got = resolve_player(con, "Curry")
     assert isinstance(got, Ambiguous) and got.candidates == ["Seth Curry", "Stephen Curry"]
@@ -150,9 +149,8 @@ def test_empty_text_is_not_found_rather_than_everyone(con: duckdb.DuckDBPyConnec
 
 
 def test_a_typo_inside_a_hyphenated_surname_reaches_its_player(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #241: the typed token was compared whole against each word
-    of the name, so "Jackson-Davs" was near neither "Jackson" nor "Davis".
-    Each token is split as a name's words are, and every piece must be near
+    """ISSUES.md #241: "Jackson-Davs" reaches Trayce Jackson-Davis. Each
+    typed token is split as a name's words are, and every piece must be near
     one of them."""
     from association.query.entities import read_near_spelling, suggest_players
 
@@ -164,11 +162,10 @@ def test_a_typo_inside_a_hyphenated_surname_reaches_its_player(con: duckdb.DuckD
 
 def test_a_typo_near_too_many_players_is_narrowed_to_the_latest_seasons_before_it_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
     """ISSUES.md #240: "crry" is within one edit of six Currys, more than a
-    suggestion names, so it was dropped and the answer read "No player
-    found". Narrowed to the players with a box score in the latest season
-    on record - elimination, as a bare surname's namesakes are - it asks
-    between the two who have one; with no games table there is no latest
-    season, and the list is dropped as before."""
+    suggestion names. Narrowed to the players with a box score in the latest
+    season on record - elimination, as a bare surname's namesakes are - it
+    asks between the two who have one; with no games table there is no
+    latest season, and the list is dropped."""
     from association.query.entities import read_near_spelling, suggest_players
 
     con.execute("INSERT INTO players VALUES ('51', 'Dell Curry'), ('52', 'Eddy Curry'), ('53', 'JamesOn Curry'), ('54', 'Michael Curry')")
@@ -189,10 +186,9 @@ def test_a_typo_near_too_many_players_is_narrowed_to_the_latest_seasons_before_i
 
 
 def test_a_like_wildcard_in_a_name_is_a_literal_character(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #315: the pattern was built from the text with no escape,
-    as the SQL's ``ILIKE ?`` was, so "_" matched every one-letter run and
-    "%" every name. A name slot holding either matches exactly that
-    character now - and nobody is named with one."""
+    """ISSUES.md #315: a name holding "_" or "%" matches exactly that
+    character, not every one-letter run or every name - and nobody is named
+    with one."""
     from association.query.entities import find_teams
 
     assert find_players(players_of(con), "_") == []
@@ -225,12 +221,10 @@ def johnsons() -> duckdb.DuckDBPyConnection:
 
 
 def test_narrowing_sees_every_match_rather_than_the_first_ten(johnsons: duckdb.DuckDBPyConnection) -> None:
-    """Narrowing the first MAX_CANDIDATES alphabetically is not elimination: it
-    left Aaron as the only Johnson with shots and drew his chart, because
-    Keldon - who also has shots - sorted eleventh and was never looked at.
-    Measured on the warehouse's 2026 shot charts, that turned 23 ambiguous
-    names into a single player: "Davis" drew Anthony Davis with four players
-    eligible, "Robinson" drew Duncan Robinson with four."""
+    """Narrowing sees every match, not the first MAX_CANDIDATES
+    alphabetically, which is not elimination: Keldon, who sorts eleventh,
+    has shots as Aaron does, so "Johnson" is asked between the two rather
+    than drawn as Aaron."""
     from association.query.entities import Availability
     from association.query.shotchart import resolve_chart_player
 
@@ -244,8 +238,8 @@ def test_narrowing_sees_every_match_rather_than_the_first_ten(johnsons: duckdb.D
 def test_every_player_from_the_season_asked_about_is_named_however_many(johnsons: duckdb.DuckDBPyConnection) -> None:
     """The cap only ever counts away players who could not be the answer. Seven
     Johnsons took shots this season, more than the five a clarification names
-    by default, and cutting any of them would hide a real candidate the way
-    Stephen Curry was hidden. 2026 has 14 Williamses; this names all of them."""
+    by default, and cutting any of them would hide a real candidate. 2026
+    has 14 Williamses; this names all of them."""
     from association.query.compose.say import clarification
     from association.query.entities import Availability
     from association.query.shotchart import resolve_chart_player
@@ -260,8 +254,8 @@ def test_every_player_from_the_season_asked_about_is_named_however_many(johnsons
     charted = resolve_chart_player(johnsons, "Johnson", shots, 2026)
     assert isinstance(charted, Ambiguous) and charted.active == 7
     # With no season, nobody played in "the season asked about", and the cap
-    # applies as it always did - otherwise this would read out every Johnson
-    # who ever took a shot.
+    # applies - otherwise this would read out every Johnson who ever took a
+    # shot.
     unscoped = resolve_chart_player(johnsons, "Johnson", shots)
     assert isinstance(unscoped, Ambiguous) and unscoped.active == 0
 
@@ -284,7 +278,8 @@ def test_a_span_keeps_anybody_with_a_row_up_to_its_last_season(johnsons: duckdb.
 
 
 def test_a_capped_clarification_counts_what_it_leaves_out_in_english() -> None:
-    """ "(1 others also match)" was the exact phrase that hid Stephen Curry."""
+    """The count of the names left out is said in English: "1 other also
+    matches", "2 others also match"."""
     from association.query.compose.say import clarification
 
     six = ["Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry", "Seth Curry", "Stephen Curry"]
@@ -293,10 +288,9 @@ def test_a_capped_clarification_counts_what_it_leaves_out_in_english() -> None:
 
 
 def test_a_name_that_starts_a_word_beats_one_it_only_lands_inside(con: duckdb.DuckDBPyConnection) -> None:
-    """Substring matching kept "Ball" honestly ambiguous - between LaMelo Ball
-    and Cedric Ceballos, which is not a question anybody would ask. Measured
-    against the warehouse, this changed 46 surnames' best match and every one
-    of them was an improvement: "Bey" was Mike Tobey, "Ford" was Al Horford."""
+    """ "Ball" is LaMelo Ball, not ambiguous with Cedric Ceballos, inside
+    whose name it only lands: a match at the start of a word outranks one
+    inside it ("Bey" is not Mike Tobey, "Ford" not Al Horford)."""
     assert [c.name for c in find_players(players_of(con), "Ball")] == ["LaMelo Ball"]
     assert resolve_player(con, "Ball") == Entity(id="7", name="LaMelo Ball")
 
@@ -320,9 +314,8 @@ def test_a_curated_first_name_beats_an_unrelated_alphabetical_tie() -> None:
 
 def test_both_halves_of_a_hyphenated_name_start_a_word(con: duckdb.DuckDBPyConnection) -> None:
     """The boundary is any non-letter rather than a space, so "Alexander"
-    reaches Nickeil Alexander-Walker and Shai Gilgeous-Alexander. Requiring a
-    space would have demoted both below Kyle Alexander and then dropped them
-    entirely."""
+    reaches Nickeil Alexander-Walker and Shai Gilgeous-Alexander, ranked
+    beside Kyle Alexander rather than below him."""
     assert {c.name for c in find_players(players_of(con), "Alexander")} == {"Kyle Alexander", "Nickeil Alexander-Walker"}
     assert isinstance(resolve_player(con, "Alexander"), Ambiguous)
 
@@ -424,9 +417,8 @@ def test_a_first_name_one_player_owns_resolves_but_a_shared_surname_still_asks(c
     plausible answers to a question about Currys, and "Brown" stays out because
     a surname on its own is not something anyone can expect to complete.
 
-    This reverses the earlier rule, which kept every first name out. What was
-    actually rejected then - and is still rejected - is deriving the table from
-    prominence; a hand-picked entry is a different thing.
+    What is rejected is deriving the table from prominence; a hand-picked
+    entry is a different thing.
     """
     from association.query.entities import PLAYER_NICKNAMES
 
@@ -450,19 +442,16 @@ def test_nicknames_are_found_in_the_question_as_whole_words(con: duckdb.DuckDBPy
     assert nicknames_in("ant man log vs portland") == ["Anthony Edwards"]
 
 
-# ---------------- the question's own span, not the router's spelling ----------------
+# ---------------- the question's own span, not the model's spelling ----------------
 #
 # The subject reading's "any one word is enough" support check passes every
 # name below - a truncated one because the word it kept is right there, a
 # fabricated one because whichever half is real is right there too - so
 # none is ever replaced; `_question_derived_player` is what respells them
 # from the question's own span, reached here the way the agent reaches it:
-# through subject.read_subject/apply_subject. These are the five rows
-# AGENTS.md records as
-# measured against the live router, and the fixture below matches its own
-# description of each: a surname shared by several first names (or the
-# reverse), so a wrong repair would resolve to the wrong real person, not
-# just fail loudly.
+# through subject.read_subject/apply_subject. The fixture below gives each
+# a surname shared by several first names (or the reverse), so a wrong
+# repair would resolve to the wrong real person, not just fail loudly.
 
 
 @pytest.fixture
@@ -472,22 +461,22 @@ def span_con() -> duckdb.DuckDBPyConnection:
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     c.execute(
         "INSERT INTO players VALUES "
-        # "dennis schröder" typed correctly arrived as just 'Dennis' - grounded,
-        # and seven Dennises make it a clarification that need not have asked.
+        # "dennis schröder" typed correctly, the model's name just 'Dennis' -
+        # grounded, and seven Dennises make it a clarification that need not ask.
         "('1','Dennis Schroder'),('2','Dennis Scott'),('3','Dennis Rodman'),('4','RayJ Dennis'),"
         "('5','Dennis Smith Jr.'),('6','Dexter Dennis'),('7','Dennis Horner'),"
-        # "Aaron gordan" arrived as 'Aaron' - grounded, and many Aarons make it
+        # "Aaron gordan", the model's name 'Aaron' - grounded, and many Aarons make it
         # a clarification too, when only Gordon's surname is a typo away.
         "('8','Aaron Gordon'),('9','Aaron Holiday'),('10','Aaron Nesmith'),('11','Aaron Wiggins'),"
-        # "jayleyn brown" arrived as 'Brown' - grounded, and several Browns make
+        # "jayleyn brown", the model's name 'Brown' - grounded, and several Browns make
         # it a clarification, when only Jaylen's given name is a typo away.
         "('12','Jaylen Brown'),('13','Bruce Brown'),('14','Kobe Brown'),"
-        # "tatum rec home" arrived as 'Jaylen Tatum' - grounded by 'Tatum' alone
+        # "tatum rec home", the model's name 'Jaylen Tatum' - grounded by 'Tatum' alone
         # - and there is exactly one.
         "('15','Jayson Tatum'),"
-        # "Grady dick" arrived as 'Grady Dickinson' - grounded by 'Grady' alone
+        # "Grady dick", the model's name 'Grady Dickinson' - grounded by 'Grady' alone
         # - and the real player is 'Gradey Dick'; 'Dickinson' is a different,
-        # real player (ISSUES.md #122's own wrong suggestion).
+        # real player (ISSUES.md #122).
         "('16','Gradey Dick'),('17','Hunter Dickinson'),('18','Dickey Simpkins'),"
         # 19-20 are what guards the short-word span filter: "Williams's"
         # splits into a stray one-letter "s" (the same possessive
@@ -508,9 +497,7 @@ def span_con() -> duckdb.DuckDBPyConnection:
 def _apply(con: duckdb.DuckDBPyConnection, question: str, scope: Reading, asked: PointShape | None = PLAYER_LINE) -> tuple[list[tuple[str, str]], list[str], Reading]:
     """The model's names written the way the agent writes them - the subject
     reading applied to a test's typed reading - reduced to the (was, now)
-    pairs and the names dropped, the shape these tests were first written
-    against, with the scope the reading wrote. Until Phase 4, step 0 it
-    took a slot dict and mirrored the written filters back into it."""
+    pairs and the names dropped, with the scope the reading wrote."""
     from association.query.subject import apply_subject, read_subject
 
     applied = apply_subject(read_subject(names_of(con), question, asked, scope), scope, asked=asked)
@@ -525,21 +512,14 @@ class _Written(NamedTuple):
     scope: Reading
 
 
-def _scope(con: duckdb.DuckDBPyConnection, question: str, scope: Reading, *, reads_player: bool, asked: PointShape | None = None, **flags: Any) -> _Written:
-    """The repair the agent runs: the subject read from a test's typed
-    reading, then applied (`subject.apply_subject`, which took every step
-    of `scope_from_question` over in 5.0.0). One line per change, so a test
-    written against `scope_from_question` reads the same, and the scope it
-    wrote."""
+def _scope(con: duckdb.DuckDBPyConnection, question: str, scope: Reading, *, reads_player: bool, asked: PointShape | None = None) -> _Written:
+    """What the agent writes of who a question is about: the subject read
+    from a test's typed reading under the key the words ask (a player's log,
+    or a team's record where no player is read, unless ``asked`` names
+    another), then applied (`subject.apply_subject`). One line per change,
+    and the scope it wrote."""
     from association.query.subject import apply_subject, read_subject
 
-    # The chain's flags were one per intent set; the reading reads what the
-    # words ask, so a flag picks a representative key from its set.
-    for flag, representative in (("needs_player", LINE_RECORD), ("restore_subject", GAME_HIGHS), ("restore_team", PLAYER_LINE)):
-        if flags.pop(flag, False):
-            asked = asked or representative
-    flags.pop("restore_team_subject", None)
-    assert not flags, flags
     asked = asked or (PLAYER_LOG if reads_player else TEAM_RECORD)
     subject = read_subject(names_of(con), question, asked, scope)
     applied = apply_subject(subject, scope, asked=asked)
@@ -548,10 +528,9 @@ def _scope(con: duckdb.DuckDBPyConnection, question: str, scope: Reading, *, rea
 
 
 def test_a_truncated_name_is_expanded_from_the_question(span_con: duckdb.DuckDBPyConnection) -> None:
-    """The router dropped the surname the question spelled correctly, and
-    'Dennis' alone is grounded (the word is right there) - so the old check
-    never touched it, and seven Dennises would have been asked about, one
-    right answer among them."""
+    """The model dropped the surname the question spelled correctly, and
+    'Dennis' alone is grounded (the word is right there): the question's own
+    span respells it, rather than asking among seven Dennises."""
     scope = Reading(who=Who(kind="player", players=("Dennis",)))
     changed, invented, scope = _apply(span_con, "how many points does dennis schroder average", scope)
     assert changed == [("Dennis", "Dennis Schroder")]
@@ -560,7 +539,7 @@ def test_a_truncated_name_is_expanded_from_the_question(span_con: duckdb.DuckDBP
 
 
 def test_a_typo_on_the_dropped_half_of_a_name_still_resolves(span_con: duckdb.DuckDBPyConnection) -> None:
-    """The router dropped the surname entirely, and the question's own
+    """The model dropped the surname entirely, and the question's own
     spelling of it ('gordan') is a typo - but AND-across-tokens with the given
     name it kept narrows four Aarons to the one whose surname is a real edit
     away, the same discipline suggest_players already trusts for a
@@ -573,7 +552,7 @@ def test_a_typo_on_the_dropped_half_of_a_name_still_resolves(span_con: duckdb.Du
 
 
 def test_a_typo_on_the_kept_half_of_a_name_still_resolves(span_con: duckdb.DuckDBPyConnection) -> None:
-    """The router kept only the exact surname the question used, and the
+    """The model kept only the exact surname the question used, and the
     question's given name ('jayleyn') is a typo - narrowed against three
     Browns to the one whose given name is a real edit away."""
     scope = Reading(who=Who(kind="player", players=("Brown",)))
@@ -584,9 +563,8 @@ def test_a_typo_on_the_kept_half_of_a_name_still_resolves(span_con: duckdb.DuckD
 
 
 def test_a_fabricated_given_name_next_to_an_exact_surname_is_discarded(span_con: duckdb.DuckDBPyConnection) -> None:
-    """The router invented 'Jaylen' out of nothing and bolted it onto the
-    league's only Tatum; grounded by 'Tatum' alone, so the old check let the
-    invented half ride through. The surname alone is an EXACT match here, not
+    """The model invented 'Jaylen' and bolted it onto the league's only
+    Tatum, grounded by 'Tatum' alone. The surname alone is an EXACT match here, not
     a guess, which is what makes discarding the invented half safe rather
     than a substitution."""
     scope = Reading(who=Who(kind="player", players=("Jaylen Tatum",)))
@@ -596,12 +574,11 @@ def test_a_fabricated_given_name_next_to_an_exact_surname_is_discarded(span_con:
     assert scope.who.player == "Jayson Tatum"
 
 
-def test_a_fabricated_surname_extension_is_discarded_not_the_router_s_wrong_guess(span_con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #122: the router's 'Dickinson' is a real surname, grounded by
-    the question's own typo'd 'Grady', so the old check never touched it -
-    and suggest_players' surname-only backoff then found Hunter Dickinson, a
-    different real player, by backing off to the ROUTER's fabricated
-    surname. This resolves from the QUESTION's own 'dick' instead, which
+def test_a_fabricated_surname_extension_is_discarded_not_the_models_wrong_guess(span_con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #122: the model's 'Dickinson' is a real surname, grounded by
+    the question's own typo'd 'Grady', and a surname-only backoff to the
+    MODEL's fabricated surname would find Hunter Dickinson, a different real
+    player. This resolves from the QUESTION's own 'dick' instead, which
     Hunter Dickinson's surname does not literally contain as a whole word,
     so he is never a candidate here at all."""
     scope = Reading(who=Who(kind="player", players=("Grady Dickinson",)))
@@ -611,8 +588,8 @@ def test_a_fabricated_surname_extension_is_discarded_not_the_router_s_wrong_gues
     assert scope.who.player == "Gradey Dick"
 
 
-def test_a_span_that_already_matches_the_router_is_a_no_op(span_con: duckdb.DuckDBPyConnection) -> None:
-    """The common case: the router already wrote the exact name the question
+def test_a_span_that_already_matches_the_models_name_is_a_no_op(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The common case: the model already wrote the exact name the question
     spells out, so nothing should be logged as changed."""
     scope = Reading(who=Who(kind="player", players=("Jayson Tatum",)))
     changed, invented, scope = _apply(span_con, "how many points does jayson tatum average", scope)
@@ -623,11 +600,11 @@ def test_a_span_that_already_matches_the_router_is_a_no_op(span_con: duckdb.Duck
 def test_two_anchored_words_that_fail_together_do_not_fall_back_to_one(span_con: duckdb.DuckDBPyConnection) -> None:
     """ISSUES.md #123's shape, reached through this function instead of
     suggest_players: "Kareem Abdul-Jabbar" and "Bob Lanier" are both real
-    players the router correctly named in full - neither is in `players` at
+    players the model correctly named in full - neither is in `players` at
     all, because both retired before the warehouse's 1993-94 floor. "Kareem"
     alone exactly names Kareem Rush and "Lanier" alone exactly names Chaz
-    Lanier, two real but wholly unrelated players - a wrong-entity answer
-    that measurably happened before this guard existed. Both words of each
+    Lanier, two real but wholly unrelated players - a wrong-entity answer.
+    Both words of each
     name are exactly in the question, so the failure of the full span must
     be believed rather than repaired from a single leftover word."""
     scope = Reading(who=Who(kind="pair", players=("Kareem Abdul-Jabbar", "Bob Lanier")))
@@ -638,7 +615,7 @@ def test_two_anchored_words_that_fail_together_do_not_fall_back_to_one(span_con:
 
 def test_a_given_name_anchor_alone_is_not_trusted_but_its_window_is(span_con: duckdb.DuckDBPyConnection) -> None:
     """The other half of the same guard: "Kareem" anchors only the FIRST
-    word of a name the router invented the rest of, with nothing else in the
+    word of a name the model invented the rest of, with nothing else in the
     question backing "Abdul-Jabbar" at all - unlike "Grady dick", where the
     window around the given-name anchor ("grady dick") is what resolves it.
     A lone given-name anchor with no corroborating window must stay unfixed,
@@ -652,10 +629,9 @@ def test_a_given_name_anchor_alone_is_not_trusted_but_its_window_is(span_con: du
 def test_a_lone_fuzzy_word_is_still_left_for_a_suggestion_not_a_silent_pick(span_con: duckdb.DuckDBPyConnection) -> None:
     """The mirror image of the cases above: only ONE word resolves, and only
     by near spelling, with nothing else in the window to corroborate it. That
-    is exactly what suggest_players already treats as a suggestion rather
-    than a substitution (test_a_near_spelling_still_counts_as_naming_somebody
-    covers the same shape against the smaller `con` fixture), so this must
-    stay a no-op and let the existing grounded/suggestion path run."""
+    is exactly what suggest_players treats as a suggestion rather than a
+    substitution, so this must stay a no-op and let the grounded/suggestion
+    path run."""
     scope = Reading(who=Who(kind="player", players=("Jemel Gradee",)))
     changed, invented, scope = _apply(span_con, "how many rebounds does gradee average", scope)
     assert (changed, invented) == ([], [])
@@ -693,8 +669,7 @@ def test_players_named_in_reads_names_and_nicknames_in_order(con: duckdb.DuckDBP
 
 def test_a_possessive_s_is_not_a_player(con: duckdb.DuckDBPyConnection) -> None:
     """ "Klay Thompson's" splits into a stray one-letter word, which is a whole
-    word of "John S. Williams" - measured against the warehouse, that put him
-    in nine of the routing corpus's questions."""
+    word of "John S. Williams" and names nobody."""
     assert players_named_in(players_of(con), "what was klay thompson's 3pt percentage") == ["Klay Thompson"]
 
 
@@ -706,7 +681,7 @@ def test_an_ordinary_word_that_only_looks_like_a_name_is_not_one(con: duckdb.Duc
 
 
 def test_a_surname_two_players_share_names_neither_of_them(con: duckdb.DuckDBPyConnection) -> None:
-    """This overrules the router, so it may only speak where it is certain."""
+    """This overrules the model's names, so it may only speak where it is certain."""
     assert players_named_in(players_of(con), "plot curry's threes") == []
 
 
@@ -715,11 +690,11 @@ def test_a_surname_two_players_share_names_neither_of_them(con: duckdb.DuckDBPyC
 
 def test_a_fabricated_given_name_falls_back_to_the_surname(con: duckdb.DuckDBPyConnection) -> None:
     """Exact matching on one fewer token, not fuzzy: every token has to match,
-    so one made-up word buried a player the warehouse holds."""
+    so one made-up word would bury a player the warehouse holds."""
     assert [p.name for p in suggest_players(names_of(con), "Jemel Embiid")] == ["Joel Embiid"]
 
 
-def test_a_misspelling_the_router_did_not_correct_finds_the_player(con: duckdb.DuckDBPyConnection) -> None:
+def test_a_misspelling_the_model_did_not_correct_finds_the_player(con: duckdb.DuckDBPyConnection) -> None:
     """ "embid" is not a substring of "Embiid", so no amount of ILIKE reaches
     it and no amount of trusting the question helps - the typo is the
     question."""
@@ -738,8 +713,8 @@ def test_an_incidental_substring_is_not_a_suggestion(con: duckdb.DuckDBPyConnect
 
 
 def test_a_suggestion_too_long_to_be_one_is_dropped() -> None:
-    """A name near a dozen players narrowed nothing. Reading out a directory is
-    not a suggestion, and the question is better off falling through."""
+    """A name near a dozen players narrows nothing. Reading out a directory is
+    not a suggestion, and the question is better off with none."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players SELECT i::VARCHAR, 'Chris Smit' || chr((97 + i)::INTEGER) FROM range(8) t(i)")
@@ -749,10 +724,9 @@ def test_a_suggestion_too_long_to_be_one_is_dropped() -> None:
 
 def test_a_common_surname_falls_back_to_the_near_spelling_pass() -> None:
     """ "Dylon Harper" backs off to six real Harpers - too many to suggest on
-    the surname alone (the shape above) - but the surname backoff used to give
-    up right there instead of trying the stricter pass below it, which needs
-    BOTH names close and finds the one real match: Dylan, not Derek, Jared,
-    Justin or either Ron."""
+    the surname alone (the shape above) - so the stricter pass below it runs,
+    which needs BOTH names close and finds the one real match: Dylan, not
+    Derek, Jared, Justin or either Ron."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players VALUES ('1','Derek Harper'),('2','Dylan Harper'),('3','Jared Harper'),('4','Justin Harper'),('5','Ron Harper'),('6','Ron Harper Jr.')")
@@ -760,11 +734,10 @@ def test_a_common_surname_falls_back_to_the_near_spelling_pass() -> None:
 
 
 def test_a_team_name_is_not_suggested_as_a_player() -> None:
-    """ "Hawks" is one edit from a real "Hawes", and "Most reb by a hawk player
-    history" answered "did you mean Spencer Hawes?" instead of naming the
-    actual cause: the question is about a team, which this near-spelling pass
-    cannot know unless it checks. A team the text names outright is not a near
-    miss on a player, whatever the edit distance says."""
+    """ "Hawks" is one edit from a real "Hawes", but "Most reb by a hawk
+    player history" is about a team, which this near-spelling pass cannot
+    know unless it checks: a team the text names outright is not a near miss
+    on a player, whatever the edit distance says."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players VALUES ('1','Spencer Hawes')")
@@ -864,13 +837,13 @@ def test_no_match_says_only_that_when_nothing_is_near(con: duckdb.DuckDBPyConnec
     )
 
 
-# ---------------- players the router dropped ----------------
+# ---------------- players the model dropped ----------------
 
 
 def test_a_vs_question_that_matched_one_player_is_flagged(con: duckdb.DuckDBPyConnection) -> None:
-    """ "generate fingerprints for embiid vs jolic" drew Joel Embiid alone. The
-    typo cannot be repaired - measured, a near-spelling search over leftover
-    words finds a spurious player in 29 of 51 corpus questions - so the answer
+    """ "generate fingerprints for embiid vs jolic" draws Joel Embiid alone. The
+    typo is not repaired - a near-spelling search over leftover words finds a
+    spurious player in 29 of 51 corpus questions - so the answer
     has to say a player is missing rather than quietly drop one: the
     reading carries what the "vs" left out, and the sayer says it."""
     from association.query.compose.say import say_left_out
@@ -892,11 +865,10 @@ def test_a_question_comparing_nobody_is_not_flagged(con: duckdb.DuckDBPyConnecti
 
 
 def test_a_name_that_resolves_is_never_called_a_warehouse_miss(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #143's mirror-image bug: "only one of them matches anybody in
-    the warehouse - check the spelling of the other" said that about Jaylen
-    Brown, whom `players` holds. A name that DOES resolve against the roster
-    must get a sentence that says so - never the one that claims the
-    warehouse does not have him. `held` is deliberately left at one name here
+    """ISSUES.md #143's mirror image: a name that DOES resolve against the
+    roster (Jaylen Brown, whom `players` holds) gets a sentence that says so
+    - never "only one of them matches anybody in the warehouse - check the
+    spelling of the other", which claims the warehouse does not have him. `held` is deliberately left at one name here
     (as if a reading had dropped the second) so this branch is pinned on
     its own."""
     c = duckdb.connect(":memory:")
@@ -915,7 +887,7 @@ def test_a_refusal_with_no_names_is_still_a_sentence() -> None:
     assert misread_players([]).endswith("it was not answered.")
 
 
-# ---------------- scope_from_question: the team a question plays against ----------------
+# ---------------- the subject reading: the team a question plays against ----------------
 
 
 @pytest.fixture
@@ -936,11 +908,12 @@ def scope_con() -> duckdb.DuckDBPyConnection:
 
 
 def test_an_opponent_naming_a_player_nobody_asked_about_is_left_to_be_refused(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """Narrow on purpose: the slot goes only when the person it names is
-    already a subject. Otherwise a template that cannot honor it must still
-    refuse, rather than silently widening to every opponent. (The question
-    has to hold the name: an opponent it never held is the invented-name
-    shape, dropped by `subject.apply_subject` since 4.4.0.)"""
+    """Narrow on purpose: a player read as the opponent is cleared only when
+    he is already a subject. Otherwise the opponent cut stays, for the
+    planner to refuse where nothing honors it, rather than silently widening
+    to every opponent. (The question has to hold the name: an opponent it
+    never held is the invented-name shape, dropped by
+    `subject.apply_subject`.)"""
     scope = Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Kawhi Leonard"))
     scope = _scope(scope_con, "curry fingerprint vs kawhi", scope, reads_player=True, asked=NETPOINTS_FINGERPRINT).scope
     assert scope.cuts.opponent == "Kawhi Leonard"
@@ -951,15 +924,15 @@ def test_an_opponent_naming_a_player_nobody_asked_about_is_left_to_be_refused(sc
 
 
 def test_a_name_typed_with_accents_still_names_its_player(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """The warehouse spells every name in plain letters; "luka dončić last 15
-    games vs. magic" matched nobody and answered the Lakers' log."""
+    """The warehouse spells every name in plain letters; "dončić" in "luka
+    dončić last 15 games vs. magic" still reaches Luka Doncic."""
     assert [p.name for p in find_players(players_of(scope_con), "dončić")] == ["Luka Doncic"]
 
 
 def test_a_letter_with_no_decomposition_folds_to_its_plain_spelling() -> None:
     """ISSUES.md #244: NFKD leaves a dotless i, a stroked o, d or l, an eszett
-    and the ligatures whole, and the ASCII encode dropped them - Omer Asik's
-    surname, typed with its dotless i, folded to "Ask"."""
+    and the ligatures whole; each still folds to its plain spelling, so Omer
+    Asik's surname typed with its dotless i is "Asik", not "Ask"."""
     from association.query.entities import _fold
 
     assert _fold("Ömer Aşık") == "Omer Asik"  # noqa: RUF001 - the dotless i is the letter under test
@@ -975,20 +948,20 @@ def test_a_team_beside_a_player_stays_unless_the_question_plays_against_it(scope
     notes, scope = _scope(scope_con, "lebron points for the lakers", scope, reads_player=True)
     assert notes == []
     assert (scope.who.player, scope.who.team, scope.cuts.tenure, scope.cuts.opponent) == ("LeBron James", "Los Angeles Lakers", None, None)
-    # A template that reads no player keeps its team whatever the question says.
+    # A key that reads no player (a team's record) keeps its team whatever the question says.
     kept = Reading(who=Who(kind="player", players=("Stephen Curry",), teams=("Boston Celtics",)))
     kept = _scope(scope_con, "curry vs the celtics", kept, reads_player=False).scope
     assert kept.who.team == "Boston Celtics"
 
 
-def test_both_sides_of_a_head_to_head_are_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
+def test_both_sides_of_two_teams_meeting_are_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
     scope = Reading(who=Who(kind="teams", teams=("Los Angeles Lakers", "Boston Celtics")))
     notes, scope = _scope(scope_con, "Lakers vs Celtics record this season", scope, reads_player=False)
     assert notes == []
     assert scope.who.teams == ("Los Angeles Lakers", "Boston Celtics") and scope.cuts.opponent is None
 
 
-def test_an_opponent_the_router_already_gave_is_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
+def test_an_opponent_already_on_the_reading_is_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
     scope = Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), cuts=Cuts(opponent="Boston Celtics"), period=Period(number=4))
     notes, scope = _scope(scope_con, "76ers 4th quarter points against boston", scope, reads_player=False)
     assert notes == []
@@ -1007,7 +980,7 @@ def test_la_is_two_teams_and_names_no_opponent(scope_con: duckdb.DuckDBPyConnect
     assert notes == []
 
 
-def test_a_team_nickname_grounds_the_team_slot(scope_con: duckdb.DuckDBPyConnection) -> None:
+def test_a_team_nickname_grounds_the_subjects_team(scope_con: duckdb.DuckDBPyConnection) -> None:
     """ "sixers" is no word of "Philadelphia 76ers", but it is the team."""
     scope = Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)))
     notes, scope = _scope(scope_con, "Top 5 scorers on the sixers", scope, reads_player=True)
@@ -1016,14 +989,12 @@ def test_a_team_nickname_grounds_the_team_slot(scope_con: duckdb.DuckDBPyConnect
 
 
 def test_a_team_written_without_its_space_still_names_the_team(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """ "trailblazers stats last 10 games 3 point average 1st quarter" lost its
-    team: the grounding check asks whether the question holds a WORD of the
-    name, and the single token matches none of {portland, trail, blazers}, so
-    a team the question opens with was dropped as one it never mentioned. The
-    team's own name with a space left out is a trace of it like any other."""
+    """ "trailblazers stats last 10 games 3 point average 1st quarter" keeps
+    its team: the grounding check asks whether the question holds a WORD of
+    the name, and the single token matches none of {portland, trail,
+    blazers}, but the team's own name with a space left out is a trace of it
+    like any other."""
     scope = Reading(who=Who(kind="team", teams=("Portland Trail Blazers",)), period=Period(number=1))
-    # reads_player as the pipeline passes it: team_quarter_points is in
-    # PLAYER_INTENTS, and it is that path which drops an ungrounded team.
     notes, scope = _scope(scope_con, "trailblazers stats last 10 games 3 point average 1st quarter", scope, reads_player=True)
     assert notes == []
     assert scope.who.team == "Portland Trail Blazers" and scope.period is not None and scope.period.number == 1
@@ -1031,8 +1002,8 @@ def test_a_team_written_without_its_space_still_names_the_team(scope_con: duckdb
 
 def test_a_run_together_name_reaches_the_team_it_spells(scope_con: duckdb.DuckDBPyConnection) -> None:
     """The nickname is only the visible half: six of the thirty teams have a
-    two-word CITY, and "goldenstate" resolved to nothing either - so a
-    question setting a subject against one lost the opponent outright."""
+    two-word CITY, and "goldenstate" reaches its team too, so a question
+    setting a subject against one keeps the opponent."""
     for spelling in ("trailblazers", "portlandtrailblazers", "goldenstate", "newyork", "laclippers"):
         assert isinstance(resolve_team(scope_con, spelling), Entity), spelling
 
@@ -1048,21 +1019,19 @@ def test_part_of_a_team_name_run_together_still_names_no_team(scope_con: duckdb.
 
 def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> Any:
     """The Reading the parser settles for ``question``, the normalizer's
-    names stubbed as ``names``: its route (``parse.read_route``), then its
-    last step (``parse.reading_from_route``)."""
+    names stubbed as ``names`` (``parse.read_route``)."""
     from association.query.parse import read_route
 
     return read_route(names_of(con), question, names, "")
 
 
 def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """#163, then #231 (F088): "Embiid career record vs boston" is not two
-    franchises meeting - ``head_to_head`` counts every meeting, the ones he
-    sat out included - and not the team's with/without split the router-era
-    reroute answered it with, an "out" row nobody asked for. The parser
-    reads a player's record against a team as his own games' record,
-    narrowed to the opponent (``player_splits``), from the subject's kind;
-    the reroute went with the router (ROADMAP plan item 6, step (d), part 3)."""
+    """#163, #231 (F088): "Embiid career record vs boston" is not two
+    franchises meeting - two teams' meetings count every meeting, the ones he
+    sat out included - and not the team's with/without split, an "out" row
+    nobody asked for. The parser reads a player's record against a team as
+    his own games' record, narrowed to the opponent (a player's splits,
+    ``PLAYER_SPLITS``), from the subject's kind."""
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
     for question, names in (("Embiid career record vs boston", ["embiid", "boston"]), ("Show Embiid's career record against Boston", ["Embiid", "Boston"])):
         reading = _parsed(scope_con, question, names)
@@ -1070,8 +1039,8 @@ def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.Duck
         assert reading.span.career and not any(c.absent for c in reading.companions) and not reading.who.team, question
 
 
-def test_a_real_head_to_head_and_a_players_games_against_a_team_stay_what_they_are(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """The other half: two teams meeting is ``head_to_head``, and a player
+def test_two_teams_meeting_and_a_players_games_against_a_team_stay_what_they_are(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """The other half: two teams meeting is their meetings (``TEAM_MEETINGS``), and a player
     and an opponent with no record asked for is his games - "Embiid vs boston
     last 5 games" answered with a won-lost split would be a different
     question, fluently."""
@@ -1086,36 +1055,34 @@ def test_a_real_head_to_head_and_a_players_games_against_a_team_stay_what_they_a
 
 
 def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """ "Sga record 36 plus points" came back with no player at all. An optional
-    player slot left empty means the league, so only a template that needs one
-    gets it back."""
+    """ "Sga record 36 plus points" with no player among the model's names.
+    An optional player left empty means the league, so only a key that needs
+    one (a record over a line) gets him back from the question."""
     scope = Reading(lines=(Line(measure="points", value=36, as_typed="36 points", keyed=True),), measure=Measure(key="points", as_typed="points"))
-    scope = _scope(scope_con, "Sga record 36 plus points", scope, reads_player=True, needs_player=True).scope
+    scope = _scope(scope_con, "Sga record 36 plus points", scope, reads_player=True, asked=LINE_RECORD).scope
     assert scope.who.player == "Shai Gilgeous-Alexander"
     # A game log's player is optional - and the question has to be one the
     # words leave a game log: "Sga record 36 plus points" itself is the
-    # record question, which the reading assigns (subject.KIND_ASSIGNED_INTENTS).
+    # record question, which the reading assigns (subject.KIND_ASSIGNED_ASKS).
     optional = Reading(lines=(Line(measure="points", value=36, as_typed="36 points", keyed=True),), measure=Measure(key="points", as_typed="points"))
     optional = _scope(scope_con, "Sga game log with 36 plus points", optional, reads_player=True).scope
     assert optional.who.player is None
 
 
-def test_a_subject_named_with_no_verb_is_restored_for_single_game_high(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F093: "kawhi most threes in a game" used to answer the
-    league's single-game leaders, Kawhi Leonard's own 7 never mentioned -
-    router._SUBJECT_OF_HIGH needs a scoring verb ("kawhi scored") or a
-    possessive ("kawhi's"), and this shape has neither. `restore_subject`
-    (SUBJECT_RESTORABLE_INTENTS: single_game_high, threshold_count) reads
-    him back from the question the same way `needs_player` already does for
-    a template with no league reading at all."""
+def test_a_subject_named_with_no_verb_is_restored_for_a_single_games_high(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F093: "kawhi most threes in a game" is Kawhi Leonard's
+    own high, not the league's single-game leaders, though it has neither a
+    scoring verb ("kawhi scored") nor a possessive ("kawhi's"): under a key
+    whose subject is restorable (``reading.SUBJECT_RESTORABLE_ASKS``, a
+    single game's high among them) the reading reads him back from the
+    question, as it does for a key with no league reading at all."""
     scope = Reading(measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"))
-    scope = _scope(scope_con, "kawhi most threes in a game", scope, reads_player=True, restore_subject=True).scope
+    scope = _scope(scope_con, "kawhi most threes in a game", scope, reads_player=True, asked=GAME_HIGHS).scope
     assert scope.who.player == "Kawhi Leonard"
-    # Off by default, same as needs_player: a caller that does not ask for it
-    # (an intent outside SUBJECT_RESTORABLE_INTENTS) gets the league reading.
-    # ... and a question the words leave at that intent: "kawhi most threes
-    # in a game" IS the single-game high, which the reading assigns under a
-    # game log (subject.KIND_ASSIGNED_INTENTS).
+    # Under a key outside SUBJECT_RESTORABLE_ASKS (a game log) the league
+    # reading stands - for a question the words leave at that key: "kawhi
+    # most threes in a game" IS the single-game high, which the reading
+    # assigns under a game log (subject.KIND_ASSIGNED_ASKS).
     unrestored = Reading(measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"))
     unrestored = _scope(scope_con, "kawhi threes game log", unrestored, reads_player=True).scope
     assert unrestored.who.player is None
@@ -1126,10 +1093,8 @@ def test_a_subject_named_with_no_verb_is_restored_for_single_game_high(scope_con
     [
         # yardstick-v2 F093's own false-positive check: "best" is Travis
         # Best and "head" is Luther Head, and neither question is about
-        # either of them - both are genuine league/team questions.
-        # Corpus-measured (scripts/check_routing.py + the StatMuse feed,
-        # entities._COMMON_WORDS_THAT_NAME_PLAYERS) before restore_subject
-        # shipped.
+        # either of them - both are genuine league/team questions
+        # (lexicon._COMMON_WORDS_THAT_NAME_PLAYERS).
         "Best true shooting percentage last season?",
         "Best record from 2010-11 to 2018-19 nba",
         "Celtics vs Bulls head to head record",
@@ -1137,34 +1102,33 @@ def test_a_subject_named_with_no_verb_is_restored_for_single_game_high(scope_con
 )
 def test_a_common_english_word_is_not_restored_as_a_player(scope_con: duckdb.DuckDBPyConnection, question: str) -> None:
     scope = Reading(measure=Measure(key="ts_pct", as_typed="ts_pct"))
-    scope = _scope(scope_con, question, scope, reads_player=True, restore_subject=True).scope
+    scope = _scope(scope_con, question, scope, reads_player=True, asked=GAME_HIGHS).scope
     assert scope.who.player is None
 
 
 def test_a_team_named_beside_a_player_with_no_season_is_his_tenure(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F166: "lebron stats as a starter for Miami" used to
-    answer his current season, "Miami" never read at all - the router filed
-    no `team` and no `opponent`. `restore_team` reads "for <team>" beside an
-    already-known player and, since no season is named either, defaults
-    `span` to "career" too - a historical team names a tenure, not "now".
-    Written to `own_team`, not `team` - see
-    subject._apply_own_team's own docstring for why a
-    router-supplied `team` is not safe to trust directly."""
+    """yardstick-v2 F166: "lebron stats as a starter for Miami" is his Heat
+    years, not his current season: the reading reads "for <team>" beside an
+    already-known player and, since no season is named either, defaults the
+    span to his career too - a historical team names a tenure, not "now".
+    Written as the tenure, not the subject's team - see
+    subject._apply_own_team's own docstring for why a team the model
+    supplied is not safe to trust directly."""
     scope = Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026), split="starter")
-    notes, scope = _scope(scope_con, "lebron stats as a starter for the lakers", scope, reads_player=True, restore_team=True)
+    notes, scope = _scope(scope_con, "lebron stats as a starter for the lakers", scope, reads_player=True, asked=PLAYER_LINE)
     assert scope.cuts.tenure == "Los Angeles Lakers"
     assert scope.span.career
     assert scope.span.season is None
     assert any("Los Angeles Lakers" in note for note in notes)
     # A season the question DOES name still wins - no career override.
     named = Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026), split="starter")
-    named = _scope(scope_con, "lebron stats as a starter for the lakers in 2026", named, reads_player=True, restore_team=True).scope
+    named = _scope(scope_con, "lebron stats as a starter for the lakers in 2026", named, reads_player=True, asked=PLAYER_LINE).scope
     assert named.cuts.tenure == "Los Angeles Lakers"
     assert not named.span.career
     assert named.span.season == 2026
     # Off where the words ask for no single player's shape (a ranking, a
-    # comparison - OWN_TEAM_RESTORABLE_ASKS, every single player's shape
-    # since Phase 5, step 6, ISSUES.md #436): `own_team` is left alone.
+    # comparison - outside OWN_TEAM_RESTORABLE_ASKS, every single player's
+    # shape, ISSUES.md #436): no tenure is written.
     unrestored = Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))
     unrestored = _scope(scope_con, "lebron stats as a starter for the lakers", unrestored, reads_player=True, asked=PLAYER_RANKING).scope
     assert unrestored.cuts.tenure is None
@@ -1175,37 +1139,34 @@ def test_an_own_team_is_not_restored_with_no_player_and_stands_beside_an_opponen
     this one - and beside an `opponent` the question names (a genuine "vs"
     reading) the "for" phrase is the tenure, the opponent kept: "lebron vs
     celtics stats for the lakers" is his Lakers games against Boston
-    (ISSUES.md #269, where "as a laker" beside an opponent was dropped and
-    another team's games answered)."""
+    (ISSUES.md #269: "as a laker" beside an opponent is kept)."""
     no_player = Reading(measure=Measure(key="points", as_typed="points"))
-    no_player = _scope(scope_con, "points scored for the lakers this season", no_player, reads_player=True, restore_team=True).scope
+    no_player = _scope(scope_con, "points scored for the lakers this season", no_player, reads_player=True, asked=PLAYER_LINE).scope
     assert no_player.cuts.tenure is None
     has_opponent = Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(opponent="Boston Celtics"))
-    has_opponent = _scope(scope_con, "lebron vs celtics stats for the lakers", has_opponent, reads_player=True, restore_team=True).scope
+    has_opponent = _scope(scope_con, "lebron vs celtics stats for the lakers", has_opponent, reads_player=True, asked=PLAYER_LINE).scope
     assert has_opponent.cuts.tenure == "Los Angeles Lakers" and has_opponent.cuts.opponent == "Boston Celtics"
 
 
-def test_a_router_supplied_team_is_not_trusted_as_a_tenure_narrowing(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """The recorded shape that motivated `own_team` over reusing `team`:
-    "lebron james 2 3 pointers all-time vs jazz on tuesdays" carries a
-    router-supplied `team='Los Angeles Lakers'` (his own, current, and
-    redundant) beside a real `opponent='Utah Jazz'` - noise
-    `games._team_slot_for_player` already drops for `game_log`. `restore_team`
-    must not promote that same noise into a real narrowing for `player_stat`:
-    with `team` already set, `subject._apply_own_team` declines
-    outright, so `own_team` is never written and the recorded `team` value
-    is left exactly as it was."""
+def test_a_model_supplied_team_is_not_trusted_as_a_tenure_narrowing(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "lebron james 2 3 pointers all-time vs jazz on tuesdays" carries a
+    model-supplied team, the Lakers (his own, current, and redundant), beside
+    a real opponent, the Jazz. A player's line does not promote that noise
+    into a tenure: with the subject's team already set,
+    `subject._apply_own_team` declines outright, so no tenure is written and
+    the team is left exactly as it was."""
     scope = Reading(who=Who(kind="player", players=("LeBron James",), teams=("Los Angeles Lakers",)), cuts=Cuts(opponent="Utah Jazz"), span=Span(career=True))
-    scope = _scope(scope_con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", scope, reads_player=True, restore_team=True).scope
+    scope = _scope(scope_con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", scope, reads_player=True, asked=PLAYER_LINE).scope
     assert scope.cuts.tenure is None
     assert scope.who.team == "Los Angeles Lakers"
 
 
 def test_a_team_only_question_naming_one_player_is_read_back(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F111: "alperen şengün alltime record" routed to
-    team_leaderboard - no player slot on that intent, and no `team` slot
-    either - and answered the league standings, Sengun never read.
-    Diacritics are already folded (players_named_in._fold)."""
+    """yardstick-v2 F111: "alperen şengün alltime record" asks a ranking of
+    teams, which reads no player, with no team named: the player the
+    question names is read back, and the planner refuses by his name rather
+    than answering the league's standings. Diacritics are folded
+    (``entities._fold``)."""
     named = player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "alperen şengün alltime record", Who(), None)
     assert named == "Alperen Sengun"
     from association.query.compose.plan import refusal_result
@@ -1217,11 +1178,11 @@ def test_a_team_only_question_naming_one_player_is_read_back(scope_con: duckdb.D
 
 
 def test_a_team_named_wins_over_a_coincidental_player_word(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """A `team` (or `teams`) slot already present, and resolving to a REAL
+    """A team (or two) already on the subject, and resolving to a REAL
     franchise, means the question is genuinely about that team - a player
     named beside it, by a possessive or a nickname, changes no answer, the
-    same reasoning that leaves a stray name alone on head_to_head elsewhere
-    in this module."""
+    same reasoning that leaves a stray name alone on two teams' meetings
+    elsewhere in this module."""
     with_team = Who(kind="team", teams=("Boston Celtics",))
     assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "alperen şengün celtics record", with_team, None) is None
     with_teams = Who(kind="teams", teams=("Boston Celtics", "Orlando Magic"))
@@ -1229,22 +1190,20 @@ def test_a_team_named_wins_over_a_coincidental_player_word(scope_con: duckdb.Duc
 
 
 def test_an_invented_team_holding_the_players_own_name_does_not_block_the_refusal(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """Measured live: "alperen şengün alltime record" arrived one run with
-    no `team` slot at all, and another with `team='Alperen Şengün'` - the
-    player's own name, filed as though it were a franchise
-    (AGENTS.md, "the router invents names", the team-slot version). A team
-    slot nothing resolves is functionally the same as no team slot -
-    otherwise `team_leaderboard` would refuse "no team matching 'Alperen
-    Şengün'" instead, the same wrong-cause shape this check exists to fix."""
+    """The model can file the player's own name as the team ("Alperen
+    Şengün" as a franchise, AGENTS.md "A model invents names"). A team
+    nothing resolves is the same as no team - otherwise the ranking of teams
+    would refuse "no team matching 'Alperen Şengün'" instead, the wrong
+    cause."""
     invented = Who(kind="team", teams=("Alperen Şengün",))
     assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "alperen şengün alltime record", invented, None) == "Alperen Sengun"
 
 
 def test_a_real_team_the_question_never_names_does_not_block_the_refusal(scope_con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F110: "towns home rec including playoffs since 1/26/20 vs
-    spurs" routed team_record with `team='Toronto Raptors'` - a real
-    franchise with no word in the question - and would have answered the
-    Raptors' record about Karl-Anthony Towns. An ungrounded team is no team;
+    spurs" with the Toronto Raptors as the model's team - a real franchise
+    with no word in the question - is not the Raptors' record about
+    Karl-Anthony Towns. An ungrounded team is no team;
     the question names one player, so it is refused by his name. A team
     the question does name ("lakers") still wins."""
     scope_con.execute("INSERT INTO teams VALUES ('28','Toronto Raptors','TOR')")
@@ -1256,37 +1215,37 @@ def test_a_real_team_the_question_never_names_does_not_block_the_refusal(scope_c
 
 def test_a_common_word_is_not_read_as_the_team_only_questions_player(scope_con: duckdb.DuckDBPyConnection) -> None:
     """ "best" is Travis Best and "head" is Luther Head - the same
-    false-positive trap F093's restore_subject was measured against, applied
+    false-positive trap as restoring a single game's subject (F093), applied
     here too."""
     assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "Best record from 2010-11 to 2018-19 nba", Who(), None) is None
     assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "Celtics vs Bulls head to head record", Who(), None) is None
 
 
-def test_restore_team_subject_does_not_fire_with_a_player_already_present(scope_con: duckdb.DuckDBPyConnection) -> None:
+def test_a_team_word_beside_a_known_player_is_not_written_as_the_subjects_team(scope_con: duckdb.DuckDBPyConnection) -> None:
     """A bare team word beside an already-known player is a different
-    question - `own_team`'s - and a team-only intent naming a player with no
-    team of its own is the F111 refusal-by-name shape; this restore must not
-    quietly paper over either one."""
+    question - his tenure's - and a team-only key naming a player with no
+    team of its own is the F111 refusal-by-name shape; the subject's team is
+    not written over either one."""
     scope = Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"))
-    scope = _scope(scope_con, "lebron points for the lakers this season", scope, reads_player=True, restore_team_subject=True, asked=PLAYER_RANKING).scope
+    scope = _scope(scope_con, "lebron points for the lakers this season", scope, reads_player=True, asked=PLAYER_RANKING).scope
     assert scope.who.team is None
 
 
-def test_restore_team_subject_does_not_fire_on_an_ambiguous_or_absent_team(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """Never a guess: zero teams named, or more than one, leaves the slots
-    untouched and the question falls through exactly as it did before this
-    restore existed."""
+def test_no_team_or_two_teams_named_write_no_subjects_team(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Never a guess: zero teams named, or more than one, leaves the
+    subject's team unwritten."""
     none_named = Reading(measure=Measure(key="points", as_typed="points"))
-    none_named = _scope(scope_con, "who led the league in scoring", none_named, reads_player=False, restore_team_subject=True, asked=PLAYER_RANKING).scope
+    none_named = _scope(scope_con, "who led the league in scoring", none_named, reads_player=False, asked=PLAYER_RANKING).scope
     assert none_named.who.team is None
     two_named = Reading(measure=Measure(key="points", as_typed="points"))
-    two_named = _scope(scope_con, "76ers vs magic total points", two_named, reads_player=False, restore_team_subject=True, asked=PLAYER_RANKING).scope
+    two_named = _scope(scope_con, "76ers vs magic total points", two_named, reads_player=False, asked=PLAYER_RANKING).scope
     assert two_named.who.team is None
 
 
-def test_restore_team_subject_is_off_by_default(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """Same discipline as the player and own-team restores: an intent
-    outside TEAM_SUBJECT_RESTORABLE_INTENTS leaves `team` alone."""
+def test_a_teams_record_handed_no_team_is_given_none_from_the_words(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Writing the subject's names onto a team's record handed no team
+    leaves the team unwritten: the subject reading's own team is the
+    parser's to hand on, not this step's to restore."""
     scope = Reading(measure=Measure(key="points", as_typed="points"))
     scope = _scope(scope_con, "how many 3 pointers have the magic made so far this season", scope, reads_player=False, asked=TEAM_RECORD).scope
     assert scope.who.team is None
@@ -1302,7 +1261,7 @@ def test_a_team_nickname_resolves_to_the_team(nickname: str, team: str) -> None:
 
 
 def test_the_fragment_fallback_does_not_borrow_an_unrelated_name(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """A garbled `team` sharing no word with the one player the question
+    """A garbled team sharing no word with the one player the question
     happens to name elsewhere must not borrow that name - only a fragment
     that is actually part of the recovered name is safe to trust."""
     scope = Reading(who=Who(kind="team", teams=("Zqx",)), window=Window(order="recent"))
@@ -1322,7 +1281,7 @@ def franchises() -> duckdb.DuckDBPyConnection:
     whether they played in New Jersey or Brooklyn, id 3 was the Charlotte
     Hornets, the New Orleans Hornets and is now the Pelicans, and id 30 was the
     Bobcats before it was today's Hornets. Lakers and Clippers are here for
-    Los Angeles; Kings and Blazers for the two garbled cities the router wrote.
+    Los Angeles; Kings and Blazers for two garbled cities a model writes.
     """
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
@@ -1342,19 +1301,18 @@ def _teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None)
 
 
 def test_a_former_name_resolves_to_the_franchise(franchises: duckdb.DuckDBPyConnection) -> None:
-    """ "duren v nets 1h gameloh" arrived as opponent="New Jersey Nets" in every
-    replay since the first, and it resolved to nothing - hidden until a template
-    finally read the slot. The Nets are one franchise in every season."""
+    """ "duren v nets 1h gameloh" can carry the model's opponent "New Jersey
+    Nets", which resolves to the franchise: the Nets are one franchise in
+    every season."""
     assert [team_id for team_id, _ in _teams(franchises, "New Jersey Nets")] == ["17"]
     assert _teams(franchises, "Nets", 2005) == [("17", "New Jersey Nets")]
     assert _teams(franchises, "Sonics", 2005) == [("25", "Seattle SuperSonics")]
 
 
 def test_a_name_that_moved_between_franchises_is_read_for_its_season(franchises: duckdb.DuckDBPyConnection) -> None:
-    """The one that answered wrongly rather than not at all. "Hornets record
-    2008" came back with the 2008 Charlotte BOBCATS' 32-50, because only
-    today's names were matched. In 2008 the Hornets were New Orleans, id 3,
-    and went 56-26."""
+    """ "Hornets record 2008" is New Orleans, id 3 (56-26), not the 2008
+    Charlotte BOBCATS (32-50): a name is matched as each franchise carried it
+    in the season asked, not only by today's names."""
     assert _teams(franchises, "Hornets", 2008) == [("3", "New Orleans Hornets")]
     assert _teams(franchises, "Hornets", 2000) == [("3", "Charlotte Hornets")]
     assert _teams(franchises, "Hornets", 2026) == [("30", "Charlotte Hornets")]
@@ -1376,12 +1334,12 @@ def test_a_current_name_asked_about_before_it_existed_still_means_the_franchise(
 
 
 def test_a_garbled_city_is_read_by_its_nickname_unless_the_city_contradicts_it(franchises: duckdb.DuckDBPyConnection) -> None:
-    """The router expands a nickname into a full name and sometimes invents the
+    """The model expands a nickname into a full name and sometimes invents the
     city. "Portland Blazers" is right about the city and short a word - ESPN
     writes Portland Trail Blazers - and resolves. "Los Angeles Kings" names a
     city that belongs to two OTHER teams; picking the nickname over it would be
     a guess, so it resolves to nothing here and the question's own words settle
-    it in scope_from_question."""
+    it in the subject reading."""
     assert _teams(franchises, "Portland Blazers") == [("22", "Portland Trail Blazers")]
     assert _teams(franchises, "Los Angeles Kings") == []
     assert _teams(franchises, "LA") == [("12", "LA Clippers"), ("13", "Los Angeles Lakers")], "a real ambiguity stays one"
@@ -1389,9 +1347,9 @@ def test_a_garbled_city_is_read_by_its_nickname_unless_the_city_contradicts_it(f
 
 def test_a_franchise_id_is_trusted_only_where_the_warehouse_agrees() -> None:
     """The era table names ESPN's ids. A warehouse that files a different team
-    under one of them must not be renamed or resolved through it - the first
-    version of this renamed a Detroit Pistons filed under "3" to the New
-    Orleans Pelicans."""
+    under one of them is not renamed or resolved through it: a Detroit
+    Pistons filed under "3" stays the Pistons, not the New Orleans
+    Pelicans."""
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
     c.execute("INSERT INTO teams VALUES ('3','DET','Detroit Pistons','Detroit','Pistons')")
@@ -1399,7 +1357,7 @@ def test_a_franchise_id_is_trusted_only_where_the_warehouse_agrees() -> None:
     assert _teams(c, "Hornets", 2008) == []
 
 
-def test_two_teams_with_no_player_stay_a_head_to_head(franchises: duckdb.DuckDBPyConnection) -> None:
+def test_two_teams_with_no_player_stay_two_teams_meeting(franchises: duckdb.DuckDBPyConnection) -> None:
     """The case the carried-team rule exists for, and must keep: no player, so
     `teams` are the two sides and nothing is an opponent."""
     scope = Reading(who=Who(kind="teams", teams=("Sacramento Kings", "Portland Trail Blazers")))
@@ -1414,10 +1372,10 @@ def test_a_team_named_before_the_player_is_not_his_tenure(scope_con: duckdb.Duck
     the player named BEFORE the "for <team>" phrase, the order a tenure is
     asked in ("lebron ... for Miami")."""
     scope = Reading(who=Who(kind="player", players=("Alperen Sengun",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))
-    scope = _scope(scope_con, "show me stats for the celtics when sengun scored 20+ points", scope, reads_player=True, restore_team=True).scope
+    scope = _scope(scope_con, "show me stats for the celtics when sengun scored 20+ points", scope, reads_player=True, asked=PLAYER_LINE).scope
     assert scope.cuts.tenure is None
     tenure = Reading(who=Who(kind="player", players=("Alperen Sengun",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2026))
-    tenure = _scope(scope_con, "sengun stats as a starter for the celtics", tenure, reads_player=True, restore_team=True).scope
+    tenure = _scope(scope_con, "sengun stats as a starter for the celtics", tenure, reads_player=True, asked=PLAYER_LINE).scope
     assert tenure.cuts.tenure == "Boston Celtics"
 
 

@@ -5,12 +5,7 @@ the planner (``compose.plan.refusal_result``). Each test pairs the refusal
 with the fact that makes it safe: nothing reads the same shape (so the
 refusal never shadows an answer - the answering loop says it only where the
 answer side declined), and the sentence names the thing that is actually
-missing.
-
-Until Phase 3, step 0 these were ``refusals.unanswerable``'s checks and
-``refusals.by_question``, which the answering loop called with the question
-after the parser had settled it; the cases are the same, re-seated on the
-reader's verdict and the planner's sentence."""
+missing."""
 
 from __future__ import annotations
 
@@ -78,8 +73,8 @@ def con() -> duckdb.DuckDBPyConnection:
 
 
 def test_an_answerable_question_is_not_refused(con: duckdb.DuckDBPyConnection) -> None:
-    """The module says None for anything it has no shape for - the agent's
-    turn is only taken where nothing here can read the question."""
+    """A question whose words name nothing unread carries no cause: the
+    refusal is said only where nothing here can read the question."""
     assert (
         unanswerable(con, PLAYER_LOG, Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(opponent="Atlanta Hawks"), window=Window(count=5)), "lebron's last 5 vs the hawks") is None
     )
@@ -91,9 +86,9 @@ def test_an_answerable_question_is_not_refused(con: duckdb.DuckDBPyConnection) -
 
 
 def test_a_playoff_round_is_refused_naming_the_missing_label(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F165 "nba finals game log 2025": `round` is a slot no
-    reader honors (the planner declines it), and the games carry no round
-    label (ISSUES #10), so the agent had nothing to read either."""
+    """yardstick-v2 F165 "nba finals game log 2025": ``round`` is a cut no
+    relation honors (the planner declines it), and the games carry no round
+    label (ISSUES #10), so the refusal names the missing label."""
     scope = Reading(who=Who(kind="team", teams=("NBA Finals",)), cuts=Cuts(round="finals"), span=Span(season=2025, season_type=3))
     refusal = unanswerable(con, PLAYER_LOG, scope, "nba finals game log 2025")
     assert refusal is not None
@@ -114,8 +109,8 @@ def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDB
     )
     assert refusal is not None
     assert "birth date" in refusal.text and "'18 year old'" in refusal.text
-    # Hyphenated, as "18-year-old Lebron's ppg total" types it (ISSUES.md #290): read as the same
-    # age, where until Phase 3, step 3 nothing read it and his 2026 line was answered.
+    # Hyphenated, as "18-year-old Lebron's ppg total" types it (#290): read as the same age, not
+    # left unread for his season line to answer.
     from association.query.cuts import CutsContext, read_cuts
     from association.query.point import cuts_under
 
@@ -136,13 +131,9 @@ def test_a_conference_or_division_in_no_recognized_shape_names_its_own_cause(con
     division", "in the west") still gets its own sentence naming what would
     be read, not the generic "not something the games are read by" one - the
     words are right and only the phrasing is not, which is a different cause
-    than an unreadable value entirely.
-
-    .. versionchanged:: 4.4.0
-       A conference or division IS read now (K3-2, yardstick-v2 F055 "vs
-       southeast division") - this used to refuse every shape naming one,
-       "not read from the standings yet"; see
-       test_an_alignment_situation_is_never_refused_here below.
+    than an unreadable value entirely. A conference or division in a shape
+    ``parse_alignment`` reads is the relation's
+    (``test_an_alignment_situation_is_never_refused_here`` below).
     """
     refusal = unanswerable(
         con,
@@ -158,8 +149,8 @@ def test_a_conference_or_division_in_no_recognized_shape_names_its_own_cause(con
 
 
 def test_a_calendar_situation_is_never_refused_here(con: duckdb.DuckDBPyConnection) -> None:
-    """A situation the relation reads (the K3 shapes) is the relation's to
-    answer or refuse by value - this module must not claim it."""
+    """A calendar situation the relation reads is the relation's to answer or
+    refuse by value - no cause here claims it."""
     for situation in ("on tuesdays", "in march", "on christmas", "since january 31st"):
         assert parse_situation(situation) is not None
         assert unanswerable(con, PLAYER_LOG, Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(situation=situation_of(situation))), f"lebron games {situation}") is None
@@ -167,19 +158,18 @@ def test_a_calendar_situation_is_never_refused_here(con: duckdb.DuckDBPyConnecti
 
 def test_an_alignment_situation_is_never_refused_here(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F055 "vs southeast division": a conference or division
-    situation the relation reads (K3-2) is the relation's to answer or refuse
-    by value - the same discipline the calendar shapes above already keep."""
+    situation the relation reads is the relation's to answer or refuse by
+    value - the same discipline the calendar shapes above keep."""
     for situation in ("vs southeast division", "vs the west", "against eastern conference teams", "in the west"):
         assert parse_alignment(situation) is not None
         assert unanswerable(con, PLAYER_SPLITS, Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(situation=situation_of(situation))), f"lebron {situation}") is None
 
 
 def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F066-F068 "vj edgecombe 1st quarter assists by game" was
-    refused here for "only points are on record" - true until the period
-    relation (plan item 4) rebuilt assists, rebounds and the rest from the
-    plays, and a false cause after. Now only a stat no play carries per
-    period is refused, and the refusal names what IS rebuilt."""
+    """yardstick-v2 F066-F068 "vj edgecombe 1st quarter assists by game":
+    the period relation rebuilds assists, rebounds and the rest from the
+    plays, so only a stat no play carries per period is refused, and the
+    refusal names what IS rebuilt."""
     assert (
         unanswerable(
             con,
@@ -203,9 +193,9 @@ def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPy
     )
     assert half is not None and "the 2nd half" in half.text
     # A shooting percentage is a ratio of two rebuilt columns, read by both
-    # period templates' successors (ROADMAP step 2) - so it is not refused
-    # here, for a player or a team; an advanced rate still is, and the
-    # refusal names the percentages that ARE read.
+    # period readers (a player's and a team's) - so it is not refused here;
+    # an advanced rate is, and the refusal names the percentages that ARE
+    # read.
     assert (
         unanswerable(
             con,
@@ -231,13 +221,10 @@ def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPy
 
 
 def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F081 "lebron vs kawhi head to head": the pair relation
-    is read by ``player_matchup``. The router filed the second player as the
-    opponent and a reroute (``refusals.pair_from_opponent``, then the subject
-    reading's) put him back; the parser names the pair from the subject's
-    kind - two players - so the reroute went with the router (ROADMAP plan
-    item 6, step (d), part 3). A team opponent stays a narrowing of the one
-    player's games."""
+    """yardstick-v2 F081 "lebron vs kawhi head to head": the parser names
+    two players' meetings (``PLAYER_MEETINGS``) from the subject's kind -
+    two players - and files neither as an opponent. A team opponent stays a
+    narrowing of the one player's games."""
     from association.query.parse import read_route
 
     def parsed(question: str, names: list[str]) -> Reading:
@@ -250,9 +237,9 @@ def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.D
     assert team.asked != PLAYER_MEETINGS and team.who.player == "LeBron James" and team.cuts.opponent == "Atlanta Hawks"
 
 
-def test_a_teams_stat_no_period_splits_is_refused_and_a_rebuilt_one_is_not(con: duckdb.DuckDBPyConnection) -> None:
+def test_a_teams_period_stat_nothing_rebuilds_is_refused_and_a_rebuilt_one_is_not(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F065 "trailblazers stats last 10 games 3 point average
-    1st quarter" is answered now - the period's line rebuilds threes from the
+    1st quarter" is answered - the period's line rebuilds threes from the
     plays (the period relation's team half) - so only a stat neither the
     linescore nor that line holds is refused, by name."""
     refusal = unanswerable(
@@ -271,13 +258,13 @@ def test_a_teams_stat_no_period_splits_is_refused_and_a_rebuilt_one_is_not(con: 
 def test_a_period_used_as_a_condition_is_refused_by_name(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F062: "vj edgecombe three points made per game after
     making one three in first quarter" asks his whole-game threes over the
-    games whose first quarter held one - read into the scope now; a wording
-    whose line cannot be read is kept off the period templates, and this
-    names what a readable line looks like instead of falling through."""
+    games whose first quarter held one - read into the Reading's lines; a
+    wording whose line cannot be read is kept off the period readers, and
+    this names what a readable line looks like."""
     question = "vj edgecombe three points made per game after scoring a lot in the first quarter"
     result = unanswerable(con, None, Reading(who=Who(kind="player", players=("VJ Edgecombe",)), measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")), question)
     assert result is not None and result.data["refused"] == "period_as_condition" and "no line could be read from it" in result.text
-    # A condition the parser read is the relation's narrowing (ROADMAP step 2, #275), not this refusal.
+    # A condition the parser read is the relation's narrowing (#275), not this refusal.
     read = Reading(
         who=Who(kind="player", players=("VJ Edgecombe",)),
         lines=(Line(measure="threePointFieldGoalsMade", period=Period(number=1)),),
@@ -295,7 +282,7 @@ def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.
     from association.query.parse import read_route
 
     # The recognizer reads the word "bench" beside the typed measure the WORDS
-    # named (slice (c)); a reading built from the model's key alone names none.
+    # named; a reading built from the model's key alone names none.
     reading = read_route(names_of(con), "most opponent bench points allowed in the west at home by team this month", [], "points")
     assert [cause.kind for cause in reading.unsupported] == ["bench_points"]
     refusal = refusal_result(reading.unsupported[0])
@@ -306,10 +293,9 @@ def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.
 
 
 def test_a_championship_question_is_refused_before_a_ranking_answers_it(con: duckdb.DuckDBPyConnection) -> None:
-    """ "show which team won the nba championship for the past 10 years" routed
-    team_leaderboard and ranked records since 2017 - a fluent wrong answer;
-    titles are not on record as such. "Title odds" is team_outlook's and is
-    left alone."""
+    """ "show which team won the nba championship for the past 10 years" is
+    refused, never answered as a ranking of teams' records: titles are not
+    on record as such. "Title odds" is a team's outlook and is left alone."""
     refusal = by_question("show which team won the nba championship for the past 10 years", TEAM_RANKING, con)
     assert refusal is not None and "not on record as such" in refusal.text
     assert refusal.data == {"refused": "championship", "message": refusal.text}
@@ -358,7 +344,7 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
         ("lebron clutch stats", "clutch", "clutch"),
         ("Pelicans players defensive field goal percentage 2025-26", "defended shots", "defensive field goal percentage"),
         ("best dfg% in the league", "defended shots", "dfg%"),
-        # ISSUES.md #118: a betting line, answered as the plain record or log.
+        # #118: a betting line, never the plain record or log.
         ("Clippers ats record last 15 games at home", "betting line", "ats"),
         ("76ers versus chicago bulls spread last 10 games", "betting line", "spread"),
         ("Blazers ats as the underdog the last 9 road games", "betting line", "ats"),
@@ -370,10 +356,10 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
     ],
 )
 def test_a_fact_no_table_holds_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, fact: str, words: str) -> None:
-    """ISSUES.md #389: each of these fell to the parent grammar's default
-    reading - the 2026 points leaders, a player's season line, a team's
-    points per game - or, for a birth date, was refused as a game on that
-    day; the fact is refused by name before any reader runs."""
+    """#389: the fact is refused by name before any reader runs - never the
+    parent grammar's default reading (the points leaders, a player's season
+    line, a team's points per game) nor, for a birth date, a game on that
+    day."""
     refusal = by_question(question, PLAYER_RANKING, con)
     assert refusal is not None and refusal.data == {"fact": fact, "words": words, "message": refusal.text}, refusal
     assert repr(words) in refusal.text
@@ -389,10 +375,9 @@ def test_a_fact_no_table_holds_is_refused_by_name(con: duckdb.DuckDBPyConnection
     ],
 )
 def test_a_players_rating_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
-    """Found fixing ISSUES.md #351: a player's defensive rating answered his
-    points line (28 of the 2,082 feed questions); the ratings are kept for
-    teams alone, so the point reader refuses it by name - and a team's
-    rating is read as it was."""
+    """A player's defensive rating is no points line: the ratings are kept
+    for teams alone, so the point reader refuses it by name - and a team's
+    rating is read."""
     reading = read_route(names_of(con), question, [], "")
     assert reading.point_refusal is not None and reading.point_refusal.facts == {"fact": "player rating", "words": words}
     team = read_route(names_of(con), "Lowest defensive rating by a team this season", [], "")
@@ -433,9 +418,8 @@ def test_words_beside_an_absent_fact_are_not_refused(con: duckdb.DuckDBPyConnect
     ],
 )
 def test_a_coach_named_by_under_is_refused_by_the_coach_cause(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
-    """ISSUES.md #431: "under Lon Kruger" was read by nothing, and the
-    league's 2026 ranking answered; a coach's tenure is refused by the coach
-    cause, naming the words."""
+    """#431: "under Lon Kruger" is a coach's tenure, refused by the coach
+    cause naming the words, never the league's ranking."""
     refusal = by_question(question, PLAYER_RANKING, con)
     assert refusal is not None, question
     assert refusal.text.startswith(f"{words!r} reads as a coach's tenure. No table here holds a coach")
@@ -456,6 +440,6 @@ def test_a_coach_named_by_under_is_refused_by_the_coach_cause(con: duckdb.DuckDB
     ],
 )
 def test_under_before_a_number_or_no_name_is_no_coach(con: duckdb.DuckDBPyConnection, question: str) -> None:
-    """ISSUES.md #431: "under" before a number is a line or an age, and before
+    """#431: "under" before a number is a line or an age, and before
     words that are no two-word name (a stopword, a team, one word) no coach."""
     assert by_question(question, PLAYER_RANKING, con) is None

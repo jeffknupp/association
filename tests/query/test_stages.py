@@ -1,5 +1,5 @@
-"""The stage snapshot and its comparison (ROADMAP.md, Phase 0): the record a
-change to the pipeline is proven against, so every way the comparison can
+"""The stage snapshot and its comparison: the record a change to the
+pipeline is proven against, so every way the comparison can
 say "identical" is checked here to be a way it can also say "different"."""
 
 from __future__ import annotations
@@ -59,9 +59,8 @@ def test_a_snapshot_holds_the_four_stages_as_json() -> None:
 
 
 def test_the_query_stage_is_what_the_planner_built_not_the_point_again() -> None:
-    # Phase 1's order from here, step 3: a planner that builds something other
-    # than the point it was handed is seen in the query stage, which recorded
-    # the point itself until then.
+    # A planner that builds something other than the point it was handed is
+    # seen in the query stage.
 
     reading = _reading()
     planned = plan_point(reading)
@@ -72,7 +71,7 @@ def test_the_query_stage_is_what_the_planner_built_not_the_point_again() -> None
 
 
 def test_no_stage_record_holds_the_questions_text() -> None:
-    """The text stays in the reader (ROADMAP contract 1): the snapshot names
+    """The text stays in the reader: the snapshot names
     the question once, at the top, and no stage's record repeats it - the
     subject carries it today, and the record leaves it and the evidence
     prose out."""

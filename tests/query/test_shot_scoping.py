@@ -1,25 +1,16 @@
-"""``shot_chart``/``shot_distance`` read through the player-games relation
-(step 3, C5): every narrowing besides ``order``/``span`` - an opponent, a
-venue, a teammate's absence, a starter/bench half, one game of a series, a
-line on a box-score column, one Eastern date, ``since``, a calendar
-``situation`` and a companion's role (``conditions``) - and ``order``
-honoring ``limit`` as a WINDOW of games rather than always exactly one.
+"""A shot chart and a shot distance read through the player-games relation:
+every narrowing besides the window and the span - an opponent, a venue, a
+teammate's absence, a starter/bench half, one game of a series, a line on a
+box-score column, one Eastern date, ``since``, a calendar ``situation`` and
+a companion's role - and a window of games read as a WINDOW rather than
+always exactly one game. A chart or distance narrowed by any one of them
+alone never draws the whole season.
 
 One small fixture, built by hand so every count asserted below can be
 counted off it rather than guessed - the same discipline
-``test_conditions.py``'s own fixture docstring states. Every scenario here was
-checked against the real warehouse first (`shot_chart`, `player_game_log`,
-`player_box_stats` over Stephen Curry's 2026 season) before being shrunk to a
-handful of rows; see the C5 report for the exact counts measured there.
-
-.. versionchanged:: 5.0.0
-   Adds ``situation`` and ``conditions`` (ROADMAP plan item 6, step (d)
-   follow-up): both joined ``RELATION_SCOPING`` after this file's own tests
-   were written, and ``_shots_other_narrowing`` (``templates/shots.py``) kept
-   its own hand-written list rather than reading the relation's declaration,
-   so a shot chart or distance narrowed only by one of the two silently drew
-   the whole season - "stephen curry shot chart on tuesdays" answered the
-   same 374/803 (46.6%) as no narrowing at all.
+``test_conditions.py``'s own fixture docstring states, in the shape of the
+real tables (``shot_chart``, ``player_game_log``, ``player_box_stats``)
+over Stephen Curry's 2026 season.
 """
 
 from __future__ import annotations
@@ -60,7 +51,7 @@ def _shot(event: str, season: int, athlete: str, made: bool, *, season_type: int
 @pytest.fixture
 def shots_ctx(tmp_path: Path) -> AnswerContext:
     """A Warriors season in miniature, mirroring the real Golden State/Stephen
-    Curry shape measured against the warehouse before this was shrunk:
+    Curry shape in the warehouse:
 
     ====  ===========  ===========  ==========  =================================
     game  season       opponent     venue       notes
@@ -89,7 +80,7 @@ def shots_ctx(tmp_path: Path) -> AnswerContext:
         "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
     )
     # Every tip at 23:00Z, which is evening Eastern the SAME calendar day
-    # (23:00 UTC - 4/5h never crosses midnight), so a `date` slot can be
+    # (23:00 UTC - 4/5h never crosses midnight), so a date cut can be
     # compared straight against the UTC date here with no Eastern-rollover
     # arithmetic to get wrong.
     c.executemany(
@@ -249,17 +240,15 @@ def test_shot_chart_honors_season_n(shots_ctx: AnswerContext) -> None:
 
 
 def test_shot_chart_honors_limit_as_a_window_not_a_single_game(shots_ctx: AnswerContext) -> None:
-    """The step's own finding: "last two games" used to chart the whole
-    season. Windowed to the 2 newest (e5, e6): 1 + 2 = 3 attempts, 2 made."""
+    """ "last two games" charts the 2 newest (e5, e6), never the whole
+    season: 1 + 2 = 3 attempts, 2 made."""
     whole_season = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(order="recent", count=2)))
     assert "2/3 made" in (whole_season.text or "")
     assert "over his last 2 games" in (whole_season.text or "")
 
 
-def test_shot_chart_honors_limit_with_no_order_slot_at_all(shots_ctx: AnswerContext) -> None:
-    """The router's own traces for this exact question never emit `order` -
-    only `limit` - so the fix has to read a bare `limit` as "recent" or it
-    would not reach the real question. See `_shots_order`."""
+def test_shot_chart_reads_a_bare_count_as_the_newest_games(shots_ctx: AnswerContext) -> None:
+    """A window with a count and no end is the newest N games."""
     answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(count=2))).text or ""
     assert "2/3 made" in answer
 
@@ -281,9 +270,9 @@ def test_shot_chart_windows_a_narrowed_set_together(shots_ctx: AnswerContext) ->
     assert "Los Angeles Lakers" in answer
 
 
-def test_shot_chart_still_refuses_a_career_span_with_an_order(shots_ctx: AnswerContext) -> None:
-    """Unchanged by this step: "his last game" picks one game inside one
-    season, where a career asks for every one of them."""
+def test_shot_chart_refuses_a_career_span_with_an_order(shots_ctx: AnswerContext) -> None:
+    """ "his last game" picks one game inside one season, where a career asks
+    for every one of them."""
     with pytest.raises(Unsupported, match="career span"):
         shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), window=Window(order="recent")))
 
@@ -292,16 +281,14 @@ def test_shot_chart_reports_no_games_rather_than_no_shots_when_narrowing_matches
     """A combination Curry never met in the fixture's span - he only comes off
     the bench against the Lakers (e5), never the Celtics - so the fact
     missing is which games, not which shots, and the relation's own
-    `_no_narrowed_games` answers rather than a bare "no shots found"."""
+    ``no_narrowed_games`` answers rather than a bare "no shots found"."""
     answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=SEASON), split="bench")).text or ""
     assert "played" in answer and "none of them" in answer
 
 
 def test_shot_chart_honors_situation(shots_ctx: AnswerContext) -> None:
-    """The bug itself: "on tuesdays" used to answer the same 7/9 whole-season
-    shots as no narrowing at all (measured live against the real warehouse:
-    "stephen curry shot chart on tuesdays" answered 374/803, identical to no
-    narrowing). e1-e6 are each 2 days apart, so - 2 and 7 sharing no common
+    """ "on tuesdays" narrows the chart, never the 7/9 whole-season shots of
+    no narrowing at all. e1-e6 are each 2 days apart, so - 2 and 7 sharing no common
     factor - their six Eastern days fall on six different weekdays; e3's
     ({SEASON}-11-05) is the only one of the six on its weekday, and e3 alone
     is 1 attempt, made."""
@@ -310,11 +297,10 @@ def test_shot_chart_honors_situation(shots_ctx: AnswerContext) -> None:
     assert "1/1 made" in answer
 
 
-def test_shot_chart_honors_conditions(shots_ctx: AnswerContext) -> None:
-    """The same bug, for a companion's role: "when draymond green starts"
-    used to answer the whole season too. Klay Thompson (athlete 2) starts
-    e1, e2, e3 and e6 (he sits e4 and e5) - 2 + 1 + 1 + 2 = 6 attempts, 4
-    made."""
+def test_shot_chart_honors_a_companions_role(shots_ctx: AnswerContext) -> None:
+    """A companion's role narrows the chart too: "when klay thompson starts".
+    Klay Thompson (athlete 2) starts e1, e2, e3 and e6 (he sits e4 and e5) -
+    2 + 1 + 1 + 2 = 6 attempts, 4 made."""
     answer = (
         shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).text or ""
     )
@@ -340,30 +326,28 @@ def test_shot_distance_honors_limit_as_a_window(shots_ctx: AnswerContext) -> Non
     assert "over his last 2 games" in answer
 
 
-def test_shot_distance_still_refuses_a_career_span_with_an_order(shots_ctx: AnswerContext) -> None:
+def test_shot_distance_refuses_a_career_span_with_an_order(shots_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported, match="career span"):
         shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), window=Window(order="first")))
 
 
-def test_shot_distance_single_game_note_is_unchanged_by_the_relation_port(shots_ctx: AnswerContext) -> None:
-    """The exact single-game phrasing golden tests pin in `test_readers.py`
-    - "most recent game (date)" - still comes from the bare `player_game_log`
-    lookup (`_shots_ordered_games`), not the relation, when `order` is the
-    only scoping given."""
+def test_shot_distance_says_a_window_of_one_game_as_the_most_recent_game(shots_ctx: AnswerContext) -> None:
+    """A window of one game with nothing else narrowing is said as "most
+    recent game (date)", the phrasing ``test_readers.py`` pins too."""
     answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON), window=Window(order="recent"))).text or ""
     assert f"most recent game ({SEASON}-11-11)" in answer
 
 
 def test_shot_distance_honors_situation(shots_ctx: AnswerContext) -> None:
-    """The same bug as `shot_chart`'s: "on tuesdays" answered the whole
-    season's 803-attempt (real warehouse) average regardless. e3's weekday
-    (see `test_shot_chart_honors_situation`) is one attempt."""
+    """ "on tuesdays" narrows the distance as it does the chart, never the
+    whole season's average. e3's weekday (see
+    ``test_shot_chart_honors_situation``) is one attempt."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
     answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).text or ""
     assert "over 1 attempts" in answer
 
 
-def test_shot_distance_honors_conditions(shots_ctx: AnswerContext) -> None:
+def test_shot_distance_honors_a_companions_role(shots_ctx: AnswerContext) -> None:
     """Klay Thompson starting (e1, e2, e3, e6): 2 + 1 + 1 + 2 = 6 attempts."""
     answer = (
         shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).text or ""
@@ -372,17 +356,13 @@ def test_shot_distance_honors_conditions(shots_ctx: AnswerContext) -> None:
 
 
 def test_shot_distance_situations_one_game_note_names_the_situation(shots_ctx: AnswerContext) -> None:
-    """The other half of the fix: `_shot_distance_games`' one-game note used
-    `_shots_other_narrowing` to decide whether a single game it found came
-    from JUST a window (`order`/`limit` alone - "in his most recent game
-    (date)") or from a real narrowing that happens to leave one game (the
-    general phrase, naming what narrowed it). With `situation` missing from
-    that check, a single game a calendar narrowing (not a window) found still
-    took the window's own phrasing - silently dropping the reason, exactly
-    the shape AGENTS.md warns a coverage caveat or a narrowing note can fail
-    in. e3's weekday (the same single game `test_shot_chart_honors_situation`
-    finds) has no `order`/`limit` at all, so the note must name the weekday,
-    never "most recent game"."""
+    """``_shot_distance_games``' one-game note asks ``_shots_other_narrowing``
+    whether a single game it found came from JUST a window ("in his most
+    recent game (date)") or from a real narrowing that happens to leave one
+    game (the general phrase, naming what narrowed it); a situation is such a
+    narrowing. e3's weekday (the same single game
+    ``test_shot_chart_honors_situation`` finds) has no window at all, so the
+    note names the weekday, never "most recent game"."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
     answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).text or ""
     assert f"on {weekday.capitalize()}s" in answer

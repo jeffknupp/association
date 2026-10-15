@@ -62,8 +62,7 @@ The rules:
 - **New shapes are frozen: a new shape comes only by Jeff's lifting, and
   brings what decision D11 lists.** D11 (2026-10-14) replaced D4's plain
   freeze with "what a new shape brings" (`ROADMAP.md`, under "D4 lifted
-  for the season ranking's shapes"); the freeze test's failure message
-  still names D4. `tests/query/test_frozen_shapes.py`
+  for the season ranking's shapes"). `tests/query/test_frozen_shapes.py`
   holds the 28 keys the grammar can name (`reading.PointShape`: relation,
   shape, `by`; the 26th to 28th by Jeff's liftings of 2026-10-13 and -14:
   `reading.PLAYERS_COUNTED`, a team's best single game
@@ -1230,7 +1229,7 @@ relation's statements):
   teaches that the enum lacks can never be emitted, and silently becomes
   something else. `test_the_prompt_and_the_schema_agree`
   (`tests/query/test_normalizer.py`) holds the examples to the enum, and
-  `test_every_intent_is_reachable_from_the_reader`
+  `test_every_asked_key_is_reachable_from_the_reader`
   (`tests/query/test_grammar.py`) holds every shape reachable from
   `PARENT_GRAMMAR`, `CODE_ASSIGNED_ASKS` or `KIND_ASSIGNED_ASKS`. The
   reader's behavior on a wording is a case in

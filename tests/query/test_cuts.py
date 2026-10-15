@@ -1,10 +1,10 @@
-"""The games' cuts, typed (Phase 3, step 2's third slice): the one tagger
+"""The games' cuts, typed: the one tagger
 that reads which games of a span a read sees
 (:func:`association.query.cuts.read_cuts`), the characters it claims, the
 typed value's door and projection (:class:`association.query.reading.Cuts`,
 :class:`~association.query.reading.Situation`), the relations' one
-resolution of each cut, and the behavioral check contract 4 asks for:
-applying each cut on each relation changes the result.
+resolution of each cut, and the behavioral check that applying each cut on
+each relation changes the result.
 """
 
 from __future__ import annotations
@@ -100,10 +100,10 @@ def _situation(text: str) -> Situation:
         ("his 18th season", PLAYER_LINE, Cuts(season_n=18)),
         ("most points in 15th season played", PLAYER_RANKING, Cuts(season_n=15)),
         # The opponents by their seeding: an alignment nothing reads, read whole so it is refused by
-        # name - its "top 3" was a window of his last 3 games (ISSUES.md #396, fixed in Phase 4, step 6).
+        # name - its "top 3" is no window of his last 3 games (#396).
         ("luka doncic stats vs top 3 seed teams in the 2026 season", PLAYER_LINE, Cuts(situation=_situation("vs top 3 seed teams"))),
         ("tatum points against top seeds", PLAYER_LINE, Cuts(situation=_situation("against top seeds"))),
-        # A day, and no month of its own beside it (ISSUES.md #354, fixed in Phase 4, step 6).
+        # A day, and no month of its own beside it (#354).
         ("nba Anthony Davis most offensive rebound in march 24 2018", GAME_HIGHS, Cuts(date="2018-03-24")),
     ],
 )
@@ -284,11 +284,10 @@ def test_the_tagger_claims_the_characters_it_read_once() -> None:
 
 
 def test_a_day_reads_no_month_of_its_own() -> None:
-    """ISSUES.md #354: "in march 24 2018" is one day, and the month in it no
-    cut of its own - the situation's month read "in march" inside it, and
-    the two claims over "march" were joined (``situation+date``) and the
-    answer named the month beside the day. A month with no day after it is
-    still the situation; a month before a year is no day."""
+    """#354: "in march 24 2018" is one day, and the month in it no cut of
+    its own - no situation "in march" inside it, and no joined
+    ``situation+date`` claim over "march". A month with no day after it is
+    the situation; a month before a year is no day."""
     question = "nba Anthony Davis most offensive rebound in march 24 2018"
     read = cuts_under(GAME_HIGHS, read_cuts(question, CutsContext()), split=None)
     assert read.cuts.situation is None and read.cuts.date is not None
@@ -301,7 +300,7 @@ def test_a_day_reads_no_month_of_its_own() -> None:
 def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None:
     route = settle(PLAYER_LOG, "tatum last 5 home games vs the celtics in the 2024 playoffs", who=Who(kind="player", players=("Jayson Tatum",)))
     assert route.cuts == Cuts(venue="home") and route.window.count == 5 and route.span.season == 2024
-    # Each tagger's claim is cut to the words it needed (Phase 3, step 3, span.needed): the window
+    # Each tagger's claim is cut to the words it needed (span.needed): the window
     # needs "last 5" and "games" (without "games", "last 5 home" names no window), not "home",
     # which is the venue's alone.
     q = "tatum last 5 home games vs the celtics in the 2024 playoffs"
@@ -345,7 +344,7 @@ def test_the_relation_tables_declare_the_cuts_once() -> None:
     assert cells_stated(PointShape("team_games", "split", "presence")) & Cuts.CELLS == {"opponent"}
 
 
-# ---------------- contract 4: applying each cut changes the result ----------------
+# ---------------- applying each cut changes the result ----------------
 
 
 def _player_games(ctx: AnswerContext, cuts: Cuts, span: Span | None = None) -> tuple[int, int]:

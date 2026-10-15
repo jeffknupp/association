@@ -76,10 +76,8 @@ def test_data_pull_parses_seasons(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_data_pull_fetch_only_skips_warehouse_build(monkeypatch: pytest.MonkeyPatch) -> None:
-    """--fetch-only used to also silently drop --advanced-stats with no
-    warning, back when that was a separate flag - now that advanced stats are
-    unconditional whenever the warehouse IS built, the only thing left to
-    verify is that --fetch-only really does skip the build step entirely."""
+    """--fetch-only skips the build step entirely (advanced stats are built
+    whenever the warehouse is)."""
     build_calls: list[Any] = []
 
     class FakePipeline:
@@ -124,8 +122,8 @@ def test_data_load_parses_tables(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_data_check_defaults_to_offline(monkeypatch: pytest.MonkeyPatch) -> None:
-    """live now defaults to False (local-only, fast) - --live opts into the
-    ESPN cross-check, replacing the old --offline opt-out."""
+    """live defaults to False (local-only, fast) - --live opts into the ESPN
+    cross-check."""
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
         "association.check.report.run_check",
@@ -168,7 +166,7 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
     assert captured["question"] == "who led the league in assists"
     assert "the answer" in result.output
     # The label is what the history file records as the run's `command`.
-    # Agent.ask no longer reads sys.argv itself and defaults the label to "",
+    # Agent.ask does not read sys.argv itself and defaults the label to "",
     # so a CLI that forgot to pass one would write history files with an empty
     # command line and nothing else would notice. Only its presence can be
     # checked here: CliRunner invokes the command in-process, so the real
@@ -199,10 +197,10 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
     assert str(captured["out_dir"]) == "charts"
 
 
-def test_the_agents_options_are_gone_with_it() -> None:
+def test_a_retired_agent_option_fails_loudly() -> None:
     """--model, --think, --no-fast-path, --disable-fallthrough and
-    --agent-budget configured the tool-calling fall-through (5.0.0 removed
-    it); a stale script passing one fails loudly rather than silently doing
+    --agent-budget configured a tool-calling agent the package does not
+    have; a stale script passing one fails loudly rather than silently doing
     something else."""
     for flag in ("--model", "--think", "--no-fast-path", "--disable-fallthrough", "--agent-budget"):
         result = CliRunner().invoke(query, [flag, "x", "q"])

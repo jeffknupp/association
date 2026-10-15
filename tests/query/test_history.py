@@ -1,4 +1,4 @@
-"""Regression + sanity tests for RunHistory - every run's command/trace/timing
+"""Tests for RunHistory - every run's command/trace/timing
 evidence, written regardless of --verbose."""
 
 import json
