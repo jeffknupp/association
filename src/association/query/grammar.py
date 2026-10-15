@@ -94,7 +94,7 @@ class Asked:
     typed subject with the names the rules read under that key, the team the
     subject is set against, the measure key the words name over the model's
     (the measure tagger's context), and the words the rules' decisions
-    turned on (:func:`~association.query.span.read_by`, named ``intent``).
+    turned on (:func:`~association.query.span.read_by`, named ``asked``).
 
     .. versionadded:: 6.0.0
     """
@@ -177,7 +177,7 @@ def settle(
     # settle or a name they write (span.read_by) - the rules are over the
     # whole question ("which team", "as a starter", "log"), so what they
     # read is what their decision turned on.
-    claims = read_by(text, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed, team_words, reached_when))
+    claims = read_by(text, "asked", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed, team_words, reached_when))
     return Asked(
         asked=working.asked, coach=coach, subject=working.subject, opponent=working.opponent, stat=working.stat, claims=(*claims, *_team_word_claims(text.text, who, working.subject, team_words))
     )

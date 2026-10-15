@@ -789,7 +789,7 @@ def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: 
     it typed, and the parent grammar the opponent the subject reading read
     (``lexicon.GrammarText``), so a grammar claims its own words around them
     and the line's and the opponent's characters are their readers' alone -
-    no claim is joined from the two (``intent+line``, ``intent+opponent``),
+    no claim is joined from the two (``asked+line``, ``asked+opponent``),
     and the child's words in its decision are the question's own."""
     question = "How many games did SGA score 30+ points this season?"
     r = _read(con, question, names=["SGA"], stat="points")
@@ -801,7 +801,7 @@ def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: 
     r = _read(con, question, names=["maxey", "boston"], stat="")
     assert r.asked == PLAYER_LOG
     read = {question[c.start : c.end]: c.what for c in r.claims}
-    assert read["against boston"] == "opponent" and read["games"] == "intent" and not any("+" in what for what in read.values())
+    assert read["against boston"] == "opponent" and read["games"] == "asked" and not any("+" in what for what in read.values())
 
 
 def test_the_grammars_read_the_companions_the_windows_and_the_dates_as_the_taggers_type_them(con: duckdb.DuckDBPyConnection) -> None:

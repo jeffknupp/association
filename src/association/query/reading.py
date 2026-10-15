@@ -1100,7 +1100,7 @@ def _kind_named(players: tuple[str, ...], teams: tuple[str, ...]) -> SubjectKind
 class Claim:
     """The characters of the question one reader rule read - ``start`` and
     ``end`` as a slice of the question, and ``what`` it read them as
-    (``season``, ``season_type``, ``career``, ``range``, ``intent`` - what
+    (``season``, ``season_type``, ``career``, ``range``, ``asked`` - what
     the words ask - ...).
     A tagger claims each span it read once, cut to the words its reading
     depends on (:func:`~association.query.span.needed`); a rule over the

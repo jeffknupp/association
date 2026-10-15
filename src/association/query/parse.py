@@ -698,7 +698,7 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # row), the meeting word that makes two teams the kind it reads ("how
     # many times did the 76ers play boston"); not the "game" of "game log",
     # which "log" names alone.
-    parent_claims = read_by(prepared, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
+    parent_claims = read_by(prepared, "asked", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
     # The rules are handed what the phrases typed, never their words: a
     # record "when <someone> scored N" is a reached companion led by "when".
     reached_when = any(predicate == "reached" and question[start:end].lower().startswith("when") for start, end, predicate in read.companion_phrases)
@@ -800,7 +800,7 @@ def _read_route_staged(
     # rules decline it (the decision records them either way): the words
     # whose deletion names another child, or its words otherwise (a child's
     # words are said in its reason) - span.read_by.
-    child_claims = read_by(marked, "intent", lambda probed: child_named(read, parent, probed))
+    child_claims = read_by(marked, "asked", lambda probed: child_named(read, parent, probed))
     if named is not None:
         child, words = named
         staged = settle(numbered, child, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines, reached_when=reached_when)
