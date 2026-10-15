@@ -119,10 +119,16 @@ _PLAYER_LOG: lexicon.GrammarRow = lexicon.AnyOf(
         # 5 games") and a range opened on a dated day ("since 1/26/20"), as
         # the window tagger and the cuts tagger typed them: the row reads that
         # one stands, and its words are the taggers' to claim (slice (c)).
-        lexicon.stands("window", "date"),
+        lexicon.stands("window"),
+        # A month or a date - unless a per-game word stands beside it, where
+        # the line over those games is asked ("how many points did fox
+        # average in November 2023", "tatum averages since 12/11/2023": the
+        # last 10 games were listed until ISSUES.md #412).
+        lexicon.AllOf((lexicon.AnyOf((lexicon.PLAYER_LOG_DATE_ROW, lexicon.stands("date"))), lexicon.NoneOf((lexicon.PER_GAME_ROW,)))),
     )
 )
-"""A player's games rather than his line: a log word, a window, one game, a date."""
+"""A player's games rather than his line: a log word, a window, one game, a
+date with no per-game word beside it."""
 
 _LEAGUE_TEAMS_RANKED = lexicon.AllOf((lexicon.LEAGUE_TEAMS_RANKED_ROW, lexicon.AnyOf((lexicon.TEAM_WORD_ROW, lexicon.NoneOf((lexicon.LINE_OF_GAMES_ROW,))))))
 """The league's teams ranked: a team word, or "nba" beside wins or losses,

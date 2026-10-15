@@ -287,15 +287,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #394
 
-### "average" beside a month or a date is read as a game log: "How many points did De'aaron fox average in November 2023" and "tatum averages since 12/11/2023" list the last 10 games
-- **Found:** 2026-10-13, the P1 sweep (lane S), proving #353 (a worded since-date with a year).
-- **Evidence:** the parent grammar's player log row (`lexicon.PLAYER_LOG_ROW`, `parse._PLAYER_LOG`) reads `\d+/\d+` and the month names `march|january|february|april|december|november|october` as a log, ahead of every row that reads a line, and nothing reads "average" against it. On the readings run of `21f12bd` plus #353's fix (`reader_pop.py`, the 2,710): "How many points did De'aaron fox average in November 2023" ("De'Aaron Fox in November, last 10 of 13 games ..."), "Scottie Barnes averages Feb 28th to April 14th 2026" and its "... ts%" twin (his last 10 games between the days) are `player_games`/`rows`/`date` - 3 of the 2,082 feed questions, "average" unread in each. Probed with the model's names and stat (`lebron`, `points`): "how many points did lebron average since 1/31/2020" and "... since january 31 2020" list his last 10 of 381 games, "average" unread; "tatum averages since 12/11/2023" lists his last 10 of 141, where "tatum averages since dec 11 2023" (a month the row does not hold) answers his line, 26.2 points per game in 141 games.
-- **User sees:** ten rows of a log where one average was asked - a different shape, fluently.
-- **Next step:** the log row reads a month or a slashed day only where no line word ("average(s)", "avg", "ppg", "per game") stands beside it, so the line's row takes the question with the cut on it; measure the 2,710 readings and both answer populations first, every moved answer enumerated. The row is the grammar family's (lane N's), not the cuts'.
-- **Priority:** P1 - a different shape answered fluently; 3 of the 2,082 (#267's own question among them: since #267 it lists the right November's 9 games, as a log).
-- **Source:** ours.
-- **GitHub:** #412
-
 ## P2: misleading or incomplete
 
 ### A season line on a percentage, on the game-level ranking or on a figure no season line holds is refused: "nba players who average 18 ppg 3.5 assists and shot 54% or better" has no reader

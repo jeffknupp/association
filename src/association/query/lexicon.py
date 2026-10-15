@@ -4829,11 +4829,24 @@ LOG_ROW = row(r"\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b
 PLAYER_LOG_ROW = row(
     r"\b(game ?log|gamelog|logs?|last " + COUNT + r" games|each game|game by game|box scores?|(?<!per )games? (with|where|in which|against|vs)"
     r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
-    r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
+    r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d)\b"
 )
-"""A player's games rather than his line in words: a log word, one game,
-a month, a date. The window words stay for a form the window tagger does
-not type ("final games"); a typed one stands as the typed value.
+"""A player's games rather than his line in words: a log word, one game.
+The window words stay for a form the window tagger does not type ("final
+games"); a typed one stands as the typed value.
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_LOG_DATE_ROW = row(r"\b(month of|\d+/\d+|march|january|february|april|december|november|october)\b")
+"""A month or a slashed day, which reads a player's games - unless a
+per-game word stands beside it (:data:`PER_GAME_ROW`).
+
+.. versionadded:: 6.0.0
+"""
+PER_GAME_ROW = row(r"\b(averag\w*|avg|ppg|rpg|apg|per game)\b")
+"""A per-game word: beside a month or a date, the question is the line
+over those games, not their log ("how many points did fox average in
+November 2023", ISSUES.md #412).
 
 .. versionadded:: 6.0.0
 """

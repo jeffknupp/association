@@ -1551,3 +1551,25 @@ def test_a_history_by_a_per_game_abbreviation_reads_its_stat(con: duckdb.DuckDBP
     """ "ppg" names the history's stat: points by season, not the line."""
     reading = _read(con, "sga ppg avarage in the last 4 seasons", ["Shai Gilgeous-Alexander"])  # codespell:ignore avarage - the feed's question as typed
     assert reading.measure is not None and reading.measure.key == "points"
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "stat"),
+    [
+        ("How many points did Jokic average in November 2023", ["Jokic"], "points"),
+        ("Jokic averages Feb 28th to April 14th 2026", ["Jokic"], ""),
+        ("jokic averages since 12/11/2023", ["Jokic"], ""),
+    ],
+)
+def test_a_per_game_word_beside_a_month_or_a_date_is_the_line_not_the_log(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str) -> None:
+    """ISSUES.md #412: "How many points did De'aaron fox average in November
+    2023" listed his November games - the log row read the month ahead of
+    every row that reads a line. With a per-game word beside it the month
+    or the date cuts the line."""
+    reading = _read(con, question, names, stat)
+    assert reading.asked == PLAYER_LINE
+
+
+def test_a_month_with_no_per_game_word_is_still_the_log(con: duckdb.DuckDBPyConnection) -> None:
+    """ "jokic games in november 2023" lists the games."""
+    assert _read(con, "jokic game log november 2023", ["Jokic"]).asked == PLAYER_LOG
