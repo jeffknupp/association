@@ -4518,3 +4518,272 @@ about the data, and pytest runs offline. Run it after editing `COVERAGE` and
 after any pull that reaches further back than the last one. "Usable" there is
 deliberately not "present" — 82 games where a league plays 1,100 is rows, not
 a season.
+
+### Verifying your work
+
+*Lines 2747-2762; the rule now: "A refactor is proven by a golden comparison, not by the suite alone".*
+
+- **A refactor is proven by a golden comparison, not by the suite alone.** The
+  complexity refactor that split the router's `route()` (its stages became
+  `router._settle`'s, and the grammar's rules and the taggers in Phase 3,
+  step 4), `parse_game_summary` and the
+  templates into steps was checked by calling each function with many inputs
+  - the routing corpus's slots, the tests' own cases, one per branch - against
+  the original code and again after, and diffing the full results (answer text,
+  data, exceptions, written files, types as well as values). Import each copy
+  explicitly (`PYTHONPATH=<tree>/src PYTHONDONTWRITEBYTECODE=1`, print
+  `association.__file__`), and perturb one token of the refactored code to
+  prove the comparison can fail. A green suite says only that the tested
+  inputs still pass. **On the query path that comparison is built:**
+  `scripts/stage_snapshots.py` ("While the pipeline is rebuilt") runs both
+  populations, pins what moves and names the stage a difference entered
+  at. Use it rather than a hand-rolled harness; the perturbation is still
+  yours to make.
+
+*Lines 2768-2774; the rule now: "Read the fixture" and "Exit 0 is not proof".*
+
+- **Read the fixture, do not guess what it contains.** Several wrong test
+  assertions came from assuming a shot count or a made/attempted split.
+- **Exit 0 is not proof.** A Sphinx build passed `-W` with the version variable
+  silently deleted, because `release` is optional. Check the rendered output,
+  the built artifact, the actual string — not the return code. And beware that
+  `cmd | tail` reports *tail's* status: a failing `data load` read as exit 0
+  that way, twice, before it was piped to a file instead.
+
+*Lines 2775-2782; the rule now: "Check rendered HTML in a real browser engine" and "Install and run it".*
+
+- **Check rendered HTML output in a real browser engine.** The chart pages
+  paint from CSS variables, and WeasyPrint does not resolve them inside SVG —
+  it drew the fingerprint's blue polygon gray and its group-colored labels
+  black, which would have shipped as a wrong screenshot. A headless Chromium
+  renders them correctly (the `docs/_static` shots are made that way).
+- **Install and run it, for anything packaging-related.** The wheel and sdist
+  are verified by installing into a fresh venv *outside the repo* and running
+  the CLI; nothing else proves the entry point and `py.typed` survived.
+
+*Lines 2785-2832; the rule now: the stale `.pyc`, "A guard is worth nothing until you have watched it fail", `scripts/perturb.py`'s three traps, import success, the worktree's installed package, parallel branches' helper names.*
+
+- **A same-size edit inside one second can be served from a stale `.pyc`.**
+  Python validates its bytecode cache on `(mtime_to_the_second, size)`, so
+  rewriting `partial=(2002,)` to `partial=(2005,)` and re-running immediately
+  gets the OLD module. This cost a real debugging detour: a checker was
+  "failing" on a source file that was already correct. When a script rewrites a
+  module and re-runs it — perturbation tests especially — clear `__pycache__`
+  or set `PYTHONDONTWRITEBYTECODE=1`.
+- **A guard is worth nothing until you have watched it fail.** Every check
+  added here was confirmed by perturbing what it claims to protect and seeing
+  it catch that: the coverage floors by moving each one, the router's `side`
+  slot by removing the hook. Two "passing" perturbations in this session were
+  actually a stale `.pyc` and a `SyntaxError` in the harness — both of which
+  look exactly like a green run from the outside.
+- **Use `scripts/perturb.py` rather than a hand-rolled harness.** The bullet
+  above is easy to honor in letter while missing what actually breaks: the
+  harness reporting CAUGHT for a reason unrelated to the perturbation. All
+  three of these happened in one session, on top of the `.pyc` and `SyntaxError`
+  already recorded:
+  - **A red baseline.** One unrelated failing test makes *every* perturbation
+    exit non-zero, so nine of them read CAUGHT and none of them meant it.
+  - **A filtered run.** `-k "rebuilt"` does not match a test named
+    `..._rebuild_counted`; three guards sat out a whole sweep that was then
+    reported on. Run the whole file. Never `-k`.
+  - **A retyped anchor.** Hand-escaping apostrophes matched zero times, the
+    edit did nothing, and the green suite read as MISSED - a weak guard - when
+    nothing had been perturbed at all. Slice anchors out of the file, never
+    retype them, and assert the match count before running.
+- **Import success is not execution.** A `NameError` in a new code path fired
+  on every call and no test caught it, because the check run was
+  `python -c "import association.fetch.pipeline"` - which proves the module
+  parses and nothing else. Call the function, with a fake client if need be.
+- **A script run from a worktree resolves the INSTALLED package.**
+  `scripts/check_coverage.py` reported "29/29 floors check out" about a field
+  that did not exist in the code being checked, because it imported
+  `association` from the main checkout. Same shape as the
+  `check_types_complete.sh` note under "Before you commit". Run them with
+  `PYTHONPATH=<worktree>/src`, and treat a green check from a worktree as
+  unproven until you have confirmed which copy it read.
+- **Branches built in parallel collide on private helper names, silently.**
+  Four templates were built on separate branches at once, and five times two of
+  them had independently written a module-level helper with the same name:
+  `_eastern_date`, `_stints`, `_no_games` twice, `_pct`, `_season_name`. Git
+  merged each without a conflict, the later `def` replaced the earlier, and
+  the first branch's callers got the other branch's function - 14 failing tests
+  after one merge, 28 after another, green on both branches before it. mypy's
+  `no-redef` and ruff's F811 catch it, but only when the gates run on the
+  merged tree. After merging parallel work, scan for duplicated top-level
+  names before reading anything into either side's green tests.
+
+*Lines 2833-2859; the rule now: the `&&` merge chain, `CLAUDE.md`, `/tmp`, `git rebase --exec`.*
+
+- **Chain a merge's resolver, its `git add` and the commit with `&&`, never
+  `;`.** A resolver script that asserted and stopped, followed by `;`, let a
+  merge commit land with `<<<<<<< HEAD` inside `CHANGES.md` and `ISSUES.md` -
+  twice in one week, on merges of parallel agents' branches - and every gate
+  passed, because a marker is valid Markdown. `scripts/check_conflict_markers.sh`
+  now refuses any tracked file holding a start or end marker (a bare
+  `=======` is a Markdown underline, so only those two).
+- **Never rewrite `CLAUDE.md` in place.** It is a symlink to `AGENTS.md`, and
+  `git ls-files` lists it, so a `sed -i` or `perl -pi` over a file list
+  replaces the link with a regular copy (`git status` shows `T CLAUDE.md`). The
+  two then drift silently. Exclude it from bulk edits and edit `AGENTS.md`.
+- **`/tmp` is a shared tmpfs** (32G on the OVH devbox; 7.9G on the box
+  before it, where this happened). Four agents' golden-comparison outputs,
+  plus older sessions' scratch directories, filled it to 100% mid-run, where a
+  failed write looks like a diff or a crash unrelated to the change. Compress
+  or hash large outputs, delete them once compared, and check `df -h /tmp`
+  before a large run.
+- **Never gate rebased commits with `git rebase --exec` running the suite
+  or the hooks.** The rebase exports `GIT_DIR` to the command, and the tests
+  that build a scratch repository (`git init`, `git config`, `git commit`
+  in a `tmp_path`) and the scripts they call inherited it: on 2026-10-12 they
+  wrote into the real shared repository - `core.bare=true` and
+  `user.name=Test` in its config, test commits on a worktree's HEAD, its
+  index clobbered. `tests/conftest.py` removes every `GIT_*` variable before
+  a test runs now (`without_git_variables`), but a hook is not a test: squash
+  or reorder with no `--exec`, then run the gate chain once on the tip, as a
+  plain command.
+
+### Saying what you measured
+
+*Lines 2864-2895; the rule now: the three rules and "One concept, one definition".*
+
+## Saying what you measured
+
+A wrong status report costs more than a wrong patch, because the next decision
+is made on it. Three rules, each of which was broken in the session that
+prompted them:
+
+- **Name the population, not just the number.** "19 of 2,062 combined rows
+  disagree" is checkable; "the combined rows are wrong" is not, and an entry
+  that says 26 when the number is 19 sends the next agent looking for seven
+  rows that are already fixed.
+- **Re-measure before repeating a figure from an entry.** `ISSUES.md` records
+  what was true when it was written. Two of its counts had already been fixed
+  by other work in the same week.
+- **Say which copy of the code and which warehouse you measured**, and never
+  report a reader's behavior from a direct call when the answering loop adds
+  something - `agent.py` appends the coverage caveat, so a reader called
+  directly looks like it is missing one. Compare against `real_games` rather
+  than `games` for anything counted against `team_season_stats`; two "new
+  findings" in one session were known phantom rows seen through the unfiltered
+  table.
+
+**One concept, one definition.** Ruff's F811 and mypy's `no-redef` catch a name
+defined twice in one module and are blind to the same name in two - so
+`MAX_LIMIT` was 100 in `query/leaderboard.py` and 50 in `query/templates/common.py`
+until 2026-10-05 (one cap now, `reading.MAX_LIMIT`), and the NBA's five-hour
+Eastern offset was once declared six times under five names.
+`scripts/check_duplicate_names.py` reports cross-module constant collisions
+against an allowlist of the ones already filed, so it fails only on a new one.
+It is deliberately name-only: comparing values pairs `DEFAULT_LIMIT` with
+`EASTERN_OFFSET_HOURS` and buries the real finding in coincidence. It also
+cannot see a concept duplicated under *different* names, which is most of those
+six Eastern offsets - that still needs somebody reading a grep.
+
+### Recording findings
+
+*Lines 2899-2904; the rule now: "Anything that needs follow-up goes in `ISSUES.md`".*
+
+**Anything that needs follow-up goes in `ISSUES.md`, including what you were
+not looking for.** Most of this project's data problems were found in passing:
+the empty 2013-18 box scores turned up while building a streak template, and
+the missing 2000 and 2001 playoff games while checking coverage floors. Each
+then lived only in a chat report. A finding that is not in the file is one the
+next agent has to rediscover from scratch, or never does.
+
+*Lines 2965-3027; the rule now: "Dispatching agents": the four rules of 2026-09-28 and the re-verification after a merge.*
+
+**Dispatching agents.** Beyond asking for findings (above): give parallel
+agents disjoint files, each in its own worktree, and have them prefix new
+private helpers with the function they came from (the collisions under
+"Verifying your work" are what happens otherwise). Tell them to run the tests
+and hooks in the foreground: an agent that backgrounds a run and waits for a
+notification stops instead, and has to be resumed by hand - two did in one
+session. Tell every one not to run ollama, `association query` or a live
+yardstick run unless it is the only one doing so - one ollama caller at a time
+(see "Working on the query path").
+
+Four rules from the sessions where agents cost more than they saved (Jeff,
+2026-09-28: worktrees behind master, stalls the lead could not see, better
+ideas discarded to stay in scope, sweeps filing as many entries as they
+closed):
+
+- **Base the worktree on pushed master, and have the agent check.** The
+  tool branches a worktree from the main checkout's HEAD, so a lead working
+  on its own branch hands out a stale base unless it pushes and
+  fast-forwards that checkout first
+  (`git -C ~/code/association merge --ff-only origin/master`). Put the SHA
+  in the prompt and make the agent's first command `git log --oneline -1`:
+  a mismatch stops the task before any work is done on the wrong tree.
+- **Foreground, with a budget, and a lead who looks.** Every command in the
+  foreground, each with the time it should take (the table under "Before
+  you commit"; the rehearsal is about four minutes) - a command past three
+  times its budget is killed and reported, never waited on. The lead reads
+  the agent's transcript on a cadence (the task's output file and its
+  mtime) and messages an agent silent for fifteen minutes, rather than
+  waiting for a notification a stalled agent never sends. The lead's own
+  waits are on a process, never on a file appearing:
+  `until [ -s out ]; do sleep; done` spins to the timeout when the job died
+  before writing it.
+- **Fix what you can, file only what you cannot, discard nothing.**
+  "Recording findings" was read as "stay in your lane", and bug sweeps
+  filed as many entries as they closed. A finding the agent can fix as part
+  of its work is fixed, in its own commit, with a test, and reported; only
+  what it cannot fix there is filed (until 2026-10-04 this had a
+  twenty-line budget; Jeff removed it - "While the pipeline is rebuilt").
+  A better approach than the one asked for is treated the same way: taken
+  when it is technically right and within the agent's files, otherwise
+  stated in the report with its measured tradeoff. Silence is the one
+  outcome not allowed.
+- **Parallelism is for disjoint, bounded, measurable work** - a fix with its
+  own tests and a rehearsal to check it against, a relation over its own
+  tables. The parser-compiler seam is one agent's at a time: two branches
+  on it invalidate each other's measurements (the next paragraph) and
+  collide on helper names.
+
+**Re-verify a merged agent's load-bearing measurement yourself, and re-read
+`ISSUES.md` for entries the pair invalidated.** Each branch is sound alone and
+the risk is in the combination. In one session an agent filed a P2 saying a
+caveat would go quiet on rebounds, true of the code it could see; a second
+agent had meanwhile changed that column's read, so measured on the merged tree
+the two counts agreed exactly and the P2 did not exist. The reverse also
+happens: a rebuild that fills a column only helps because another branch
+pointed the reader at it. So after merging, run the gates on the merged tree,
+re-measure whatever the reports claim, and re-rank the file - the entries an
+agent writes are about the tree it had.
+
+A load-time change is not finished when the branch merges. Have the dispatcher
+run `association data load --tables <names>` serially (never three agents
+against one warehouse), then re-measure and record the numbers in the entry
+before closing anything.
+
+### Releasing
+
+*Lines 3035-3061; the rule now: "The distribution is `association-py`", Trusted Publishing, the changelog through stdin.*
+
+**The distribution is `association-py`; the import package, the `association`
+command and the repository keep the bare name.** Decided 2026-10-09, when
+the account was back and PyPI refused `association` as a project name though
+nobody holds it - no project row (PyPI's per-project RSS route answers 404,
+as for a made-up name, where a registered project with no releases answers
+200), no release ever, no name confusable with it under PyPI's rule over its
+full index of 909,700 projects, and no standard-library module; of the four
+causes PyPI's own help page lists, that leaves an administrator's
+prohibition, for which it gives no appeal. So `pyproject.toml`'s `name`,
+`association.__version__`'s metadata lookup, `docs/conf.py` and the web
+extra's install hint (`association-py[web]`) read the new name, and the
+wheel is `association_py-X.Y.Z-py3-none-any.whl`. Publishing is Trusted
+Publishing (OIDC) and nothing is stored in the repository: the publisher on
+PyPI is registered for project `association-py`, owner `jeffknupp`,
+repository `association`, workflow `publish.yml`, environment `pypi` - the
+environment name included, since the job runs under it and a publisher
+without it does not match. 5.0.0 was the first upload (2026-10-09), checked
+by installing `association-py[web]==5.0.0` from PyPI into a fresh venv
+outside the repo and running the CLI; the tags before it (4.0.1 to 4.4.0)
+carry the old name in their metadata, cannot be uploaded, and stay on
+GitHub only. The install lines in `README.md`, `docs/installation.rst` and
+`docs/usage.rst` are PyPI's and pin no tag; `bump_version.py` still rewrites
+any tag pin a doc grows. One more thing the first upload taught: a
+changelog section can be larger than an argument or an environment variable
+may hold (128 KiB; 5.0.0's was 293,016 bytes), so `release.sh` passes the
+notes through stdin at both points, and the release page carries the
+section's leading entries with a pointer to the rest.
