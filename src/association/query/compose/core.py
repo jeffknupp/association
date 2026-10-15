@@ -287,8 +287,7 @@ def _row_select(*, rebuilt: bool) -> str:
 
     ``pgl.reconstructed`` is read only where the box source actually carries
     it: ``player_game_log`` falls back to the plain, pre-rebuild table on a
-    warehouse built before that view existed (`AGENTS.md`, "a warehouse built
-    before a view change is not detected"), which has no such column at all -
+    warehouse built before that view existed, which has no such column at all -
     reading it unconditionally would raise a Binder error against exactly the
     warehouse the fallback exists for.
     """

@@ -240,8 +240,9 @@ def _validate_range(question: str) -> tuple[int, int | None, list[Claim]] | None
     adjacent ones joined by "and", a bare "YYYY-YYYY" (or "2015-18",
     "00-02") and two adjacent season numbers with nothing joining them;
     then "since 2000-01", "since 2020", and a decade. Each closed form fills the last
-    season as well as the first - see AGENTS.md, "a season range", for why
-    an unfilled ``until`` is this project's worst failure shape rather than
+    season as well as the first - see AGENTS.md, "The failure shape this
+    project keeps producing", for why an unfilled ``until`` is this
+    project's worst failure shape rather than
     a missing nicety.
 
     .. versionadded:: 6.0.0

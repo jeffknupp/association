@@ -656,8 +656,7 @@ def _team_games_for_season(con: duckdb.DuckDBPyConnection, season: int) -> int |
 
     The MEDIAN of each team's own ``real_games`` count (home starts plus away
     starts), rounded to the nearest game. Not ``games``, which carries 151 rows
-    that are not games (AGENTS.md, "Working on the query path" -> "Saying what
-    you measured").
+    that are not games (AGENTS.md, "Saying what you measured").
 
     MEDIAN over MAX or a fixed per-season constant because a shortened season
     is not always uniform across teams: 2020's ``real_games`` counts range

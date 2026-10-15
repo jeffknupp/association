@@ -3,7 +3,7 @@ the subject, the span, every narrowing the relation applied
 (:meth:`~association.query.player_games.Narrowed.filters`), the measure names,
 and the count of games the numbers rest on. Not a reader's exact wording;
 the shape a reader needs to see what was answered and correct it with a
-follow-up (`AGENTS.md`, "a default that chooses reasonably ...").
+follow-up (`AGENTS.md`, "A reasonable default beats a question").
 
 .. versionadded:: 4.4.0
 """
@@ -309,7 +309,7 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     the team subject's own sentence, carrying the same things a reader's
     does: the value, the span it covers, the games it rests on, and the
     narrowing that produced it, so a wrong scope is visible and correctable
-    (`AGENTS.md`, "a default that chooses reasonably ...").
+    (`AGENTS.md`, "A reasonable default beats a question").
 
     .. versionadded:: 4.4.0
     """

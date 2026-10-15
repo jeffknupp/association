@@ -3774,14 +3774,6 @@ those were found.
 - **Priority:** P4 - no reachable answer moves.
 - **GitHub:** #395
 
-### Docstrings and comments still name the router and the Scope
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 14). Swept 2026-10-12 (Phase 4, step 7): every docstring and comment in `src/association` that described the router, a template, a presenter, an adapter, the `Scope`, a `Route`, `Planned`, `Reply` or the intent label as present was rewritten as what supplies the value today (the model's names, the parser, the grammar's rules, a tagger, the subject reading, the readers and the sayer), and the forward-looking phase sentences that had happened were dated. What is left is not prose but strings the code uses.
-- **Evidence:** the subject reading's decision reasons and evidence lines still say "router" for the model's names - `subject._evidence`'s "router players the question supports" and "router names the question never held", `read_subject`'s "companions the router named nobody for", the `Decision` reasons "from the question; the router left it out" (`_apply_restored_player`, `_apply_own_team`) and "the question never names the router's player; it names this one" (`_apply_players`): six sites in `query/subject.py`, each commented as kept because recorded. Each decision's `reason` quotes them, and the reader cases record them: 224 of `tests/query/reader_cases.json`'s 467 cases hold "router" (156 "router players the question supports", 51 "router names the question never held", 5 "companions the router named nobody for"), and the populations' readings record the same. Four user-visible strings still name what is gone: the CLI epilog (`cli.commands.CLI_EPILOG`, "a deterministic SQL template or the compiler") and `--verbose`'s help ("the template or compiled point"); the `bench_points` refusal's phrase (`compose.say`, "no template or the compiler adds one up today"); and `split._as_split`'s `ScopeError` ("is not one the Scope holds", reachable only by a bug). `point.default_point`'s decline "no adapter for ..." is kept on purpose (its comment says why). Identifiers keep the router's name and stay: `router_model`, `DEFAULT_ROUTER_MODEL`, `--router-model`, `RouterUnavailable`, the history file's `router:` line, the API's `models={"router": ...}`, `subject._merge_names`' `router_named` and the `routed` locals.
-- **User sees:** the epilog and `--verbose` help name a template that does not exist; nothing else.
-- **Next step:** reword the six subject strings as the model's ("model players the question supports", ...) in ONE commit that enumerates every moved reading and reader case (a recorded-reading move), or have the reader cases and the stage record leave the evidence prose out of the reason, as `stages._SUBJECT_LEFT_OUT` already leaves the `evidence` field out; reword the epilog, `--verbose`'s help and the `ScopeError` freely (no recorded output holds them - check), and the `bench_points` phrase under the decline rule (its answers enumerated).
-- **Priority:** P4 - docs and trace prose.
-- **GitHub:** #386
-
 ### The web UI screenshot in the docs and the README still shows the retired "template" badge
 - **Found:** 2026-10-12, Phase 4, step 7 (the documents): `docs/_static/web_ui_example.png`, used by `docs/usage.rst` and `README.md`, was taken before step 1 keyed the page's renderers by the shape, so its header reads "template leaderboard" where the page now says "answered · ranking by player, player seasons". The caption says so since step 7.
 - **Evidence:** the badge text in `src/association/web/static/index.html` (the meta line names the shape since `c7e0f20`); a no-model preview render of the page shows "server unreachable" in its header, so the screenshot cannot be retaken offline.
@@ -3791,14 +3783,6 @@ those were found.
 - **Priority:** P4 - a documentation image.
 - **GitHub:** #399
 
-### Six comments cite AGENTS.md by a heading it no longer has
-- **Found:** 2026-10-14, Phase 5, step 7 (the AGENTS.md compaction), checking every quoted `AGENTS.md, "..."` citation in `src`, `tests`, `scripts` and `docs` against the compacted file. The compaction kept every heading a citation named (it restored three it had reworded: "The same bug has a mirror image", "Why "embiid" specifically", "Any edit to the model's prompt"); these six were already stale against the file as it stood at `3dc37821`.
-- **Evidence:** "the router invents names" - `query/player_relation.py:1712`, `query/subject.py:8` and `:2516` (the heading is "A model invents names, and an invented name resolves"); "Refuse by name" - `query/reading.py:2373` (now "When it cannot be repaired, say so by name"); "a season range" - `query/span.py:251` (no such heading); "a warehouse built before ..." - `query/compose/core.py:291` (no such heading). The two test citations and the freeze test's message (which named D4) were rewritten with the tests' history sweep.
-- **User sees:** nothing; a reader following the pointer finds no section.
-- **Next step:** point each comment at the heading that holds its rule ("A model invents names", "say so by name"; for `span.py` and `compose/core.py`, find what the comment meant - the span's both-season-type rule and the empty box scores' count are the likely ones), in one comment-only commit with its `CHANGES.md` line.
-- **Source:** ours.
-- **Priority:** P4 - comments.
-- **GitHub:** #444
 ### `CHANGES.md` gives two outcomes for the nine feed questions two step 6 lanes both moved
 - **Found:** 2026-10-14, the Phase 5 review, checking every merge composes its parents three-way.
 - **Evidence:** nine feed questions were moved by lane N's subject-reading commits and by lane L's ranking commits in the same step; each lane's `CHANGES.md` entry names the outcome on its own tree, and the merged tree's answer is the reading-side lane's (right), which neither entry nor the merges `0143de96` and `b9ac210b` record.
@@ -3817,3 +3801,27 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #452
 
+
+### `check_web_ui.py`'s documented command fails on a playwright newer than the installed browser
+- **Found:** 2026-10-15, the p6-comments lane, checking the web page after `GET /api/health`'s `models` key was renamed.
+- **Evidence:** AGENTS.md ("Working on the web path") says to run `uv run --with playwright python scripts/check_web_ui.py`; `--with playwright` resolves the newest release (1.64.0 that day), whose Chromium headless shell is revision 1248, while `~/.cache/ms-playwright` on the devbox holds 1243 - the run dies in `BrowserType.launch` ("Executable doesn't exist"). `uv run --with playwright==1.63.0 python scripts/check_web_ui.py` (revision 1243) passes 39 of 39. The check also never reads `models` from the health response, so a renamed key there is checked by `tests/web/test_app.py` alone.
+- **User sees:** nothing; an agent following AGENTS.md gets a crash instead of the page check, and a later playwright release breaks it again.
+- **Next step:** pin the version in AGENTS.md's command (or in a `scripts/check_web_ui.sh` wrapper) to the one whose browser the box holds, or run `playwright install chromium-headless-shell` as a documented step; have the stub health response carry `models` and assert the indicator's title.
+- **Source:** ours.
+- **Priority:** P4 - tooling.
+
+### `--model` names the normalizer's model now, and a pre-5.0 script passing it picks the normalizer
+- **Found:** 2026-10-15, the p6-comments lane (the 7.0.0 rename of `--router-model` to `--model`, on Jeff's instruction).
+- **Evidence:** `--model` was the fall-through agent's 7B option until 5.0.0, and `tests/cli/test_commands.py`'s stale-option test held that passing it fails loudly ("No such option"); since the rename it is accepted, so a script written for 4.x that passes `--model qwen2.5:7b` now runs the normalizer on the 7B - slower (1.84s against 0.82s a question, `query/models.py`) and measured to add nothing - with no error. The test's list drops `--model`.
+- **User sees:** a slower normalizer, only for a script four majors old.
+- **Next step:** none needed unless such a script turns up; `CHANGES.md`'s 7.0.0 entry names the reuse.
+- **Source:** ours.
+- **Priority:** P4 - low impact.
+
+### `docs/roadmap-2.0.md` still describes the router, the templates and the fall-through agent as the system
+- **Found:** 2026-10-15, the p6-comments lane (its sweep covered `docs/*.rst`, not this file).
+- **Evidence:** `docs/roadmap-2.0.md:83-358`: "router → template → answer (fast path, 1-2s)", "the router already accepts `previous_question`", the fall-through agent's 6,000-token preamble - the 2.0 plan, kept under `docs/` beside the documents that describe today's system, with nothing marking it as archived.
+- **User sees:** a reader of the repository's docs finds a design that no longer exists; the Sphinx build does not include it.
+- **Next step:** move it beside `ROADMAP-2026-09.md` as an archived plan, or delete it (its content is in git), per Jeff's rule that history lives in the changelog, `ROADMAP-HISTORY.md` and `ISSUES.md`.
+- **Source:** ours.
+- **Priority:** P4 - docs.
