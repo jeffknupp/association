@@ -298,7 +298,7 @@ def ctx(tmp_path: Path) -> AnswerContext:
     )
     con.execute("INSERT INTO net_points_player VALUES ('1',2026,'Regular Season',120.0,90.0,30.0,4.5,3.4,1.1,71,2),('2',2026,'Regular Season',-10.0,-4.0,-6.0,-0.8,-0.3,-0.5,30,1)")
     # player_netpoints' play-type fingerprint, one row per player-season - see
-    # test_templates.py's own np_ctx fixture for the same shape.
+    # test_readers.py's own np_ctx fixture for the same shape.
     _fp_categories = [c for c in FINGERPRINT_CATEGORIES.values() if c != "total"]
     _fp_cols = ", ".join(f"{cat}_{side}_net_pts DOUBLE" for cat in _fp_categories for side in ("o", "d", "t"))
     con.execute(f"CREATE TABLE net_points_player_fingerprint (athlete_id VARCHAR, season INTEGER, total_poss DOUBLE, {_fp_cols})")

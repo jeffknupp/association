@@ -546,7 +546,7 @@ table and what it takes, less its row's exclusions
 (`compose.plan.cells_stated`), and `cells_unhonored` reads the typed cells
 against that - for the planner, for the season line's readers and for the
 answer side, which steps aside before it asks a reader. No reader takes a
-list of its own. Two source-reading tests in `tests/query/test_templates.py`
+list of its own. Two source-reading tests in `tests/query/test_readers.py`
 enforce it (watched to fail): a shape a reader reads with no row, a row
 excluding a cell its relation does not carry or without a reason, a reader
 taking a list of its own, or a reader writing `pgl.opponent_team_id = ?` or

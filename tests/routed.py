@@ -55,7 +55,7 @@ from association.query.line import lines_named
 from association.query.names import NameIndex
 from association.query.normalizer import Normalized
 from association.query.point import default_point
-from association.query.reading import Claim, Companion, Line, PointShape, Reading, Subject
+from association.query.reading import PLAYER_RANKING, Claim, Companion, Line, PointShape, Reading, Subject, SubjectKind, Unsupported
 from association.query.span import claimed
 from association.query.subject import Subject as ReadSubject
 from association.query.subject import child_named, read_subject, settle_subject
@@ -163,6 +163,31 @@ def planned_answer(ctx: AnswerContext, reading: Reading, *, declined: Callable[[
     plans a question's Reading: once, before the compiler is handed it."""
     answered = compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
     return None if answered is None else said(answered)
+
+
+def answered_as(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Said]:
+    """The answer side for the key ``shape``, called the way a test states a
+    reading: a Reading in - the typed filters alone, with no question words,
+    which would move the point - and what was said out (:class:`Said`).
+    The subject is the one the reading's names make, as a question naming
+    just them reads (a ranking within a team reads the team's players,
+    never its own figure); the point is planned as the answering loop plans
+    it (:func:`planned_answer`). ``Unsupported`` carries the decline's
+    reason where nothing answers the point."""
+
+    def answered(ctx: AnswerContext, reading: Reading) -> Said:
+        named = reading.who.players
+        kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if reading.who.team else "everyone"
+        if kind == "team" and shape == PLAYER_RANKING:
+            kind = "team_players"
+        subject = reading.subject or ReadSubject(kind, players=named, teams=(reading.who.team,) if reading.who.team else ())
+        why: list[str] = []
+        result = planned_answer(ctx, parse.with_point("", Reading(**reading.filters(), asked=shape, subject=subject)), declined=why.append)
+        if result is None:
+            raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
+        return result
+
+    return answered
 
 
 @dataclass(frozen=True)

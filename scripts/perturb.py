@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Watch a guard fail, without the harness lying to you about it.
 
-    python scripts/perturb.py --test tests/query/test_templates.py \\
+    python scripts/perturb.py --test tests/query/test_readers.py \\
         --edit src/association/query/templates/players.py \\
         --replace 'REBUILT_STATS: frozenset[str] = frozenset({"points"' \\
         --with     'REBUILT_STATS: frozenset[str] = frozenset({"fouls", "points"'

@@ -23,7 +23,7 @@ import pytest
 from routed import staged as settle
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
-from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
+from test_readers import pg_ctx, player_log, player_ranking  # noqa: F401 - the player relation's fixture, imported by name
 
 from association.query import lexicon
 from association.query.answer import AnswerContext
@@ -325,7 +325,7 @@ def test_a_plus_minus_log_shows_the_column_it_was_asked_for(pg_ctx: AnswerContex
     are refused for a playoff round first); the wording is "<player> plus
     minus game log" and "<player> +/- log"."""
     assert log_extras(measure_of("plus_minus")) == ("+/-",) == log_extras(measure_of("plusMinus"))
-    answer = game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="plusMinus", as_typed="plus_minus"))).text or ""
+    answer = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="plusMinus", as_typed="plus_minus"))).text or ""
     assert "+/-" in answer
 
 
@@ -356,8 +356,8 @@ def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None
 
 
 def test_the_rate_cell_changes_what_the_season_line_ranking_reads(season_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
-    assert leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
-    total = leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
+    assert player_ranking(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
+    total = player_ranking(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
     assert total.data["leaders"][0]["display_name"] == "Volume Scorer" and "in total points" in total.text
 
 

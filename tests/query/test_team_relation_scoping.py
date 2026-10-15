@@ -1,11 +1,11 @@
 """Step 3, C4b: the team-games relation gets one scoping declaration too.
 
-The team counterpart of the two C3 gates in ``test_templates.py``
+The team counterpart of the two C3 gates in ``test_readers.py``
 (``test_templates_on_the_relation_declare_no_scoping_of_their_own`` and
 ``test_templates_on_the_relation_do_not_narrow_it_themselves``), over
 ``TEAM_RELATION_SCOPING``/``TEAM_RELATION_SCOPING_EXCLUDED`` instead of the
 player relation's own two. Kept in its own file rather than
-added to ``test_templates.py``, which another agent owns this round.
+added to ``test_readers.py``, which another agent owns this round.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def test_team_templates_declare_scoping_through_the_shared_table() -> None:
 def _source_with_private_steps(handler: Any) -> str:
     """A template's source plus every private function of its module it
     reaches, transitively - the team-relation counterpart of
-    ``test_templates.py``'s own ``_source_with_private_steps``, kept as a
+    ``test_readers.py``'s own ``_source_with_private_steps``, kept as a
     separate copy for the reason every shared step in this port is: a change
     to one relation's walker must not silently reach the other's tests.
 

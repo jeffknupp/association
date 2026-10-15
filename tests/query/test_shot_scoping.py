@@ -30,7 +30,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from test_templates import shot_chart, shot_distance  # the shot relation's reader (compose.shots), its templates retired
+from test_readers import shot_chart, shot_distance
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -346,7 +346,7 @@ def test_shot_distance_still_refuses_a_career_span_with_an_order(shots_ctx: Answ
 
 
 def test_shot_distance_single_game_note_is_unchanged_by_the_relation_port(shots_ctx: AnswerContext) -> None:
-    """The exact single-game phrasing golden tests pin in `test_templates.py`
+    """The exact single-game phrasing golden tests pin in `test_readers.py`
     - "most recent game (date)" - still comes from the bare `player_game_log`
     lookup (`_shots_ordered_games`), not the relation, when `order` is the
     only scoping given."""

@@ -2,7 +2,7 @@
 (:func:`association.query.calendar.parse_situation`) and - K3-2 - a
 conference or division one (:func:`~association.query.calendar.parse_alignment`).
 Neither had a dedicated test module before this; each relation's own use of
-them is covered end to end in ``tests/query/test_templates.py`` and
+them is covered end to end in ``tests/query/test_readers.py`` and
 ``tests/query/test_player_games.py``, so these stay at the level of what a
 value parses to and what SQL it produces."""
 

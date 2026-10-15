@@ -18,10 +18,10 @@ from typing import Any
 
 import duckdb
 import pytest
-from test_conditions import BROWN, TATUM, league, with_without  # noqa: F401 - the league fixture and the split's reader, imported by name
+from test_conditions import BROWN, TATUM, league, presence_split  # noqa: F401 - the league fixture and the split's reader, imported by name
 from test_period_relation import SEASON as PERIOD_SEASON
 from test_period_relation import con as period_con  # noqa: F401 - the plays fixture, imported by name
-from test_templates import pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
+from test_readers import pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
 
 from association.query import lexicon
 from association.query.answer import AnswerContext
@@ -417,7 +417,7 @@ def test_the_companion_cell_changes_what_the_player_relation_reads(league: Answe
 
 
 def test_the_companion_cell_changes_what_the_team_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    split = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season_type=2), asked=PRESENCE_SPLIT))
+    split = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season_type=2), asked=PRESENCE_SPLIT))
     assert not isinstance(split, str)
     groups = {row["group"]: row for row in split.data["splits"]["presence"]} if "presence" in split.data.get("splits", {}) else None
     assert "with" in split.text.lower() and "without" in split.text.lower()

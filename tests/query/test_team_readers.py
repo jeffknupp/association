@@ -1,4 +1,4 @@
-"""Tests for the team templates: records, season numbers, rankings and BPI.
+"""The team readers: records, season numbers, rankings and BPI.
 
 The fixture is small but built out of the warehouse's real faults, each one
 measured before it was written down here: a 0-0 phantom game with no winner, a
@@ -10,14 +10,13 @@ postseason whose game list is one game short of the team's own totals.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pytest
-from routed import Said, planned_answer
-from test_templates import game_log, player_splits, streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
+from routed import answered_as
+from test_readers import line_runs, player_log, player_splits
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -25,7 +24,6 @@ from association.query.answer import AnswerContext
 from association.query.compose.plan import cells_unhonored
 from association.query.coverage import check_coverage
 from association.query.measure import measure_of
-from association.query.parse import with_point
 from association.query.reading import (
     LINE_RECORD,
     TEAM_LINE,
@@ -38,10 +36,8 @@ from association.query.reading import (
     Line,
     Measure,
     Period,
-    PointShape,
     Reading,
     Span,
-    SubjectKind,
     Unsupported,
     Window,
     situation_of,
@@ -49,41 +45,16 @@ from association.query.reading import (
 from association.query.reading import Subject as Who
 from association.query.season_text import season_phrase
 from association.query.standings import career_rows, first_season, season_games, season_row
-from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 
-
-def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Said]:
-    """The shape ``shape`` names answered the way its retired template was called - a
-    Reading in, what was said out (an Answer, :class:`routed.Said`), ``Unsupported`` with the
-    reason where the compiler has no reading of the point - now that the
-    compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
-    6, step (d), part 4). No question words, which would move the point:
-    these are the intent's own. The subject is the one the slots name, as a
-    question naming just them reads."""
-
-    def answered(ctx: AnswerContext, reading: Reading) -> Said:
-        scope = reading
-        named = scope.who.players
-        kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.who.team else "everyone"
-        subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
-        why: list[str] = []
-        result = planned_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
-        if result is None:
-            raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
-        return result
-
-    return answered
-
-
-record_when = _compiled(LINE_RECORD)
+line_record = answered_as(LINE_RECORD)
 # The power index's reader and sayer (compose.team_stats, compose.say; Phase 2, step 4).
-team_outlook = _compiled(TEAM_OUTLOOK)
-team_stat = _compiled(TEAM_LINE)
-team_leaderboard = _compiled(TEAM_RANKING)
-team_quarter_points = _compiled(TEAM_PERIOD_TOTAL)
-team_record = _compiled(TEAM_RECORD)
-team_history = _compiled(TEAM_SEASON_HISTORY)
+team_outlook = answered_as(TEAM_OUTLOOK)
+team_line = answered_as(TEAM_LINE)
+team_ranking = answered_as(TEAM_RANKING)
+team_period_total = answered_as(TEAM_PERIOD_TOTAL)
+team_record = answered_as(TEAM_RECORD)
+team_season_history = answered_as(TEAM_SEASON_HISTORY)
 
 S = current_season()
 LAST = f"{S - 1}-{S % 100:02d}"
@@ -438,12 +409,12 @@ def test_a_teams_home_games_leave_out_a_neutral_site_game_and_say_so(team_ctx: A
     split, a streak and a quarter - and not in their home record. A venue
     narrows every team read to the games on that side NOT at a neutral site,
     and the narrowing's phrase says how many it left out."""
-    home = game_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home")))
+    home = player_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home")))
     assert [g["date"] for g in home.data["games"]] == [f"{S - 1}-11-19"]
     assert home.text.startswith("New York Knicks at home (1 neutral-site game left out), most recent game")
-    road = game_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="away")))
+    road = player_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="away")))
     assert [g["date"] for g in road.data["games"]] == [f"{S - 1}-12-31"]
-    spurs = game_log(team_ctx, Reading(who=Who(kind="team", teams=("Spurs",)), cuts=Cuts(venue="home")))
+    spurs = player_log(team_ctx, Reading(who=Who(kind="team", teams=("Spurs",)), cuts=Cuts(venue="home")))
     assert "neutral-site" not in spurs.text
 
 
@@ -564,7 +535,7 @@ def test_a_teams_history_is_its_season_lines_one_row_a_season(team_ctx: AnswerCo
     season, with the record (the standings' for a regular season) and the
     seasons summed beneath: the games, the record where every season has
     one, each per-game figure weighted by its games."""
-    result = team_history(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=2000)))
+    result = team_season_history(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=2000)))
     assert [(row["season"], row["games"], row["wins"], row["losses"]) for row in result.data["seasons"]] == [(2000, 82, 49, 31), (S, 3, 53, 29)]
     assert result.text.startswith(f"The New York Knicks, season line by regular season, 1999-00 to {LAST} (2 seasons):")
     assert f"Over 1999-00 to {LAST}, the New York Knicks: 85 games, 102-60 (.630), " in result.text
@@ -576,7 +547,7 @@ def test_a_teams_history_of_one_stat_and_every_season(team_ctx: AnswerContext) -
     the season line's first, 1993-94, and a season the standings do not hold
     shows no record - and the seasons' record is summed only where each has
     one."""
-    result = team_history(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True)))
+    result = team_season_history(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True)))
     assert [(row["season"], row["wins"]) for row in result.data["seasons"]] == [(1994, None), (2000, 49), (S, 53)]
     assert result.text.startswith(f"The New York Knicks, points per game by regular season, 1993-94 to {LAST} (3 seasons):")
     assert result.text.endswith(", the New York Knicks: 86 games, 96.1 points per game.")
@@ -586,7 +557,7 @@ def test_a_teams_history_of_one_stat_and_every_season(team_ctx: AnswerContext) -
 
 
 def test_a_team_line_is_a_table_with_league_ranks(team_ctx: AnswerContext) -> None:
-    result = team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",))))
+    result = team_line(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",))))
     answer = result.text
     assert answer.startswith(f"New York Knicks, {S} regular season (3 games):")
     # 100 * 343 points allowed / (270 - 30 + 42 + 0.44 * 60) possessions.
@@ -598,7 +569,7 @@ def test_a_team_line_is_a_table_with_league_ranks(team_ctx: AnswerContext) -> No
 
 
 def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: AnswerContext) -> None:
-    result = team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="defensive_rating", as_typed="defensiveRating")))
+    result = team_line(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="defensive_rating", as_typed="defensiveRating")))
     answer = result.text
     assert answer.startswith(f"The New York Knicks' defensive rating (points allowed per 100 possessions) was 111.2 in the {S} regular season (3 games), 3rd-best of 5 teams.")
     # The rating note is glued onto the same sentence, not a separate line -
@@ -611,38 +582,38 @@ def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: AnswerContext) -
 
 
 def test_a_singular_team_name_takes_an_apostrophe_s(team_ctx: AnswerContext) -> None:
-    assert team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Thunder",)), measure=Measure(key="points", as_typed="points"))).text.startswith(
+    assert team_line(team_ctx, Reading(who=Who(kind="team", teams=("Thunder",)), measure=Measure(key="points", as_typed="points"))).text.startswith(
         "The Oklahoma City Thunder's points per game was 115.0"
     )
 
 
 def test_an_unknown_stat_falls_through_rather_than_matching_something_close(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(as_typed="vibes")))
+        team_line(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(as_typed="vibes")))
 
 
 def test_points_allowed_over_fewer_games_than_the_rest_is_refused(team_ctx: AnswerContext) -> None:
-    answer = team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Celtics",)), measure=Measure(key="defensive_rating", as_typed="defensive rating"), span=Span(season_type=3))).text
+    answer = team_line(team_ctx, Reading(who=Who(kind="team", teams=("Celtics",)), measure=Measure(key="defensive_rating", as_typed="defensive rating"), span=Span(season_type=3))).text
     assert "can't be given" in answer and "4 of the Boston Celtics' 5 games" in answer
 
 
 def test_a_team_that_missed_the_postseason_is_told_so(team_ctx: AnswerContext) -> None:
     """Not "no data": the season is there, and the team did not play in it."""
-    assert team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Wizards",)), span=Span(season_type=3))).text == f"The Washington Wizards did not play in the {S} postseason."
+    assert team_line(team_ctx, Reading(who=Who(kind="team", teams=("Wizards",)), span=Span(season_type=3))).text == f"The Washington Wizards did not play in the {S} postseason."
 
 
 def test_turnovers_are_not_double_counted_before_2013(team_ctx: AnswerContext) -> None:
     """90 - 10 + 15 + 0.44 * 20 = 103.8 possessions, not the 118.8 ESPN's total gives."""
-    assert "103.8" in team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Thunder",)), measure=Measure(key="pace", as_typed="pace"), span=Span(season=2010))).text
+    assert "103.8" in team_line(team_ctx, Reading(who=Who(kind="team", teams=("Thunder",)), measure=Measure(key="pace", as_typed="pace"), span=Span(season=2010))).text
 
 
 def test_a_metric_before_its_first_season_names_why(team_ctx: AnswerContext) -> None:
-    answer = team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="points_in_paint", as_typed="points in the paint"), span=Span(season=2008))).text
+    answer = team_line(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="points_in_paint", as_typed="points in the paint"), span=Span(season=2008))).text
     assert "can't be given for 2008" in answer and "before 2008-09" in answer
 
 
 def test_a_record_stat_is_ranked_from_standings(team_ctx: AnswerContext) -> None:
-    assert "53-29 (.646)" in (answer := team_stat(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="record", as_typed="record"))).text)
+    assert "53-29 (.646)" in (answer := team_line(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=Measure(key="record", as_typed="record"))).text)
     assert "the 4th-best record of 5 teams" in answer
 
 
@@ -655,7 +626,7 @@ def _first_row(answer: str) -> str:
 
 def test_which_team_scores_the_most(team_ctx: AnswerContext) -> None:
     """Answered with the players' scoring leaders before this existed."""
-    result = team_leaderboard(team_ctx, Reading(measure=Measure(key="points", as_typed="points"), window=Window(rank="most")))
+    result = team_ranking(team_ctx, Reading(measure=Measure(key="points", as_typed="points"), window=Window(rank="most")))
     answer = result.text
     assert answer.startswith(f"Points per game, {S} regular season - highest first, of 5 teams:")
     assert _first_row(answer).split() == ["1", "New", "York", "Knicks", "126.0"]
@@ -663,12 +634,12 @@ def test_which_team_scores_the_most(team_ctx: AnswerContext) -> None:
 
 
 def test_the_lowest_defensive_rating_comes_first(team_ctx: AnswerContext) -> None:
-    answer = team_leaderboard(team_ctx, Reading(measure=Measure(key="defensive_rating", as_typed="defensive rating"), window=Window(rank="fewest"))).text
+    answer = team_ranking(team_ctx, Reading(measure=Measure(key="defensive_rating", as_typed="defensive rating"), window=Window(rank="fewest"))).text
     assert "lowest first" in answer and "Oklahoma City Thunder" in _first_row(answer)
 
 
 def test_best_means_fewest_for_a_stat_a_team_wants_little_of(team_ctx: AnswerContext) -> None:
-    answer = team_leaderboard(team_ctx, Reading(measure=Measure(key="turnovers", as_typed="turnovers"), window=Window(rank="best"))).text
+    answer = team_ranking(team_ctx, Reading(measure=Measure(key="turnovers", as_typed="turnovers"), window=Window(rank="best"))).text
     assert "best first (lowest)" in answer and "Oklahoma City Thunder" in _first_row(answer)
     # Three teams at 14.0 share second place.
     assert [line.split()[0] for line in answer.splitlines()[1:6]] == ["1", "2", "2", "2", "5"]
@@ -676,43 +647,43 @@ def test_best_means_fewest_for_a_stat_a_team_wants_little_of(team_ctx: AnswerCon
 
 def test_no_rank_means_best(team_ctx: AnswerContext) -> None:
     assert (
-        team_leaderboard(team_ctx, Reading(measure=Measure(key="turnovers", as_typed="turnovers"))).text
-        == team_leaderboard(team_ctx, Reading(measure=Measure(key="turnovers", as_typed="turnovers"), window=Window(rank="best"))).text
+        team_ranking(team_ctx, Reading(measure=Measure(key="turnovers", as_typed="turnovers"))).text
+        == team_ranking(team_ctx, Reading(measure=Measure(key="turnovers", as_typed="turnovers"), window=Window(rank="best"))).text
     )
 
 
 def test_the_worst_record_comes_first_when_asked(team_ctx: AnswerContext) -> None:
-    answer = team_leaderboard(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), window=Window(rank="worst"))).text
+    answer = team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), window=Window(rank="worst"))).text
     assert "worst record first" in answer and _first_row(answer).split() == ["1", "Washington", "Wizards", "17-65", "(.207)"]
 
 
 def test_the_most_losses_is_the_worst_record(team_ctx: AnswerContext) -> None:
-    assert "Washington Wizards" in _first_row(team_leaderboard(team_ctx, Reading(measure=Measure(key="losses", as_typed="losses"), window=Window(rank="most"))).text)
+    assert "Washington Wizards" in _first_row(team_ranking(team_ctx, Reading(measure=Measure(key="losses", as_typed="losses"), window=Window(rank="most"))).text)
 
 
 def test_the_best_home_record_reads_the_standings_split(team_ctx: AnswerContext) -> None:
-    answer = team_leaderboard(team_ctx, Reading(cuts=Cuts(venue="home"), measure=Measure(key="record", as_typed="record"))).text
+    answer = team_ranking(team_ctx, Reading(cuts=Cuts(venue="home"), measure=Measure(key="record", as_typed="record"))).text
     assert answer.startswith(f"Record at home, {S} regular season") and "34-7 (.829)" in _first_row(answer)
 
 
 def test_a_venue_for_a_stat_with_no_venue_split_falls_through(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        team_leaderboard(team_ctx, Reading(cuts=Cuts(venue="home"), measure=Measure(key="points", as_typed="points")))
+        team_ranking(team_ctx, Reading(cuts=Cuts(venue="home"), measure=Measure(key="points", as_typed="points")))
 
 
 def test_a_named_team_outside_the_list_is_shown_with_its_rank(team_ctx: AnswerContext) -> None:
-    answer = team_leaderboard(team_ctx, Reading(who=Who(kind="team", teams=("Wizards",)), measure=Measure(key="points", as_typed="points"), window=Window(count=1))).text
+    answer = team_ranking(team_ctx, Reading(who=Who(kind="team", teams=("Wizards",)), measure=Measure(key="points", as_typed="points"), window=Window(count=1))).text
     assert answer.splitlines()[2:] == ["    ...", " 5  Washington Wizards   99.5"]
 
 
 def test_a_ranking_with_a_team_short_of_games_is_refused_not_partial(team_ctx: AnswerContext) -> None:
-    answer = team_leaderboard(team_ctx, Reading(measure=Measure(key="defensive_rating", as_typed="defensive rating"), span=Span(season_type=3))).text
+    answer = team_ranking(team_ctx, Reading(measure=Measure(key="defensive_rating", as_typed="defensive rating"), span=Span(season_type=3))).text
     assert "can't be given" in answer and "4 of the Boston Celtics' 5 games" in answer
 
 
 def test_a_leaderboard_needs_a_stat(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        team_leaderboard(team_ctx, Reading())
+        team_ranking(team_ctx, Reading())
 
 
 # ---------------- team_outlook ----------------
@@ -1235,7 +1206,7 @@ def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_c
     the ranking (F100, ISSUES.md): a team with no games in the span is a real
     zero, not a non-participant to drop the way a single-season postseason
     ranking already drops one."""
-    result = team_leaderboard(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991)))
+    result = team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991)))
     assert "since 1991" in (result.text or "")
     teams = {t["team"]: t["display"] for t in result.data["teams"]}
     assert teams == {
@@ -1250,7 +1221,7 @@ def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_c
 
 def test_a_leaderboard_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        team_leaderboard(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season=S, season_type=3, since=1991)))
+        team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season=S, season_type=3, since=1991)))
 
 
 def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: AnswerContext) -> None:
@@ -1258,12 +1229,12 @@ def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: AnswerContext) -> N
     seasons yet - refused by name, rather than answered for one season under
     a since-shaped question that asked for a range."""
     with pytest.raises(Unsupported, match="span of seasons"):
-        team_leaderboard(team_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(since=2020)))
+        team_ranking(team_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(since=2020)))
 
 
 def test_a_leaderboard_since_refuses_a_venue_split(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        team_leaderboard(team_ctx, Reading(cuts=Cuts(venue="home"), measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991)))
+        team_ranking(team_ctx, Reading(cuts=Cuts(venue="home"), measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991)))
 
 
 # ---------------- team_leaderboard: `until` beside `since` (step 3, K1) ----------------
@@ -1276,7 +1247,7 @@ def test_a_leaderboard_until_bounds_the_since_span(team_ctx: AnswerContext) -> N
     picks up "php" (1994) and this season's series - so the Celtics, who won
     that single 1991 game, lead 1.000 and the Knicks are winless, the mirror
     image of the open-ended ranking."""
-    result = team_leaderboard(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991, until=1991)))
+    result = team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, since=1991, until=1991)))
     assert "seasons 1991-1991" in (result.text or "")
     teams = {t["team"]: t["display"] for t in result.data["teams"]}
     assert teams["New York Knicks"] == "0-1 (.000)"
@@ -1289,7 +1260,7 @@ def test_a_leaderboard_until_bounds_the_since_span(team_ctx: AnswerContext) -> N
 
 def test_a_leaderboard_until_with_no_since_is_refused(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported, match="until"):
-        team_leaderboard(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, until=1991)))
+        team_ranking(team_ctx, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season_type=3, until=1991)))
 
 
 # ---------------- team_quarter_points: the team-games relation (step 3, C4b) ----------------
@@ -1336,14 +1307,14 @@ def test_a_quarter_points_window_reads_the_last_n_games(tqp_ctx: AnswerContext) 
     `limit` - the relation now cuts to the window before the linescores are
     summed. The Knicks' last 2 regular-season games by date are e3 (Q1 25)
     and e4 (Q1 15); e1 and e2 are older and must not be counted."""
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S), period=Period(number=1), window=Window(order="recent", count=2)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S), period=Period(number=1), window=Window(order="recent", count=2)))
     assert [g["points"] for g in result.data["games"]] == [25, 15]
     assert result.data["total"] == 40
     assert "last 2 games" in (result.text or "")
 
 
 def test_a_quarter_points_window_oldest_first(tqp_ctx: AnswerContext) -> None:
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S), period=Period(number=1), window=Window(order="first", count=2)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S), period=Period(number=1), window=Window(order="first", count=2)))
     assert [g["points"] for g in result.data["games"]] == [30, 20]
     assert "first 2 games" in (result.text or "")
 
@@ -1351,7 +1322,7 @@ def test_a_quarter_points_window_oldest_first(tqp_ctx: AnswerContext) -> None:
 def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: AnswerContext) -> None:
     """The Knicks' two home games this season are e1 (Q1 30) and e3 (Q1 25);
     e2 and e4, both on the road, must not be counted."""
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(season=S), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home"), span=Span(season=S), period=Period(number=1)))
     assert [g["points"] for g in result.data["games"]] == [30, 25]
     assert result.data["total"] == 55
 
@@ -1363,17 +1334,17 @@ def test_a_teams_points_allowed_in_a_quarter_are_the_other_linescores(tqp_ctx: A
     sides'. The Knicks' opponents' first quarters this season: 20 (e1, the
     Celtics away), 25 (e2, the Lakers at home), 20 (e3), 30 (e4)."""
     allowed = Measure(key="points", as_typed="points allowed", whose="opponent")
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, span=Span(season=S), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, span=Span(season=S), period=Period(number=1)))
     assert [g["points"] for g in result.data["games"]] == [20, 25, 20, 30]
     assert (result.text or "").startswith(f"The New York Knicks' opponents, 1st quarter scoring, {S} regular season (4 games, 95 total):")
-    one = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
+    one = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
     assert one.text == f"The Los Angeles Lakers scored 20 points in the 1st quarter against the New York Knicks on {S}-01-15."
-    fewest = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, span=Span(season=S), period=Period(number=1), window=Window(rank="fewest")))
+    fewest = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), measure=allowed, span=Span(season=S), period=Period(number=1), window=Window(rank="fewest")))
     assert (fewest.text or "").startswith("The New York Knicks' opponents scored 20 in the 1st quarter vs the Boston Celtics on")
 
 
 def test_a_quarter_points_date_reads_one_game(tqp_ctx: AnswerContext) -> None:
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(date=f"{S}-01-15"), period=Period(number=1)))
     assert result.data["games"] == [{"date": f"{S}-01-15", "opponent": "Los Angeles Lakers", "points": 25}]
     assert f"{S}-01-15" in (result.text or "")
 
@@ -1381,7 +1352,7 @@ def test_a_quarter_points_date_reads_one_game(tqp_ctx: AnswerContext) -> None:
 def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: AnswerContext) -> None:
     """Game 4 of the Knicks-Celtics postseason series is p4 - the Knicks'
     road game, Q1 21 from their own (away) linescore."""
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(game_n=4), span=Span(season=S, season_type=3), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(game_n=4), span=Span(season=S, season_type=3), period=Period(number=1)))
     assert result.data["games"] == [{"date": f"{S}-04-26", "opponent": "Boston Celtics", "points": 21}]
     assert "game 4" in (result.text or "")
 
@@ -1389,7 +1360,7 @@ def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: AnswerCon
 def test_a_quarter_points_game_n_regular_season_is_refused(tqp_ctx: AnswerContext) -> None:
     """A series has games 1-7; a regular season has nothing "game 4" names."""
     with pytest.raises(Unsupported):
-        team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(game_n=4), span=Span(season=S, season_type=2), period=Period(number=1)))
+        team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(game_n=4), span=Span(season=S, season_type=2), period=Period(number=1)))
 
 
 def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: AnswerContext) -> None:
@@ -1397,7 +1368,7 @@ def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: AnswerContex
     40) plus the four season-S games (30, 20, 25, 15) - 130 total across 5
     games, the postseason series left out since this asks for no season type
     at all (the default is the regular season)."""
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=(S - 1)), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=(S - 1)), period=Period(number=1)))
     assert len(result.data["games"]) == 5
     assert result.data["total"] == 130
     assert f"since {S - 1}" in (result.text or "")
@@ -1409,7 +1380,7 @@ def test_a_quarter_points_until_bounds_the_since_span(tqp_ctx: AnswerContext) ->
     Bounded to season {S-1} alone (`since=until={S-1}`), only d1 (Q1 40)
     counts; the open-ended since-only test above also picks up all four
     season-{S} games."""
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=(S - 1), until=(S - 1)), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(since=(S - 1), until=(S - 1)), period=Period(number=1)))
     assert len(result.data["games"]) == 1
     assert result.data["total"] == 40
     assert f"from {S - 1} through {S - 1}" in (result.text or "")
@@ -1420,7 +1391,7 @@ def test_a_quarter_points_situation_narrows_by_calendar_month(tqp_ctx: AnswerCon
     shared `team_games` step every other team template narrows by it -
     "november" keeps only e1 (Q1 30), the season's other three games (e2 in
     December, e3 in January, e4 in February) falling out."""
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("in november")), span=Span(season=S), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("in november")), span=Span(season=S), period=Period(number=1)))
     assert [g["points"] for g in result.data["games"]] == [30]
     assert "in November" in (result.text or "")
 
@@ -1429,7 +1400,7 @@ def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: AnswerContext) -> 
     """Both narrowings apply together, as every other reader of the relation's
     narrowing composes them: the Knicks' one home game against the Celtics
     this season is e1 (Q1 30); e3 is a home game but against the Lakers."""
-    result = team_quarter_points(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(opponent="Celtics", venue="home"), span=Span(season=S), period=Period(number=1)))
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(opponent="Celtics", venue="home"), span=Span(season=S), period=Period(number=1)))
     assert [g["points"] for g in result.data["games"]] == [30]
 
 
@@ -1442,7 +1413,7 @@ def test_record_when_team_since_tallies_across_seasons(team_ctx: AnswerContext) 
     p1, p2, p4); that pool's own record is 2-2 (old1 W, p1 L, p2 W, p4 L).
     The two under it, php and p3, are both losses. Refused before (ISSUES.md)
     for want of `since` on the team branch."""
-    result = record_when(
+    result = line_record(
         team_ctx,
         Reading(
             who=Who(kind="team", teams=("Celtics",)),
@@ -1460,7 +1431,7 @@ def test_record_when_team_since_tallies_across_seasons(team_ctx: AnswerContext) 
 
 def test_record_when_team_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        record_when(
+        line_record(
             team_ctx,
             Reading(
                 who=Who(kind="team", teams=("Celtics",)),
@@ -1474,7 +1445,7 @@ def test_record_when_team_since_and_a_named_season_at_once_is_refused(team_ctx: 
 def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: AnswerContext) -> None:
     """Game 4 of the Knicks-Celtics series is p4, where the Celtics scored
     110 and lost - one game, reaching the threshold, in the loss column."""
-    result = record_when(
+    result = line_record(
         team_ctx,
         Reading(
             who=Who(kind="team", teams=("Celtics",)),
@@ -1491,7 +1462,7 @@ def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: Ans
 
 def test_record_when_team_game_n_regular_season_is_refused(team_ctx: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        record_when(
+        line_record(
             team_ctx,
             Reading(
                 who=Who(kind="team", teams=("Celtics",)),
@@ -1514,7 +1485,7 @@ def test_streak_team_since_searches_more_than_one_season(team_ctx: AnswerContext
     Celtics' postseason since 1991: one win in the 1991 Finals (old1) and one
     win in this year's series (p2), each alone in its own season, so the
     longest run either season held is exactly 1 game."""
-    result = streak(team_ctx, Reading(who=Who(kind="team", teams=("Celtics",)), span=Span(season_type=3, since=1991)))
+    result = line_runs(team_ctx, Reading(who=Who(kind="team", teams=("Celtics",)), span=Span(season_type=3, since=1991)))
     assert result.data["streaks"][0]["length"] == 1
     assert "since 1991" in (result.data["span"] or "")
 
@@ -1523,7 +1494,7 @@ def test_streak_league_since_reads_every_teams_seasons_in_the_span(team_ctx: Ans
     """The league-wide (no team, no player) win-streak branch, `since`-bounded:
     the Knicks' 3-1 postseason series this year holds a 2-game win streak
     (p1, then p3-p4 after the one loss) - the longest of anyone's since 1991."""
-    result = streak(team_ctx, Reading(span=Span(season_type=3, since=1991)))
+    result = line_runs(team_ctx, Reading(span=Span(season_type=3, since=1991)))
     assert result.data["streaks"][0]["length"] == 2
     assert "New York Knicks" in result.data["streaks"][0]["name"]
 

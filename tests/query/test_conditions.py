@@ -17,15 +17,15 @@ templates have to get right, measured in the real warehouse first:
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
 import duckdb
 import pytest
-from routed import Said, planned_answer
-from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
+from routed import Said, answered_as
+from test_readers import line_runs, player_meetings, player_splits, presence_split
 from warehouse_rows import insert_rows
 
 from association.fetch.repairs import real_games
@@ -39,7 +39,6 @@ from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
 from association.query.entities import names_of
 from association.query.measure import measure_of
-from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import (
     LINE_RECORD,
@@ -54,40 +53,14 @@ from association.query.reading import (
     PointShape,
     Reading,
     Span,
-    SubjectKind,
     Unsupported,
     Window,
 )
 from association.query.reading import Line as TypedLine
 from association.query.reading import Subject as Who
 from association.query.result import Unanswered
-from association.query.subject import Subject
 
-
-def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Said]:
-    """The shape ``shape`` names answered the way its retired template was called - a
-    Reading in, what was said out (an Answer, :class:`routed.Said`), ``Unsupported`` with the
-    reason where the compiler has no reading of the point - now that the
-    compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
-    6, step (d), part 4). No question words, which would move the point:
-    these are the intent's own. The subject is the one the slots name, as a
-    question naming just them reads."""
-
-    def answered(ctx: AnswerContext, reading: Reading) -> Said:
-        scope = reading
-        named = scope.who.players
-        kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.who.team else "everyone"
-        subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
-        why: list[str] = []
-        result = planned_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
-        if result is None:
-            raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
-        return result
-
-    return answered
-
-
-record_when = _compiled(LINE_RECORD)
+line_record = answered_as(LINE_RECORD)
 
 S = current_season()
 BOS, LAL, PHI = "2", "13", "20"
@@ -423,7 +396,7 @@ def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: A
     """The other half of the P1: `_with_without_games` (now `presence_games_sql`) asked for minutes too,
     so a teammate who played a rebuilt game read as out and the game was
     counted on the "without" side."""
-    result = with_without(rebuilt_league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2)))
+    result = presence_split(rebuilt_league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2)))
     played = next(row for row in result.data["groups"] if row["teammate_played"])
     assert played["games"] == 4, "e5 is a game Tatum played, not one he missed"
 
@@ -439,7 +412,7 @@ def test_the_subjects_own_average_counts_his_rebuilt_game(rebuilt_league: Answer
     at 14.0 - which is exactly
     `test_a_player_subject_gets_his_averages_in_each_group` on the un-rebuilt
     fixture, and the reason this needs a test of its own."""
-    result = with_without(rebuilt_league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2)))
+    result = presence_split(rebuilt_league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2)))
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
     assert groups[True]["player_games"] == 4, "e5 is his game too"
     assert groups[True]["points"] == pytest.approx(17.0), "68/4; dropping the rebuilt 26 gives 14.0"
@@ -492,7 +465,7 @@ def test_record_when_keeps_a_blank_stat_game_off_both_threshold_rows(rebuilt_lea
     threshold of 1 turnover puts every real game "under" and leaves e5 in
     neither threshold row, still counted in "all his games" since it has a
     real result."""
-    result = record_when(
+    result = line_record(
         rebuilt_league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -681,7 +654,7 @@ def test_with_and_without_is_counted_inside_his_time_on_the_team(league: AnswerC
     """With Tatum: e1 W, e4 W, e7 L. Without: e2 (DNP) L, e3 (no row) W. e5's
     box score is missing, so it is on neither side; the placeholder is not a
     game."""
-    result = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2)))
+    result = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2)))
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
     assert (groups[True]["wins"], groups[True]["losses"]) == (2, 1)
     assert (groups[False]["wins"], groups[False]["losses"]) == (1, 1)
@@ -700,7 +673,7 @@ def test_with_and_without_narrows_to_one_opponent_and_says_so(league: AnswerCont
     opponent is in the TITLE, because a record over one opponent's games headed
     as though it covered every game is the silent narrowing this module exists
     to stop."""
-    result = with_without(
+    result = presence_split(
         league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), cuts=Cuts(opponent="Lakers"), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2))
     )
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
@@ -708,14 +681,14 @@ def test_with_and_without_narrows_to_one_opponent_and_says_so(league: AnswerCont
     assert (groups[False]["wins"], groups[False]["losses"]) == (0, 1)
     assert "vs the Los Angeles Lakers" in result.text
     # The other opponent is a different pool, not the same numbers.
-    sixers = with_without(
+    sixers = presence_split(
         league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), cuts=Cuts(opponent="76ers"), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2))
     )
     by_played = {g["teammate_played"]: g for g in sixers.data["groups"]}
     assert (by_played[True]["wins"], by_played[True]["losses"]) == (1, 0)
     assert (by_played[False]["wins"], by_played[False]["losses"]) == (1, 0)
     # And naming none is the whole season, exactly as before.
-    every = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2)))
+    every = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2)))
     assert "vs the" not in every.text
     assert {g["teammate_played"]: (g["wins"], g["losses"]) for g in every.data["groups"]} == {True: (2, 1), False: (1, 1)}
 
@@ -729,7 +702,7 @@ def test_without_two_teammates_counts_only_the_games_neither_played(league: Answ
         [S, BOS, PHI, JOURNEYMAN],
     )  # e3 keeps a box score once Brown sits: without it the game counts as one nobody can tell
     league.con.execute("UPDATE player_box_stats SET did_not_play = TRUE, minutes = NULL WHERE athlete_id = ? AND event_id = 'e3'", [BROWN])
-    result = with_without(
+    result = presence_split(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"), Companion(player="Jaylen Brown", predicate="absent")), span=Span(season_type=2)
@@ -750,7 +723,7 @@ def test_with_two_teammates_counts_only_the_games_both_played(league: AnswerCont
         [S, BOS, PHI, JOURNEYMAN],
     )  # e3 keeps a box score once Brown sits: without it the game counts as one nobody can tell
     league.con.execute("UPDATE player_box_stats SET did_not_play = TRUE, minutes = NULL WHERE athlete_id = ? AND event_id = 'e3'", [BROWN])
-    result = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown")), span=Span(season_type=2)))
+    result = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown")), span=Span(season_type=2)))
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
     assert (groups[True]["wins"], groups[True]["losses"]) == (2, 1)  # e1, e4, e7
     assert (groups[False]["wins"], groups[False]["losses"]) == (1, 1)  # e2, e3
@@ -761,7 +734,7 @@ def test_a_game_before_he_arrived_is_not_a_game_without_him(league: AnswerContex
     """The StatMuse failure: "Nets record without KD all-time" counted decades
     of Nets games before he arrived. e0z is a Celtics win before Tatum's first
     box score; counted, "without" would be 2-1."""
-    result = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2, career=True)))
+    result = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2, career=True)))
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
     assert (groups[False]["wins"], groups[False]["losses"]) == (1, 1)
     assert (groups[True]["wins"], groups[True]["losses"]) == (5, 2)
@@ -771,7 +744,7 @@ def test_a_game_before_he_arrived_is_not_a_game_without_him(league: AnswerContex
 def test_a_traded_player_is_not_missing_from_his_old_team(league: AnswerContext) -> None:
     """Journeyman left the Celtics last season: this season's Celtics games are
     not games they played without him, and the refusal says why."""
-    answer = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Journeyman Guy", predicate="absent"),), span=Span(season_type=2))).text
+    answer = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Journeyman Guy", predicate="absent"),), span=Span(season_type=2))).text
     # e0a tips at 00:30 UTC on the 10th, which is the evening of the 9th in Boston.
     assert "falls outside the" in answer and f"Boston Celtics {S - 2}-10-20 to {S - 2}-11-09" in answer
 
@@ -788,21 +761,23 @@ def test_a_player_who_left_and_came_back_has_two_spells_not_one(league: AnswerCo
             "INSERT INTO player_box_stats VALUES (?,?,2,?,?,'50',TRUE,FALSE,20,10,5,3,0,0,0,1,5,10,0,0)",
             [event, season, team, opponent],
         )
-    result = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Boomerang Guy", predicate="absent"),), span=Span(season_type=2, career=True)))
+    result = presence_split(
+        league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Boomerang Guy", predicate="absent"),), span=Span(season_type=2, career=True))
+    )
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
     assert groups[False]["games"] == 0 and groups[True]["games"] == 2
     assert [t["team"] for t in result.data["tenure"]] == ["Boston Celtics", "Boston Celtics"]
 
 
 def test_a_teammate_who_never_played_for_the_team_is_refused_by_name(league: AnswerContext) -> None:
-    answer = with_without(league, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2))).text
+    answer = presence_split(league, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2))).text
     assert answer.startswith("Jayson Tatum never appeared in a box score for the Philadelphia 76ers")
 
 
 def test_a_player_subject_gets_his_averages_in_each_group(league: AnswerContext) -> None:
     """Brown played every Celtics game with a box score. With Tatum: e1 20, e4
     10, e7 12. Without: e2 25, e3 18."""
-    result = with_without(league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2)))
+    result = presence_split(league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2)))
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
     assert groups[True]["player_games"] == 3 and groups[True]["points"] == pytest.approx(14.0)
     assert groups[False]["player_games"] == 2 and groups[False]["points"] == pytest.approx(21.5)
@@ -812,7 +787,7 @@ def test_a_player_subject_gets_his_averages_in_each_group(league: AnswerContext)
 
 
 def test_the_teammate_repeated_in_the_player_slot_is_not_a_subject(league: AnswerContext) -> None:
-    result = with_without(
+    result = presence_split(
         league, Reading(who=Who(kind="player", players=("Jayson Tatum",), teams=("Boston Celtics",)), companions=(Companion(player="Tatum", predicate="absent"),), span=Span(season_type=2))
     )
     assert result.data["player"] is None and result.data["teammate"] == "Jayson Tatum"
@@ -820,12 +795,12 @@ def test_the_teammate_repeated_in_the_player_slot_is_not_a_subject(league: Answe
 
 def test_with_without_needs_a_teammate(league: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), span=Span(season_type=2)))
+        presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), span=Span(season_type=2)))
 
 
 def test_three_names_and_no_without_is_not_guessed(league: AnswerContext) -> None:
     with pytest.raises(Unsupported):
-        with_without(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown", "Journeyman Guy"), teams=("Boston Celtics",)), span=Span(season_type=2)))
+        presence_split(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown", "Journeyman Guy"), teams=("Boston Celtics",)), span=Span(season_type=2)))
 
 
 # ---------------- record_when ----------------
@@ -833,7 +808,7 @@ def test_three_names_and_no_without_is_not_guessed(league: AnswerContext) -> Non
 
 def test_record_when_divides_his_games_by_the_threshold(league: AnswerContext) -> None:
     """Tatum this season: e1 30 W, e4 35 W, e7 31 L."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -853,7 +828,7 @@ def test_record_when_refuses_what_it_cannot_whitelist(league: AnswerContext) -> 
     # Each refused by the fact missing (Phase 2, step 3).
     tatum = Who(kind="player", players=("Jayson Tatum",))
     said = [
-        record_when(league, Reading(who=tatum, span=Span(season_type=2), **scope)).text
+        line_record(league, Reading(who=tatum, span=Span(season_type=2), **scope)).text
         for scope in (
             {"lines": (TypedLine(measure=None, as_typed="1 double_double", keyed=True),), "measure": measure_of("double_double")},
             {"measure": measure_of("points")},
@@ -876,7 +851,7 @@ def test_record_when_refuses_what_it_cannot_whitelist(league: AnswerContext) -> 
 
 def test_record_when_narrows_by_venue_and_says_so(league: AnswerContext) -> None:
     """Only e1 is a home game; e4 and e7 are on the road."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -893,7 +868,7 @@ def test_record_when_narrows_by_venue_and_says_so(league: AnswerContext) -> None
 def test_record_when_narrows_by_opponent_and_says_so(league: AnswerContext) -> None:
     """Tatum vs the 76ers, across both seasons on record: e0b (last season,
     20, L), e0c (last season, 25, W), e4 (this season, 35, W)."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -912,7 +887,7 @@ def test_record_when_narrows_by_a_teammates_absence_and_says_so(league: AnswerCo
     """Brown's only box score in Tatum's rookie (last) season is e0z, a game
     Tatum is not even in - so every one of Tatum's last-season games is
     "without" him: e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W)."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -929,7 +904,7 @@ def test_record_when_narrows_by_a_teammates_absence_and_says_so(league: AnswerCo
 
 def test_record_when_narrows_by_a_named_half_of_the_split_and_says_so(league: AnswerContext) -> None:
     """Tatum comes off the bench only once: e4, 35 points, a win."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -945,7 +920,7 @@ def test_record_when_narrows_by_a_named_half_of_the_split_and_says_so(league: An
 
 def test_record_when_narrows_by_one_game_of_a_playoff_series_and_says_so(league: AnswerContext) -> None:
     """p1 and p2 are a two-game series vs Philadelphia; game 2 is p2 (26 points, by date, not insertion order)."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Playoff Guy",)),
@@ -963,7 +938,7 @@ def test_record_when_honors_since_and_says_so(league: AnswerContext) -> None:
     """Since last season: every one of Tatum's played games on record, both
     seasons - e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W), e1 (30, W),
     e4 (35, W), e7 (31, W)."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -985,7 +960,7 @@ def test_record_when_honors_since_and_until_together_and_says_so(league: AnswerC
     (``since=until={S - 1}``), only Tatum's 4 games that season count -
     e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W) - against 7 across
     both seasons with no upper bound (the test just above)."""
-    bounded = record_when(
+    bounded = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1001,7 +976,7 @@ def test_record_when_honors_since_and_until_together_and_says_so(league: AnswerC
 def test_record_when_settles_season_n_and_says_so(league: AnswerContext) -> None:
     """Tatum's 1st season on record (player_season_stats_deduped) is last
     season: e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W)."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1021,7 +996,7 @@ def test_record_when_narrows_by_a_box_score_line_and_says_so(league: AnswerConte
     comment), so a line every game already satisfies changes no number but
     does say so in the title - proof the filter reaches the query rather than
     being silently ignored, without needing engineered variance."""
-    with_line = record_when(
+    with_line = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1030,7 +1005,7 @@ def test_record_when_narrows_by_a_box_score_line_and_says_so(league: AnswerConte
             span=Span(season_type=2),
         ),
     )
-    without_line = record_when(
+    without_line = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1049,7 +1024,7 @@ def test_record_when_a_box_score_line_narrows_to_no_games(league: AnswerContext)
     `common._no_games`'s box-score-count branch, which says "did not play in
     any of them" - true of games with no box score, false here, since Tatum
     played several; ISSUES.md records the finding."""
-    empty = record_when(
+    empty = line_record(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1072,7 +1047,7 @@ def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: Answe
     test_a_venue_narrows_a_team_only_threshold_too and
     test_a_team_only_threshold_honors_since below."""
     with pytest.raises(Unsupported, match=r"games with under 3 assists cannot be read here with no named player"):
-        record_when(
+        line_record(
             league,
             Reading(
                 who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1088,9 +1063,9 @@ def test_a_team_only_threshold_honors_since(league: AnswerContext) -> None:
     season instead of refusing - the fixture's Celtics have real games in
     both `last` (e0z-e0d) and this season (e1-e7), and ``since=last`` reaches
     both. The exact tally is covered by the dedicated ``since`` tests in
-    ``tests/query/test_team_templates.py``; this just confirms the shape
+    ``tests/query/test_team_readers.py``; this just confirms the shape
     answers rather than refuses, and says the span in the heading."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1111,7 +1086,7 @@ def test_a_team_only_threshold_honors_until(league: AnswerContext) -> None:
     pool an open-ended ``since={S - 1}`` reaches instead. Bounded to just
     `last` (e0z-e0d), only 5 games count, and the label says the real range
     rather than an open-ended "since"."""
-    bounded = record_when(
+    bounded = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1120,7 +1095,7 @@ def test_a_team_only_threshold_honors_until(league: AnswerContext) -> None:
             span=Span(season_type=2, since=(S - 1), until=(S - 1)),
         ),
     )
-    unbounded = record_when(
+    unbounded = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1141,7 +1116,7 @@ def test_a_team_only_threshold_refuses_a_condition(league: AnswerContext) -> Non
     against - refused by name rather than silently answering the team's
     whole span as though the condition were never named (ISSUES.md)."""
     with pytest.raises(Unsupported, match=r"games Jayson Tatum started cannot be read here with no named player"):
-        record_when(
+        line_record(
             league,
             Reading(
                 who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1165,7 +1140,7 @@ def test_a_team_only_threshold_divides_the_teams_own_games(league: AnswerContext
     120 points" (ISSUES.md #144). Reached (>=105): e1 110 W, e3 120 W, e7 105 L
     (2-1). Fell short (<105): e2 100 L, e4 99 W, e5 101 W (2-1) - e5 included,
     since points reads the game's own score and needs no team_box_stats row."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1186,7 +1161,7 @@ def test_a_team_only_threshold_needs_no_player(league: AnswerContext) -> None:
     test_a_record_when_about_a_team_gains_no_player) - confirming record_when
     itself accepts that shape rather than raising "record_when needs a
     player", the wrong cause for a question that never named anybody."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1203,7 +1178,7 @@ def test_a_bare_threshold_names_the_real_missing_thing(league: AnswerContext) ->
     rather than naming only the player half (the mirror-image bug AGENTS.md
     warns about: a wrong cause reads as honest)."""
     assert (
-        record_when(
+        line_record(
             league, Reading(lines=(TypedLine(measure="points", value=100, as_typed="100 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2))
         ).text
         == "A record in the games over a line needs a player or a team to read it for, and neither was named."
@@ -1216,7 +1191,7 @@ def test_a_team_rebounds_threshold_reads_oreb_plus_dreb_not_totalrebounds(league
     36 is between them: reading the stale totalRebounds column would put
     every game in the reached bucket; reading oreb+dreb (what _TEAM_LINE
     already trusts, AGENTS.md) puts every game in fell_short instead."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1234,7 +1209,7 @@ def test_a_team_non_points_threshold_excludes_the_empty_box_game(league: AnswerC
     Chicago/New Orleans shape, AGENTS.md "Whole team-seasons of box scores
     are empty") - unlike `points`, `assists` cannot read it, so it is in
     neither row and the answer says one game is missing."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1253,7 +1228,7 @@ def test_a_team_threshold_refuses_a_stat_with_no_team_figure(league: AnswerConte
     minutes total - the refusal names that, not "record_when needs a
     player" (the wrong cause: a team WAS named)."""
     with pytest.raises(Unsupported, match="record_when has no team figure for minutes"):
-        record_when(
+        line_record(
             league,
             Reading(
                 who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1270,7 +1245,7 @@ def test_an_opponent_narrows_a_team_only_threshold_too(league: AnswerContext) ->
     Narrowed to LAL and a 105-point threshold: reached (>=105) is e1 (W) and
     e7 (L), 1-1; fell short is e2 (L) and e5 (W), 1-1 - the other two games
     (both vs Philadelphia) excluded from both rows."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1290,7 +1265,7 @@ def test_a_venue_narrows_a_team_only_threshold_too(league: AnswerContext) -> Non
     """The Celtics' three home games this season are e1 110 W, e3 120 W, e5
     101 W - all wins, so at a 105-point threshold reached is 2-0 (e1, e3) and
     fell short is 1-0 (e5), with none of their three road games counted."""
-    result = record_when(
+    result = line_record(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1312,7 +1287,7 @@ def test_a_team_only_threshold_says_which_fact_is_missing_for_a_narrowing_with_n
     the span: "played 1 games ... none of them vs the Philadelphia 76ers",
     not the false "no games in the 1991 postseason" (`condition_team_no_games`,
     step 3, C4)."""
-    result = record_when(
+    result = line_record(
         old_postseason_and_cup_final,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1332,10 +1307,10 @@ def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: AnswerC
     (e1, e3, e5) - their whole home slate, in order - so the streak is 3, not
     the 1-game runs their overall 4-2 record (interrupted by two road losses)
     would otherwise show at this same threshold-free "wins" question."""
-    home = streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), cuts=Cuts(venue="home"), measure=Measure(won=True), span=Span(season_type=2)))
+    home = line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), cuts=Cuts(venue="home"), measure=Measure(won=True), span=Span(season_type=2)))
     assert home.data["streaks"][0]["length"] == 3
     assert "at home" in (home.text or "")
-    against_phi = streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), cuts=Cuts(opponent="Philadelphia 76ers"), measure=Measure(won=True), span=Span(season_type=2)))
+    against_phi = line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), cuts=Cuts(opponent="Philadelphia 76ers"), measure=Measure(won=True), span=Span(season_type=2)))
     assert against_phi.data["streaks"][0]["length"] == 2  # e3, e4 - both wins
     assert "vs the Philadelphia 76ers" in (against_phi.text or "")
 
@@ -1346,9 +1321,9 @@ def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: AnswerCon
     the planner refuses by name (its row's ``named_subject``) rather than
     silently narrowing nothing or picking one team to mean."""
     with pytest.raises(Unsupported, match=r"home games cannot be read here with no named team or player"):
-        streak(league, Reading(cuts=Cuts(venue="home"), measure=Measure(won=True), span=Span(season_type=2)))
+        line_runs(league, Reading(cuts=Cuts(venue="home"), measure=Measure(won=True), span=Span(season_type=2)))
     with pytest.raises(Unsupported, match=r"games against Boston Celtics cannot be read here with no named team or player"):
-        streak(league, Reading(cuts=Cuts(opponent="Boston Celtics"), measure=Measure(won=True), span=Span(season_type=2)))
+        line_runs(league, Reading(cuts=Cuts(opponent="Boston Celtics"), measure=Measure(won=True), span=Span(season_type=2)))
 
 
 def test_a_league_streak_honors_until(league: AnswerContext) -> None:
@@ -1358,8 +1333,8 @@ def test_a_league_streak_honors_until(league: AnswerContext) -> None:
     season since instead, surfacing the Celtics' tied 3-game streak this
     season (2025-11-04 to 2025-11-08) alongside their real, in-range one -
     turning a lone leader into a tie the range never asked about."""
-    bounded = streak(league, Reading(measure=Measure(won=True), span=Span(season_type=2, since=(S - 1), until=(S - 1))))
-    unbounded = streak(league, Reading(measure=Measure(won=True), span=Span(season_type=2, since=(S - 1))))
+    bounded = line_runs(league, Reading(measure=Measure(won=True), span=Span(season_type=2, since=(S - 1), until=(S - 1))))
+    unbounded = line_runs(league, Reading(measure=Measure(won=True), span=Span(season_type=2, since=(S - 1))))
     assert len(bounded.data["streaks"]) == 2
     assert len(unbounded.data["streaks"]) == 4
     assert f"from {S - 1} through {S - 1}" in (bounded.text or "")
@@ -1390,7 +1365,7 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: AnswerContext) 
 
     def answered(question: str, given: Reading) -> str:
         applied = apply_subject(read_subject(names_of(league.con), question, LINE_RECORD, given), given, asked=LINE_RECORD)
-        return (record_when(league, Reading(**applied.scope.filters())).text or "").splitlines()[0]
+        return (line_record(league, Reading(**applied.scope.filters())).text or "").splitlines()[0]
 
     celtics = Who(kind="team", teams=("Boston Celtics",))
     twenty = (TypedLine(measure="points", value=20, as_typed="20 points", keyed=True),)
@@ -1425,7 +1400,7 @@ def test_record_when_still_restores_a_player_the_question_names() -> None:
 def test_a_matchup_is_the_games_both_played_on_opposite_teams(league: AnswerContext) -> None:
     """e1 and e7. Not e2 (Tatum DNP), and not e5, where the Celtics' box score
     is missing - which is said."""
-    result = player_matchup(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), span=Span(season_type=2)))
+    result = player_meetings(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), span=Span(season_type=2)))
     assert result.data["meetings"] == 2
     assert result.data["wins"] == {"LeBron James": 1, "Jayson Tatum": 1}
     assert result.data["averages"]["Jayson Tatum"]["points"] == pytest.approx(30.5)
@@ -1433,7 +1408,7 @@ def test_a_matchup_is_the_games_both_played_on_opposite_teams(league: AnswerCont
 
 
 def test_teammates_never_met_and_the_answer_says_why(league: AnswerContext) -> None:
-    answer = player_matchup(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown")), span=Span(season_type=2))).text
+    answer = player_meetings(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown")), span=Span(season_type=2))).text
     assert answer.endswith("they were teammates in all 3 games they both played.")
 
 
@@ -1441,24 +1416,24 @@ def test_a_matchup_since_a_season_reaches_back_that_far_and_no_further(league: A
     """``since`` is a scope on the relation: every season from the one named,
     where the default is this season alone. LeBron and Tatum met twice last
     season and twice this one with both playing."""
-    this_season = player_matchup(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), span=Span(season_type=2))).data["meetings"]
-    since_last = player_matchup(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), span=Span(season_type=2, since=(S - 1)))).data["meetings"]
+    this_season = player_meetings(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), span=Span(season_type=2))).data["meetings"]
+    since_last = player_meetings(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), span=Span(season_type=2, since=(S - 1)))).data["meetings"]
     assert (this_season, since_last) == (2, 4)
 
 
 def test_a_log_since_a_season_reaches_back_that_far(league: AnswerContext) -> None:
-    from test_templates import game_log  # the compiler's, game_log's template retired (compose.COMPILED_INTENTS)
+    from test_readers import player_log
 
-    this_season = game_log(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2), window=Window(count=50))).data["games"]
-    since_last = game_log(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2, since=(S - 1)), window=Window(count=50))).data["games"]
+    this_season = player_log(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2), window=Window(count=50))).data["games"]
+    since_last = player_log(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2, since=(S - 1)), window=Window(count=50))).data["games"]
     assert len(since_last) > len(this_season)
     assert {g["season"] for g in since_last} == {S - 1, S}
 
 
 def test_a_matchup_needs_two_different_players(league: AnswerContext) -> None:
-    assert player_matchup(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2))).text == "A matchup needs two players, and only Jayson Tatum was read."
+    assert player_meetings(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2))).text == "A matchup needs two players, and only Jayson Tatum was read."
     with pytest.raises(Unsupported):
-        player_matchup(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Tatum")), span=Span(season_type=2)))
+        player_meetings(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Tatum")), span=Span(season_type=2)))
 
 
 # ---------------- streak ----------------
@@ -1467,14 +1442,14 @@ def test_a_matchup_needs_two_different_players(league: AnswerContext) -> None:
 def test_a_teams_streak_skips_a_game_that_has_no_result(league: AnswerContext) -> None:
     """e3, e4, e5: three wins with the placeholder e6 sitting between e3 and
     e4. Read as a loss, it would split the run in two."""
-    result = streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2)))
+    result = line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2)))
     assert result.data["streaks"][0] == {"length": 3, "from": f"{S - 1}-11-04", "to": f"{S - 1}-11-08", "open": False}
 
 
 def test_a_teams_streak_does_not_cross_seasons(league: AnswerContext) -> None:
     """Last season ends on three wins and this one opens with a fourth.
     Counted across the break that is a run of 4; the record book says 3."""
-    result = streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, career=True)))
+    result = line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, career=True)))
     assert result.data["streaks"][0]["length"] == 3
     assert "counted within one season" in result.text
 
@@ -1483,7 +1458,7 @@ def test_a_players_run_skips_missed_games_and_stops_at_unknown_ones(league: Answ
     """25+ points: e0c 25, e0a 30, e0d 28, e1 30, (e2 DNP, e3 no row), e4 35,
     then e5 with no box score, then e7 31. Missed games neither extend nor end
     the run; the unknown one ends it. A run of 5 across the season break."""
-    result = streak(
+    result = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1499,20 +1474,20 @@ def test_a_players_run_skips_missed_games_and_stops_at_unknown_ones(league: Answ
 def test_the_league_streak_reports_a_tie_as_a_tie(league: AnswerContext) -> None:
     """25+ points this season: Tatum e1, e4 (then e5 unknown); LeBron e1, e2
     (then 20 in e5)."""
-    result = streak(league, Reading(lines=(TypedLine(measure="points", value=25, as_typed="25 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)))
+    result = line_runs(league, Reading(lines=(TypedLine(measure="points", value=25, as_typed="25 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)))
     assert [s["length"] for s in result.data["streaks"][:2]] == [2, 2]
     assert result.text.startswith("Jayson Tatum and LeBron James shared the longest")
 
 
 def test_the_leagues_longest_winning_streak_names_the_team(league: AnswerContext) -> None:
-    result = streak(league, Reading(measure=Measure(won=True), span=Span(season_type=2)))
+    result = line_runs(league, Reading(measure=Measure(won=True), span=Span(season_type=2)))
     assert result.text.startswith(f"Boston Celtics had the longest winning streak of the {S} regular season: 3 games.")
     assert result.data["headline"] == f"Boston Celtics had the longest winning streak of the {S} regular season: 3 games."
     assert result.data["notes"]  # the "only games he played count" rule, at minimum
 
 
 def test_a_losing_streak_is_a_run_of_losses(league: AnswerContext) -> None:
-    result = streak(league, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), measure=Measure(won=False), span=Span(season_type=2)))
+    result = line_runs(league, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), measure=Measure(won=False), span=Span(season_type=2)))
     assert result.data["streaks"][0]["length"] == 2
     assert result.data["headline"] == (result.text or "").split("\n")[0]
     assert result.data["notes"]
@@ -1524,7 +1499,7 @@ def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: Answ
     # Each refused by the fact missing (Phase 2, step 3).
     celtics = Who(kind="team", teams=("Boston Celtics",))
     said = [
-        streak(league, Reading(who=celtics, span=Span(season_type=2), **scope)).text
+        line_runs(league, Reading(who=celtics, span=Span(season_type=2), **scope)).text
         for scope in (
             {"measure": measure_of("double_double")},
             {"measure": measure_of("points")},
@@ -1539,7 +1514,7 @@ def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: Answ
         "A threshold of 0 counts every game - there is no line there to keep games past.",
     ]
     assert (
-        streak(
+        line_runs(
             league,
             Reading(
                 who=Who(kind="team", teams=("Boston Celtics",)),
@@ -1553,7 +1528,9 @@ def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: Answ
 
 
 def test_the_models_word_for_a_winning_streak_is_not_a_stat(league: AnswerContext) -> None:
-    assert streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(key="wins", as_typed="wins", won=True), span=Span(season_type=2))).data["streaks"][0]["length"] == 3
+    assert (
+        line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(key="wins", as_typed="wins", won=True), span=Span(season_type=2))).data["streaks"][0]["length"] == 3
+    )
 
 
 # ---------------- streak, the relation's cells (step 3, C2) ----------------
@@ -1566,7 +1543,7 @@ def test_the_models_word_for_a_winning_streak_is_not_a_stat(league: AnswerContex
 def test_streak_narrows_by_venue_and_says_so(league: AnswerContext) -> None:
     """Tatum's home games only: e0c, e0a, e0d, e1 - e4 and e7 are on the road,
     and dropping them shortens the career run below the unnarrowed 5."""
-    result = streak(
+    result = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1586,7 +1563,7 @@ def test_streak_narrows_by_opponent_and_says_so(league: AnswerContext) -> None:
     "unseen" read is not filtered by it - sitting between e1 and e7 and
     ending the run there. A run of 3, not the unnarrowed 5: dropping e4 (vs
     Philadelphia) from the sequence shortens it further still."""
-    result = streak(
+    result = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1610,7 +1587,7 @@ def test_a_player_with_no_run_records_no_remark_he_is_not_told(league: AnswerCon
     from association.query.notes import collect
 
     with collect() as remarks:
-        result = streak(
+        result = line_runs(
             league,
             Reading(
                 who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1632,7 +1609,7 @@ def test_a_league_with_no_run_records_no_remark_it_is_not_told(league: AnswerCon
     from association.query.notes import collect
 
     with collect() as remarks:
-        result = streak(league, Reading(measure=Measure(won=True), span=Span(season=1990, season_type=3)))
+        result = line_runs(league, Reading(measure=Measure(won=True), span=Span(season=1990, season_type=3)))
     assert result.data["streaks"] == []
     assert "no team has a game" in result.text.lower()
     assert remarks.notes == []
@@ -1658,7 +1635,7 @@ def test_streak_narrows_by_a_teammates_absence_and_says_so(league: AnswerContext
     every one of Tatum's last-season games is "without" him - the Celtics'
     longest winning run in games Tatum played that season, without Brown, is
     e0c/e0a/e0d (e0b is a loss first)."""
-    result = streak(
+    result = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)), companions=(Companion(player="Jaylen Brown", predicate="absent"),), measure=Measure(won=True), span=Span(season=(S - 1), season_type=2)
@@ -1670,7 +1647,7 @@ def test_streak_narrows_by_a_teammates_absence_and_says_so(league: AnswerContext
 
 def test_streak_narrows_by_a_named_half_of_the_split_and_says_so(league: AnswerContext) -> None:
     """Tatum's only bench game is e4, a win - a run of exactly one."""
-    result = streak(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), measure=Measure(won=True), span=Span(season_type=2), split="bench"))
+    result = line_runs(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), measure=Measure(won=True), span=Span(season_type=2), split="bench"))
     assert result.data["streaks"][0]["length"] == 1
     assert "off the bench" in result.text
 
@@ -1679,7 +1656,7 @@ def test_streak_honors_since_and_says_so(league: AnswerContext) -> None:
     """Since this season alone (S), Tatum's recorded-points games are e1, e4,
     e7 - e5 sits between e4 and e7 with no box score, so it is a run of 2
     (e1, e4), not 3."""
-    result = streak(
+    result = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1695,7 +1672,7 @@ def test_streak_honors_since_and_says_so(league: AnswerContext) -> None:
 def test_streak_settles_season_n_and_says_so(league: AnswerContext) -> None:
     """His 2nd season on record is this one (S) - the same games as the
     `since` case above, addressed by ordinal instead."""
-    result = streak(
+    result = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1712,7 +1689,7 @@ def test_streak_settles_season_n_and_says_so(league: AnswerContext) -> None:
 def test_streak_narrows_by_one_game_of_a_playoff_series_and_says_so(league: AnswerContext) -> None:
     """Playoff Guy's game 2 of his one series is p2 alone - a run of exactly
     one game either way, but scoped to that game and said so."""
-    result = streak(
+    result = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Playoff Guy",)),
@@ -1729,7 +1706,7 @@ def test_streak_narrows_by_one_game_of_a_playoff_series_and_says_so(league: Answ
 def test_streak_narrows_by_a_box_score_line_and_says_so(league: AnswerContext) -> None:
     """Every played row in this fixture carries exactly 3 assists, so a line
     every game already satisfies changes no run but does say so."""
-    with_line = streak(
+    with_line = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1738,7 +1715,7 @@ def test_streak_narrows_by_a_box_score_line_and_says_so(league: AnswerContext) -
             span=Span(season_type=2, career=True),
         ),
     )
-    without_line = streak(
+    without_line = line_runs(
         league,
         Reading(
             who=Who(kind="player", players=("Jayson Tatum",)),
@@ -1757,7 +1734,7 @@ def test_streak_cannot_honor_a_relation_cell_without_a_player(league: AnswerCont
     calls it. ``since`` is NOT in this list any more (step 3, C4b) - see
     test_a_team_streak_honors_since below."""
     with pytest.raises(Unsupported, match=r"the 1st season of a career cannot be read here"):
-        streak(league, Reading(cuts=Cuts(season_n=1), measure=Measure(won=True), span=Span(season_type=2)))
+        line_runs(league, Reading(cuts=Cuts(season_n=1), measure=Measure(won=True), span=Span(season_type=2)))
 
 
 def test_a_team_streak_honors_since(league: AnswerContext) -> None:
@@ -1769,9 +1746,9 @@ def test_a_team_streak_honors_since(league: AnswerContext) -> None:
     (e0c, e0a, e0d) and this season (e3, e4, e5); with `since` bounded to the
     current season alone (the default), only the second would be found. The
     exact tally is covered by the dedicated ``since`` tests in
-    ``tests/query/test_team_templates.py``; this confirms the shape answers
+    ``tests/query/test_team_readers.py``; this confirms the shape answers
     rather than refuses, over the wider span."""
-    result = streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, since=(S - 1))))
+    result = line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, since=(S - 1))))
     assert result.data["streaks"]
     assert result.data["streaks"][0]["length"] == 3
     assert f"since {S - 1}" in (result.text or "")
@@ -1783,8 +1760,8 @@ def test_a_team_streak_honors_until(league: AnswerContext) -> None:
     ``since=until={S - 1}``) silently searched every season since instead,
     surfacing the tied 3-game streak this season also has (e3, e4, e5) as a
     "Matched by" line that a range ending at `last` should never see."""
-    bounded = streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, since=(S - 1), until=(S - 1))))
-    unbounded = streak(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, since=(S - 1))))
+    bounded = line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, since=(S - 1), until=(S - 1))))
+    unbounded = line_runs(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), measure=Measure(won=True), span=Span(season_type=2, since=(S - 1))))
     assert len(bounded.data["streaks"]) == 1
     assert len(unbounded.data["streaks"]) == 2
     assert f"from {S - 1} through {S - 1}" in (bounded.text or "")
@@ -1797,7 +1774,7 @@ def test_a_team_streak_refuses_a_condition(league: AnswerContext) -> None:
     has no subject to check it against - refused by name rather than
     silently narrowing nothing (ISSUES.md)."""
     with pytest.raises(Unsupported, match=r"games Jayson Tatum started cannot be read here"):
-        streak(
+        line_runs(
             league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum", predicate="started"),), measure=Measure(won=True), span=Span(season_type=2))
         )
 
@@ -1883,7 +1860,7 @@ def test_a_playoff_season_label_no_longer_refuses_and_finds_nothing_with_no_matc
     nothing, when nothing was actually played in that calendar year, rather
     than a claim about which year the label really means."""
     celtics = Who(kind="team", teams=("Boston Celtics",))
-    for template, scope in ((streak, {"who": celtics, "measure": Measure(won=True)}), (streak, {"measure": Measure(won=True)}), (player_splits, {"who": celtics})):
+    for template, scope in ((line_runs, {"who": celtics, "measure": Measure(won=True)}), (line_runs, {"measure": Measure(won=True)}), (player_splits, {"who": celtics})):
         answer = template(league, Reading(span=Span(season=season, season_type=3), **scope)).text or ""
         assert "postseason is the" not in answer  # the old misfiled-label refusal
         assert "no games" in answer.lower() or "no team has a game" in answer.lower()
@@ -1898,9 +1875,9 @@ def test_a_postseason_labeled_1990_is_read_as_the_1991_playoffs_by_calendar_year
     celtics = Who(kind="team", teams=("Boston Celtics",))
     fifty = (TypedLine(measure="points", value=50, as_typed="50 points", keyed=True),)
     for template, scope in (
-        (streak, {"who": celtics, "measure": Measure(won=True)}),
+        (line_runs, {"who": celtics, "measure": Measure(won=True)}),
         (player_splits, {"who": celtics}),
-        (record_when, {"who": celtics, "lines": fifty, "measure": measure_of("points")}),
+        (line_record, {"who": celtics, "lines": fifty, "measure": measure_of("points")}),
     ):
         empty = template(old_postseason_and_cup_final, Reading(span=Span(season=1990, season_type=3), **scope))
         assert empty.data.get("games") == 0, f"{template.__name__} found a game under the 1990 LABEL, which is really 1991"
@@ -1943,7 +1920,7 @@ def test_a_streak_across_seasons_names_each_team_as_it_was_then(old_franchises: 
     """Every all-seasons team streak used to end "franchises are named as they
     are today", because that is what it did: a 2001 Nets run read Brooklyn
     Nets. Each run lies inside one season, so it is named for it."""
-    answer = streak(old_franchises, Reading(measure=Measure(won=True), span=Span(season_type=2, career=True))).text or ""
+    answer = line_runs(old_franchises, Reading(measure=Measure(won=True), span=Span(season_type=2, career=True))).text or ""
     assert "New Jersey Nets (2001)" in answer and "Brooklyn" not in answer
     assert "named as they are today" not in answer
 
@@ -1951,7 +1928,7 @@ def test_a_streak_across_seasons_names_each_team_as_it_was_then(old_franchises: 
 def test_a_matchup_log_abbreviates_each_team_for_the_season_of_the_meeting(old_franchises: AnswerContext) -> None:
     """The meeting log read "BKN 100-90 MEM" for a 2001 game in New Jersey
     against Vancouver."""
-    answer = player_matchup(old_franchises, Reading(who=Who(kind="pair", players=("Kenyon Martin", "Pau Gasol")), span=Span(season=2001, season_type=2))).text or ""
+    answer = player_meetings(old_franchises, Reading(who=Who(kind="pair", players=("Kenyon Martin", "Pau Gasol")), span=Span(season=2001, season_type=2))).text or ""
     assert "NJ 100-90 VAN" in answer and "BKN" not in answer
 
 
@@ -2223,7 +2200,7 @@ def test_a_matchup_without_a_teammate_narrows_the_first_players_games(league: An
     without kd"): LeBron met Tatum in e1 and e7 this season; Journeyman Guy,
     LeBron's teammate, played e1 and has no line in e7, so "without" him
     leaves e7 alone - and the heading says so."""
-    result = player_matchup(
+    result = player_meetings(
         league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), companions=(Companion(player="Journeyman Guy", predicate="absent"),), span=Span(season_type=2))
     )
     assert result.data["meetings"] == 1
@@ -2232,10 +2209,10 @@ def test_a_matchup_without_a_teammate_narrows_the_first_players_games(league: An
 
 def test_a_matchup_at_home_is_the_first_players_home_meetings(league: AnswerContext) -> None:
     """A venue narrows the first player's side: e7 is at LAL, e1 at BOS."""
-    home = player_matchup(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), cuts=Cuts(venue="home"), span=Span(season_type=2)))
+    home = player_meetings(league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), cuts=Cuts(venue="home"), span=Span(season_type=2)))
     assert home.data["meetings"] == 1
     assert "at home" in home.text
-    away = player_matchup(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "LeBron James")), cuts=Cuts(venue="home"), span=Span(season_type=2)))
+    away = player_meetings(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "LeBron James")), cuts=Cuts(venue="home"), span=Span(season_type=2)))
     assert away.data["meetings"] == 1
 
 
@@ -2243,7 +2220,7 @@ def test_a_matchup_whose_second_player_is_the_absent_teammate_says_so(league: An
     """A recorded case: "fox vs wembanyama without wembanyama" - with the
     absence honored, the meetings are empty by construction, and "never
     played against each other" would be a false sentence. Said instead."""
-    result = player_matchup(
+    result = player_meetings(
         league, Reading(who=Who(kind="pair", players=("LeBron James", "Jayson Tatum")), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2))
     )
     assert "both the player" in result.text and result.data["message"]
@@ -2311,13 +2288,13 @@ def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: AnswerCont
     set is empty. This season Tatum met LeBron in e1 and e7 (e2 he sat), and
     Brown played both; last season Brown missed both meetings, so a career
     read has 2 to show."""
-    result = player_matchup(
+    result = player_meetings(
         league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "LeBron James")), companions=(Companion(player="Jaylen Brown", predicate="absent"),), span=Span(season=S, season_type=2))
     )
     assert result.data["meetings"] == 0
     assert f"Over {S}-{S} they met 2 times in all, 2 of them with Jaylen Brown playing beside Jayson Tatum" in result.text and "there were none among their meetings" in result.text
     # ... and where the narrowed set holds a meeting, there is a matchup to show and no context.
-    result = player_matchup(
+    result = player_meetings(
         league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "LeBron James")), companions=(Companion(player="Jaylen Brown", predicate="absent"),), span=Span(season_type=2, career=True))
     )
     assert result.data["meetings"] == 2 and "they met" not in result.text
@@ -2328,7 +2305,7 @@ def test_a_record_when_teammates_start_splits_by_the_start(league: AnswerContext
     sides are the games he started against the rest, not played against
     out. This season Tatum started e1 (W) and e7 (L), came off the bench in
     e4 (W), sat e2 (L) and has no line in e3 (W)."""
-    result = with_without(
+    result = presence_split(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum", predicate="started"), Companion(player="Jayson Tatum")), span=Span(season=S, season_type=2)
@@ -2338,11 +2315,11 @@ def test_a_record_when_teammates_start_splits_by_the_start(league: AnswerContext
     assert groups[True] == (2, 1, 1) and groups[False] == (3, 2, 1)
     assert "Jayson Tatum started" in result.text and "Jayson Tatum did not start" in result.text
     # The same question with no role is the plain played/out split.
-    plain = with_without(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season=S, season_type=2)))
+    plain = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum"),), span=Span(season=S, season_type=2)))
     plain_groups = {g["teammate_played"]: (g["games"], g["wins"], g["losses"]) for g in plain.data["groups"]}
     assert plain_groups[True] == (3, 2, 1) and "Jayson Tatum played" in plain.text
     # A line as the role: the games he had 30+ points (e1 30, e7 31, e4 35) against the rest.
-    lined = with_without(
+    lined = presence_split(
         league,
         Reading(
             who=Who(kind="team", teams=("Boston Celtics",)),

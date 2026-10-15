@@ -14,7 +14,7 @@ import itertools
 from typing import Any
 
 import pytest
-from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
+from test_readers import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext

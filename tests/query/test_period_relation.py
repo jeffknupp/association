@@ -15,7 +15,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
+from test_readers import team_period_total
 
 from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
@@ -461,7 +461,7 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
     """ "home team first half turnovers": the relation's rebuilt column, per
     game and averaged, and the season's measured agreement said beside it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
     )
     assert (result.data["total"], result.data["stat"], [g["turnovers"] for g in result.data["games"]]) == (5, "turnovers", [5, 0])
@@ -476,7 +476,7 @@ def test_team_quarter_points_answers_the_opponents_rebuilt_stat_from_the_other_s
     both teams' lines. The Away Team's opponents are the Home Team, whose
     first-half turnovers are 5 in g1 and none in g2."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx,
         Reading(
             who=Who(kind="team", teams=("Away Team",)),
@@ -492,7 +492,7 @@ def test_team_quarter_points_answers_the_opponents_rebuilt_stat_from_the_other_s
 def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "turnovers", {SEASON: 60.6})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx, Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
     )
     assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.text or "")
@@ -507,19 +507,19 @@ def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempt
     rebuilds badly refuses the percentage with it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
     scope = Reading(who=Who(kind="team", teams=("Home Team",)), measure=measure_of("freeThrowPct"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
-    result = team_quarter_points(ctx, scope)
+    result = team_period_total(ctx, scope)
     assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["average"]) == ("ft_pct", 1, 2, 50.0)
     assert [(g["freeThrowsMade"], g["freeThrowsAttempted"], g["ft_pct"]) for g in result.data["games"]] == [(1, 2, 50.0), (0, 0, None)]
     answer = result.text or ""
     assert "The Home Team shot 1 of 2 (50.0%) on free throws in the 1st half across 2 2026 regular season games:" in answer and "1-2  50.0%" in answer and "0-0  -" in answer
-    most = team_quarter_points(ctx, replace(scope, window=Window(rank="most")))
+    most = team_period_total(ctx, replace(scope, window=Window(rank="most")))
     assert "extreme" not in most.data and "is not ranked" in (most.text or "")
 
 
 def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "freeThrowsAttempted", {SEASON: 70.0})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(
+    result = team_period_total(
         ctx,
         Reading(who=Who(kind="team", teams=("Home Team",)), measure=Measure(key="freeThrowPct", as_typed="freeThrowPct"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True)),
     )

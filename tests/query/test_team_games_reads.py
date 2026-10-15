@@ -1,5 +1,5 @@
 """The team-games relation's reads a team reader takes, called over the team
-fixture warehouse (``test_team_templates.team_ctx``): the two checks a
+fixture warehouse (``test_team_readers.team_ctx``): the two checks a
 team's record makes (``compose.team_records``) and the team compiler's
 narrowed total (``compose.team``), each built AND run on the relation's
 shared steps (:mod:`association.query.team_relation`) and handed back as
@@ -9,7 +9,7 @@ then).
 
 from __future__ import annotations
 
-from test_team_templates import S, team_ctx  # noqa: F401 - the fixture, by name
+from test_team_readers import S, team_ctx  # noqa: F401 - the fixture, by name
 
 from association.query.answer import AnswerContext
 from association.query.team_games import TeamNarrowed

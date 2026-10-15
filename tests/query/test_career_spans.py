@@ -8,14 +8,13 @@ postseason that is a copy of the regular season, the 1993 phantom season, an
 empty box score, a career that began before the box scores do.
 """
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pytest
-from routed import Said, planned_answer
-from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
+from routed import answered_as
+from test_readers import player_ranking
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
@@ -24,37 +23,11 @@ from association.query.measure import measure_of
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
-from association.query.parse import with_point
-from association.query.reading import GAME_HIGHS, GAMES_COUNTED, PLAYER_RANKING, Line, Measure, PointShape, Reading, Span, SubjectKind, Unsupported, Window
+from association.query.reading import GAME_HIGHS, GAMES_COUNTED, PLAYER_RANKING, Line, Measure, PointShape, Reading, Span, Unsupported, Window
 from association.query.reading import Subject as Who
-from association.query.subject import Subject
 
-
-def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Said]:
-    """The shape ``shape`` names answered the way its retired template was called - a
-    Reading in, what was said out (an Answer, :class:`routed.Said`), ``Unsupported`` with the
-    reason where the compiler has no reading of the point - now that the
-    compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
-    6, step (d), part 4). No question words, which would move the point:
-    these are the intent's own. The subject is the one the slots name, as a
-    question naming just them reads."""
-
-    def answered(ctx: AnswerContext, reading: Reading) -> Said:
-        scope = reading
-        named = scope.who.players
-        kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.who.team else "everyone"
-        subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
-        why: list[str] = []
-        result = planned_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
-        if result is None:
-            raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
-        return result
-
-    return answered
-
-
-single_game_high = _compiled(GAME_HIGHS)
-threshold_count = _compiled(GAMES_COUNTED)
+game_highs = answered_as(GAME_HIGHS)
+games_counted = answered_as(GAMES_COUNTED)
 
 _STATS_COLUMNS = (
     "athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER, avgPoints DOUBLE, "
@@ -138,21 +111,21 @@ def season_ctx(tmp_path: Path) -> AnswerContext:
 
 
 def test_a_shooting_percentage_names_its_qualifier_and_its_volume(season_ctx: AnswerContext) -> None:
-    answer = leaderboard(season_ctx, Reading(measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"))).text
+    answer = player_ranking(season_ctx, Reading(measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"))).text
     assert answer == (
         f"Sharp Shooter led the league in 3-point percentage in the {current_season()} regular season (minimum 200 3-point attempts), at 47.8% (117 of 245). Next: Volume Scorer (45.6%)."
     )
 
 
 def test_most_threes_is_a_season_count(season_ctx: AnswerContext) -> None:
-    result = leaderboard(season_ctx, Reading(measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")))
+    result = player_ranking(season_ctx, Reading(measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")))
     assert result.data["leaders"][0]["display_name"] == "Volume Scorer"
     assert "led the league in 3-pointers made" in result.text and "at 135." in result.text
 
 
 def test_rate_total_ranks_the_season_total_rather_than_the_average(season_ctx: AnswerContext) -> None:
-    assert leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
-    result = leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
+    assert player_ranking(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
+    result = player_ranking(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
     assert result.data["leaders"][0]["display_name"] == "Volume Scorer"
     assert "in total points" in result.text and "2,000" in result.text
 
@@ -160,7 +133,7 @@ def test_rate_total_ranks_the_season_total_rather_than_the_average(season_ctx: A
 def test_a_postseason_copied_from_the_regular_season_is_not_a_postseason(season_ctx: AnswerContext) -> None:
     """Eddy Curry never played a playoff game and has 6,820 playoff points,
     because his regular seasons are stored twice. Unfiltered, this board is his."""
-    leaders = leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total"), span=Span(season_type=3))).data["leaders"]
+    leaders = player_ranking(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total"), span=Span(season_type=3))).data["leaders"]
     assert [row["display_name"] for row in leaders] == ["Volume Scorer"]
 
 
@@ -193,7 +166,7 @@ def test_career_points_are_summed_from_the_stints_and_counted_once(career_ctx: A
     """Moses Malone's combined 1976-77 row is empty, so a sum over it loses the
     season; a traded player's combined row alongside its stints would count
     his season twice. Summed over the stints, each is right."""
-    leaders = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True))).data["leaders"]
+    leaders = player_ranking(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True))).data["leaders"]
     assert _ranked(leaders) == [
         ("Michael Jordan", 14991),
         ("LeBron James", 10000),
@@ -205,7 +178,7 @@ def test_career_points_are_summed_from_the_stints_and_counted_once(career_ctx: A
 
 
 def test_a_career_list_says_whose_careers_and_that_it_is_not_all_time(career_ctx: AnswerContext) -> None:
-    answer = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True), window=Window(count=2))).text
+    answer = player_ranking(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True), window=Window(count=2))).text
     assert answer == (
         "Among players active in 1993-94 or later, Michael Jordan leads in career points in the regular season: 14,991, over 492 games (1984-85 through 1995-96). "
         "Next: LeBron James (10,000). Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
@@ -213,14 +186,14 @@ def test_a_career_list_says_whose_careers_and_that_it_is_not_all_time(career_ctx
 
 
 def test_a_career_average_is_games_weighted_and_qualified(career_ctx: AnswerContext) -> None:
-    result = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="avg_points", how="per_game"), span=Span(career=True)))
+    result = player_ranking(career_ctx, Reading(measure=Measure(key="points", as_typed="avg_points", how="per_game"), span=Span(career=True)))
     assert [name for name, _ in _ranked(result.data["leaders"])] == ["Michael Jordan", "LeBron James"]  # Short Career's 40.0 is 10 games
     assert result.data["leaders"][0]["value"] == pytest.approx(14991 / 492)
     assert "(minimum 400 games)" in result.text
 
 
 def test_a_career_postseason_leaves_out_the_copied_postseasons(career_ctx: AnswerContext) -> None:
-    leaders = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=3, career=True))).data["leaders"]
+    leaders = player_ranking(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=3, career=True))).data["leaders"]
     assert _ranked(leaders) == [("Michael Jordan", 552), ("LeBron James", 400)]
 
 
@@ -235,7 +208,7 @@ def test_a_career_postseason_leaves_out_the_copied_postseasons(career_ctx: Answe
 )
 def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: AnswerContext, scope: dict[str, Any]) -> None:
     with pytest.raises(Unsupported):
-        leaderboard(career_ctx, Reading(**scope))
+        player_ranking(career_ctx, Reading(**scope))
 
 
 @pytest.mark.parametrize("shape", [PLAYER_RANKING, GAMES_COUNTED, GAME_HIGHS])
@@ -301,14 +274,14 @@ def box_ctx(tmp_path: Path) -> AnswerContext:
 
 
 def test_a_career_count_does_not_count_the_phantom_season_twice(box_ctx: AnswerContext) -> None:
-    result = threshold_count(box_ctx, Reading(lines=(Line(measure="points", value=40, as_typed="40 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(career=True)))
+    result = games_counted(box_ctx, Reading(lines=(Line(measure="points", value=40, as_typed="40 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(career=True)))
     assert {"player": "Hakeem Olajuwon", "games": 1} in result.data["leaders"]
     assert "since 1993-94" in result.text and "not all-time counts" in result.text
     assert "1 game in 2013-14 has an empty box score in this warehouse, so these counts may be low." in result.text
 
 
 def test_a_players_career_count_names_the_career_and_the_games_it_could_not_see(box_ctx: AnswerContext) -> None:
-    answer = threshold_count(
+    answer = games_counted(
         box_ctx,
         Reading(
             who=Who(kind="player", players=("LeBron James",)),
@@ -326,10 +299,10 @@ def test_a_players_career_count_names_the_career_and_the_games_it_could_not_see(
 def test_a_career_that_began_before_the_box_scores_says_so_first(box_ctx: AnswerContext) -> None:
     """Michael Jordan's "career high" from these box scores is 55, not 69. The
     gap is stated before the number, not after it."""
-    answer = single_game_high(box_ctx, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True))).text
+    answer = game_highs(box_ctx, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True))).text
     assert answer.startswith("Box scores here begin in 1993-94, and Michael Jordan's regular season career began in 1984-85")
     assert answer.endswith("highest point total in a single game in the regular season since 1993-94 was 55, on 1995-03-28 vs OPP.")
-    count = threshold_count(
+    count = games_counted(
         box_ctx,
         Reading(
             who=Who(kind="player", players=("Michael Jordan",)),
@@ -342,12 +315,12 @@ def test_a_career_that_began_before_the_box_scores_says_so_first(box_ctx: Answer
 
 
 def test_a_career_high_is_dated_the_day_it_was_played(box_ctx: AnswerContext) -> None:
-    answer = single_game_high(box_ctx, Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True))).text
+    answer = game_highs(box_ctx, Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True))).text
     assert answer.startswith("LeBron James's highest point total in a single game in his regular season career (2003-04 through 2014-15) was 61, on 2014-03-03 vs OPP.")
 
 
 def test_the_leagues_best_game_is_not_called_all_time(box_ctx: AnswerContext) -> None:
-    result = single_game_high(box_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True), window=Window(count=5)))
+    result = game_highs(box_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True), window=Window(count=5)))
     assert [game["value"] for game in result.data["games"]][:4] == [61, 55, 45, 35]  # Hakeem's 45 once, not twice
     assert "in the regular season since 1993-94: 61, on 2014-03-03" in result.text
     assert "so this is not an all-time record" in result.text
@@ -355,14 +328,14 @@ def test_the_leagues_best_game_is_not_called_all_time(box_ctx: AnswerContext) ->
 
 def test_an_ambiguous_name_is_asked_about_rather_than_counted(box_ctx: AnswerContext) -> None:
     """It used to be an ILIKE per word: "Curry" counted both and reported the bigger."""
-    answer = threshold_count(
+    answer = games_counted(
         box_ctx,
         Reading(who=Who(kind="player", players=("Curry",)), lines=(Line(measure="points", as_typed="1 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(career=True)),
     ).text
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
-@pytest.mark.parametrize("answered", [threshold_count, single_game_high])
+@pytest.mark.parametrize("answered", [games_counted, game_highs])
 def test_a_career_with_a_season_named_reads_the_named_season(box_ctx: AnswerContext, answered: Any) -> None:
     """ "Career ... in 2024": a named year is more specific than "career".
     The compiler, which alone answers these two now, reads the year - the

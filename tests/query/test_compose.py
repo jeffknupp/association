@@ -1,5 +1,5 @@
 """Fixture tests for :mod:`association.query.compose` - the compiler landed
-from the skeleton spike. Modeled on ``pg_ctx`` in ``tests/query/test_templates.py``:
+from the skeleton spike. Modeled on ``pg_ctx`` in ``tests/query/test_readers.py``:
 a small ``player_game_log``/``games``/``players`` warehouse in miniature,
 built once per test so every assertion is against numbers this file itself
 defines, not the real warehouse (that comparison is ``golden.py``, run by
@@ -1932,7 +1932,7 @@ def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: AnswerCo
     "2435.0%". The per-game row now reads the figure ``player_splits``' USG%
     column averages: Podziemski's only away game this season is g1, so the
     split's away USG% IS g1's usage, and the log's g1 row says the same."""
-    from test_templates import player_splits  # the compiler's, player_splits' template retired
+    from test_readers import player_splits
 
     _add_condition_tables(cx_ctx.con)
     cx_ctx.con.execute("ALTER TABLE player_box_stats ADD COLUMN usage_pct DOUBLE")
