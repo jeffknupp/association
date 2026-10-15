@@ -457,1657 +457,844 @@ turned off.
 ## The failure shape this project keeps producing
 
 **A missing or too-narrow shape, never a broken one.** Every query failure
-reported during development looked like this: the system answered fast and
-fluently — but answered a *different question* than the one asked, because no
-template covered the real one and something adjacent matched instead.
+reported here looked the same: the system answered fast and fluently - a
+*different question* than the one asked, because nothing covered the real
+one and something adjacent matched. So **an answer that looks right is not
+evidence**: check that the shape you added is the shape being exercised.
 
-The consequence for how you work: **an answer that looks right is not
-evidence.** Check that the shape you added is the shape being exercised. This
-is why the readers refuse rather than approximate: each shape's row of its
-relation's cell table says which of the relation's cells its words do not
-state (`RELATION_SCOPING_EXCLUDED`, `TEAM_RELATION_SCOPING_EXCLUDED`, keyed
-by the planned point's `PointShape`), the planner's one check reads the
-point's typed cells against it (`compose.plan.cells_unhonored`), a reader
-steps aside for one its words do not state so the compiler's own sentence
-answers, and the planner refuses a cell the relation cannot honor at all,
-or the shape refuses outright (`cells_declined`) - instead of silently
-ignoring `order` or `date` and returning a whole-season answer to a
-single-game question.
+That is why the readers refuse rather than approximate. Each shape's row of
+its relation's cell table says which of the relation's cells its words do
+not state (`RELATION_SCOPING_EXCLUDED`, `TEAM_RELATION_SCOPING_EXCLUDED`,
+keyed by the planned point's `PointShape`); the planner's one check reads
+the point's typed cells against it (`compose.plan.cells_unhonored`); a
+reader steps aside for a cell its words do not state, so the compiler's
+own sentence answers; and the planner refuses a cell the relation cannot
+honor at all, or one the shape refuses outright (`cells_declined`) -
+instead of silently ignoring a window or a date and answering a
+whole-season question for a single-game one.
 
 **A reader on a relation does not declare, or apply, scoping of its own.**
 The player-games relation (`query/player_games.py`, its shared steps in
-`query/player_relation.py`) and the team-games relation (`query/team_games.py`,
-its steps in `query/team_relation.py`) each carry the narrowing once -
-the games' cuts (`reading.Cuts.CELLS`, Phase 3, step 2: `opponent`,
-`tenure` (the player relation's alone),
-`venue`, `date`, `situation` (a calendar narrowing, an alignment of the
-opponent, or words nothing reads, parsed once into `reading.Situation`
-and refused by value where neither), `game_n`, `season_n` (the player
-relation's alone); `round` is a cut of no relation, refused wherever it
-is set), without, split, below/above, the period's one typed cell
-(`reading.Period.CELLS`, Phase 3, step 2: `period`, a quarter or a half -
-`Period(number, half)` on `Reading.period` - which changes what a read SEES of each game rather than
-which games: the relation rebuilds the period's line of every game from
-the shots and plays, `narrow_periods`), the line family's typed cells
-(Phase 3, step 2: `reading.Line.CELLS` - `line`, a line on a stat the
-relation keeps the games under or over, a phrase kept under or over a
-number or two or more "N+ stat" pairs on one game, applied by
-`narrow_measures` through `lines.measure_filters`; `period_line`, a line
-in a quarter or half, applied by `_apply_period_condition`; the shape's
-OWN line, `Line.keyed` - a count's "30+ points", a record's "scores 30",
-a run's, a high's - is read into the point's predicate by
-`lines.threshold_line` and sets no cell - and `reading.Companion.CELLS` -
-`companion`, a player beside the subject with his role, `played`,
-`absent`, `started`, `bench` or `reached` with his `Line`, on the
-subject's `own` side or the `opponent`'s, one cell because no table
-honors or refuses one without the others, applied by
-`_narrow_player_games`/`condition_player`, and the with/without split's
-names; a decline says each cell by what the words asked under it - "games
-without Joel Embiid", "the last 5 games" - `reading.cell_facts` phrased
-by `say.cell_phrase`), the window's typed cell (`reading.Window.CELLS`,
-Phase 3, step 2: `window`, an end of the span with its count, cut after
-every other filter by `relation_window`; a bare count is no cell, each
-reader's own parameter, which the games relations read as the newest N;
-`ranked_by`, the measure a boolean-game ranking is ordered by, the
-player relation's alone), and the span's three typed cells (`reading.Span.CELLS`,
-Phase 3, step 2: `career`, every season on record; `range`, a career cut
-at one or both ends, `since`/`until`; `both`, both season types in one
-read) - applied in the shared steps (`scoped_player`/`scoped_games`,
-`scoped_team`/`team_games`, `condition_player`; the span by `span_of`,
-which takes the typed `Reading.span` and resolves it once for every reader)
-and declared once (`RELATION_SCOPING`, with one row per shape a reader
-reads, `RELATION_SCOPING_EXCLUDED`, keyed by the planned point's
-`PointShape` - one `reading.ShapeCells` each, since Phase 3, step 2's
-closing slice: the cells its words do not state, each with a reason about
-the answer; of those, the ones the planner refuses outright, saying the
-reason (a run's one date, two players' meetings against a third team);
-what it takes beyond the relation's table (a season-line ranking's unit, a
-team log's teammate it refuses in its own words); where a cell its words
-do not state is declined when its reader is the point's only answer
-(`declined`: by the planner, or by a team's own season's reader when
-asked); whether it honors one named half of the starter/bench split only;
-what only a named player's games carry. A shape states its relation's
+`query/player_relation.py`) and the team-games relation
+(`query/team_games.py`, its steps in `query/team_relation.py`) each carry
+the narrowing ONCE, as typed cells applied in the shared steps
+(`scoped_player`/`scoped_games`, `scoped_team`/`team_games`,
+`condition_player`; the span by `span_of`, which resolves the typed
+`Reading.span` once for every reader) and declared once (`RELATION_SCOPING`
+and `TEAM_RELATION_SCOPING`, the cells each relation carries). The cells,
+each declared on its family's type:
+
+- the games' cuts (`reading.Cuts.CELLS`): `opponent`, `tenure` (the player
+  relation's alone), `venue`, `date`, `situation` (parsed once into
+  `reading.Situation` - a calendar narrowing, an alignment of the opponent,
+  or words nothing reads, refused by value), `game_n`, `season_n` (the
+  player relation's alone); `round` is a cut of no relation, refused
+  wherever it is set;
+- the period (`reading.Period.CELLS`: `period`, a quarter or a half), which
+  changes what a read SEES of each game rather than which games: the
+  relation rebuilds the period's line from the shots and plays
+  (`narrow_periods`);
+- the lines (`reading.Line.CELLS`): `line`, a stat the games are kept under
+  or over (`narrow_measures` through `lines.measure_filters`), and
+  `period_line`, a line in a quarter or half (`_apply_period_condition`);
+  `opponent_line` and `season_line` (below) are cells of the reading
+  (`reading.Filtered.CELLS`). The shape's OWN line (`Line.keyed`: a count's
+  "30+ points", a record's "scores 30") is the point's predicate
+  (`lines.threshold_line`) and sets no cell;
+- the companions (`reading.Companion.CELLS`: `companion`, one cell because
+  no table honors or refuses one role without the others; applied by
+  `_narrow_player_games`/`condition_player`), and the with/without
+  `split`;
+- the window (`reading.Window.CELLS`: `window`, an end of the span with its
+  count, cut after every other filter by `relation_window`; `ranked_by`,
+  the measure a ranking of yes/no games is ordered by, the player
+  relation's alone). A bare count is no cell: each reader's own parameter,
+  the newest N on the games relations;
+- the span (`reading.Span.CELLS`): `career`, `range` (`since`/`until`),
+  `both` (both season types in one read);
+- `rate` (`Measure.CELLS`), declared in no relation table: a unit narrows no
+  games.
+
+A shape's row is one `reading.ShapeCells`: the cells its words do not
+state, each with a reason (`unstated`); of those, the ones the planner
+refuses outright (`refused`); what it takes beyond its relation's table
+(`taken`); where an unstated cell is declined when its reader is the
+point's only answer (`declined`); whether it honors one named half of the
+starter/bench split only (`sides`); what only a named player's or subject's
+games carry (`named_player`, `named_subject`). A shape states its relation's
 table and what it takes, less its row's exclusions
-(`compose.plan.cells_stated`), and the planner's one check reads the
-typed values' cells against that (`cells_unhonored`) - for the planner,
-for the season line's readers and for the answer side, which steps aside
-before it asks a reader: no reader takes a list of its own, and `team_relation.py` keeps
-the team relation's rows the same way). Two source-reading tests in
-`tests/query/test_templates.py` enforce it, and they were watched to fail: a
-shape a reader reads with no row, a row excluding a cell its relation does
-not carry or without a reason, a reader taking a list of its own, or a
-reader that writes `pgl.opponent_team_id = ?` or
-`g.date >= ? AND g.date < ?` anywhere it reaches, fails the suite. So a new
-scoping dimension is one clause on `Narrowed` plus a warehouse-verified test
-per reader it turns on - never a slot taught to one reader at a time, which is
-how twelve slots ended up honored on `game_log` and one on `single_game_high`
-over the same relation when they were templates. An exclusion's reason is
-about the answer ("one game is not a run"), never about the code ("not wired"),
-and is a key, never a sentence: a `reading.DeclineReason` member, worded once
-by the sayer (`say.decline_reason_phrase`), which a row given a sentence
-refuses where it is built - so a decline's cause carries the key as its
-`reason` fact (Phase 5, step 5; the rows held the sentences until then).
+(`compose.plan.cells_stated`), and `cells_unhonored` reads the typed cells
+against that - for the planner, for the season line's readers and for the
+answer side, which steps aside before it asks a reader. No reader takes a
+list of its own. Two source-reading tests in `tests/query/test_templates.py`
+enforce it (watched to fail): a shape a reader reads with no row, a row
+excluding a cell its relation does not carry or without a reason, a reader
+taking a list of its own, or a reader writing `pgl.opponent_team_id = ?` or
+`g.date >= ? AND g.date < ?` anywhere it reaches, fails the suite.
 
-When adding a reader, prefer refusing to guessing. `resolve_*` in
-`query/entities.py` never guesses between candidate players; `leaderboard`
-rejects a named `player`; `team_record` rejects `limit`.
+- **A new scoping dimension is one clause on `Narrowed`** plus a
+  warehouse-verified test per reader it turns on - never a slot taught to
+  one reader at a time (that is how twelve slots ended up honored on one
+  template and one on its neighbor over the same relation).
+- **An exclusion's reason is about the answer** ("one game is not a run"),
+  never about the code ("not wired"), **and it is a key, never a
+  sentence**: a `reading.DeclineReason` member, worded once by the sayer
+  (`say.decline_reason_phrase`); a row given a sentence is refused where it
+  is built, and a decline's cause carries the key as its `reason` fact.
+- **A decline says each cell by what the words asked under it** ("games
+  without Joel Embiid", "the last 5 games"): `reading.cell_facts`, phrased
+  by `say.cell_phrase`.
+- **When adding a reader, prefer refusing to guessing.** `resolve_*` in
+  `query/entities.py` never guesses between candidate players; a ranking
+  rejects a named player; a team's record rejects a limit.
 
-**The same bug has a mirror image: a refusal that names the wrong cause.** It
-reads as honest, so nothing looks wrong. "Show me a fingerprint for Maxey"
-answered `No NetPoints fingerprint on record for season 2026` — a claim about
-league-wide coverage, and false; that season holds 566 players and Tyrese
-Maxey is one of them. The real cause was that "Maxey" had resolved to Marlon
-Maxey, who retired in 1994. Before writing a "no data" message, check which
-fact is actually missing: the season, the player, or the match. They are
-different sentences, and the wrong one sends the reader to look in the wrong
-place.
+**The mirror image: a refusal that names the wrong cause.** It reads as
+honest, so nothing looks wrong ("No NetPoints fingerprint on record for
+season 2026" for Maxey, when "Maxey" had resolved to a namesake retired in
+1994). Before writing a "no data" message, check which fact is actually
+missing - the season, the player or the match: they are different
+sentences, and the wrong one sends the reader to look in the wrong place.
+(history)
 
-**A model invents names, and an invented name resolves.** This is the
-worst-behaved version of the shape above, because nothing about the answer
-looks wrong. "Compare sga and embiid" routed to
-`['Shai Gilgeous-Alexander', 'Jusuf Nurkic']` and produced a correct table of
-two real players, one of whom the question never mentioned - every check after
-the router passed, because "Jusuf Nurkic" is a real person who resolves
-cleanly. The nickname version of this was known first (the router filled "The
-Answer" in as Klay Thompson); the general version is that **any** name a model
-supplies may be fiction - the router's then, the normalizer's now.
+### Names
 
-So a name is checked against the question before a reader reads it:
-`subject.read_subject` reads who the question is about from its own spans -
-ONCE per question, in `parse.read_route`; the parser's child step and its
-last step settle that reading under the key the grammar's rules chose
-(`subject.settle_subject`, which reads no name and asks the warehouse
-nothing) - and `subject.apply_subject` writes those names onto the
-Reading's one typed subject (`reading.Subject` on `Reading.who`; until
-5.0.0 this was `entities.override_invented_players`) inside the parser's
-last step (`parse._reading`), whose `Reading`, `read_route`'s return, is
-all the agent answers from. Until 2026-10-02 a recorded route replayed
-through `Agent.ask(route=...)` had its subject read in that last step, on
-the settled scope instead of the one `read_route` reads from, and the two
-paths disagreed on 9 of 12 wordings naming a franchise's old name.
-`Agent.ask` takes a question and nothing else; a test that needs a
-particular reading of the words stands in for `read_route`
-(`tests/routed.py`: `Routed`, `ask_routed`, `with_subject`, `reading_of`,
-which hand a test's own key and typed scope to the parser's last step), and a harness
-answers recorded QUESTIONS with their
-recorded normalizer replies, as `scripts/stage_snapshots.py` and
-`scripts/preview_answers.py` do. Do not
+**A model invents names, and an invented name resolves** - the
+worst-behaved version of the shape, because the answer is a correct table
+about a real player the question never mentioned. **Any** name a model
+supplies may be fiction, so a name is checked against the question before a
+reader reads it. `subject.read_subject` reads who the question is about
+from its own spans, ONCE per question, in `parse.read_route`;
+`subject.settle_subject` settles that reading under the key the grammar's
+rules chose (reading no name, asking the warehouse nothing); and
+`subject.apply_subject` writes the names onto the Reading's one typed
+subject (`reading.Subject` on `Reading.who`) inside the parser's last step
+(`parse._reading`), whose `Reading` is all the agent answers from. Do not
 add a second `read_subject` call to the live path: three readings of one
-question is what this replaced, and they disagreed on 18 of the 628 recorded
-questions. What counts as the question
-supporting a name (`subject.question_supports`) is deliberately generous, because the model's expansions are usually the
-useful kind: the word itself, a near spelling of it (the model silently
-corrects typos; measured as Damerau-Levenshtein, rapidfuzz's, the metric the
-entity index uses in DuckDB - a swapped pair of letters is one edit, and a
-second metric here once refused "jokci stats" that the index read as Jokic),
-a nickname, or the initials ("KAT", "SGA"). Any ONE word of
-the name is enough, since half a name is how a question normally carries one -
-what this catches is a name with no half in the question at all. Three rules
-about what happens next, and the third is the one that was got wrong first:
+question disagreed on 18 of the 628. `Agent.ask` takes a question and
+nothing else; a test that needs a particular reading stands in for
+`read_route` through `tests/routed.py` (`Routed`, `ask_routed`,
+`with_subject`, `reading_of`), and a harness answers recorded QUESTIONS
+with their recorded normalizer replies (`scripts/stage_snapshots.py`,
+`scripts/preview_answers.py`). (history)
 
-- **Replace only from what the question itself names, and only when the count
-  is exact.** `players_named_in`
-  is strict about what naming somebody means: a span must equal a *whole word*
-  of exactly one player's name. Substring matching reads "the highest scoring
-  game" as naming Jaron Blossomgame; word-boundary matching reads "with" as
-  naming Jeff Withey; and allowing a one-letter span makes the possessive left
-  behind by "Jokic's" name John S. Williams, who is in nine of the routing
-  corpus's questions.
-  Since 2026-10-13 a name the question never held never reaches the
-  subject's players at all (`parse._read_route_players`, ISSUES.md #373
-  closed): it rides on `Reading.misread`, so the kind and the key are the
-  question's own, and `apply_subject` replaces it from the question's names
-  where the count is exact - counted against the model's names the
-  question does hold, `Subject.supported` - or reports it for the by-name
-  refusal.
-- **Trim a name back to the part the question holds only where that part is
-  ambiguous.** Expanding half a name is usually the model doing its job:
-  "luka", "jokic" and "embiid" each reach exactly one player, so undoing the
-  completion would only cost the question its answer. But "who is better,
-  tatum or brown" routed to `Jaylen Brown`, and "brown" is ten players - that
-  completion is the prominence tiebreak measured and rejected above
-  `PLAYER_NICKNAMES`, arriving through the model's guess where nothing
-  downstream can see it. The model choosing between ten Browns is still a
-  guess nothing can see, so the completion is still undone. The parser cuts
-  a model's completion back to the part the question holds and lets normal
-  resolution decide (`parse._as_typed_part`); a nickname the question used
-  ("steph curry") and a name the question's own span resolves to are left
-  alone, and `find_players` applies the nickname table first, so "luka" still
-  resolves rather than asking. The cut runs on the model's own spelling,
-  before the reading respells it: run after the reading instead, as the
-  router-era `entities.undo_name_completion` was, it read a typo'd "Bam
-  Adeyebu" - corrected to Bam Adebayo - as a question holding only "Bam",
-  and asked which Bam (ROADMAP plan item 6, step (d), part 3c).
-- **When it cannot be repaired, say so by name.** This one shipped wrong
-  first, on the reasoning that the fall-through agent of the time at least
-  read the question. Measured, that was far worse: "compare fingerprints for
-  embiid vs jokic in 2026" fell through and the agent spent 55 seconds
-  writing a confident fingerprint for **"Ronaldo Lopes"**, a player who does
-  not exist, with play-type percentages attached - the lesson
-  `check_coverage` already carries, an agent with nothing to find fills the
-  silence from its own weights, and the measurement that retired the agent
-  (5.0.0). Without it the difference is between a refusal that names the
-  player and the plain refusal for want of a reading, which names only the
-  slot. Refuse only where the answer would actually be about
-  that player (`reading.PLAYER_ASKS`, the shapes whose reader reads one; it was checked against the
-  templates' own source while they existed): a
-  stray name on a `head_to_head` question changes no answer, and refusing over
-  it would break a question that works.
+What counts as the question supporting a name (`subject.question_supports`)
+is deliberately generous, because the model's expansions are usually the
+useful kind: the word itself, a near spelling (Damerau-Levenshtein,
+rapidfuzz's, the metric the entity index uses in DuckDB), a nickname, the
+initials ("KAT", "SGA"); any ONE word of the name is enough. Three rules
+for what follows, the third the one first got wrong:
 
-**A model drops names, not only invents them.** "Compare fingerprints for
-embiid vs jokic" arrived from the router as a single `player` slot, so the
-answer was one polygon where two were asked for - a narrower question,
-answered without saying so. The parser's reading takes the names from the
-question itself (`subject.read_subject`), so a normalizer reply that drops the
-second name still draws both, with or without a comparison word; and it reads
-an ordinary word as nobody, so "plot jokic's fingerprint from his best season"
-does not draw Travis Best a polygon, though "best" is his whole surname by
-`players_named_in`'s rules (`tests/query/test_one_writer.py`). The router-era
-`restore_dropped_players` put a dropped name back only for a question that
-said it compared something, for exactly that reason, and so lost the second
-name of "plot jokic and embiid fingerprints".
+- **Replace only from what the question itself names, and only when the
+  count is exact.** `players_named_in` is strict: a span must equal a
+  *whole word* of exactly one player's name (a substring reads "highest
+  scoring game" as Jaron Blossomgame, a word boundary reads "with" as Jeff
+  Withey, a one-letter span reads the "s" of "Jokic's" as John S.
+  Williams). A name the question never held never reaches the subject's
+  players (`parse._read_route_players`): it rides on `Reading.misread`, and
+  `apply_subject` replaces it from the question's names where the count is
+  exact (`Subject.supported`) or reports it for the by-name refusal.
+- **Trim a name back to the part the question holds only where that part
+  is ambiguous.** "luka", "jokic", "embiid" reach one player each, so the
+  model's completion stands; "brown" is ten players, and choosing among
+  them is a guess nothing downstream can see, so the parser cuts the
+  completion back and lets resolution decide (`parse._as_typed_part`). A
+  nickname the question used and a name its own span resolves to are left
+  alone; `find_players` applies the nickname table first. The cut runs on
+  the model's own spelling, before the reading respells it. (history)
+- **When it cannot be repaired, say so by name** - a refusal that names the
+  player, not the plain refusal for want of a reading. Refuse only where
+  the answer would be about that player (`reading.PLAYER_ASKS`): a stray
+  name on a question about two teams' meetings changes no answer. (history:
+  the fall-through agent that drew a fingerprint for a player who does not
+  exist.)
 
-What none of this can do is repair a name nobody typed correctly. "embiid vs
-jolic" loses Jokic, and **fuzzy-matching the question's leftover words to find
-him was measured and rejected**: it produces a spurious player in 29 of 51
-corpus questions ("season" is one edit from Tari Eason, "most" from Quinten
-Post, "what" from Dejuan Wheat) and does not even find Jokic. So the answer
-says a player is missing instead - `compared_but_unmatched`, which takes "vs"
-and not "compare", since "compare Jokic's fingerprint to last season" compares
-seasons. Stating the gap is the whole difference between a narrower answer and
-a wrong one.
+**A model drops names, not only invents them.** The reading takes the names
+from the question itself, so a reply that drops the second name still draws
+both, with or without a comparison word; and it reads an ordinary word as
+nobody ("plot jokic's fingerprint from his best season" draws no Travis
+Best; `tests/query/test_one_writer.py`).
 
-**Why "embiid" specifically.** Worth recording as a shape rather than a name.
-Measured against qwen2.5:3b at temperature 0: lowercase `embiid` in a
-comparison or fingerprint framing returns Ben Simmons 5/5 (earlier, Jusuf
-Nurkic) - deterministically, not as noise. `Embiid`, `Joel Embiid` and
-`joel embiid` all resolve correctly, and so does lowercase `embiid` in
-"how many points does embiid average". So it is not that the model lacks the
-name: it is a rare-token surname, uncapitalized, in a frame whose training data
-is dominated by one famous pairing. Every other surname tried in the same slot
-(jokic, luka, wemby, giannis, tatum, curry) is correct. Which player it
-substitutes moves between sessions - Jusuf Nurkic one day, Ben Simmons the
-next - so there is nothing here to special-case, only a reason to check every
-name against the question.
+**A name nobody typed correctly is not repaired by fuzzy-matching the
+question's leftover words** - measured and rejected: a spurious player in
+29 of 51 corpus questions ("season" is one edit from Tari Eason), and it
+did not find the one meant. The answer says a player is missing instead
+(`subject.compared_but_unmatched`, which takes "vs" and not "compare",
+since "compare Jokic's fingerprint to last season" compares seasons).
 
-**Before saying nothing matched, check whether something nearly did.** The
-other half of the same bug: "compare sga and embid" routed to `'Jemel Embiid'`,
-and since `find_players` requires every token to match, one fabricated word
-buried a player the warehouse holds. `entities.suggest_players` backs a
-multi-word name off to its surname - exact matching on one fewer token, not
-fuzzy - and then looks for near spellings, which is the only thing that reaches
-the user's own typo ("embid" is not a substring of "Embiid", so no ILIKE finds
-it). A suggestion naming more than `MAX_CLARIFY_CANDIDATES` players is dropped
-entirely, because a name near 25 players narrowed nothing and reading out a
+**Which name a model substitutes moves between sessions** (lowercase
+"embiid" in a comparison frame came back as two different players on two
+days), so there is nothing to special-case - only a reason to check every
+name against the question. (history)
+
+**Before saying nothing matched, check whether something nearly did.**
+`find_players` requires every token, so one fabricated word buries a
+player. `entities.suggest_players` backs a multi-word name off to its
+surname (exact matching on one fewer token, not fuzzy), then looks for near
+spellings - the only thing that reaches the user's own typo. A suggestion
+naming more than `MAX_CLARIFY_CANDIDATES` players is dropped: reading out a
 directory is not a suggestion.
 
-**Typos are the entity index's job, never the model's**, so one near spelling
-is an answer, not a question. Once names reach resolution as the question typed
-them (ROADMAP plan item 6, step (c)), every typo would otherwise become a "did
-you mean". `entities.read_near_spelling` takes the near-spelling pass's result
-when it holds exactly ONE player, for `resolve_player` and the chart resolver
-alike, and says so under the rule below: "('embid' matches no player exactly
-and was read as Joel Embiid, the only near spelling on record - spell the name
-exactly to ask about someone else.)" Three things still ask. Two or more near
-spellings ("jolic": Jokic or Jovic). The surname back-off: in "Jemel Embiid" or
-"Larry Bird" the given name is somebody else's, and the one player a surname
-lands on is as likely to be the wrong man (Larry Bird is not in `players`;
-Jabari Bird is) as the right one - only the near-spelling pass, which needs
-EVERY word close, defaults. And a team's name ("Hawks" is one edit from Spencer
-Hawes). It is for a span already given as a name slot, never for the
-question's leftover words ("season" is one edit from Tari Eason, above). Measured: of 10,602 one-letter
-drops, doubles and swaps of the 591 2026 players' surnames, 3,597 default -
-every one to the player misspelled - and 2,731 still ask. The cost is a name
-that is right but not on record reading as one that is: of 36 famous pre-1994
-names absent from `players`, "Willis Reed" reads as Willie Reed and "Bernard
-King" as Gerard King, each saying so. A team's near spelling is read the
-same way in one place only, since 2026-10-13 (ISSUES.md #247): the word a
-versus word leads, where it is near exactly one team's word
-(`entities.near_team`) and is no player's whole word or near spelling - "gui
-last 5 games vs sours" is the Spurs' games, kept as typed on the reading and
-read by `entities.resolved_team`, which says so ("('sours' matches no team
-exactly and was read as the San Antonio Spurs ...)"); "vs clevland" stays
-unread, being near Antonius Cleveland too.
+**Typos are the entity index's job, never the model's, so one near
+spelling is an answer, not a question.** `entities.read_near_spelling`
+takes the near-spelling pass's result when it holds exactly ONE player (for
+`resolve_player` and the chart resolver alike) and says so in the answer
+("'embid' matches no player exactly and was read as Joel Embiid, the only
+near spelling on record - spell the name exactly to ask about someone
+else."). Still asked: two or more near spellings; the surname back-off
+(the given name is somebody else's, so the one player a surname lands on is
+as likely wrong as right - only the near-spelling pass, which needs EVERY
+word close, defaults); a team's name ("Hawks" is one edit from Spencer
+Hawes). It is for a span already given as a name, never for the question's
+leftover words. A team's near spelling is read the same way in one place
+only: the word a versus word leads, near exactly one team's word
+(`entities.near_team`) and no player's whole word or near spelling, kept
+as typed and read by `entities.resolved_team`, which says so. (history:
+the measured default and ask rates.)
 
-**A reasonable default beats a question, where the default is visible and can
-be corrected.** Jeff's rule, 2026-09-21, and it supersedes the older stance
-here that a bare surname always asks: *"A default that chooses reasonably but
-happens to be wrong is better than no answer as long as it can be easily
-corrected. If the query returns Dean Wade and I have no way to refer to Dwyane
-Wade, that's the only time there's an issue."* Two conditions, both required:
-the answer **displays the value it used**, and there is **a wording that
-reaches the alternative** - which the answer states. A silent default is still
-this project's worst failure shape; this is about defaults that say what they
-did.
+**A reasonable default beats a question, where the default is visible and
+can be corrected** (Jeff, 2026-09-21: *"A default that chooses reasonably
+but happens to be wrong is better than no answer as long as it can be
+easily corrected. If the query returns Dean Wade and I have no way to refer
+to Dwyane Wade, that's the only time there's an issue."*). Both conditions
+are required: the answer **displays the value it used**, and there is **a
+wording that reaches the alternative**, which the answer states. A silent
+default is still the worst failure shape. Applied to names: with no season
+asked, a name several players share means the one who played the last
+season of the span (`entities.resolve_player`), and a full name whose owner
+has nothing in the seasons asked yields to the one namesake who does
+(`_named_in_full`) - each saying so ("'maxey' was read as Tyrese Maxey, the
+only match who played in 2025-26. Marlon Maxey also matches - use the full
+name, or name a season he played, to ask about him."), carried by
+`entities.collect_name_readings` and attached in `agent.py`, so a reader
+called directly does not show it. The sentence is not optional (in 67 of
+the 124 shared surnames that resolve, a retired namesake has more games).
+It is elimination, not the prominence tiebreak: two namesakes who both
+played are asked about. Before extending the rule to another open slot,
+check both conditions. (history)
 
-The first application is names. With no season asked about, a name several
-players share means the one who played the last season of the span - "Maxey" is
-Tyrese, and "show maxey's games against boston in the past two seasons" no
-longer asks about Marlon, who retired in 1994 (`entities.resolve_player`). A
-name given in full yields the same way when its owner has nothing in the seasons
-asked about and exactly one namesake does: "Jabari Smith" for 2026 is Jabari
-Smith Jr., where it used to answer "no 2026 games" about the father
-(`_named_in_full`). Both say so in the answer - "('maxey' was read as Tyrese
-Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the
-full name, or name a season he played, to ask about him.)" - carried by
-`entities.collect_name_readings` and attached in `agent.py`, so a reader called
-directly does not show it. The sentence is not optional: of 391 surnames two or
-more players share, 124 now resolve, and in 67 of those a retired namesake has
-more games on record than the active one ("wade" is Dean Wade, "pippen" is
-Scotty Pippen Jr.). It is still elimination and not the prominence tiebreak:
-two namesakes who both played ("brown", "curry") are asked about, and nothing
-ranks them. Before extending the rule to another open slot, check both
-conditions - a default with no wording that reaches the alternative is the case
-that is not allowed.
+**A question too short to be one is refused unread** (Jeff, 2026-09-29):
+fewer than `parse.MIN_QUESTION_WORDS` (three) words is the `too_short`
+cause (`parse.too_short`), which `Agent.ask` asks before the normalizer (no
+model call) and the planner says (`compose.plan.refusal_result`, answered
+`"refused"`) with a generic sentence ("I couldn't understand your question,
+'Tatum rec'. Please try re-phrasing it."). Do not add heuristics for longer
+nonsense (F097), do not file issues for such questions, and do not grade
+them as needing a clarification. (history)
 
-**A question too short to be one is refused unread.** Jeff's rule,
-2026-09-29: short or nonsensical questions are refused with a generic
-sentence ("I couldn't understand your question, 'Tatum rec'. Please try
-re-phrasing it."), and no effort is spent on them - most of the StatMuse
-feed's two-word rows are a user hitting enter before the question was typed,
-and guessing at "Tatum rec" answered his splits. It is the parser's first
-verdict: `parse.too_short` (fewer than `parse.MIN_QUESTION_WORDS`, three)
-reads the words as typed into the `too_short` cause, and `Agent.ask` asks it
-before the normalizer, so a short question costs no model call, and has the
-planner say it (`compose.plan.refusal_result`, answered `"refused"`).
-Measured before the line was chosen: 215 of the large feed's 2,285 questions
-have one or two words, almost all bare names, and in the yardstick only
-"Tatum rec" has under three while every three-word question answers. Do not
-add heuristics for longer nonsense (F097), do not file issues for such
-questions, and do not grade them as needing a clarification.
-
-**A best match is only safe where a wrong one is visible.** Charts resolved
-names best-match on the reasoning that the plot is titled with the name that
-won — sound, until the wrong name is *why* no plot gets drawn, which is
-exactly when the safeguard disappears. `resolve_chart_player` now narrows
-candidates to those with a row in the table the chart is drawn from
-(`entities.narrow_to_available`) and asks when more than one survives. Note
-the shape of that narrowing: it *eliminates* candidates who cannot be the
-answer, and never chooses between two who can. That is what makes it allowed
-where the prominence tiebreak above `PLAYER_NICKNAMES` was measured and
-rejected.
+**A best match is only safe where a wrong one is visible.** A chart titled
+with the winning name hides the wrong name exactly when the wrong name is
+why no plot is drawn. `resolve_chart_player` narrows candidates to those
+with a row in the chart's table (`entities.narrow_to_available`) and asks
+when more than one survives: it *eliminates* who cannot be the answer and
+never chooses between two who can - which is what makes it allowed where
+the prominence tiebreak above `PLAYER_NICKNAMES` was measured and rejected.
 
 ## Working on the query path
 
-The pipeline is parser → planner → a reader over a relation → the sayer →
-deterministic answer, and a refusal naming why where nothing has a reading of
-the question. There are no templates: Phase 2 (2026-10-03 to 2026-10-05)
-moved every intent's read into a reader that returns a `Result` and every
-sentence into the sayer, and step 6 deleted `templates/` with the relations'
-shared steps moved home. There is no fall-through either: until 5.0.0 a
-question the fast path could not answer went to a tool-calling agent that
-wrote SQL by hand, and measured (ISSUES.md #129, 24 questions at production
-defaults) it answered 1 in 23, did not finish 61% of the time, and was wrong
-five times in six where it finished - so it is gone, with its prompt, its
-tools and its budget. `Agent.ask` (`agent.py`) answers
-`answered_by="refused"` with the reason the parser or the compiler gave the
-question up with (`agent.refusal_text`; words that ask for no shape:
-"what its words ask has no reader"), in the same second; a reader's own refusal (a clarification, a "no
-match", a shape nothing reads named by its cause) is `"fast"`, since looking
-at the question and having something to say is an answer. A question the
-yardstick grades as "fell through" is one of these refusals now.
+The pipeline is parser -> planner -> a reader over a relation -> the sayer
+-> a deterministic answer, and a refusal naming why where nothing has a
+reading of the question. There are no templates and no fall-through agent
+(measured and retired at 5.0.0; history). `Agent.ask` (`agent.py`) answers
+`answered_by="refused"` with the reason the parser or the planner gave the
+question up with (`agent.refusal_text`; words that ask for no shape: "what
+its words ask has no reader"); a reader's own refusal (a clarification, a
+"no match", a cause) is `"fast"`, since looking at the question and having
+something to say is an answer. A question the yardstick grades as "fell
+through" is one of these refusals.
 
-**The reader is the parser** (ROADMAP plan item 6; the router's model
-classification went in step (d)). The model only copies names verbatim and
-picks a stat (`query/normalizer.py`); `parse.read_route` reads everything else
-from the words into the Reading it returns: the parent grammar and a child
-grammar name what the words ask, the grammar's rules settle it
-(`query/grammar.py`, `grammar.settle`), and the taggers, one per family, read the filters into the Reading's typed fields in the
-order each reads what the ones before it settled (`parse._tagged`: the
-split, the lines, the measure, the period, the cuts, the window, the span
-last). Nothing carries a route between the words and the Reading, and
-the filters are the Reading's own fields (`reading.Filtered`: `who` - the
-typed subject, `Reading.subject` being the subject reading's record -
-`cuts`, `companions`, `lines`, `measure`, `span`, `split`, `period`,
-`window`, and since 2026-10-11 `minimum` - a ranking's qualifier as the
-question states it, `reading.Minimum`, read by the window tagger's
-`window.read_minimum` with its words blanked out of what every other
-tagger and the grammar read, kept on the players' ranking alone by
-`point.minimum_under`, applied by the season-line ranking where the
-metric qualifies by its unit (`metrics.qualifies_by`) and by the
-game-level ranking in games, refused by a cause naming the floor
-elsewhere, ISSUES.md #377), a frozen base every planned query inherits too (`Query`,
-`TeamQuery`, whose compiler measure is `metric`, `NetPointsQuery`,
+### The reader
+
+**The reader is the parser.** The model only copies names verbatim and
+picks a stat (`query/normalizer.py`); `parse.read_route` reads everything
+else from the words into the Reading it returns. The parent grammar
+(`parse.PARENT_GRAMMAR`) and a child grammar name what the words ask, a
+`reading.PointShape` (`Reading.asked`); the grammar's rules settle it
+(`grammar.settle`); and the taggers, one per family, read the filters into
+the Reading's typed fields, in the order each reads what the ones before it
+settled (`parse._tagged`: the split, the lines, the measure, the period,
+the cuts, the window, the span last). The filters are the Reading's own
+fields (`reading.Filtered`: `who`, `cuts`, `companions`, `lines`,
+`measure`, `span`, `split`, `period`, `window`, `minimum`), a frozen base
+every planned query inherits too (`Query`, `TeamQuery`, `NetPointsQuery`,
 `ShotQuery`, `TeamSeasonQuery`), with the cells declared once on it
 (`Filtered.CELLS`, `cells()`): a relation's step narrows by the query
-itself, and every test states its reading in the typed fields and a
-shape by its `PointShape` key. The populations record the typed Reading
-(`stages._reading_record`: the ten filters by field, the key the words
-asked, the subject reading's own record, the point's own fields with its
-typed filters, the planned query's fields), and a decline says each cell
-by what the words asked under it, read off the typed values
-(`reading.cell_facts`, phrased by `say.decline_body`). Two things follow, and both matter when you add
-a shape:
+itself, and every test states its reading in the typed fields and a shape
+by its `PointShape` key. The populations record the typed Reading
+(`stages._reading_record`).
 
-- **Everything but the names and the stat has to be read from the
-  words** (the router's model filled it until 5.0.0), or it is silently
-  absent: `fields` ("with their rebounds and
-  assists"), a team's quarter, the window ("last 10 games" - the window
-  tagger's, run just before the span's, which reads the season type
-  beside it). The hold-out comparison
-  that found those (`~/association-research/yardstick-v2/holdout_compare.py`:
-  the recorded corpus's questions outside day10, both readers, no model) is
-  the check to rerun after a table change, beside the yardstick.
-- **A filter family is read by ONE tagger, from the lexicon, and claims
-  the characters it read** (Phase 3, step 2; the span is the first, the
-  window the second, the games' cuts the third, the period the fourth, the
-  line and the companions the fifth, the measure the sixth, the subject's
-  own the seventh). Since Phase 3, step 3 a claim says what a rule's
-  reading DEPENDS on, measured by the rule itself: a tagger's claims are
-  cut to the words it could not do without - each word deleted in turn,
-  the claims ledger's own probe, and the tagger asked again over the
-  context its own words give it (`span.needed`: "games" in "last 10
-  games", "100" in "per 100 possessions", a "regular season" that reads
-  the default go) - and the words outside them its reading turns on are
-  claimed beside them under the family's name (the possessive that makes
-  "curry's last game" one game of his), except a word whose presence made
-  it read LESS (`gives_up`: "2024 and 2025" read as no season is two
-  unread years, never the span's). The grammars, the grammar's rules and
-  the point reader, rules over the whole question with lookaheads and blockers,
-  claim the words their decisions turned on (`span.read_by`, `what`
-  `intent`, `point`, `refused`: "compare" keeps a pair off the matchup
-  row). The subject reading is read once and is never probed: it declares
-  its claims where it reads (the names, the companions' phrases, the
-  kind's "player", a compare verb's "with", the season the names are
-  settled in). The content words no claim covers are `Reading.unread`
-  ("A word the reading does not depend on is counted"). Two claims that
-  overlap without one holding the other join into one named for both
-  (`span.claimed`), and the joins are HELD by kind and count (Jeff's
-  ruling, 2026-10-10): `claims_ledger.py report` lists the 628's by `what`
-  against `HELD_JOINS` and exits 1 on a new kind or a grown count, and -
-  on a run of every recorded question - on one that fell or vanished until
-  the table is lowered with the change.
-  None is held since step 4's slice (c): the 628 have no join, and the
-  2,710 had only #354's four (`situation+date`, one tagger reading a day's
-  month again - a word two RULES of one tagger read is still a bug) until
-  Phase 4, step 6 fixed them: no join on either population since, and any
-  new one fails the report. The
-  joins that were held - a child grammar's words over a tagger's
-  (`intent+line` 12, `intent+opponent` 4, ...) went with slice (b)'s
-  marks, the companions', the windows' and a dated range's with slice
-  (c)'s, and a recognizer beside the measure (`refused+measure`) when it
-  read the typed measure.
-  The subject's own has no tagger: its one reader is the
-  subject reading (`subject.read_subject`, once per question, below), and
-  its one writer `subject.apply_subject`, which writes ONE typed value,
-  `reading.Subject(kind, players, teams, position)` on `Reading.who`, in
-  place of the four slots `player`, `players`, `team`, `teams` and the
-  point's `position` (2026-10-10). The kind is the reading's (a team record
-  keyed on a companion's line is still the team's question, with the
-  companion its player); one player is the one a reader reads
-  (`Subject.player`), two or more a comparison or a pair; one team the one
-  the read is about or narrows to (`Subject.team` - the draft's `of_team`
-  where the kind is the league's or a position group's). The grammar's
-  rules are HANDED the typed subject and the opponent the reading read
-  (`grammar.settle(question, asked, subject=, opponent=)`) and read the
-  subject the question's grammar names and the team nicknames the words
-  hold through the subject reading's own readers
-  (`subject.subject_named_in`, `subject.team_words_in`); where they settle
-  a name under the key they choose (a count's, a high's or a line record's
-  dropped subject from the grammar, 30 of the 2,710 readings; a team's
-  quarter from its one nickname, 24; a quarter's player read back, 1) it is
-  the reading's word, written on the typed subject the taggers and the
-  last step read - the grammar's writes (`ROADMAP-TYPES.md`, Still open
-  15). A test hands its names to the rules typed, through
-  `tests/routed.py`'s `staged` (`who=`, `opponent=`). Four stages that wrote a name the parser never hands
-  - a rank word or a pseudo-team as the team, a team in the players list,
-  one player listed as a comparison - went with the subject's slice (0 of
-  the 2,710 readings reached them).
-  The subject's words are the lexicon's (`TEAM_NICKNAME`, `TEAM_CITIES`,
-  `TEAM_ABBREVIATIONS`, `TEAM_SINGULARS`, `POSITION_WORDS`,
-  `POSITION_GROUPS`, `AGAINST_PHRASE`, `FOR_TEAM_PHRASE`, `VERSUS_WORD`,
-  `SUBJECT_OF_HIGH`/`COUNT`/`HAVE`, `NOT_A_SUBJECT`, `NO_NAME_HAS`,
-  `MAX_NAME_WORDS`, `NEVER_A_NAME`, `FILLER_PLAYER_WORDS`, the common words
-  that name a team or a player, the child grammars' words, `MEETING_WORDS`):
-  `subject.py` compiles no pattern of its own. The reading claims the
-  characters of the names it settled (`subject.subject_claims`: each
-  player's words, nickname or initials, each team's words, abbreviation or
-  nickname, the opponent and the tenure with the "vs" or "for" before
-  them - `player`, `team`, `opponent`, `tenure`, `position`), which ride
-  `Reading.claims`. Measured first
-  (`~/association-research/stages/subject_family.py`, the four slots at
-  every place they are written on all 2,710 readings, the Subject record,
-  the words, the planner's verdict and the names' resolution in the
-  index): the model's player spans and the words' names differ on 134
-  readings and the words win every one; the stages wrote a name after the
-  subject reading on 58 (the grammar's subject 30, a team's nickname 27, a
-  quarter's player 1) and no other stage fired; `apply_subject` moved the
-  player on 10. The four slots are gone, and the typed value is recorded
-  (`stages._reading_record`, `who`, beside the subject reading's own
-  record `subject`). No cell: no relation
-  table declares a name, and a position group narrows the league's read
-  through `Query.position`, which the point honors on the league's own
-  moves alone (`point._everyone_point`).
-  `query/lexicon.py` holds every pattern the family is read by, named,
-  with its reason beside it, and nothing that reads the warehouse or the
-  answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader - held by the `regex_outside_the_lexicon` ratchet,
-  empty: no module but the lexicon calls `re` or imports it at run time,
-  since Phase 4, step 6 moved the point reader's 11 patterns, the
-  refusals' 3, `line.py`'s one and the parent grammar's rows here; the
-  `regex_in_the_reader` count it took in stood at the 18 the Phase 3
-  review found inside the reader until then). **A tagger reads the words alone, never the key
-  the words ask** (Phase 3, step 4, slice (b)): each family is read twice
-  over in `parse._tagged` - the tagger reads every candidate the words
-  hold (`line.LineCandidates`, `window.WindowCandidates`,
-  `span.SpanCandidates`, `measure.MeasureWords`, the period and the cuts
-  as read), and ONE function per family in `query/point.py` applies the
-  key (`lines_under`, `measure_under`, `period_under`, `cuts_under`,
-  `window_under`, `span_under`, with the key sets that were the taggers' -
-  `THRESHOLD_ASKS`, `PERIOD_ASKS`, `ORDER_ASKS`, `LIMIT_COUNTS_SEASONS`
-  and the private ones beside them). They are the point reader's because
-  they change what the Reading SAYS (a bare "30 points" is a count's own
-  line and nothing on a log; a quarter stands on a period shape alone);
-  the planner's check is a different one, whether a relation honors a
-  cell (`plan.cells_unhonored`). Measured before the move and after
-  (`~/association-research/stages/route_family.py`, each key's reading
-  ablated to no key and each rule switched off alone on all 2,710
-  readings): the key moved the lines on 124 readings, the measure on 176,
-  the period on 120, the window on 150, the span on 219 and the cuts on
-  none, by the same rules row for row on both trees, and the four
-  populations and the claims ledger held identical. A claim is cut to the
-  words the tagger AND the key's reading need together
-  (`span.needed` probes the composition), so no word is claimed that the
-  key's reading does not read. `query/period.py` is the period's tagger:
-  `read_period(question)` reads what a read SEES of each
-  game - one quarter or one half, by ordinal or by number ("1st quarter",
-  "q4", "4th qtr", "first half", "2h": `WHICH_QUARTER`, `WHICH_HALF`,
-  `ORDINAL_PERIODS`; a half is read first and apart, since a half is never
-  a quarter) - from the words alone, writes `reading.Period`
-  on `Reading.period` and claims what it read. `which_period(text)` is the
-  ONE reader of which period any words name: the grammar's rules call it
-  to choose among the three period keys (`grammar.settle`; the words they
-  choose by - `QUARTER_WORDS`, `HALF_WORDS`,
-  `PERIOD_LEADERS`, `PERIOD_GAMES_WORDS`, `PERIOD_AS_CONDITION`,
-  `BY_QUARTER` - are the lexicon's, as are the point reader's guard
-  `PERIOD_GUARD`, the grammar's `PERIOD_INTENT_WORDS`, the
-  `period_as_condition` cause's `PERIOD_WORD` and the line slice's
-  `PERIOD_CONDITION`), and `line.read_period_line` calls it for a
-  condition's period, so no second copy of "first | second | 1st | 2nd"
-  exists. Measured first (`~/association-research/stages/period_family.py`,
-  the two slots as each stage set them on all 2,710 readings, with the
-  words, the intent chosen, the planner's verdict and the relations'
-  resolution): 120 readings carry a period (79 quarters, 41 halves - 82
-  `period_split`, 23 `period_leaderboard`, 15 `team_quarter_points`), no
-  stage moved one between the route and the reading, no period word fell
-  inside another tagger's claim, and the value was written ONLY under the
-  three period intents - six readings name a quarter and carry none (a
-  subject nothing resolved, the point reader declining them by its guard);
-  the key's reading keeps that (`point.PERIOD_ASKS`, the three keys, `point.period_under`) and claims nothing where
-  it writes nothing. A "by quarter" question reads NO period (the
-  breakdown is the point's shape, `by` `"period"`), and a period as
-  a CONDITION on which games count is the line slice's value
-  (`period_condition`), untouched. The two slots are gone, a model-era
-  `period`/`half` key is no argument the parser takes, and the typed
-  value is recorded (`stages._reading_record`, `period`). ONE cell,
-  `period`, in both relation tables, a decline saying the quarter or half
-  asked ("the 2nd half"), and a shape's row of its relation's table says
-  whether it honors one. `query/cuts.py` is the cuts' tagger:
-  `read_cuts(question, CutsContext)` reads which games of the span a read
-  sees - a venue, a circumstance (`SITUATION`: a weekday, a month, a
-  holiday, "since <day>", the opponent's conference or division, or words
-  nothing narrows by - an age, overtime), one calendar day (`CALENDAR_DATE`,
-  the year fixed by the season the words name or the current one, never
-  on a career question; a date that opens a range or stands on a career
-  question is a situation, and the year it wrote is handed to the span
-  tagger; a range of calendar days with their years, `DATE_RANGE`, is
-  one situation cut across seasons, a `date_range` narrowing, and hands
-  the span the seasons its first and last day fall in - one season where
-  both fall in it - and both season types where it can hold a postseason
-  game and names no type, ISSUES.md #345), a playoff round, a game of a
-  series, an ordinal season - over
-  the opponent and absent teammates the subject
-  reading read (an opponent that is the `without` list again is dropped;
-  the tenure the subject reading writes after the taggers; a venue beside
-  the splits reader's venue split is the split's, dropped by
-  `point.cuts_under`); it writes
-  `reading.Cuts` on `Reading.cuts`, the situation parsed once into
-  `reading.Situation` (`situation_of`: the words, and the
-  `CalendarNarrowing` or `AlignmentNarrowing` they name, which the
-  relations apply and never re-read), and claims what it read - the
-  opponent and the tenure it claims nothing for, since the subject
-  reading, which claims nothing yet, read them. Measured first
-  (`~/association-research/stages/cuts_family.py`, the eight slots as
-  each stage set them on all 2,710 readings): no stage moved a slot
-  between the route and the reading but the tenure (14, the subject's);
-  a date and its own month stand together on 4 ("in march 24 2018"),
-  two claims over one word, which `span.claimed` joins into one named for
-  both (a partial overlap raised until this slice, and "lebron's last game
-  7" - the window's "last game" and the postseason's "game 7" - raised out
-  of the reader to the user). The eight slots are gone, and the typed
-  value is recorded (`stages._reading_record`, `cuts`). The tables declare the cuts
-  by name (`Cuts.CELLS` less `round` in `RELATION_SCOPING`, less `round`,
-  `tenure` and `season_n` in `TEAM_RELATION_SCOPING`), a shape whose
-  words state fewer says so in its row, and `reading.cell_set(scope, cell)` is the one reading of a cell name
-  against the filters for the tables that list cells by name. `query/line.py` is the lines' tagger:
-  `read_lines(question)` reads the lines on a stat a question
-  keeps the subject's games past - "30+ points", "20+ point 5+ assist
-  games", "scores 30", "fouled out" (fouls at six), "under 14 fta", "at
-  most 5 turnovers", "with 25 minutes" - from the words alone, each with
-  how the words state it (`LineCandidate.how`), and `point.lines_under`
-  writes the subject's `reading.Line` values on `Reading.lines` (the measure as the game
-  column's key, `op`, `value`, `as_typed`, `keyed` for the shape's own
-  line, `narrows` for one the relation filters by, `period` for a line
-  in a quarter, and `whose` for a line on the opponents' figure - after a
-  given-up verb or "opponents", `lexicon.GIVEN_UP_LINE_LEAD`, its claim
-  taking those words: the `opponent_line` cell, which a team's record over
-  a line takes and every other shape refuses, ISSUES.md #426) and claims
-  each line's characters once; a reader whose
-  shape is a line (`point.THRESHOLD_ASKS`: the count, the record, the
-  streak, the high) reads a bare "N stat" as its own, every other reader
-  only what the words say outright - a floor of minutes ("with 25
-  minutes", "when playing 20 or more minutes", "playing 30+ minutes"; "over
-  26 minutes" and "more than 26 minutes" keep the games OVER the number,
-  `lexicon.OVER_LEADS`), a line under a
-  number, a line stated over or at a number by its lead on any stat
-  ("more than 40 points", "exactly 25 fga", "fga = 25":
-  `lexicon.LINE_OVER_OR_AT`, `EQUALS_LINE`, ISSUES.md #371 - but on a
-  ranking of players' seasons, where it is a season's line; under a line's
-  shape "more than 40" is the shape's own "41+"), a line on a player's
-  SEASON figure on a ranking of players' seasons alone ("averaged 30 ppg",
-  "> 5 apg", "10000 points": `Line.per`, `season` or `total`, the
-  `season_line` cell, kept by `season_line.ranking_statement` on the
-  season's deduped box row and by `career_ranking_statement` over a
-  career's rows; the game lines read inside one set aside, ISSUES.md #390;
-  "how many players ..." counts them, `reading.PLAYERS_COUNTED`, and "most
-  seasons averaging 30 ppg" orders the ranking by how many of a player's
-  seasons hold the line, the planned key `player_seasons/ranking/seasons`
-  - no asked key of its own, as the games count is planned
-  `player_games/ranking/count`, ISSUES.md #391),
-  two or more "N+ stat"
-  pairs - as the router's stages read them
-  until 5.0.0 (a single
-  "20+ points" on a log is read by nothing, ISSUES.md). `threshold_named`
-  is what the grammar's rules ask before the lines are read (a count with no
-  line is a ranking). `read_period_line(question)` is the parser's reader
-  of a line in a quarter or half ("after making one three in the first
-  quarter"), run before the grammar and the taggers, which BLANK its words to spaces - not
-  cut - so the period is not read as the one measured and every later
-  claim keeps its offset; `period.which_period` reads its period. The lines
-  are read from the WHOLE question, a companion's phrase included:
-  measured, leaving a companion's line to the companion moved one recorded
-  reading ("In his 18th season, how many games with 40+ points did Lebron
-  James have?": the phrase reads as a companion's, the subject is LeBron
-  himself, restored by the grammar's rules, and a count with no line became a
-  ranking), and the two claims fold into one. Measured first
-  (`~/association-research/stages/line_family.py`, the FIVE carriers of a
-  line - the `stat`/`threshold` pair, `above`/`below`, the point's
-  predicates, a companion's `reached` entry, `period_condition` - and the
-  three companion slots as each stage set them on all 2,710 readings): a
-  threshold on 120, a floor or a line under a number on 39, two or more
-  pairs on 11 - where the slot pair contradicted the words every time
-  ("20+ point 5+ assist" read `stat: assists, threshold: 20`, the relation
-  narrowing by the words and the pair unread; the typed `Line` is built
-  from the words, never from the pair) - a line in a quarter on 2, a
-  companion's line on 23 (every one a team's record, the line becoming the
-  record's own, `subject._apply_team_record_when`), and the point's own
-  re-read of the number's words (`point._everyone_threshold_predicates`,
-  `_numbered_stat_lines`, deleted) differed from the words on 1 ("most
-  games with 20 pt,s 10 reb, 5 ast": the pattern could not pass the comma
-  and fell back to the model's "rebounds" - the one answer this slice
-  moved). The seven slots are gone, and the typed values are recorded
-  (`stages._reading_record`, `lines`, `companions`; the parser's list of
-  the names the reading settled on still reads a teammate who played as
-  the slot era did - `with_player` where the point is the with/without
-  split and a condition on any other point). `query/measure.py` is the measure's tagger AND the one
-  catalog of what a question can ask about: `read_measure(question)`
-  reads every word the measure is read by (`MeasureWords`), and
-  `point.measure_under(asked, words, MeasureContext)` reads the measure
-  from them - the words' own reading over the
-  normalizer's key (`measure.named`: the grammar first, `MEASURE_GRAMMAR`,
-  then the longest box-score word, `MEASURE_WORDS`), then every rule the
-  stages wrote by, in their order (fouling out is the count's stat; a
-  games count under a line's reader is no measure; a quarter's, a
-  comparison's, a line's, a team's or a run's stat is kept only where the
-  words name one, `names_a_stat`; an advanced metric; game score by the
-  reader's own spelling; a 2-point percentage; a ranking by shot distance,
-  the `shot_distance` sentinel; the attempts beside a make; the LONGEST
-  team-metric alias the words hold, `team_metric_named`, "allowed" after it
-  making it the opponent's, as "opp" before a stat does and, on a team's
-  key, a verb giving points up wherever it stands ("how many points did
-  the sixers allow", `lexicon.GIVEN_UP_VERB`, `GIVEN_UP_KEYS`); a NetPoints rate folded into its key and any
-  other unit kept as the `rate` cell; a team's total; the stat the lines
-  tagger read beside a line; a run's result; a fingerprint's side; a chart's
-  shots; the columns beside a ranking) - into `reading.Measure(key,
-  as_typed, how, unit, whose, side, shot_value, category, won, beside)` on
-  `Reading.measure`, and claims what it read. The model's key is CONTEXT
-  (`raw["stat"]`, the one REQUIRED key the normalizer fills whether or not
-  the question names a stat): the words win where they name a measure, and
-  where they name none the key stands as it did, so no answer moves; the
-  grammar's rules that turn on a games key read the same context, the
-  words over the key, before the tagger runs. `measure.CATALOG` is the one
-  catalog (`MeasureKey`, 42 keys; per key how it is read on each relation:
-  the game column, the compiler's measure, the ranking's metric for a bare
-  name, a career, a total, a per-game figure, the team metric, the
-  opponent's, and whether it is a yes or a no of each game, `yes_no`:
-  a double-double, a triple-double, a foul-out, a win, a game played -
-  the compiler's `BOOLEAN_MEASURES` are read from it) and `measure.ALIASES` every spelling the six vocabularies
-  named a measure by (322 distinct spellings, re-counted 2026-10-13 where
-  this said 390: the normalizer's keys, the grammar's, the
-  box-score words, the team metrics' alias texts, the leaderboard metrics'
-  names, the compiler's derived names), through `key_of`; the answer side's
-  lookups (`measures.resolve_metric`, `stat_measure`, `stat_column`,
-  `log_extras`, `period_split_measure`, `streak_column`,
-  `team_metrics.resolve_team_metric`) take the `Measure` and read the
-  catalog's facets, and `tests/query/measure_spellings.json` holds what each
-  returned for every reachable spelling before the catalog, which a test
-  holds them to on the facets each vocabulary reached. `Measure.as_typed`
-  is what a refusal prints - a team metric's
-  alias text ("fgm") is one, and `named_by_a_team_metric` is how the team
-  compiler's total still declines it (ISSUES.md). Measured first
-  (`~/association-research/stages/measure_family.py`, the seven slots and
-  the point's `measures`/`aggregate` as each stage set them on all 2,710
-  readings): a stat on 1,004 readings in 69 spellings - the model's on 280
-  (23 distinct), the words' on 958 (37), the two disagreeing on 58 with the
-  words winning every one, the model's key standing alone on 32 - a rate on
-  13, a per-game log on 38, a side on 1, a shot value on 13 (all 3), columns
-  beside a ranking on 7, a run's kind on 6; no stage moved a slot between
-  the route and the reading; 24 readings carried a key no answer-side
-  vocabulary held (`shot_distance`, the ranking's sentinel; `games_played`,
-  read by nothing; the grammar's given-up keys, refused by name). The seven
-  slots are gone, and the typed value is recorded
-  (`stages._reading_record`, `measure`). ONE cell, `rate` (`Measure.CELLS`): honored by the
-  season-line ranking and the team compiler's total, declined by every
-  other reader in the sentence it had, taken beyond the relation by the
-  ranking's and the team-season shapes' rows (`ShapeCells.taken`, through
-  `Measure.CELLS`) and by the team compiler's own sum, declared in no
-  relation table (a unit narrows no games). The aggregate is a closed
-  enum (`reading.Aggregate`, Phase 4, step 3: `NONE`, `PER_GAME`,
-  `TOTAL`, `COUNT`, `RECORD`, and the compiler's own `LINE`) on the
-  `Query` and the `TeamQuery`, and a record writes a member as its value
-  (`stages.plain`). It is the PLANNER's since Phase 5, step 4 (D5, Jeff,
-  2026-10-14): the point reader stamped it at 37 sites until then, and
-  `compose.plan.aggregate_of` derives it from what the point is read as
-  (its declared `read_as`, never the planned key: a season-line point
-  planned at the game level keeps its per-game figure) and its measure -
-  the catalog's `yes_no` facet on the point's `Measure` or on a measure it
-  keeps its games by held true, and `Measure.how` "total", which the
-  point reader writes where it reads "total" on the game-level ranking.
-  Its table: rows and charts, NetPoints and the shots `NONE`; a team's
-  own season `TOTAL` (the team compiler's sum where the season reader
-  declines); the season line and the periods `PER_GAME`; runs `COUNT` on
-  a team's games, `NONE` otherwise; a comparison `RECORD` by opponent,
-  `PER_GAME` by subject, `NONE` by met; a split or a scalar by `line`
-  `COUNT` where it counts a yes or a no, else `RECORD` (split) or
-  `PER_GAME` (scalar); a split by splits or presence `RECORD`, by anything
-  else `PER_GAME`; a scalar by count, record or total that, by `""`
-  `TOTAL` on a team relation and `COUNT` otherwise; a ranking on the games
-  `COUNT` by count, of a yes or a no or with no measure, `TOTAL` for a
-  measure asked as a total, `PER_GAME` otherwise. Measured first: on the
-  2,710 readings the planned key alone left 52 points off the stamped
-  value, with `Reading.relation` 39, with the reviewer's facet 24 - the
-  three remainders were a games-played ranking (6, `games_played` joined
-  the facet), a team's total stamped on its season's shape (6, its own
-  query carrying none) and "Lyngby bk total corners last 5 games average"
-  (declined either way) - and the declared shape and the held-true
-  predicate (the "how many games has embiid won when he scores 30 points"
-  wordings outside the populations) close them: every planned `Query` and
-  `TeamQuery` on the 2,710 and the 518 reader cases reduces as it did.
-  The point's `measures` are typed too
-  (`tuple[Measure, ...]`, each the catalog's key, stated through
-  `measure.measured` from the names the point reader reads a measure by),
-  and the compilers' names are built once, where the planner hands the
-  point over (`compose.core.measure_names`, `compose.team.team_metric`).
-  The `Query`'s `measures` are still those names: retyping them is the
-  answer side's, whose readers test and replace them by name. `query/window.py` is the window's tagger:
-  `read_window(question, WindowContext)` reads, and `point.window_under`
-  keeps under the key, which rows a question keeps
-  and from which end - the grammar's count and end ("last 10 games", "his
-  first game", "top 5"), a history's "past 5 years" as its count of
-  SEASONS (`Window.of`), one game of a player's line ("his last home
-  game"), an end filled from the looser `ORDER_WORDS` on a reader that
-  honors one and dropped on a reader that refuses one beside a count it
-  can still take, a team ranking's end (`rank`), the measure a ranking of
-  boolean games is ordered by (`by`) - the tagger over the words and
-  whether the stat is a yes/no one, the key's reading over what the words
-  ask (`point.ORDER_ASKS`, `LIMIT_COUNTS_SEASONS`) - writes `reading.Window` on
-  `Reading.window`, and claims what it read. Measured first
-  (`~/association-research/stages/window_family.py`, the four slots as
-  each stage set them on all 2,710 readings): the parser read the grammar
-  twice, before the stages and again after, and every stage that DROPPED a
-  count (the model-era filler rules: `_names_a_count` and its five callers)
-  was undone by the second read, since the grammar was the count's one
-  source - so those rules were dead, and went rather than being ported; the
-  model-era `order`/`limit`/`rank`/`ranked_by` is no argument the parser
-  takes. The four slots are gone, and the typed value is recorded
-  (`stages._reading_record`, `window`). `query/span.py` is the span's tagger: `read_span(question, SpanContext)` (and `point.span_under` over its `SpanCandidates`) reads
-  the seasons and the season type - a season named, a career, a range, the
-  postseason, both types - in the order the retired stages read them
-  (measured first, `~/association-research/stages/span_family.py`: the six
-  slots as each stage set them on all 2,710 readings), from the words and
-  the few facts read before it (a window, a player, a dated range; what the
-  words ask is the key's reading - a history's relative seasons, the three
-  implied careers, a log's both types), writes one typed value (`reading.Span`, on
-  `Reading.span`) and returns the `Claim`s - `(start, end, what)` - of the
-  characters it consumed, which the parser carries onto `Reading.claims`.
-  A claim inside another's characters folds into it (the "playoffs" in
-  "including the playoffs"); two claims that overlap without one holding
-  the other are joined into one claim named for both (`span.claimed`,
-  since a29c7fd). The span tagger runs LAST among the taggers
-  (`parse._tagged`), after
-  the subject is settled and the period, cuts and window taggers have run, because three of
-  its rules read the typed window (a bare "last N games" log reads both
-  types; a count's "how many" with a player named is his career; a log's
-  "last N vs the Pistons" is every meeting - `SpanContext.window_named`,
-  `order`, `limit` come from the `Window`), and a model-era span or window
-  key (`season`, `season_ref`, `season_type`, `order`, `limit`, ...) is no
-  argument the parser takes: the words are the one source. The six slots
-  are gone, and the typed value is recorded (`stages._reading_record`,
-  `span`). The point
-  reader writes no span of its own: where it settles the subject's span
-  apart from the scope's (a date names its own game, so the name is
-  settled over the career; a run's season is this one outright, never a
-  defaulted one) it says so in `Reading.subject_span`, the one typed
-  override.
+- **Everything but the names and the stat is read from the words, or it is
+  silently absent.** A model-era slot key (a season, an order, a limit, a
+  period, a companion list, ...) is no argument the parser takes: the words
+  are the one source.
+- **A filter family is read by ONE tagger, from the lexicon, and claims the
+  characters it read.** A tagger's claims are cut to the words it could not
+  do without - each word deleted in turn and the tagger asked again over
+  its context (`span.needed`) - and the words outside them its reading turns
+  on are claimed beside them under the family's name, except a word whose
+  presence made it read LESS (`gives_up`: "2024 and 2025" read as no season
+  is two unread years). The grammars, the grammar's rules and the point
+  reader claim the words their decisions turned on (`span.read_by`). The
+  subject reading is read once and never probed: it declares its claims
+  where it reads (`subject.subject_claims`). A claim inside another's
+  characters folds into it; two that overlap without one holding the other
+  join into one named for both (`span.claimed`), and a join fails the
+  ledger's report ("A word the reading does not depend on is counted"). The
+  content words no claim covers are `Reading.unread`.
+- **A tagger reads the words alone, never the key the words ask.** The
+  tagger reads every candidate the words hold (`line.LineCandidates`,
+  `window.WindowCandidates`, `span.SpanCandidates`, `measure.MeasureWords`,
+  the period and the cuts as read); ONE function per family in
+  `query/point.py` applies the key (`lines_under`, `measure_under`,
+  `period_under`, `cuts_under`, `window_under`, `span_under`, with the key
+  sets `THRESHOLD_ASKS`, `PERIOD_ASKS`, `ORDER_ASKS`,
+  `LIMIT_COUNTS_SEASONS`), because the key changes what the Reading SAYS (a
+  bare "30 points" is a count's own line and nothing on a log). Whether a
+  relation honors a cell is the planner's different check. A claim is cut to
+  the words the tagger AND the key's reading need together.
+- **Patterns live in the lexicon alone.** `query/lexicon.py` holds every
+  word and pattern the reader reads by, named, with its reason beside it,
+  and nothing that reads the warehouse or the answer side; it is the
+  reader's lowest layer. No other module calls or imports `re` at run time
+  (the `regex_outside_the_lexicon` ratchet, empty); `subject.py` compiles no
+  pattern of its own; and no second copy of a word list exists - one period
+  reader (`period.which_period`) for every "first | 1st | q4", one measure
+  catalog.
+- **The families, by tagger** (the vocabulary to read the code by):
+  - *Period* (`query/period.py`): `read_period` reads one quarter or half
+    ("1st quarter", "q4", "2h"; a half read first and apart) into
+    `reading.Period` on `Reading.period`; `which_period` is the ONE reader of
+    which period any words name, for the grammar's rules choosing among the
+    three period keys and for `line.read_period_line`. A "by quarter"
+    question reads NO period (the breakdown is the point's `by`), and a
+    period as a condition on which games count is the line family's
+    `period_line`. One cell, `period`, in both relation tables.
+  - *Cuts* (`query/cuts.py`): `read_cuts(question, CutsContext)` reads
+    which games of the span a read sees - a venue, a situation (a weekday, a
+    month, a holiday, "since <day>", the opponent's conference or division,
+    or words nothing narrows by; `SITUATION`), one calendar day
+    (`CALENDAR_DATE`, its year from the season named or the current one,
+    never on a career question - where it, or a date opening a range, is a
+    situation), a range of days with their years (`DATE_RANGE`: one
+    `date_range` situation across seasons, handing the span the seasons it
+    falls in and both season types where it can hold a postseason game and
+    names no type), a round, a game of a series, an ordinal season - over the
+    opponent and the absent teammates the subject reading read (an opponent
+    that is a `without` name again is dropped; a venue beside a venue split
+    is the split's, dropped by `point.cuts_under`). It writes `reading.Cuts`
+    on `Reading.cuts`, the situation parsed once (`situation_of`: a
+    `CalendarNarrowing` or `AlignmentNarrowing`, which the relations apply
+    and never re-read). `reading.cell_set(scope, cell)` is the one reading
+    of a cell name against the filters for the tables that list cells by
+    name.
+  - *Lines* (`query/line.py`): `read_lines` reads the lines on a stat a
+    question keeps the games past ("30+ points", "20+ point 5+ assist
+    games", "scores 30", "fouled out", "under 14 fta", "with 25 minutes"),
+    each with how the words state it (`LineCandidate.how`), and
+    `point.lines_under` writes `reading.Line` values on `Reading.lines` (the
+    measure, `op`, `value`, `as_typed`, `keyed` for the shape's own line,
+    `narrows` for one the relation filters by, `period`, `whose` - the
+    opponents' figure after a given-up verb or "opponents"
+    (`lexicon.GIVEN_UP_LINE_LEAD`), the `opponent_line` cell, which a team's
+    record over a line takes and every other shape refuses - and `per`). A
+    shape that IS a line (`point.THRESHOLD_ASKS`: the count, the record, the
+    streak, the high) reads a bare "N stat" as its own; every other reader
+    only what the words say outright - a floor of minutes, a line under a
+    number, a line stated over or at a number by its lead
+    (`lexicon.OVER_LEADS`, `LINE_OVER_OR_AT`, `EQUALS_LINE`; under a line's
+    shape "more than 40" is the shape's own "41+"), two or more "N+ stat"
+    pairs on one game. On a ranking of players' seasons a line is the
+    SEASON figure ("averaged 30 ppg", "10000 points": `Line.per` `season` or
+    `total`, the `season_line` cell, kept by `season_line.ranking_statement`
+    and `career_ranking_statement`); "how many players ..." counts them
+    (`reading.PLAYERS_COUNTED`), and "most seasons averaging 30 ppg" is
+    planned `player_seasons/ranking/seasons`. `threshold_named` is what the
+    grammar's rules ask before the lines are read (a count with no line is a
+    ranking). `read_period_line` reads a line in a quarter or half before
+    the grammar and the taggers run, and BLANKS its words to spaces - not
+    cut - so every later claim keeps its offset. The lines are read from
+    the WHOLE question, a companion's phrase included, and a typed `Line` is
+    built from the words, never from a model pair. (history)
+  - *Measure* (`query/measure.py`, the tagger AND the one catalog of what a
+    question can ask about): `read_measure` reads every word the measure is
+    read by, and `point.measure_under(asked, words, MeasureContext)` reads
+    the measure - the words over the normalizer's key (`measure.named`:
+    `MEASURE_GRAMMAR`, then the longest box-score word, `MEASURE_WORDS`),
+    then the rules in order (a stat kept on a quarter's, a comparison's, a
+    line's, a team's or a run's reader only where the words name one,
+    `names_a_stat`; the LONGEST team-metric alias, `team_metric_named`,
+    made the opponent's by "allowed", "opp" or a giving-up verb,
+    `lexicon.GIVEN_UP_VERB`, `GIVEN_UP_KEYS`; a NetPoints rate folded into
+    its key, any other unit the `rate` cell; ...) - into `reading.Measure`
+    (`key`, `as_typed`, `how`, `unit`, `whose`, `side`, `shot_value`,
+    `category`, `won`, `beside`) on `Reading.measure`. The model's key is
+    CONTEXT (the one REQUIRED key the normalizer fills whether or not the
+    question names a stat): the words win where they name a measure, and
+    where they name none the key stands. `measure.CATALOG` (`MeasureKey`,
+    42 keys) says how each key is read on each relation, and whether it is a
+    yes or a no of each game (`yes_no`: a double-double, a triple-double, a
+    foul-out, a win, a game played; the compiler's `BOOLEAN_MEASURES` are
+    read from it); `measure.ALIASES` is every spelling a measure is named
+    by, through `key_of`. The answer side's lookups
+    (`measures.resolve_metric`, `stat_measure`, `stat_column`, `log_extras`,
+    `period_split_measure`, `streak_column`,
+    `team_metrics.resolve_team_metric`) take the `Measure` and read the
+    catalog's facets, held to `tests/query/measure_spellings.json`.
+    `Measure.as_typed` is what a refusal prints. The point's `measures` are
+    typed (`tuple[Measure, ...]`, through `measure.measured`), and the
+    compilers' names are built once, where the planner hands the point over
+    (`compose.core.measure_names`, `compose.team.team_metric`). (history)
+  - *Aggregate*: a closed enum (`reading.Aggregate`: `NONE`, `PER_GAME`,
+    `TOTAL`, `COUNT`, `RECORD`, the compiler's own `LINE`) on the `Query`
+    and the `TeamQuery`, and the PLANNER's (D5): `compose.plan.aggregate_of`
+    derives it from what the point is read as (`read_as`, never the planned
+    key) and its measure (the `yes_no` facet, a predicate held true,
+    `Measure.how` "total"); its docstring is the table. The point reader
+    stamps none. (history)
+  - *Window* (`query/window.py`): `read_window(question, WindowContext)`
+    reads, and `point.window_under` keeps under the key, which rows a
+    question keeps and from which end - the grammar's count and end ("last
+    10 games", "his first game", "top 5"), a history's "past 5 years" as a
+    count of SEASONS (`Window.of`), one game of a player's line ("his last
+    home game"), an end from the looser `ORDER_WORDS` on a reader that
+    honors one, a team ranking's end (`rank`), the measure a ranking of
+    yes/no games is ordered by (`by`) - into `reading.Window` on
+    `Reading.window`. A ranking's stated qualifier is `reading.Minimum`
+    (`window.read_minimum`, its words blanked from what every other tagger
+    reads; kept on the players' ranking alone by `point.minimum_under`,
+    applied by the season-line ranking where the metric qualifies by its
+    unit, `metrics.qualifies_by`, and by the game-level ranking in games,
+    refused by a cause elsewhere).
+  - *Span* (`query/span.py`): `read_span(question, SpanContext)` and
+    `point.span_under` read the seasons and the season type (a season
+    named, a career, a range, the postseason, both types) into
+    `reading.Span` on `Reading.span`, returning the `Claim`s
+    (`(start, end, what)`) of the characters consumed. The span tagger runs
+    LAST, after the subject is settled and the window read, because its
+    rules read the typed window (a bare "last N games" log reads both types;
+    "how many" with a player named is his career; "last N vs the Pistons" is
+    every meeting). The point reader writes no span of its own: where it
+    settles the subject's span apart from the scope's it says so in
+    `Reading.subject_span`, the one typed override.
 - **Names arrive as typed.** A typo reaches the entity index, which reads a
-  single near spelling as that player and says so
-  (`entities.read_near_spelling`); nothing corrects it upstream any more.
+  single near spelling as that player and says so; nothing corrects it
+  upstream.
 - **A name is recognized from the in-memory index, never by a statement.**
-  `query/names.py` holds the `players` (3,101) and `teams` (30) tables as
-  two indexes, loaded once per question inside `Agent.ask`
-  (`names.loaded()`; a lookup outside a block raises `names.NotLoaded`, so
-  a caller that forgot one fails instead of quietly issuing a statement per
-  lookup - every test runs inside one, `tests/conftest.py`, and a script
-  that reads names enters its own). Every lookup in
-  `entities.py` that read only those tables is answered from them, with
-  DuckDB's own semantics reproduced and checked against it: its `lower`,
-  its split on every non-ASCII-lowercase letter, Damerau-Levenshtein over
-  UTF-8 bytes, RE2's case folding, ILIKE that lowers ASCII only on an
-  all-ASCII column, table order where the SQL had no `ORDER BY`. A name
-  lookup takes the index (`find_players(players, ...)`,
-  `find_teams(teams, ...)`, `team_abbreviations(teams)`,
-  `suggest_players(index, ...)`, checked where it needs the rows by
-  `checked_players` / `team_columns`), never a connection; a caller on
-  the answer side hands it `entities.players_of(con)`, `teams_of(con)` or
-  `names_of(con)`. Do not write `FROM players` or `FROM teams` on the
-  reader's path again. The reader of the question's words holds no
-  connection at all (Phase 3, step 4, slice (b); `con_in_the_reader` 23 ->
-  0): `parse.read_route`, its last step `parse._reading`, `classify_span`
-  and `subject.read_subject` take a `names.NameIndex` - the players' and
-  the teams' indexes, which `Agent.ask` reads before the parser runs
-  (`entities.names_of`), and `names.ActivePlayers`, the players with a box
-  score in the latest season on record, which a typo near more than five
-  players is narrowed by (`entities.suggest_players`; the one warehouse
-  fact the reader reads beyond the two tables, through `classify_span` on
-  2 of the 2,710 readings), read on first use in the block through the
-  index (`NameIndex.active`, a reader the answering loop hands it) so no
-  question that does not narrow pays for it. Measured over the 628
-  recorded questions through `Agent.ask` with a counting connection
-  (`~/association-research/stages/statements_per_question.py`,
-  2026-10-10): 5.17 statements a question before the slice - the two table
-  loads inside the parser's first lookups, the latest season and a
-  box-score narrowing on 2 questions (8 statements) - and 5.16 after it:
-  the two loads in the answering loop, before the parser, and in the
-  parser the latest season and the active set on the same 2 questions (4
-  statements, read once a block where each lookup read its own); every
-  statement after the parser identical (1,358, and the latest season once
-  a question). The reader issued 38.5 a question before the index.
-  One thing is not reproduced: the order of two players who share a
-  `display_name` (21 names), which DuckDB's sort left unspecified; the
-  index uses table order.
+  `query/names.py` holds the `players` and `teams` tables as two indexes,
+  loaded once per question inside `Agent.ask` (`names.loaded()`); a lookup
+  outside a block raises `names.NotLoaded` rather than quietly issuing a
+  statement per lookup - every test runs inside one (`tests/conftest.py`),
+  and a script that reads names enters its own. The lookups reproduce
+  DuckDB's own semantics, checked against it (its `lower`, its word split,
+  Damerau-Levenshtein over UTF-8 bytes, RE2's case folding, ILIKE's
+  ASCII-only lowering, table order where the SQL had no `ORDER BY`); not
+  reproduced: the order of two players sharing a `display_name`, which
+  DuckDB left unspecified. A name lookup takes the index
+  (`find_players(players, ...)`, `find_teams(teams, ...)`,
+  `team_abbreviations(teams)`, `suggest_players(index, ...)`), never a
+  connection; a caller on the answer side hands it
+  `entities.players_of(con)`, `teams_of(con)` or `names_of(con)`. Do not
+  write `FROM players` or `FROM teams` on the reader's path. The reader
+  holds no connection at all: `parse.read_route`, `parse._reading`,
+  `classify_span` and `subject.read_subject` take a `names.NameIndex`, read
+  by `Agent.ask` before the parser runs (`entities.names_of`), with
+  `names.ActivePlayers` (the players with a box score in the latest season,
+  which narrow a typo near more than five players) read on first use
+  through `NameIndex.active`. (history)
+- **The subject has one reader and one writer.** Its reader is the subject
+  reading (`subject.read_subject`, once per question), which reads and
+  decides nothing (under no shape, `None`); `subject.settle_subject` writes
+  the key and why with no rule run; the parser's last step reads the
+  SETTLED subject and settles nothing. Its writer is
+  `subject.apply_subject`: ONE typed value, `reading.Subject(kind, players,
+  teams, position)` on `Reading.who`. The kind is the reading's; one player
+  is the one a reader reads (`Subject.player`), two or more a comparison
+  or a pair; one team the one the read is about or narrows to
+  (`Subject.team`). The grammar's rules are HANDED the typed subject and
+  the opponent (`grammar.settle(question, asked, subject=, opponent=)`) and
+  read the subject the grammar names and the team words through the subject
+  reading's own readers (`subject.subject_named_in`,
+  `subject.team_words_in`); a name they settle under the key they choose is
+  the reading's word, written on the typed subject. A test hands its names
+  to the rules typed (`tests/routed.py`'s `staged`, `who=`, `opponent=`).
+  The subject's words are the lexicon's. No cell: no relation table
+  declares a name, and a position group narrows the league's read through
+  `Query.position` (`point._everyone_point`).
 - **Who stands beside the subject has one reader: the subject reading.**
-  "without X", "with X out", "when X and Y play", "in games X missed",
-  "when X scores 20+ points", "vs X" are read by `subject._conditions_read`
-  (and `_versus_companions`), each name with its role as a typed
-  `reading.Companion` - `player` as the question spells him, `side` (`own`
-  or `opponent`), `predicate` (`played`, `absent`, `started`, `bench`,
-  `reached`) and a reached role's `Line` - with a `Claim` on the phrase
-  (`Subject.claims`, which the parser carries onto `Reading.claims`), and
-  ONE writer puts them on the Reading: `subject.apply_subject`
-  (`_apply_companions`: every companion, the other side's first, the
-  subject himself excluded unless absent; `Reading.companions` - and on
-  the path that refuses an invented name too, so "jay huff game
-  log vs Embiid" keeps Embiid beside the refusal). The grammar's rules
-  and the taggers are HANDED the typed companions
-  (`grammar.settle(..., companions=)`, `parse._tagged`) and read no name
-  themselves: the rules decide a with/without split from them and the
-  cuts tagger cuts the opponent against the absent ones
-  (`grammar.absent`), and a model-era `without`, `with_player` or
-  `conditions` key is no argument the parser takes. Until 5.0.0 the
-  router's stages had readers of their own for the same phrases; the two
-  disagreed on seven of the 628 recorded questions, and "When Embiid
-  plays with Paul George, what is the PHI record?" answered for Embiid
-  alone (#310). Do not give a stage a name regex again. The phrases the
-  reading reads by are the lexicon's (`ABSENCE_WORDS`, `ABSENT_NAMED`,
-  `COMPANION`, `COMPARED_WITH`, `COMPANION_STOP`, `COMPANION_IN_GAMES`,
-  `VERSUS_PHRASE`, `CONDITION_STARTED`, `CONDITION_BENCH`,
-  `CONDITION_ABSENT`, `WHEN_REACHES`, `NAME_PIECES`, `NAME_SHAPED`,
-  `NAME_JOINERS`, `NAME_STOPWORDS`). Three rules of that reading, each
-  measured against the old one on wordings outside the corpus before the
-  stage readers went:
-  - **A name is read by its position in the phrase** (`_name_segments`:
-    the words after the keyword, split at "and", "or" and commas, ended by
-    a word no name holds), so it does not depend on the model having copied
-    it. "Tatum, Brown and Holiday" is three names though "brown" and
-    "holiday" are ordinary words ten players share.
-  - **An absence keeps a name nobody resolves, as typed.** "without zzyzx"
-    is refused by that name downstream; dropping it would answer the games
-    he played too. A player who PLAYED has to be one the reading found: the
-    words after "with" and "when" are often no name ("with less than 15
-    fga"), an ordinary word is a name there only when it stands alone
-    ("with green", never "with best shooting"), and a near spelling counts
-    only for a word that is no ordinary word and is near exactly one player.
+  "without X", "with X out", "when X and Y play", "in games X missed", "when
+  X scores 20+ points", "vs X" are read by `subject._conditions_read` (and
+  `_versus_companions`), each name with its role as a typed
+  `reading.Companion` (`player` as spelled, `side` `own` or `opponent`,
+  `predicate` `played`, `absent`, `started`, `bench` or `reached`, a
+  reached role's `Line`) with a claim on the phrase; ONE writer puts them on
+  the Reading (`apply_subject`'s `_apply_companions`, `Reading.companions`,
+  on the path that refuses an invented name too). The grammar's rules and
+  the taggers are HANDED the typed companions (`grammar.settle(...,
+  companions=)`, `parse._tagged`) and read no name themselves. Do not give a
+  stage a name regex again: two readers of the same phrases disagreed on
+  seven of the 628. (history) Three rules of that reading:
+  - **A name is read by its position in the phrase** (`_name_segments`: the
+    words after the keyword, split at "and", "or" and commas, ended by a
+    word no name holds), not by the model having copied it.
+  - **An absence keeps a name nobody resolves, as typed** - refused by that
+    name downstream, since dropping it would answer the games he played
+    too. A player who PLAYED has to be one the reading found: an ordinary
+    word is a name there only when it stands alone ("with green", never
+    "with best shooting"), and a near spelling counts only for a word that
+    is no ordinary word and is near exactly one player.
   - **"with and without X" is the split over X**, read from its "without".
 
-- **A shape Phase 2 has ported is a reader and a sayer, and nothing else
-  answers it.** What travels between them is typed (2026-10-05, "the
-  Result is typed", the Phase 2 review's cleanup (b)1, (b)5, (b)6), and a
-  change keeps it so:
-  - **A reader returns `Result | Refusal | Clarify`** (`query/result.py`),
-    never a sentence. A refusal found at RUN is a `Refusal(kind, facts)`
-    whose kind is in the closed `result.RUN_CAUSES` (a fact found in the
-    warehouse), disjoint from the reading's `reading.CAUSES` (a fact read
-    from the words) - a test holds the two apart; a question back is a
-    `Clarify(asked, candidates, ...)`. The relation modules
-    (`no_narrowed_games`, `no_games`, `condition_team_no_games`,
-    `entities.clarify`, the coverage floor as `coverage.floor_refusal`)
-    return the same types. ONE phrase table words every cause,
-    `say.refusal_phrase(kind, facts)`, beside `note_phrase` and
-    `decision_phrase`; the planner's `refusal_result` says a reading's
-    `Cause` through it. A new refusal is a kind in `RUN_CAUSES` and a
-    phrase there. `Refusal.shown`/`under` say what the page shows beside
-    the sentence and under which keys, since the readers' pages differed
-    and the answers' data is held identical.
-  - **A cell the read applied is a typed value, not a key.**
-    `Narrowing.cells` holds the `result.Cell` union (`Period`, `OnDate`,
-    `Line`, `Role`, `GameOfSeries`, `Calendar`, `Companions`, `Met`,
-    `ShotValue`), read by type (`narrowing.cell(Role)`, `lines()`,
-    `period`); a span cut is `Span.since`/`until`/`ordinal`; a split's or
-    a run's parameter is its body's (`Grouped.of`, `Runs.line`/`won`).
-    What the sentence needs beside the body is ONE frozen record per shape
-    (`result.Facts`: `CountFacts`, `LogFacts`, `LineFacts`, ...), read
-    through `say._facts(result, Kind)`, which raises on another shape's
-    record. There is no untyped `facts` mapping to add a key to; a shape
-    that needs a new fact adds a field to its record. A read that found
-    nothing keeps its body's shape (an empty `Rows`, a `Scalar` with no
-    values) and gives its reason as `Result.empty`, a `Refusal`.
-  - **The answer side chooses by shape, never by intent, and the shape is
-    the point reader's own.** Since Phase 3, step 1 (2026-10-09) the point
-    declares what it is read and said as on the Reading itself, as ONE
-    field since Phase 5, step 4 (D9; three, `shape`, `by` and `on`, until
-    then): `Reading.read_as`, a `reading.PointShape` - its `shape` in the
-    target's vocabulary (`scalar`, `rows`, `ranking`, `comparison`,
-    `split`, `runs`, `chart`), its `by` (what one row is, how a scalar is
-    reduced or what a reader's rows are ordered by; `""` where no reader
-    takes the point and the compiler's own sentence answers) and its
-    `relation` (`reading.PointRelation`: `player_games`, `player_periods`,
-    `player_seasons`, `team_games`, `team_periods`, `team_seasons`,
-    `team_snapshots`, `netpoints`, `shots`). Every `Reading(...)` in
-    `query/point.py` names it, by a key's constant where the value is one
-    of the grammar's keys (`reading.PLAYER_LOG`, ...) and as
-    `PointShape(...)` otherwise; a shared move read under several shapes'
-    words says what it is read as from what the words asked
-    (`point._ROWS_BY`, `_COUNT_SHAPES`, keyed by the grammar's key since
-    step 4), and a team-season shape's point on the team relation is
-    stamped its season's shape (`point.TEAM_SEASON_POINTS`, the three
-    keys, each the point's shape). The planner plans that key as it
-    stands (`plan.point_shape`; its one move: a season-line point
-    re-planned at the game level is on `player_games`, held by a test
-    over every reader case) on every verdict, and derives the
-    compiler's skeleton and source from it (`plan.skeleton_of`:
-    `ranking`/`split` group, a `comparison` by `met` is the pair, a
-    `split` by `line` compiles as the scalar record its reader says as a
-    split, a team's total under its season's shape is the team compiler's
-    scalar; `Query.source` is `"seasons"` for a point on `player_seasons` -
-    `Reading.source` is gone). `compose.answer` picks the reader from
-    `_ROUTES` by that key alone; the shapes' rows of the two relation
-    tables are keyed by it (`RELATION_SCOPING_EXCLUDED`,
-    `TEAM_RELATION_SCOPING_EXCLUDED`, one row per route since step 2's
-    closing slice). No table names a shape by a retired name: the trace
-    and the records name a key by `reading.key_path` (`relation/shape/by`),
-    and a decline says what the words were read as asking in the shape's
-    words - the sayer's one phrase per key the grammar names
-    (`say.asked_as`, framed by `say.nothing_answers`): "Nothing here
-    answers this question as a comparison of players: the seasons since
-    2022-23 cannot be read here - ...", "a team's record has no reading of
-    this point" (the planned shape, a `no_reading_of_point` cause's
-    `planned` fact); `coverage.SOURCES` is keyed by it (below). `say()`
-    chooses the sayer from the headline body's type and the one field
-    that says what it is (`Scalar.how`, `Grouped.by`, `Rows.by`,
-    `Chart.kind`) - never `Span.source`, the relation or a facts key; a
-    sayer reached so may still tell its subject's kind or a cell it says
-    (a quarter's `Period`, a matchup's `Met`). The intent is gone from the
-    reader since Phase 3, step 4, and the label it left behind since Phase
-    4, step 2: the grammar names what the words ask as a `PointShape`
-    (`Reading.asked`, below, "What the words ask comes from the question's
-    own words"), the point reader and the taggers key on it, and the
-    decisions about what the words ask record the `field` `asked`, each
-    value and reason a `key_path`. A cause carries the key, never a label
-    (its `shape` fact): the sayer's phrase tables are keyed by the
-    `PointShape` (`say._LINE_SHAPES`, `_STAT_FOR`, `_REACHING`,
-    `_ASKED_AS`), and no sentence or page prints a retired name. Proved on the four populations: 628 of 628, 2,082 of 2,082
-    and the 2,710 readings identical with the point's `by`, `on`, `shape`
-    and `source` left out (`compare --ignore`, `reader_cmp.py --ignore`:
-    each lists the field's values by count), 2,608 of 2,608 unit-test
-    calls aligned past the same fields (`calls_aligned.py --drop`).
+### What the words ask
 
-  The game log is the first (2026-10-03, `ROADMAP.md`,
-  "Phase 2, the expected steps", step 0): `compose/logs.py` reads a
-  player's or a team's log into a `Result` (`query/result.py` - the rows,
-  the count the window cut them from, the per-row summary, the remarks as
-  `Note(kind, facts)`), and `compose/say.py` words it, taking the Result and
-  nothing else (the import contract "The compiler's sentence reads no
-  warehouse" holds it, with `compose.sentence`). `compose.answer` reads a
-  rows-shaped `game_log` (and the `player_stat` window the retired template
-  handed to the log) through them, and so, since,
-  a player's record over a line, his splits, his line over the games a
-  narrowing sent the read to and his quarter or half (`compose/records.py`,
-  `splits.py`, `stats.py`, `periods.py`; `stats.py`'s a `Scalar` body read
-  by the compiler's `line` aggregate - each measure per game beside the
-  sums the line is said from - and `periods.py`'s a `rows` read of the
-  period's line or a `grouped` read by `period`), a count of games over
-  a line and a single game's high, a named player's or the league's
-  (`compose/counts.py`: a `Scalar` with `how="count"`, or a `Grouped`
-  ranking by `player`; `compose/highs.py`: a `Rows` body ranked by the
-  measure, `Rows.by`; both over the planned point compiled and executed -
-  what the retired words added beyond those rows, the span's own seasons,
-  the floor, the empty box scores, the withheld stat, the rebuilt games,
-  are values and notes on the Result, and the high's redirect for a
-  defaulted season is a `Decided`), and a player's or the league's
-  longest run and two players' meetings (`compose/runs.py`,
-  `compose/pairs.py`; the next paragraph), a team's or the league's
-  longest run of wins or losses (`compose/runs.py`'s `read_team_streak`,
-  since step 4: the team compiler's `run` shape,
-  `compose.team.compile_team_run`, into the same `Runs` body the player's
-  run is, said by the same `say_streak`), a team's log and splits
-  (`compose/logs.py`, `compose/splits.py`, executing the team compiler's
-  `rows` and `grouped` compiles, `compose.team.compile_team_over`, since
-  step 4), a team's record with and without named teammates
-  (`compose/presence.py`, since step 4: the team compiler's `presence`
-  statement, `compose.team.compile_team_presence` over the relation cell
-  `conditions.presence_games_sql`, into a `Grouped` by `presence`, said by
-  `say.say_with_without`), and a team's record over its own line
-  (`compose/records.py`'s `read_team_record_when`, since step 4: the team
-  compiler's `line` and `count` statements, `compose.team.compile_team_line`
-  and `compile_team_count`, said by `say_record_when`), the league's leaders by a
-  season-line metric (`compose/rankings.py`, since 2026-10-05: a `Grouped`
-  ranking by `player` whose `ranked_by` is the metric - a count of games
-  over a line ranks by `"games"`, which is how the sayer tells the two
-  apart - read through `season_line.rank_season_line`, which keeps the
-  dedup, the qualifier and the career pool exactly; the default qualifier
-  is the `minimum` decision it was, one the question states is what was
-  asked and no decision (`RankingFacts.stated_minimum`), the career pool a
-  `floor` note), and a
-  player's unnarrowed line, his stat season by season and two or more
-  players' lines side by side (`compose/seasons.py`, since 2026-10-05,
-  over the SEASON LINE - `query/season_line.py`: one row per player per
-  season in `player_season_stats_deduped`, and the advanced stats beside
-  it. That module settles the subject and builds each statement the
-  retired templates ran, moved whole - since step 4 the ranking's too
-  (`query/leaderboard.py`, folded in whole with its floors, dedup and
-  qualifiers) and every read of a player's seasons on record (the
-  defaulted-season redirect, `season_redirect`, which the charts and the
-  game relation's "no games" sentence call; `seasons_on_record`;
-  `seasons_played`); `compose.core.values_of` (or `rows_of`, for a
-  ranking's rows by name) executes every one through the compiler's one
-  `execute`, and nothing else runs a season-line statement. The module
-  RUNS them too: since Phase 4, step 5 a reader in `compose/seasons.py`
-  names the read it takes (`season_line.season_row`, `career_row`,
-  `advanced_row`, `history_rows`, `history_total`, `netpoints_row` - the
-  statement run and its row or rows handed back) and executes nothing
-  itself, so the SQL ratchet counts those statements on `season_line`,
-  the relation that owns the table. The line is a `Scalar` and
-  the history a `Grouped` by `season` with a career's `summary` part, the
-  comparison a `Grouped` by `subject`, each on a `Span` whose `source` is
-  `"seasons"`; the line's `Scalar.how` is `"season"`, which is how `say()`
-  tells it from the games relation's line, and a comparison over the
-  games relation carries a `Met` cell). No shape has a presenter now (the team's went with step 4). Three rules the slice set, which every later slice follows:
-  - **A note is written as data and said once.** The reader builds
-    `Note("window_short", {found, asked, ...})`; the sayer phrases it
-    (`say.note_phrase`, ONE phrase per kind) and records it through
-    `notes.note`, so the answer's remarks are the Result's notes. The
-    compiler's own sentence phrases the same kinds through `note_phrase`
-    too (`compose.core._box_notes`, over `player_relation.box_score_notes_read`);
-    `tests/query/test_answer_notes.py` reads a
-    `Note(kind, {...})` as a write when it checks every kind is written.
-  - **The reader executes the compiled statement; the sayer keeps the
-    words.** `read_player_log` compiles the planned point with the log's
-    columns as its measures (`compose.core.compile_query`) and runs that
-    statement - since 2026-10-04; until then it ran the template's own
-    `rows_sql` call beside the compiled one, which is the shape step 1's
-    merge, sub-step (g), removes from each ported reader in turn. A reader
-    that already holds the settled subject and reads it again (the log's
-    "last N games" over each season type) compiles through
-    `compile_over`, the second half of `compile_query`, so no statement is
-    written beside the compiler's. `say_player_log` builds the heading, the
-    aligned table and the notes from the Result's values. What the Result
-    still carries as words, on purpose and to be cut as the sayers take it
-    over: the narrowing's phrase (`Narrowing.phrase`, the relation's
-    `filters()`) and the span's `years`. The "no games" reason is typed
-    since 2026-10-05: `Result.empty` is a `result.Refusal` (a kind from
-    `RUN_CAUSES` and its facts, from the shared
-    `player_relation.no_narrowed_games`), said by `say.refusal_phrase`.
-  - **What the relation measures lives on the relation; what a sayer says
-    lives in the sayer.** A player's quarter or half (`compose/periods.py`,
-    2026-10-04) took its data to `query/player_games.py`
-    (`PERIOD_RECONCILIATION`, `PERIOD_RATES`, `period_distrust` - why a
-    season is refused, as facts - and `period_agreement_notes` - its
-    caveats, as notes) and its words to `compose/say.py` (`period_noun`,
-    `period_caveat`, and the `period_untrusted` refusal's phrase). The relations' shared steps
-    went home in step 6 (2026-10-05): the player relation's to
-    `query/player_relation.py`, the team relation's to
-    `query/team_relation.py`, the entity settlers (`resolved_player`,
-    `resolved_team`, `optional_team`, `clarify`) to `entities.py`, the
-    season words (`season_phrase`, `season_label`, `SEASON_TYPE_NAMES`) to
-    `season_text.py`, the value words (`format_value`, `table_cell`,
-    `count_games`) to `compose/say.py`, the season line's columns
-    (`PLAYER_STAT_COLUMNS`, `HISTORY_COLUMNS`, `SHOOTING_STATS`,
-    `ADVANCED_STATS`) to `season_line.py`, and the floors' declaration
-    (`check_coverage`, `coverage_caveat`, `SOURCES`) to `coverage.py` -
-    under public names, with no private alias kept. A relation's step
-    writes no sentence: a refusal it finds (`no_narrowed_games`, `no_games`,
-    `condition_team_no_games`, `entities.clarify`) is a typed
-    `result.Refusal` or `result.Clarify` the sayer words; the one step that
-    still phrases a note for the compiler's own sentence
-    (`compose.core._box_notes`) takes the sayer's helper through a
-    call-time import, since `compose` imports the relations. Since Phase 4,
-    step 5 a statement a reader ran by hand is its relation's as well: a
-    relation function builds it, runs it through the compiler's one door
-    (a call-time import of `compose.core.values_of`, as the season line's
-    reads do) and hands back rows or values, and the reader keeps its
-    words and its Result. The period's: the league's ranking by a quarter's
-    stat, one quarter of its points-by-quarter table and the most games in
-    a pool narrowed to an opponent or a venue
-    (`player_games.period_ranking`, `period_quarter`, `most_games`, beside
-    the statements and `PERIOD_RECONCILIATION`), and a team's quarter or
-    half (`team_games.period_games`); `compose/periods.py` runs only the
-    compiled statements. The game log's and the splits': how many games a
-    log was cut from and their seasons (`player_relation.log_total`),
-    whether a narrowing left a player no games his span holds
-    (`player_relation.narrowing_emptied`, beside `no_narrowed_games`), and
-    a team's games with its narrowing off, which an empty team log names
-    as missing (`team_games.unnarrowed_games`). The standings', a module
-    of their own (`query/standings.py`, the team-season relation's reads
-    of ESPN's `standings` and the season totals they are checked against:
-    `season_row`, `career_rows`, `first_season`, `season_games`, with the
-    four statements they run, built there since the step's close), which
-    `compose/standings.py` reads. The season line's (`season_line.season_row`
-    and the four beside it; `compose/seasons.py` executes nothing, and
-    takes a comparison's NetPoints rows from the NetPoints relation,
-    `netpoints.netpoints_row`, which the season line ran until the step's
-    close), the
-    team seasons' (`team_seasons`' `read_team_lines`, `read_team_records`
-    and the five beside them, the team compiler's season total among
-    them; `compose/team_stats.py` executes nothing), and the team-games
-    relation's shared steps hold the three a team reader ran over the
-    games (`team_relation.team_season_game_counts`, `team_game_list_gaps`,
-    `team_games_total`; `compose/team_records.py` and `compose/team.py`
-    execute nothing). And a single-game chart's label
-    (`game_label.game_label`, which the fingerprint and the shot chart
-    print) words the row the player-games relation reads for it
-    (`player_games.game_label_row`, beside the relation's join) and runs
-    nothing.
-  - **Proved identical, text and all.** 628 of 628 recorded questions and
-    1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
-    the private-template-import ratchet by the shared steps the moved body
-    called, with Jeff's say-so, because they were the relation's steps
-    mis-homed in `templates.common`; step 6 moved them home and the
-    ratchet reached 0 and was deleted.
-- **Two shapes have skeletons of their own, and are readers and sayers since
-  Phase 2's step 2.** A streak is the `run` shape - the longest runs of
-  consecutive games one predicate holds along, `compose.core._compile_run`
-  over the relation's games in Eastern-date order (a game with no box
-  score inside a spell he played ends a run rather than being carried
-  across) - read by `compose.runs.read_streak` into the `Runs` body
-  (`result.Run`: owner, length, first and last day and season, still
-  open) and said by `compose.say.say_streak`. A matchup is the `pair`
-  shape - two named players' lines over the games they met in, the pair
-  relation `player_games.paired_rows_sql` over the first player's
-  narrowed games, `compose.core._resolve_pair` and `_compile_pair` - read
-  by `compose.pairs.read_player_matchup` into a `Grouped` body by
-  `subject` (the comparison: one row per player, the question's order,
-  with the head-to-head wins) and a `Rows` detail part (the newest
-  meetings), said by `compose.say.say_player_matchup`; where a teammate's
-  absence emptied the meetings, the reader compiles the same pair without
-  it, and with the teammate playing, to say how often they met. The games
-  the two shared as teammates are the pair relation's own read
-  (`conditions._teammate_games`), which no compiled shape expresses.
-- **Every shape the words ask is the compiler's, and the answering loop asks it once.**
-  `agent.py`'s `_run_compiled` hands `compose.answer(ctx, reading)` the
-  point the parser read from the question's words once (`Reading.point`,
-  `parse.read_route`'s last step) and the planner's verdict on it, planned once
-  per question AFTER the parser has read the point
-  (`compose.plan.plan_point`; the parser reads and does not plan). The
-  planning is ONE value, the Query-or-Cause (`compose.plan.Verdict`, kept
-  on `Agent.query`): the planned query, the refusal it came to unworded
-  (a `result.Refusal`, worded by the sayer where it is answered) or the
-  decline it gave the point up with (the `Unsupported` carrying its
-  sentence, a `ShapeDeclined` carrying its cause); what the point is read
-  and said as is `compose.plan.planned_shape`'s, from the Reading and the
-  planning. The compiler runs the planned point and never reads the
-  question itself. There is no slot door: a caller with a Reading of
-  its own (a test handing the compiler a subject it built) reads the point
-  into it with `parse.with_point`. Where the point reader refuses (a
-  ranking by shot distance, by a stat nothing ranks, under a floor or in a
-  unit nothing applies; a shape over a line missing its stat, its number
-  or its subject; a matchup without two players; a quarter's figure the
-  plays do not rebuild - seventeen kinds since 2026-10-05) the Reading
-  carries a `reading.Cause` - a kind from the closed `CAUSES` and plain
-  facts - and the planner says it (`compose.plan.refusal_result`): the
-  reader builds no sentence, and a new cause is an entry there and a
-  sentence here. It is raised as `reading.PointRefused`, a kind of
-  `Unsupported`, so a shared helper the answer side also calls
-  (`lines.measure_filters`, `measures.streak_column`) stays a decline
-  there with its old message. A plain `Unsupported` out of the point
-  reader is a decline, kept only where the reading hands the question on
-  (another relation's question, an intent with no default point) or where
-  `read_point`'s order makes it unreachable; one the user would see as
-  "Nothing here answers this question" becomes a Cause (Jeff's rule,
-  "Identical means identical"). An answer the answer side says
-  (`answer.Answer`, which the sayer and the compiler's own sentence
-  return - the text, the data and the files - and the answering loop
-  stamps with the question, the path, the timing, the decisions and the
-  planned shape) is answered
-  `answered_by="fast"`, with the name readings and the coverage caveat
-  attached - including when it is itself
-  a refusal (a clarification, a "no match"): looking at the question and
-  having something to say about it is an answer. A shape's own decline -
-  a narrowing its words do not state, a point its only reader reads
-  nothing of - is a cause since Phase 3, step 4
-  (`reading.ShapeDeclined`, raised by `compose.plan.cells_declined` and
-  `compose._read`, the planning itself where the planner declines, its
-  cause handed to `compose.answer`'s `declined_by`; `cannot_honor`,
-  `no_reading_of_point`), said by the planner in the decline's own
-  sentence, word for word, at the decline's place - after the floor and
-  the reading's causes - and answered `"fast"`: 6 of the 628 and 63 of
-  the 2,082 moved so, nothing else. `None` is refused with
-  the compiler's reason (the decline's sentence), after the coverage floor
-  and the reading's own causes have had their look: a refusal the words
-  come to before any point (`Reading.refused` - a championship, both ends
-  of the span named at once, `window.contradicting_ends`, a window of
-  games taken in each season, `window.per_season_window`, a fact no table
-  holds or nothing reads - a draft position, an award, a birth date, a height,
-  `lexicon.ABSENT_FACTS` - a player
-  named on a question whose shape has no reading for one), which the
-  planner says before any reader runs, and what the words name that
-  nothing reads (`Reading.unsupported` - a playoff round, an age, a
-  quarter's stat nothing rebuilds, bench points, ...), said by the planner
-  only where the answer side declined, so a question the compiler answers
-  is answered; and, since Phase 5, step 1 (2026-10-14), a word that
-  carries a meaning the reading defaulted past (`Reading.defaulted`, one
-  `Cause` with the words by class: an unread number that is no rate's
-  unit, no season the span read and no read line's or period's value,
-  `unread_number`; an unread stat word the measure tagger reads to a key
-  other than the one taken, `unread_stat`; an unread window word where no
-  window was read, `unread_window`; an unread month, or a slashed day
-  after a word that leads a date, where no calendar narrowing was,
-  `unread_date` - the lexicon's `MEANING_*` classes), read in the parser's
-  last step after the unread words are known
-  (`parse._reading_from_route_defaulted`), claiming its words so the ledger
-  reads them, and said by the planner only where the planning produced a
-  query (`plan.plan_point`), so a decline or a refusal the words came to
-  otherwise keeps its own sentence and a question that would have been
-  answered fluently past the word - "aaron gorodn lat 5 games" as his
-  season averages, "anthony davis 2020 playoff first 3 rounds" as his
-  whole postseason - is refused by name. A word that restates the shape ("record", "stats",
-  "most") is in no class, a leftover of the read measure's own words
-  ("point" of "point differential") names no other stat, and a figure
-  written with a slash ("went 7/14 from three") is no day. The rule's
-  harness is `~/association-research/stages/unread_meaning.py`, which
-  classifies by the same guards; it read 86 of the 1,807 feed questions
-  answered through a reader and 8 of the 628's 603 before the step, and
-  0 and 0 after. All three are read by the parser (`parse.read_route`'s
-  last step) and said through `refusal_phrase`; nothing after the parser
-  re-reads the question for them.
-  Nothing in the package may reach ollama - it is a compiler, not a
-  model - and it narrows the relation only through the shared steps
-  (`query/player_relation.py`, `query/team_relation.py`; see "A reader on
-  a relation does not declare, or apply, scoping of its own" above). Every
-  key the grammar names is the compiler's (`Reading.asked` set; "no
-  shape", `None`, is refused with the reason "what its words ask has no
-  reader"): the 25 keys the retired intents were and the count of players
-  a season line holds (`reading.PLAYERS_COUNTED`, 2026-10-13), a team's
-  best single game (`reading.TEAM_GAME_HIGHS`, 2026-10-13) and a team's
-  history season by season (`reading.TEAM_SEASON_HISTORY`, 2026-10-14,
-  read by `compose.team_stats.read_team_history`), whose names `ISSUES.md`,
-  `CHANGES.md` and the history still use (`threshold_count`, `single_game_high`, `record_when`, `player_history`,
-  `game_log`, `player_stat`, `player_splits`, `leaderboard`,
-  `period_split`, `player_compare`, `streak`, `player_matchup`,
-  `with_without`, `head_to_head`, `team_quarter_points`,
-  `period_leaderboard`, `team_record`, `team_stat`, `team_leaderboard`,
-  `team_outlook`, `coach`, `player_netpoints`, `fingerprint`,
-  `shot_distance`, `shot_chart`). The NetPoints relation's two (on a
-  declared relation, `reading.on_a_declared_relation` over
-  `DECLARED_RELATIONS`, read as their default
-  points on the declared `netpoints` relation and planned as
-  `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
-  per the decision "Charts are declared shapes", over the NetPoints
-  relation (`query/netpoints.py`, since Phase 4, step 5: every statement
-  the two read is built and run there, through `core.values_of`, and
-  `compose/netpoints.py` and `fingerprint.py` run none):
-  `read_player_netpoints` reads a season's line, its categories or one
-  game's through it (`netpoints.season_totals`, `season_categories`,
-  `game_line`); `read_fingerprint` reads through `query/fingerprint.py`'s
-  loaders (the percentile pool and the polygons from one read, the
-  relation's `season_fingerprints`, `game_fingerprints` and
-  `fingerprint_game_of`) into a `Chart`, which
-  `compose.netpoints.draw_fingerprint` writes with `query/radar.py` before
-  `compose.say.say_fingerprint` words it - a reader reads and names no file
-  that does not exist yet, and the sayer takes the Result and nothing
-  else. The "vs" note for a fingerprint that drew one polygon is read by
-  the parser (`Reading.left_out`, a `reading.LeftOut` of the players held
-  and the names the words also hold - `subject.compared_but_unmatched`)
-  and said by the sayer as the `name_left_out` decision
-  (`say.say_left_out`); the answering loop attaches it after the coverage
-  caveat (`agent._unmatched_fingerprint`), reading the Reading and nothing
-  else. The shot relation's
-  (`compose.shots.ShotQuery` on the declared `shots` relation, declined
-  beyond what its retired template's words state, its shape's row of
-  `RELATION_SCOPING_EXCLUDED`)
-  is read the same way: `read_shot_chart` and `read_shot_distance` are the
-  retired templates' reads moved whole, their statements the shot relation's since Phase 4, step 5
-  (`query/shots.py`: `narrowed_games`, the games a narrowing sends a shot
-  read to through the player-games relation's `games_subquery`;
-  `distance`; `chart_shots`), executed through `core.values_of` there,
-  over `shotchart.SHOT_VALUE_SQL` and the court's `HAS_POSITION_SQL` and
-  `SHOT_DISTANCE_SQL` - fragments kept where they are, since the
-  player-games relation's period rebuild reads the value too and the
-  drawing the court's geometry - and said by the sayer - a
-  shot chart's `Chart` (the marks, the counts drawn, the caption, the file
-  name) drawn first by `compose.shots.draw_shot_chart` over
-  `court.render_court_html`, between the read and the sayer, as the
-  fingerprint is. A shape Phase 2's slice (iv) ported from a template the
-  reader gave no point has a default point of its own
-  (`point.DEFAULT_POINTS`: its readings gained one when it moved), is
-  declined beyond the scoping its retired words state (its shape's row,
-  `declined="plan"`) by the planner, in the sentence the retired scope
-  check refused it with (`compose.plan.cells_declined`), and
-  is read and said with nothing after it: a decline is refused, never
-  handed to the compilers' own sentences (`compose._read_only`, a route
-  marked `only`).
-  **"The compiler answers them" means each is a reader and the sayer over
-  a compiled statement** (the paragraphs above). Until Phase 2 most were
-  still read and worded by the retired template's body through a
-  presenter (`compose/present.py`): measured over the 277 yardstick
-  questions (2026-09-30), of 205 answers by these intents the compiler's
-  own SQL read 45 and its own sentence worded 16. The presenters went
-  slice by slice, the last of them with step 4; the templates' registry
-  emptied with step 5, and step 6 deleted `check_scope`,
-  `HONORED_SCOPING`, `TEMPLATES`, the answering loop's template branch and
-  `templates/` itself. A reader says what its retired template's words
-  state (its shape's row of its relation's cell table since Phase 3, step
-  2's closing slice) and steps aside for a
-  narrowing beyond them, so the compiler's own
-  sentence, which states every narrowing the relation applied, answers; a
-  narrowing the relation cannot honor at all is refused by the planner,
-  and the refusal names the planner's reason. Retiring a template was
-  measured first: every call its unit tests made, and every recorded
-  question it answered, answered both ways and compared - the recorded
-  questions alone showed one shape the template still carried; the unit
-  tests showed five. A change to a reader is proved the same way, on the
-  stage snapshots and the unit-test calls.
-- **A team can be the subject, not only a narrowing.** `compose/team.py`
-  (`TeamQuery`/`TeamResult`/`run_team`, `point.team_read_point`,
-  `sentence.team_sentence`) is a second, separate compiler beside `core.py`'s
-  player one, over the team-games relation instead - "how many 3-pointers
-  have the Magic made", "total points scored by the Raptors in the last 10
-  games". Kept as its own module on purpose: nothing in it is read by, or
-  reads from, the player-subject functions, so every rule measured for the
-  player subject stays exactly as it was. Two readers, the team counterpart
-  of `player_stat`'s own season-line-vs-box-scores split: an UNNARROWED
-  question reads the season's raw TOTAL straight from `team_season_stats`
-  (never the per-game average `team_stat` gives - "how many has it made" is a
-  different question from "how many per game"), and a NARROWED one (an
-  opponent, a venue, a date, `since`/`until`, a game of a series, a calendar
-  `situation`, or an `order`/`limit` window) sums the team-games relation's
-  own game-level columns (points, points allowed, differential) through
-  `scoped_team`/`team_games`, the same shared steps every team reader
-  narrows through - never a hand-written clause here either. A box-score
-  count (3-pointers made, not a game-outcome figure) narrowed to a window is
-  summed over the narrowed games' own team box rows, saying how many games
-  had none (`compose.team.team_figure`, a LEFT JOIN of `team_box_stats` on
-  the team's row or the opponent's, the P1 sweep's lane T, ISSUES.md #403;
-  it refused before, for want of the join), and a team's log shows the same
-  figure beside each game; a percentage is no total and is declined, and a
-  figure no team game carries (pace, a rating, usage) is refused by name
-  (`team_figure_unread`). `read_point` tries `team_read_point` before the
-  league-wide reading, and nothing after the parser restores a subject:
-  "magic" is also Magic Johnson's given name, and the compiler's own
-  dropped-subject restoration (`repair()`, gone with plan item 6, step (e))
-  once invented him from a team reference - the shape `subject.apply_subject`
-  exists to catch. `team_named_in` restores a dropped team from the
-  question's own team word, the way `players_named_in` does a player.
-- **What the model sees lives in `query/normalizer.py`'s constants, alone.**
-  `NORMALIZER_PROMPT`, `NORMALIZER_SCHEMA` (its stat enum is
-  `NORMALIZER_STATS`) and `NORMALIZER_NUM_CTX` are the model's whole input;
-  `normalize()` only decodes the reply, and the parser, the grammar's rules
-  and the taggers read everything after it. So a diff to `parse.py` or
-  `grammar.py` cannot change
-  what the model returns for an unrelated question, and a diff to those
-  constants always can.
-- **A prompt and its constrained schema must agree.** A value a prompt
-  teaches that the schema's enum lacks can never be emitted under
-  constrained decoding, so it silently becomes something else: the router's
-  `player_compare` was described in its prompt and missing from its schema's
-  enum, and every comparison routed to `player_stat`.
-  `test_the_prompt_and_the_schema_agree` (`tests/query/test_normalizer.py`)
-  holds the normalizer's examples to its enum; the other half of what the
-  router's pair of tests guarded - that every shape is reachable - is
-  `test_every_intent_is_reachable_from_the_reader`
-  (`tests/query/test_grammar.py`, the grammar's structural tests - the
-  reader's behavior on a wording is a case in `tests/query/reader_cases.json`,
-  regenerated by `scripts/reader_cases.py`): the parser's `PARENT_GRAMMAR`, the
-  grammar's `CODE_ASSIGNED_ASKS` or the subject reading's `KIND_ASSIGNED_ASKS`.
-- **A prompt has a token budget, and ollama enforces none.** ollama
-  truncates an over-length prompt *silently and head-first*: the retired
-  agent's original bug was a 10,295-token preamble against `NUM_CTX = 8192`,
-  which discarded the schema and correctness rules while keeping the tool
-  descriptions, and nothing said so. The normalizer's prompt is ~330 tokens
-  against `NORMALIZER_NUM_CTX = 2048`, and
-  `test_the_prompt_leaves_room_for_the_question_and_the_reply`
-  (`tests/query/test_normalizer.py`) holds the two together with
-  `normalizer.estimate_tokens`; keep that check beside any prompt this
-  project sends.
-- **A slot the schema does not require is a slot the decoder may never
-  consider, and no prompt wording fixes that.** The router's schema recorded
-  this for `stat`; `side` proved it again. "Show me Wembanyama's defensive
-  fingerprint chart" appeared in the router's prompt verbatim as a worked
-  example with `{"side":"defense"}` beside it, and still emitted
-  `stat="defensive"` with no `side` at all — 6/6 at temperature 0. `stat` was
-  required, so the adjective was spent there first, and the whole fingerprint
-  got drawn where its defensive half was asked for. That is why
-  `NORMALIZER_SCHEMA` requires both of its fields
-  (`test_the_schema_asks_for_the_names_and_the_stat_and_requires_both`).
+**What the words ask comes from the question's own words, never from the
+model.** The grammar names a `reading.PointShape` - the relation, the shape
+and the `by` of the point the words ask for bare (`Reading.asked`,
+`Subject.asked`; `None` for no shape), one key per retired intent
+(`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`); a
+sentence says a key in words (`say.asked_as`), the trace and the records by
+`reading.key_path` (`relation/shape/by`). The kind is no part of the key: it
+is the subject reading's, read before the grammar, which the grammar is
+keyed BY. The key is what the words ASK; the planned `PointShape` is what
+the point IS (one key reaches up to four planned keys as the typed filters
+move it). Every set or table keyed by what the words ask is a set of those
+keys or a predicate on one (`reading.PLAYER_ASKS`, `TEAM_ONLY_ASKS`,
+`PLAYER_REQUIRED_ASKS`, `SUBJECT_RESTORABLE_ASKS`,
+`OWN_TEAM_RESTORABLE_ASKS`, `on_a_declared_relation`,
+`point.DEFAULT_POINTS`, `TEAM_SEASON_POINTS`, the key sets of the taggers'
+families), and every key is the compiler's.
 
-  The same slot has a second, opposite failure: **a required slot is one the
-  decoder fills whether or not the question asked for it.** `stat` came back as
-  `'points'` on "compare sga and embiid" 12 times out of 12, which narrowed
-  `player_compare` to one average and undid the whole-line default it exists
-  for - and the normalizer's `stat` is required too. The measure tagger
-  drops it on the whole-line readers where the words name no stat
-  (`measure.names_a_stat` over `lexicon.STAT_WORDS`). Note why the word list can be
-  loose there and could not be anywhere else: for a comparison, a missed word
-  widens the answer to a line that still holds the stat asked about, while
-  `leaderboard` with no stat has nothing to rank by. The drop is the
-  MODEL's key's alone: until the measure slice it took a measure the WORDS
-  named where the list missed its word ("grayson allen 3s made last
-  season": "3s" is a box-score word and no `STAT_WORDS` word, so the
-  3-pointers the grammar read went with the key and his points line
-  answered; 6 feed answers moved when the rule was narrowed, each named in
-  the commit). The comparison keeps dropping the words' key too - its whole
-  line holds the stat, and its reader refuses a named one.
-
-  Two ways out, and prefer the second. Making a slot *required* works (that
-  is why `stat` is) but was measured and reverted for the router's
-  `season_ref`, because requiring more slots crowds out others. Reading the
-  value **from the question text** costs nothing and cannot move any other
-  slot: that is what the parser does for every slot but the names and the
-  stat - and for the stat too, where the words name one (the measure
-  tagger reads the words over the key) - and what `_validate_season` and
-  `_validate_side` did for the
-  router. Hash `NORMALIZER_PROMPT` and `NORMALIZER_SCHEMA` before and after a
-  change to prove the model's input is unchanged - if both hashes match, the
-  normalizer's recorded replies still stand and the stage snapshots
-  (below) are the whole check.
-- **Any edit to the model's prompt moves what it returns on unrelated
-  questions.** Measured on the router's prompt: adding the `fingerprint`
-  intent line reproducibly flipped "What was the Lakers record last season?"
-  from `team` `"Lakers"` to `"Los Angeles Lakers"` — with *any* wording of the
-  added line, including a two-line one, so it is the prompt's length as much
-  as its content. The 3B is that sensitive, and the normalizer runs the same
-  3B. Two consequences: after an edit to `NORMALIZER_PROMPT` or
-  `NORMALIZER_SCHEMA` the recorded replies no longer stand - re-record them,
-  and make a live run the record - and assert in a case only what changes the
-  *answer* (both those strings resolve to team_id 13 and produce an identical
-  sentence), never the encoding the model happened to pick.
-- **What the words ask comes from the question's own words, never from the model.**
-  Since Phase 3, step 4 the grammar names no intent: it names a
-  `reading.PointShape` - the relation, the shape and the `by` of the point
-  the words ask for bare (`Reading.asked`, `Subject.asked`;
-  `None` for no shape, the retired `other`), one key per retired intent
-  (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`);
-  a sentence says a key in words (`say.asked_as`), the trace and the
-  records by `reading.key_path`. The kind is no part of the key: it is the subject reading's,
-  read before the grammar, which the grammar is keyed BY. Measured first
-  (`~/association-research/stages/intent_family.py`, the 2,710
-  readings): an intent maps to up to four planned keys (`player_stat`:
-  the season line 405, the games 262, rows by date 15 - the relation and
-  sometimes the shape follow the typed filters), and two planned keys are
-  reached by more than one intent (a player's games by date from
-  `game_log` 297 and `player_stat` 15; the game-level ranking from
-  `leaderboard` 367, `game_log` 3, `other` 1) - so the key is what the
-  words ASK and the planned `PointShape` what the point IS. Every intent set and intent-keyed table is a
-  set of those keys or a predicate on one (`reading.PLAYER_ASKS`,
-  `TEAM_ONLY_ASKS`, `PLAYER_REQUIRED_ASKS`, `SUBJECT_RESTORABLE_ASKS`,
-  `OWN_TEAM_RESTORABLE_ASKS`, `on_a_declared_relation`, `point.DEFAULT_POINTS`, `TEAM_SEASON_POINTS`,
-  `_ROWS_BY`, `_COUNT_SHAPES`, the key's readings of the taggers' families
-  and their sets - `point.THRESHOLD_ASKS`, `PERIOD_ASKS`, `ORDER_ASKS`,
-  ...), and every key is the compiler's.
-  The parser's `PARENT_GRAMMAR` names the parent by the subject's kind, and
-  the grammar's rules assign `grammar.CODE_ASSIGNED_ASKS` (a player's
-  quarter, players ranked by one, a coach) from the text, so a new shape is
-  a grammar row or a rule, with no prompt edit and nothing to move on
-  another question. A refusal especially: a question
-  nothing can answer needs the model's help least. `coach` is the worked
-  example - the word is unmistakable, nothing else in the warehouse is named
-  it, and a bare surname is deliberately not matched ("nurse" and "rivers"
-  are ordinary words, the substring trap `players_named_in` exists for).
-  Since 2026-10-05 it has no template: the point reader refuses it by a
-  cause (`reading.Cause("no_coach_table")`, `point._read_point`) and the
-  planner says it (`compose.plan.refusal_result`, `COACH_REFUSAL`) - a
-  refusal the reading comes to is a cause, not a body to run. A refusal
-  the reading comes to has no point, so no coverage floor is checked for
-  it (`coverage.sources_for(None, ...)` is empty): appending "there is no
-  data for 1996" to a sentence that already explains what is missing would
-  name a second, wrong cause.
-
-  The children come one step later, where the subject's KIND is known:
-  `subject.KIND_ASSIGNED_ASKS` (`_CHILD_GRAMMARS`). A child of a parent
-  the grammar names - a count of 30+ point games under `game_log`, a history
-  over the past 4 seasons under `player_stat`, a streak under `team_record` -
-  is named by its words AND gated on the kind the reading settled, which is
-  what keeps "how many times did the 76ers play boston" (two teams) off
-  `threshold_count` and "who lead the league in avg 3 point distance" (no
-  player) off `shot_distance`. Measured when the seven left the router's
-  prompt: 0 false positives over 261 recorded questions of other intents.
-  **A grammar reads the values the taggers typed, never their words**
-  (Phase 3, step 4, slices (b) and (c), as marks written into the question;
-  since Phase 4, step 6 by value). What a grammar reads is the grammar's
-  text, `lexicon.GrammarText`: the question's words with every character
-  a tagger typed written as `lexicon.TYPED` (U+FFFC, the same for every
-  kind, so a pattern over the words sees that something stands there -
-  no word, no space, no digit - and never what), and beside them what was
-  typed at each character, a closed `lexicon.TypedKind`: a line's number
-  by how it is stated (`line_plus`, `line_at_least`, `line_number`), the
-  words that lead a line under a number and a line's stat (`line_lead`,
-  `line_stat`) - the lines tagger's (`line.LinesNamed`); the opponent the
-  subject reading read, with its versus word, by that word
+- **A new shape is a grammar row or a rule, with no prompt edit** (and only
+  under D4's lifting): `PARENT_GRAMMAR` names the parent by the subject's
+  kind, the grammar's rules assign `grammar.CODE_ASSIGNED_ASKS` from the
+  text, and nothing moves on another question. A refusal especially: a
+  question nothing can answer needs the model's help least. `coach` is the
+  worked case: the word is unmistakable, a bare surname is deliberately not
+  matched ("nurse", "rivers"), and the point reader refuses it by a cause
+  (`reading.Cause("no_coach_table")`) the planner says (`COACH_REFUSAL`).
+  A refusal the reading comes to has no point and so no coverage floor
+  (`coverage.sources_for(None, ...)` is empty): a floor's "no data for
+  1996" beside it would name a second, wrong cause.
+- **The children come where the subject's KIND is known**
+  (`subject.KIND_ASSIGNED_ASKS`, `_CHILD_GRAMMARS`): a child of a parent (a
+  count of 30+ point games under a log, a history under a line, a streak
+  under a team's record) is named by its words AND gated on the kind the
+  reading settled, which keeps two teams' meetings off a count and a
+  question with no player off a shot distance. The child is named from the
+  grammar alone (`subject.child_named`), the grammar's rules run ONCE under
+  it (`parse._read_route_staged`), may decline it (a count with no
+  threshold is a ranking) and only then run again under the parent, and the
+  taggers run once, under the key that stands. Add a case to
+  `port_check.py`'s corpus (`~/association-research/intent-shrink/`) and to
+  `tests/query/test_subject.py` for each wording a grammar gains.
+- **A grammar reads the values the taggers typed, never their words.** What
+  a grammar reads is `lexicon.GrammarText`: the question's words with every
+  character a tagger typed written as `lexicon.TYPED` (U+FFFC, the same for
+  every kind - a pattern sees that something stands there, never what),
+  and beside them what was typed at each character, a closed
+  `lexicon.TypedKind`: a line's number by how it is stated (`line_plus`,
+  `line_at_least`, `line_number`), a line's lead and stat (`line_lead`,
+  `line_stat`; `line.LinesNamed`), the opponent by its versus word
   (`opponent_against`, `opponent_versus`, `opponent`;
-  `subject.opponent_read`); each companion's phrase as the subject reading
-  read it, by whether a presence word is in it (`companion_with`, which the
-  with/without split's rows read, or `companion`; the phrases whole, from
-  `subject.Subject.companion_phrases` - the probed claims are cut to the
-  words the companion reading needed and can land on a word a row reads);
-  each window of games the window tagger reads (`window`:
-  `window.WindowCandidates.of_games`, the grammar's end and count and the
-  looser end words - not a ranking's "top 5", a count of seasons or one
-  game named as the subject's own, whose stretch reaches over words other
-  rows read); and a day written in numbers, or a range opened on one
-  (`date`: `cuts.CutsRead.dated`, "since 1/26/20", "on 2026-01-02"; a
-  worded calendar day and a month stay words). The child grammars read the text with each line typed whole
-  (`LinesNamed.marked`); the parent grammar and the grammar's rules with
-  each line's NUMBER typed (`numbered`: they read a stat word as a
-  measure's, "most 10 points games" is no team ranking) and the rules the
-  typed values beside it (`LinesNamed.threshold`, `below`); the parent
-  grammar the rest typed over it, a later value over an earlier, a line
-  inside a companion's phrase kept the line (`parse.grammar_text`, which
-  called with the question alone types the windows and the days, for a
-  test of the rows over words alone). A value is asked BY VALUE, two ways.
-  A parent row is a predicate over the text (`lexicon.GrammarRow`): words
-  read anywhere (`Words`, the lexicon's `*_ROW` patterns), a value
-  standing anywhere (`Stands`: "a window of games is read here"), right
-  after the words that lead it (`StandsAfter`: "games" and then the
-  opponent, `_PLAYER_LOG`'s "games against boston") or right before the
-  words after it (`StandsBefore`: a window and then "log"), and any, all
-  or none of those (`AnyOf`, `AllOf`, `NoneOf`) - `parse.PARENT_GRAMMAR`
-  holds the rows, which kinds each applies to and the shape it names; the
-  lexicon holds the words. A child grammar's or the rules' pattern that
-  reads a value WHERE it stands among the words ("a line's number, then
-  its stat, then 'games'") is an `lexicon.Ask`: a regex whose values are
-  `lexicon.typed(kind, ...)` fragments, matched against the text with each
-  typed character spelled by its kind (`GrammarText.spelled`, built from
-  the typed values when the ask is searched and nowhere else - a character
-  of that alphabet in the question's own words is written as `TYPED`, so
-  no question can spell a value by typing it; ISSUES.md #383, where a
-  typed mark forged a 10-game window, needs no intake since). The rules
-  are handed the team nicknames the words hold (`subject.team_words_in`,
-  read once by `grammar.settle` and claimed as the `team` where a rule
-  writes one), a reached companion's "when" clause (`reached_when`;
-  `lexicon.WHEN_REACHES` stays for a clause with no companion in it) and
-  his name as a line record's player (`grammar._restored_subject`). Every
-  typed value keeps each character where it stands, so a row's distances
-  hold and a child's words in its decision are the question's own, and a
-  rule's probe deletes a word from the text with the values in place
-  (`GrammarText.without`, which `span.needed`/`read_by` take as they take a
-  string). A grammar so claims its own words around the value and the
-  value's characters are its tagger's: measured on the 2,710 readings
-  (`route_family.py`), `intent+line` 17 -> 0 and `intent+opponent` 5 -> 0
-  joined claims at slice (b), every reading, answer and unread word
-  identical, and the 11 left but #354's at slice (c), where a window read
-  as the typed window no longer needs its "games" (48 of the 2,710
-  readings' unread words grew by it, 12 of the 628's) and a broader window
-  the tagger reads is a log as "last 10 games" is (14 readings' key moved
-  and 10 answers with them, 1 of the 628 and 9 feed, each named in
-  `CHANGES.md`; kept by Jeff's ruling, 2026-10-11 - two of them answer a
-  narrower question than asked, `ISSUES.md`); Phase 4, step 6's move from
-  marks to values moved none of the 2,710 readings, claims included. A
-  row that reads a number or a versus word reads the typed value beside
-  it (`N_PLUS`, `LINE_NUMBER_NO_PLUS`, `MEETING_WORDS`, `_PAIR_MEETING`); a
-  new row does the same. The count's child grammar reads no bare digits
-  beside its lines: a count is named from a line the tagger read, so a
-  number no line is read from ("games with 40 field goal percentage")
-  stays in `Reading.unread`, where it was hidden in the child's claim
-  (`intent+measure`, 11 -> 0; ISSUES.md, the P1 it hid). A season type or
-  a venue may stand between the typed line and "games" ("how many 40
-  point playoff games does kobe have", ISSUES.md #375).
-  The child is named from the grammar alone (`subject.child_named`), and
-  the grammar's rules run ONCE, under it (`parse._read_route_staged`); they
-  may decline it (a count with no threshold is a ranking), and only then
-  run again under the parent - 4 of the 628 recorded questions, every one a
-  history read as a line - before the taggers run once, under the key that
-  stands. Until 2026-10-02 the stages ran under the parent,
-  again under each child to see whether it held, and once more under the
-  one that did (1.7 runs a question, up to four), and the subject reading
-  ran them too, under "other", before the parser ran them at all.
-  `subject.read_subject` reads and decides nothing (under no shape,
-  `None`); `subject.settle_subject` writes the key and why with no rule
-  run, and the parser's last step reads the SETTLED subject and settles
-  nothing. Add a
-  case to `port_check.py`'s corpus (`~/association-research/intent-shrink/`)
-  and to `tests/query/test_subject.py` for each wording a grammar gains.
-- **A refusal names the missing thing, never only the slot.**
-  `check_coverage`'s reasoning, and it applies past the floors: a coach
-  question once reached an agent that queried tables with no coach column and
-  was then free to fill the silence from its own weights; refused for want
-  of a reading it would tell the reader nothing. A shape the
+  `subject.opponent_read`), each companion's phrase (`companion_with`,
+  `companion`; `subject.Subject.companion_phrases`), each window of games
+  (`window`; `window.WindowCandidates.of_games`), a day written in numbers
+  (`date`; `cuts.CutsRead.dated`). The child grammars read each line typed
+  whole (`LinesNamed.marked`); the parent grammar and the rules each line's
+  NUMBER typed (`numbered`), the rest typed over it (`parse.grammar_text`).
+  A value is asked BY VALUE: a parent row is a predicate over the text
+  (`lexicon.GrammarRow`: `Words`, `Stands`, `StandsAfter`, `StandsBefore`,
+  `AnyOf`, `AllOf`, `NoneOf`) - `parse.PARENT_GRAMMAR` holds the rows, the
+  lexicon the words; a pattern that reads a value WHERE it stands among the
+  words is a `lexicon.Ask`, a regex whose values are `lexicon.typed(kind,
+  ...)` fragments matched against the text spelled by kind
+  (`GrammarText.spelled`, built only when the ask is searched; a character
+  of that alphabet in the question is written as `TYPED`, so no question can
+  spell a value - decision D7). Every typed value keeps each character where
+  it stands, and a rule's probe deletes a word with the values in place
+  (`GrammarText.without`). A row that reads a number or a versus word reads
+  the typed value beside it (`N_PLUS`, `LINE_NUMBER_NO_PLUS`,
+  `MEETING_WORDS`), and a new row does the same; the count's child grammar
+  reads no bare digits beside its lines, so a number no line is read from
+  stays in `Reading.unread`. (history)
+- **A refusal names the missing thing, never only the slot.** A shape the
   warehouse has no column for is a cause the READER comes to from the
   words - a kind in `reading.CAUSES` with plain facts, carried on the
-  Reading (`point_refusal`, `refused` or `unsupported`) and said by the
-  planner through `say.refusal_phrase`; `coach` (`no_coach_table`) and
-  `Reading.unsupported`'s seven are the worked cases. Never a sentence
-  built where the question is re-read after the parser. Before
-  writing the refusal, check what the source actually serves - "ESPN does not publish
-  coaches" was the obvious sentence and it is false, and a refusal naming the
-  wrong cause reads as honest while sending the reader somewhere useless.
-- **The parser has three regression nets; add to them whenever you find a
-  misreading in the wild.** Cheapest first: `tests/query/test_parser.py`, a
-  case per wording a table gains, watched to fail; the stage snapshots
-  (`scripts/stage_snapshots.py`, "While the pipeline is rebuilt"), all 628
-  recorded questions - the 277 yardstick wordings, the 75 hold-out
-  questions nothing was tuned on and the 276 paraphrases - through the
-  whole agent with the normalizer's recorded replies and no model, compared
-  stage by stage against the tree before the change; and the yardstick's
-  live run, graded blind, which is the record. Pytest cannot see a table
-  change that moves some other wording - that is what the snapshots are
-  for, and they say whether it moved in the reading or only in the answer.
-  They replace the offline rehearsal and the hold-out comparison
-  (`~/association-research/yardstick-v2/run_offline_parser.py`,
-  `cmp_routes.py`, `holdout_compare.py`), which compared the answer's text
-  and the route's trace line; `run_offline_parser.py` is still what
-  predicts a live run's graded rows before the model is asked.
-- **The recorded replies are this machine's, and `~/association-research`
-  is a repository.** The stage snapshots, the ledger and every offline
-  harness put the normalizer's RECORDED replies in the model's place, so
-  they prove what production does only while the model still says the
-  same. It did not survive the move to the OVH devbox (ollama 0.33.3 to
-  0.35.0, another CPU): 53 of 628 replies differed, though the parser
-  absorbed all but one answer and the live run matched parser22 word for
-  word. The three reply files were re-recorded here on 2026-10-02 and the
-  baselines taken again. After a move, an ollama upgrade or a new pull of
-  the model, re-record before trusting an offline proof: every recorded
-  question through `normalizer.normalize`, one caller, in file order.
-  One thing is not a difference: the SAME question asked twice in a row
-  can get two replies (5 of 20 tried), because the second is answered
-  from the cached prompt; distinct questions in any order repeat exactly
-  (276 of 276 between two orders). The yardstick, the reply files, the
-  baselines and each spike's harnesses are versioned in
-  `~/association-research` (private, `jeffknupp/association-research`;
-  its own `AGENTS.md` says what is live and what is history): commit
-  there when you add a run, a baseline or a harness.
+  Reading (`point_refusal`, `refused`, `unsupported`, `defaulted`) and said
+  by the planner through `say.refusal_phrase` - never a sentence built
+  where the question is re-read after the parser. Before writing the
+  refusal, check what the source actually serves ("ESPN does not publish
+  coaches" was the obvious sentence and is false).
+
+### The planner, the readers and the sayer
+
+**Every shape the words ask is the compiler's, and the answering loop asks
+it once.** `agent.py`'s `_run_compiled` hands `compose.answer(ctx,
+reading)` the point the parser read once (`Reading.point`) and the
+planner's verdict, planned once per question AFTER the parser
+(`compose.plan.plan_point`; the parser reads and does not plan). The
+planning is ONE value, `compose.plan.Verdict` (kept on `Agent.query`): the
+planned query, the refusal it came to unworded (a `result.Refusal`) or the
+decline it gave the point up with; what the point is read and said as is
+`compose.plan.planned_shape`'s. The compiler runs the planned point and
+never reads the question. A caller with a Reading of its own reads the
+point into it with `parse.with_point`. Nothing in the package may reach
+ollama, and it narrows a relation only through the shared steps.
+
+- **The point declares what it is read and said as: ONE field,
+  `Reading.read_as`** (decision D9), a `reading.PointShape` - its `shape`
+  (`reading.Shape`: `scalar`, `rows`, `ranking`, `comparison`, `split`,
+  `runs`, `chart`), its `by` (what one row is, how a scalar is reduced or
+  what rows are ordered by; `""` where no reader takes the point and the
+  compiler's own sentence answers) and its `relation`
+  (`reading.PointRelation`: `player_games`, `player_periods`,
+  `player_seasons`, `team_games`, `team_periods`, `team_seasons`,
+  `team_snapshots`, `netpoints`, `shots`). Every `Reading(...)` in
+  `query/point.py` names it, by a key's constant where it is one of the
+  grammar's keys. The planner plans that key as it stands
+  (`plan.point_shape`; its one move: a season-line point re-planned at the
+  game level is on `player_games`, held by a test over every reader case)
+  and derives the compiler's skeleton and source from it
+  (`plan.skeleton_of`; `Query.source` is `"seasons"` on `player_seasons`).
+- **The answer side chooses by shape, never by intent or label.**
+  `compose.answer` picks the reader from `_ROUTES` by the planned key
+  alone; the relation tables' rows and `coverage.SOURCES` are keyed by it.
+  No table names a shape by a retired name: the trace and the records name
+  a key by `reading.key_path`, a decline says what the words were read as
+  asking in the shape's words (`say.asked_as`, framed by
+  `say.nothing_answers`), a cause carries the key and never a label (its
+  `shape` fact; the sayer's phrase tables are keyed by `PointShape`), and
+  no sentence or page prints a retired name. `say()` chooses the sayer from
+  the headline body's type and the one field that says what it is
+  (`Scalar.how`, `Grouped.by`, `Rows.by`, `Chart.kind`) - never
+  `Span.source`, the relation or a facts key.
+- **What the reading refuses is a cause, said by the planner.** Where the
+  point reader refuses (a ranking by a stat nothing ranks, a shape over a
+  line missing its stat, its number or its subject, a matchup without two
+  players, ...), the Reading carries a `reading.Cause` - a kind from the
+  closed `CAUSES` and plain facts - and the planner says it
+  (`compose.plan.refusal_result`): the reader builds no sentence, and a new
+  cause is an entry in `CAUSES` and a phrase in the sayer. It is raised as
+  `reading.PointRefused`, a kind of `Unsupported`, so a shared helper the
+  answer side also calls (`lines.measure_filters`,
+  `measures.streak_column`) stays a decline there. A plain `Unsupported`
+  out of the point reader is kept only where the reading hands the question
+  on or `read_point`'s order makes it unreachable; one the user would see as
+  "Nothing here answers this question" becomes a Cause (one enumerated
+  commit).
+- **A shape's own decline is a cause too** (`reading.ShapeDeclined`, raised
+  by `compose.plan.cells_declined` and `compose._read`; `cannot_honor`,
+  `no_reading_of_point`), said by the planner word for word at the
+  decline's place - after the coverage floor and the reading's causes - and
+  answered `"fast"`. `None` is refused with the decline's sentence after
+  the floor and the reading's causes have had their look.
+- **What the words come to before any point is the parser's to read and the
+  planner's to say:** `Reading.refused` (a championship, both ends of the
+  span named at once, `window.contradicting_ends`, a window taken in each
+  season, `window.per_season_window`, a fact no table holds,
+  `lexicon.ABSENT_FACTS`, a player named where the shape reads none) is said
+  before any reader runs; `Reading.unsupported` (a playoff round, an age, a
+  quarter's stat nothing rebuilds, ...) only where the answer side
+  declined, so a question the compiler answers is answered; and
+  `Reading.defaulted` - a word carrying a meaning the reading defaulted
+  past: `unread_number`, `unread_stat`, `unread_window`, `unread_date`, by
+  the lexicon's `MEANING_*` classes, read in the parser's last step
+  (`parse._reading_from_route_defaulted`), claiming its words - only where
+  the planning produced a query, so a question that would be answered
+  fluently past the word is refused by name. A word that restates the shape
+  ("record", "stats", "most") is in no class. Its harness is
+  `~/association-research/stages/unread_meaning.py`, held at 0 (the done
+  table's coverage row). Nothing after the parser re-reads the question
+  for any of the three. (history)
+- **An answer is `Answer`, stamped by the loop.** `answer.Answer` (the
+  text, the data, the files), returned by the sayer and the compiler's own
+  sentence, is stamped by the answering loop with the question, the path,
+  the timing, the decisions and the planned shape, and answered `"fast"`
+  with the name readings and the coverage caveat attached - including a
+  clarification or a "no match".
+
+**A shape is a reader and a sayer, and nothing else answers it.** What
+travels between them is typed:
+
+- **A reader returns `Result | Refusal | Clarify`** (`query/result.py`),
+  never a sentence. A refusal found at RUN is a `Refusal(kind, facts)` with
+  a kind in the closed `result.RUN_CAUSES` (a fact found in the warehouse),
+  disjoint from `reading.CAUSES` (a fact read from the words), held apart
+  by a test; a question back is a `Clarify`. The relation modules
+  (`no_narrowed_games`, `no_games`, `condition_team_no_games`,
+  `entities.clarify`, `coverage.floor_refusal`) return the same types.
+  ONE phrase table words every cause, `say.refusal_phrase(kind, facts)`,
+  beside `note_phrase` and `decision_phrase`; a new refusal is a kind in
+  `RUN_CAUSES` and a phrase there. `Refusal.shown`/`under` say what the page
+  shows beside the sentence.
+- **A cell the read applied is a typed value, not a key**
+  (`Narrowing.cells`, the `result.Cell` union, read by type:
+  `narrowing.cell(Role)`, `lines()`, `period`). What the sentence needs
+  beside the body is ONE frozen record per shape (`result.Facts`:
+  `CountFacts`, `LogFacts`, `LineFacts`, ...), read through
+  `say._facts(result, Kind)`, which raises on another shape's record:
+  there is no untyped `facts` mapping, and a shape that needs a new fact
+  adds a field to its record. A read that found nothing keeps its body's
+  shape and gives its reason as `Result.empty`, a `Refusal`.
+- **A note is written as data and said once.** The reader builds
+  `Note(kind, {...})`; the sayer phrases it (`say.note_phrase`, ONE phrase
+  per kind) and records it through `notes.note`, so the answer's remarks are
+  the Result's notes; the compiler's own sentence phrases the same kinds
+  (`compose.core._box_notes`). `tests/query/test_answer_notes.py` reads a
+  `Note(kind, {...})` as a write when it checks every kind is written.
+- **The reader executes the compiled statement; the sayer keeps the
+  words.** A reader compiles the planned point (`compose.core.compile_query`;
+  `compile_over` when it already holds the settled subject) and runs that
+  statement, so no statement is written beside the compiler's; the sayer
+  builds the heading, the table and the notes from the Result's values and
+  takes the Result and nothing else (the import contract "The compiler's
+  sentence reads no warehouse" holds `compose/say.py` and
+  `compose.sentence` to it).
+- **What a relation measures lives on the relation; what a sayer says lives
+  in the sayer.** A relation's step writes no sentence: a refusal it finds
+  is a typed `result.Refusal` or `result.Clarify`. A statement a reader
+  needs that the compiler does not build is its relation's: a relation
+  function builds it, runs it through the compiler's one door (a call-time
+  import of `compose.core.values_of` or `rows_of`) and hands back rows or
+  values, and the reader keeps its words and its Result - no `compose/`
+  module executes a statement of its own. The shared steps live with their
+  relations under public names, with no private alias kept.
+
+Where each shape is read (the compiler's readers in `compose/`, each over a
+relation's statements):
+
+| reader module | reads |
+| --- | --- |
+| `logs.py` | a player's or a team's log |
+| `records.py`, `splits.py`, `stats.py`, `periods.py` | a record over a line (a player's, `read_team_record_when` a team's), splits, a line over narrowed games (a `Scalar` by the compiler's `line` aggregate), a quarter or half |
+| `counts.py`, `highs.py` | a count of games over a line; a single game's high |
+| `runs.py`, `pairs.py`, `presence.py` | a run (`read_streak`, `read_team_streak`), two players' meetings, a team with and without named teammates |
+| `rankings.py`, `seasons.py` | the league's leaders by a season-line metric (`season_line.rank_season_line`); a player's season line, history and comparison (the season line's reads: `season_line.season_row`, `career_row`, `advanced_row`, `history_rows`, `history_total`) |
+| `standings.py`, `team_stats.py`, `team_records.py`, `team.py` | a team's record and seasons (`query/standings.py`, `team_seasons`), a team's history (`read_team_history`), the team compiler |
+| `netpoints.py`, `shots.py` | the declared relations' readers and their drawing |
+
+- **Two shapes have skeletons of their own.** A streak is the `run` shape:
+  the longest runs of consecutive games one predicate holds along
+  (`compose.core._compile_run`, in Eastern-date order; a game with no box
+  score inside a spell he played ends a run), read into the `Runs` body and
+  said by `compose.say.say_streak`. A matchup is the `pair` shape: two
+  named players' lines over the games they met in (the pair relation
+  `player_games.paired_rows_sql`, `compose.core._resolve_pair`,
+  `_compile_pair`), read by `compose.pairs.read_player_matchup` into a
+  `Grouped` by `subject` and a `Rows` detail part, said by
+  `compose.say.say_player_matchup`; the games the two shared as teammates
+  are the pair relation's own read (`conditions._teammate_games`).
+- **The declared relations keep their own readers and renderers** (the
+  decision "Charts are declared shapes"). NetPoints
+  (`reading.on_a_declared_relation` over `DECLARED_RELATIONS`, planned as
+  `compose.netpoints.NetPointsQuery`; every statement in
+  `query/netpoints.py`): `read_player_netpoints`, and `read_fingerprint`
+  into a `Chart` that `compose.netpoints.draw_fingerprint` writes with
+  `query/radar.py` BEFORE `compose.say.say_fingerprint` words it - a reader
+  names no file that does not exist yet. The "vs" note for a fingerprint
+  that drew one polygon is read by the parser (`Reading.left_out`, a
+  `reading.LeftOut`) and said as the `name_left_out` decision
+  (`say.say_left_out`, attached by `agent._unmatched_fingerprint`). Shots
+  (`compose.shots.ShotQuery`; every statement in `query/shots.py`):
+  `read_shot_chart` and `read_shot_distance`, over
+  `shotchart.SHOT_VALUE_SQL` and the court's `HAS_POSITION_SQL` and
+  `SHOT_DISTANCE_SQL`, the chart drawn by `compose.shots.draw_shot_chart`
+  over `court.render_court_html` before the sayer.
+- **A shape with a default point** (`point.DEFAULT_POINTS`) is declined
+  beyond the scoping its row states (`declined="plan"`) by the planner, and
+  read and said with nothing after it: a decline is refused, never handed
+  to the compilers' own sentences (`compose._read_only`, a route marked
+  `only`).
+- **A reader says what its row states and steps aside for a narrowing
+  beyond it**, so the compiler's own sentence, which states every narrowing
+  the relation applied, answers; a narrowing the relation cannot honor at
+  all is refused by the planner. A change to a reader is proved on the
+  stage snapshots and the unit-test calls. (history)
+- **A team can be the subject, not only a narrowing.** `compose/team.py`
+  (`TeamQuery`/`TeamResult`/`run_team`, `point.team_read_point`,
+  `sentence.team_sentence`) is a second compiler over the team-games
+  relation, kept apart on purpose: nothing in it reads or is read by the
+  player subject's functions. An UNNARROWED question reads the season's raw
+  TOTAL from `team_season_stats` ("how many has it made" is not "how many
+  per game"); a NARROWED one sums the relation's game-level columns through
+  `scoped_team`/`team_games` - never a hand-written clause - and a box-score
+  count over narrowed games sums their own team box rows, saying how many
+  had none (`compose.team.team_figure`). A percentage is no total and is
+  declined; a figure no team game carries is refused by name
+  (`team_figure_unread`). `read_point` tries `team_read_point` before the
+  league-wide reading, and nothing after the parser restores a subject
+  ("magic" is also Magic Johnson's given name); `team_named_in` restores a
+  dropped team from the question's own team word, as `players_named_in`
+  does a player.
+
+### The model
+
+- **What the model sees lives in `query/normalizer.py`'s constants,
+  alone**: `NORMALIZER_PROMPT`, `NORMALIZER_SCHEMA` (its stat enum
+  `NORMALIZER_STATS`), `NORMALIZER_NUM_CTX`. `normalize()` only decodes the
+  reply. So a diff to `parse.py` or `grammar.py` cannot change what the
+  model returns, and a diff to those constants always can.
+- **A prompt and its constrained schema must agree**: a value the prompt
+  teaches that the enum lacks can never be emitted, and silently becomes
+  something else. `test_the_prompt_and_the_schema_agree`
+  (`tests/query/test_normalizer.py`) holds the examples to the enum, and
+  `test_every_intent_is_reachable_from_the_reader`
+  (`tests/query/test_grammar.py`) holds every shape reachable from
+  `PARENT_GRAMMAR`, `CODE_ASSIGNED_ASKS` or `KIND_ASSIGNED_ASKS`. The
+  reader's behavior on a wording is a case in
+  `tests/query/reader_cases.json`, regenerated by `scripts/reader_cases.py`.
+- **A prompt has a token budget, and ollama enforces none**: it truncates
+  an over-length prompt silently and head-first.
+  `test_the_prompt_leaves_room_for_the_question_and_the_reply` holds the
+  prompt (~330 tokens) and `NORMALIZER_NUM_CTX` (2048) together with
+  `normalizer.estimate_tokens`; keep such a check beside any prompt this
+  project sends. (history)
+- **A slot the schema does not require is a slot the decoder may never
+  consider, and no prompt wording fixes that** - which is why
+  `NORMALIZER_SCHEMA` requires both its fields
+  (`test_the_schema_asks_for_the_names_and_the_stat_and_requires_both`).
+  The opposite holds too: **a required slot is filled whether or not the
+  question asked for it**, so the measure tagger drops the MODEL's key on
+  the whole-line readers where the words name no stat
+  (`measure.names_a_stat` over `lexicon.STAT_WORDS`; a loose list is safe
+  there because a missed word widens a comparison to a line that still
+  holds the stat, and nowhere else). Of the two ways out, prefer reading the
+  value **from the question text** (costs nothing, moves no other slot) to
+  making a slot required (which crowds out others). (history)
+- **Hash `NORMALIZER_PROMPT` and `NORMALIZER_SCHEMA` before and after a
+  change**: if both match, the recorded replies still stand and the stage
+  snapshots are the whole check. **Any edit to them moves what the 3B
+  returns on unrelated questions** (its length as much as its content), so
+  after one the recorded replies no longer stand: re-record them and make a
+  live run the record, and assert in a case only what changes the
+  *answer*, never the encoding the model picked. (history)
+- **The recorded replies are this machine's.** The snapshots, the ledger
+  and every offline harness put the recorded replies in the model's place,
+  so they prove what production does only while the model says the same.
+  After a move, an ollama upgrade or a new pull of the model, re-record
+  before trusting an offline proof: every recorded question through
+  `normalizer.normalize`, one caller, in file order. The SAME question
+  asked twice in a row can get two replies (the second from the cached
+  prompt); distinct questions in any order repeat exactly. (history)
 - **Only one ollama caller at a time.** Two callers on one CPU-only ollama
-  instance corrupted the router's output silently (ISSUES.md #171) or wedged
-  it in a reload loop for minutes, and the normalizer runs the same model. A
-  live run is the only caller: confirm it with `pgrep` first.
+  corrupt the output silently or wedge it in a reload loop. A live run is
+  the only caller: confirm it with `pgrep` first.
+
+### Regression nets and the research repository
+
+- **The parser has three regression nets; add to them whenever you find a
+  misreading in the wild.** Cheapest first: `tests/query/test_parser.py`
+  and the reader cases, a case per wording a table gains, watched to fail;
+  the stage snapshots (all 628 recorded questions - 277 yardstick wordings,
+  75 hold-out questions nothing was tuned on, 276 paraphrases - stage by
+  stage against the tree before), which see a table change move some other
+  wording and say whether it moved in the reading or only in the answer;
+  and the yardstick's live run, graded blind, which is the record.
+  `~/association-research/yardstick-v2/run_offline_parser.py` predicts a
+  live run's graded rows before the model is asked.
+- **`~/association-research` is a repository** (private,
+  `jeffknupp/association-research`; its own `AGENTS.md` says what is live
+  and what is history): the yardstick, the reply files, the baselines and
+  each spike's harnesses are versioned there. Commit there when you add a
+  run, a baseline or a harness.
 
 ## Working on the fetch path
 
