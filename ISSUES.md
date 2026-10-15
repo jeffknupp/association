@@ -3863,6 +3863,7 @@ those were found.
 - **Next step:** pin the version in AGENTS.md's command (or in a `scripts/check_web_ui.sh` wrapper) to the one whose browser the box holds, or run `playwright install chromium-headless-shell` as a documented step; have the stub health response carry `models` and assert the indicator's title.
 - **Source:** ours.
 - **Priority:** P4 - tooling.
+- **GitHub:** #459
 
 ### `--model` names the normalizer's model now, and a pre-5.0 script passing it picks the normalizer
 - **Found:** 2026-10-15, the p6-comments lane (the 7.0.0 rename of `--router-model` to `--model`, on Jeff's instruction).
@@ -3871,6 +3872,7 @@ those were found.
 - **Next step:** none needed unless such a script turns up; `CHANGES.md`'s 7.0.0 entry names the reuse.
 - **Source:** ours.
 - **Priority:** P4 - low impact.
+- **GitHub:** #460
 
 ### `docs/roadmap-2.0.md` still describes the router, the templates and the fall-through agent as the system
 - **Found:** 2026-10-15, the p6-comments lane (its sweep covered `docs/*.rst`, not this file).
@@ -3879,3 +3881,4 @@ those were found.
 - **Next step:** move it beside `ROADMAP-2026-09.md` as an archived plan, or delete it (its content is in git), per Jeff's rule that history lives in the changelog, `ROADMAP-HISTORY.md` and `ISSUES.md`.
 - **Source:** ours.
 - **Priority:** P4 - docs.
+- **GitHub:** #461
