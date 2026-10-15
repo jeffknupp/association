@@ -2005,7 +2005,7 @@ with nothing to read fills the silence from its own weights), and more data
     got 17 wrong - which is what Phase 6's graded sample is for.
 
 
-48. **The comment sweep (2026-10-15, lane p6-comments): the source says
+49. **The comment sweep (2026-10-15, lane p6-comments): the source says
     what the code does, with no history.** Jeff's rule for the sweep: a
     comment, a docstring and a document describe the code that exists and
     why it is as it is; history lives in the changelog, this file and
