@@ -25,7 +25,7 @@ from typing import Any, NamedTuple
 
 import duckdb
 import pytest
-from routed import Said, answered_as
+from routed import Said, answered_as, measure_of
 from test_readers import line_runs, player_meetings, player_splits, presence_split
 from warehouse_rows import insert_rows
 
@@ -39,7 +39,6 @@ from association.query.compose.sentence import sentence
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
 from association.query.entities import names_of
-from association.query.measure import measure_of
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import (
     LINE_RECORD,

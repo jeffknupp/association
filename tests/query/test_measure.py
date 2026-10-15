@@ -19,6 +19,7 @@ from typing import Any, get_args
 
 import duckdb
 import pytest
+from routed import measure_of
 from routed import staged as settle
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
@@ -35,7 +36,6 @@ from association.query.measure import (
     MeasureKey,
     key_of,
     measure_name,
-    measure_of,
     measured,
     named,
     named_by_a_team_metric,

@@ -12,7 +12,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import answered_as, planned_answer, planned_query, said
+from routed import answered_as, measure_of, planned_answer, planned_query, said
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -34,7 +34,6 @@ from association.query.compose.splits import _player_splits, _team_splits, read_
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, compile_team_count, compile_team_line, compile_team_range, compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
-from association.query.measure import measure_of
 from association.query.measures import PERIOD_RATE_STATS
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point

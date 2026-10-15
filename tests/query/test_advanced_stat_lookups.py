@@ -13,12 +13,12 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from routed import measure_of
 from test_readers import player_line
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.coverage import _ADVANCED_STAT_NAMES, check_coverage, sources_for
-from association.query.measure import measure_of
 from association.query.reading import PLAYER_LINE, Cuts, Measure, PointShape, Reading, Span, Unsupported
 from association.query.reading import Subject as Who
 from association.query.season_line import ADVANCED_STATS

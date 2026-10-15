@@ -9,14 +9,13 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import Routed, reading_of
+from routed import Routed, measure_of, reading_of
 
 from association.nba.season import current_season
 from association.query import names, subject
 from association.query.decisions import Decision
 from association.query.entities import find_teams, names_of, teams_of
 from association.query.lines import threshold_of
-from association.query.measure import measure_of
 from association.query.names import NameIndex
 from association.query.reading import (
     GAME_HIGHS,

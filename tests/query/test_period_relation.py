@@ -15,11 +15,11 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import measure_of
 from test_readers import team_period_total
 
 from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
-from association.query.measure import measure_of
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, most_games, period_line_sql, period_quarter, period_ranking, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.reading import (

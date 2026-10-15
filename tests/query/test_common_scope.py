@@ -5,8 +5,9 @@ Reading's or the query's own filters
 
 from __future__ import annotations
 
+from routed import measure_of
+
 from association.query.coverage import sources_for
-from association.query.measure import measure_of
 from association.query.reading import Measure, PointShape, Reading, Span
 from association.query.reading import Subject as Who
 

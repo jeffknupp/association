@@ -10,9 +10,10 @@ ranking would confidently rank a league of seven players.
 
 from __future__ import annotations
 
+from routed import measure_of
+
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
-from association.query.measure import measure_of
 from association.query.reading import (
     GAME_HIGHS,
     GAMES_COUNTED,

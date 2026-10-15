@@ -13,13 +13,12 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import answered_as
+from routed import answered_as, measure_of
 from test_readers import player_ranking
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.plan import cells_unhonored
-from association.query.measure import measure_of
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS

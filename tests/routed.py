@@ -44,10 +44,11 @@ from association.query.compose.plan import plan, plan_point
 from association.query.decisions import Decision
 from association.query.entities import names_of
 from association.query.line import lines_named
+from association.query.measure import key_of
 from association.query.names import NameIndex
 from association.query.normalizer import Normalized
 from association.query.point import default_point
-from association.query.reading import PLAYER_RANKING, Claim, Companion, Line, PointShape, Reading, Subject, SubjectKind, Unsupported
+from association.query.reading import PLAYER_RANKING, Claim, Companion, Line, Measure, PointShape, Reading, Subject, SubjectKind, Unsupported
 from association.query.span import claimed
 from association.query.subject import Subject as ReadSubject
 from association.query.subject import child_named, read_subject, settle_subject
@@ -232,3 +233,14 @@ def planned_query(asked: PointShape, scope: Reading) -> Query:
     query = plan(default_point(asked, scope))
     assert isinstance(query, Query)
     return query
+
+
+def measure_of(spelling: str, **fields: object) -> Measure:
+    """The :class:`~association.query.reading.Measure` ``spelling`` names,
+    through the measure catalog (``measure.key_of``) - a test's way to build
+    one from a key or an alias; ``fields`` are the Measure's other fields."""
+    if not spelling.strip():
+        return Measure(**fields)  # type: ignore[arg-type]
+    key, whose, side, how, category = key_of(spelling)
+    values: dict[str, object] = {"key": key, "as_typed": spelling, "whose": whose, "side": side, "how": how, "category": category, **fields}
+    return Measure(**values)  # type: ignore[arg-type]

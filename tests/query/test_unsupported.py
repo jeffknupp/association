@@ -13,12 +13,11 @@ from dataclasses import replace
 
 import duckdb
 import pytest
-from routed import Said, said
+from routed import Said, measure_of, said
 
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.compose.plan import refusal_result
 from association.query.entities import names_of, players_of, teams_of
-from association.query.measure import measure_of
 from association.query.parse import _reading_from_route_refused, _reading_from_route_unsupported, read_route
 from association.query.reading import (
     PERIOD_LOG,

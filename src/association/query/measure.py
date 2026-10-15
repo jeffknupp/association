@@ -369,20 +369,6 @@ def key_of(spelling: str | None) -> Alias | tuple[None, MeasureWhose, None, None
     return found if found is not None else (None, "own", None, None, None)
 
 
-def measure_of(spelling: str, **fields: object) -> Measure:
-    """The :class:`~association.query.reading.Measure` ``spelling`` names,
-    through the catalog - a test's and a caller's way to build one from a
-    key or an alias; ``fields`` are the Measure's other fields.
-
-    .. versionadded:: 6.0.0
-    """
-    if not spelling.strip():
-        return Measure(**fields)  # type: ignore[arg-type]
-    key, whose, side, how, category = key_of(spelling)
-    values: dict[str, object] = {"key": key, "as_typed": spelling, "whose": whose, "side": side, "how": how, "category": category, **fields}
-    return Measure(**values)  # type: ignore[arg-type]
-
-
 def spec_of(measure: Measure | None) -> MeasureSpec | None:
     """``measure``'s catalog entry, or None for no measure, one no catalog
     holds, or the opponent's figure of one (which no player-side facet reads).

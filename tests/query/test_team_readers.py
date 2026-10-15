@@ -15,7 +15,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import answered_as
+from routed import answered_as, measure_of
 from test_readers import line_runs, player_log, player_splits
 
 from association.fetch.repairs import real_games
@@ -23,7 +23,6 @@ from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.plan import cells_unhonored
 from association.query.coverage import check_coverage
-from association.query.measure import measure_of
 from association.query.reading import (
     LINE_RECORD,
     TEAM_LINE,

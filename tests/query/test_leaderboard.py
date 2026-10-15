@@ -258,7 +258,8 @@ def test_run_leaderboard_missing_table_reports_requires_hint(con: duckdb.DuckDBP
 
 
 def test_double_and_triple_doubles_are_registered_metrics() -> None:
-    from association.query.measure import measure_of
+    from routed import measure_of
+
     from association.query.measures import resolve_metric
     from association.query.metrics import LEADERBOARD_METRICS
 
