@@ -255,14 +255,15 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #392
 
-### A team's former name with no season is read by nothing, so its players' question is the league's: "highest scoring games of supersonics players" answers the league's 2026 high
-- **Found:** 2026-10-13, lane N of the P1 sweep, enumerating the "best/highest scoring games" fix (the question moved from the league's points per game to the league's single-game high; it was the league's question both times).
-- **Evidence:** on the feed's no-names reading at sweep-N `8c84100`+, "highest scoring games of supersonics players" reads `who.kind == 'everyone'`, no team, "supersonics" and "players" unread. A former name IS read where a season of its era is named ("kevin durant points per game for the sonics in 2008" is his SuperSonics tenure, "kobe points against the supersonics in 2006" the opponent): the team words are resolved over the season the question names, and with none named, over the current one, which no SuperSonics play in. 1 of the 2,082.
-- **User sees:** the league's answer where one franchise's players were asked about.
-- **Next step:** a team word that names only a former franchise, with no season named, is that franchise over its era (`nba/franchises.py`'s `FranchiseEra`), the span its years - as a tenure "for Miami" with no season is a career; read in `subject._team_names` / `_team_named` with the season unset. A case per wording; measure on the 2,710.
-- **Priority:** P1 - a different question answered (1 feed question).
+### The players' ranking answers points per game where the words name a measure nothing reads, and a yes/no measure over a span of seasons ranks by points too
+- **Found:** 2026-10-13, lane N of the P1 sweep, measuring the "nba"-alone fix (the lead held these back from it: read as the players' ranking they would turn a refusal into a fluent wrong answer).
+- **Evidence:** on sweep-N, with "nba" removed or the team reading not applying, "nba best shooting percentages 2023", "nba current best shooting percentages", "best nba shooting percentages from farther than 30 feet", "most efficienr nba game" and "most per last season nba" read no measure and the players' ranking answers "every player, ... by player (points per game, minimum 20 games): Luka Doncic ..."; "Most triple doubles in the last three years nba" reads `triple_double` over 2024 on and answers a points-per-game ranking, where "nba most triple doubles 2026" (one season) ranks triple-doubles right (Nikola Jokic 34); "most ppg in nba history playoff in a single season" reads no measure from its words (`measure.named` has no "ppg"). The same default answers the wordings without "nba" ("best shooting percentages 2023") today. Held back as the teams' refusals by `parse._parent_asked_nba_unmeasured`: 8 of the 2,082.
+- **User sees:** the league's scorers where shooting percentages, efficiency or PER were asked, and where triple-doubles over seasons were asked - fluently.
+- **Next step:** lane L's measure (`measure.py`, `point.measure_under`) and the ranking (`compose/rankings.py`): a ranking whose words name no measure it reads refuses by a cause naming the words (`no_ranking_measure` exists), never the points default; the season-line ranking ranks a yes/no game measure over a span or refuses it. Then lift the gate in `parse._parent_asked_nba_unmeasured` and enumerate the 8.
+- **Since Phase 5, step 1 (2026-10-14):** "best nba shooting percentages from farther than 30 feet" refuses naming the 30 now (`unread_number`) where it named "stat None"; a refusal by name is the standing floor, the fix is the read.
+- **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
-- **GitHub:** #420
+- **GitHub:** #421
 
 ### A count over a line the lines tagger does not read stays the teams' ranking or the players' triple-doubles: "most 0 point games in nba team history" answers the teams' points per game
 - **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers). Rewritten 2026-10-13 (lane N of the P1 sweep) to what remains: the team-ranking row steps aside for games kept by a line with no team word (`lexicon.LINE_OF_GAMES_ROW`), so "most 40 point games in nba history" (and 50, 60) and "nba most playoff games with 2+ block and 2+ steals" are the players' count, and the count's child grammar is named under the with/without split, so "how many 30 point games did maxey have without embiid" is his count over the games Embiid missed (`CHANGES.md`).

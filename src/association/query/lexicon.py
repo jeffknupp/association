@@ -4525,9 +4525,14 @@ split is read (:func:`~association.query.split.read_split`).
 # what it reads - the point reader reads the words through the lexicon as
 # every tagger does.
 
-TOP_IN_A_GAME = re.compile(r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b", re.IGNORECASE)
-"""One game's top figure: "most points in a game", a "single-game" or a
-"career high" - a ranking of single games, never of season lines.
+TOP_IN_A_GAME = re.compile(
+    r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b|\b(?:best|highest)\s+scoring\s+games?\b",
+    re.IGNORECASE,
+)
+"""One game's top figure: "most points in a game", a "single-game", a
+"career high" or the best scoring games ("highest scoring games of 76ers
+players", which ranked the 76ers' points per game - Phase 5, step 6, lane N)
+- a ranking of single games, never of season lines.
 
 .. versionadded:: 6.0.0
    ``point._TOP_IN_A_GAME`` until Phase 4, step 6.

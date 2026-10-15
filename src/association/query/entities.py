@@ -509,6 +509,25 @@ def _era_index() -> dict[str, list[FranchiseEra]]:
 _ERAS_BY_KEY = _era_index()
 
 
+def former_franchise(text: str) -> FranchiseEra | None:
+    """The one name a franchise held and no franchise holds today that
+    ``text`` names ("supersonics", "sonics", "seattle", "bullets",
+    "bobcats", "vancouver"), or None - a name some team holds now
+    ("hornets", "grizzlies", "nets") is today's team's, and a name two eras
+    held is none. Read with no season named, it is that franchise over the
+    seasons it held the name (ISSUES.md #420).
+
+    .. versionadded:: 6.0.0
+    """
+    eras = _ERAS_BY_KEY.get(_team_key(text)) or []
+    today = {era.name.casefold() for era in FRANCHISE_ERAS if era.last_season is None}
+    if len(eras) != 1 or eras[0].last_season is None or eras[0].name.casefold() in today:
+        return None
+    current = {_team_key(era.name) for era in FRANCHISE_ERAS if era.last_season is None}
+    words = {word for name in current for word in name.split()}
+    return None if _team_key(text) in words else eras[0]
+
+
 def _era_name(team_id: str, season: int) -> str | None:
     """What franchise ``team_id`` was called in ``season``, if it was renamed."""
     eras = [era for era in FRANCHISE_ERAS if era.team_id == team_id]
@@ -537,14 +556,23 @@ def franchise_by_name(text: str, season: int | None = None) -> list[Entity] | No
       season and id 30's first.
 
     ``season`` None means the current season, because every reader defaults
-    to it and a question naming no year means now.
+    to it and a question naming no year means now - but for a name no team
+    holds today (:func:`former_franchise`), which means its own last
+    season's franchise.
+
+    .. versionchanged:: 6.0.0
+       A former name with no season is that franchise under the name.
 
     .. versionadded:: 2.2.0
     """
     eras = _ERAS_BY_KEY.get(_team_key(text))
     if not eras:
         return None
-    season = season if season is not None else current_season()
+    former = former_franchise(text) if season is None else None
+    # A name no team holds today, with no season asked, is the franchise
+    # under that name - "the supersonics" is Seattle, never today's Thunder
+    # (ISSUES.md #420).
+    season = season if season is not None else (former.last_season if former is not None and former.last_season is not None else current_season())
     held = [era for era in eras if era.covers(season)]
     ids = sorted({era.team_id for era in (held or eras)}, key=int)
     return [Entity(id=team_id, name=_era_name(team_id, season) or next(era.name for era in eras if era.team_id == team_id)) for team_id in ids]

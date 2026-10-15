@@ -66,6 +66,7 @@ from association.query.entities import (
     checked_players,
     find_players,
     find_teams,
+    former_franchise,
     near_team,
     team_abbreviations,
     team_columns,
@@ -457,7 +458,7 @@ def _teams_by_word(teams: names.TeamIndex, question: str) -> set[str]:
     found: set[str] = set()
     question = lexicon.SINGULAR_NAMING_NO_TEAM.sub(_team_word_blank, question)
     for run in lexicon.TEAM_SPELLING_RUN.findall(question.lower()):
-        team = lexicon.TEAM_SINGULARS.get(run.removesuffix("'s").rstrip("'")) or team_named_in(teams, run)
+        team = lexicon.TEAM_SINGULARS.get(run.removesuffix("'s").rstrip("'")) or team_named_in(teams, run) or _former_name(run)
         if team is not None:
             found.add(team)
     return found
@@ -469,10 +470,19 @@ def _team_word(teams: names.TeamIndex, question: str) -> str | None:
     (the roster table by whole word, the plural nicknames), then an
     abbreviation. A singular in words that name no team ("net points",
     "martin luther king") is none."""
-    for w in _words(lexicon.SINGULAR_NAMING_NO_TEAM.sub(_team_word_blank, question).lower()):
+    words = _words(lexicon.SINGULAR_NAMING_NO_TEAM.sub(_team_word_blank, question).lower())
+    for w in words:
         if w in lexicon.TEAM_SINGULARS:
             return lexicon.TEAM_SINGULARS[w]
-    return team_named_in(teams, question) or _team_abbreviation(teams, question)
+    return team_named_in(teams, question) or _team_abbreviation(teams, question) or next((name for name in map(_former_name, words) if name), None)
+
+
+def _former_name(word: str) -> str | None:
+    """The franchise a word names by a name no team holds today
+    ("supersonics", "bullets", :func:`~association.query.entities.former_franchise`),
+    as that name - or None."""
+    era = former_franchise(word.removesuffix("'s").rstrip("'"))
+    return era.name if era is not None else None
 
 
 def _team_word_blank(match: re.Match[str]) -> str:
@@ -1656,6 +1666,8 @@ def apply_subject(subject: Subject, scope: Filtered, *, asked: PointShape | None
     decisions.extend(restored)
     scope, own = _apply_own_team(subject, scope, asked)
     decisions.extend(own)
+    scope, former = _apply_former_franchise(subject, scope)
+    decisions.extend(former)
     scope, conditions = _apply_companions(subject, scope, asked)
     decisions.extend(conditions)
     scope, rewritten, settled = _apply_intent(subject, scope, asked)
@@ -1786,6 +1798,23 @@ def _apply_own_team(subject: Subject, scope: Filtered, asked: PointShape | None)
         out = replace(out, span=out.span.over_career())
         decisions.append(Decision("subject", "span", None, "career", 'a team named with no season is a tenure, not "now"'))
     return out, decisions
+
+
+def _apply_former_franchise(subject: Subject, scope: Filtered) -> tuple[Filtered, list[Decision]]:
+    """A team named by a name no franchise holds today, with no season
+    named, is that franchise over the seasons it held the name: "highest
+    scoring games of supersonics players" is Seattle's 1994-2008, never
+    today's Thunder (ISSUES.md #420) - as a tenure with no season is a
+    career. The span is written as a range of the era's seasons, where the
+    words named no season, range or career of their own."""
+    if subject.named_season is not None or scope.span.named:
+        return scope, []
+    for name in (*scope.who.teams, scope.cuts.tenure, scope.cuts.opponent):
+        era = former_franchise(name) if name else None
+        if era is not None and era.last_season is not None:
+            out = replace(scope, span=replace(scope.span, since=era.first_season, until=era.last_season))
+            return out, [Decision("subject", "span", None, f"{era.first_season}-{era.last_season}", f"{era.name} is a former name, read over the seasons it was held")]
+    return scope, []
 
 
 def _apply_filler_players(subject: Subject, scope: Filtered) -> tuple[Filtered, list[Decision], list[str]]:

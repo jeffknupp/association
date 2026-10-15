@@ -1429,3 +1429,16 @@ def _no_match(con: duckdb.DuckDBPyConnection, text: str) -> str:
     from association.query.entities import unmatched
 
     return say(unmatched(names_of(con), text)).text or ""
+
+
+def test_a_former_name_with_no_season_is_the_franchise_under_it() -> None:
+    """ISSUES.md #420: a name no team holds today ("supersonics", "bullets")
+    read with no season is that franchise under the name, never today's
+    team; a name a team holds today ("hornets") is none."""
+    from association.query.entities import former_franchise, franchise_by_name
+
+    assert [team.name for team in franchise_by_name("supersonics") or []] == ["Seattle SuperSonics"]
+    assert [team.name for team in franchise_by_name("sonics", 2026) or []] == ["Oklahoma City Thunder"]
+    era = former_franchise("bullets")
+    assert era is not None and (era.first_season, era.last_season) == (1975, 1997)
+    assert former_franchise("hornets") is None and former_franchise("charlotte") is None
