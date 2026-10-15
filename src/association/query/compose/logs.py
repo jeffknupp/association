@@ -101,7 +101,7 @@ def _game_log_lines(scope: Filtered) -> list[MeasureFilter]:
     measures = measure_filters(scope)
     threshold = threshold_of(scope)
     if threshold is not None and not any(line.value == threshold for line in measures):
-        raise Unsupported("game_log does not read a threshold - ask for games with at least N of a stat")
+        raise Unsupported("a log does not read a threshold - ask for games with at least N of a stat")
     return measures
 
 
@@ -350,7 +350,7 @@ def _team_log_refusals(without: Any, game_n: Any) -> None:
     with_without's question, and a game of a series is numbered on the
     player relation only, so far."""
     if without:
-        raise Unsupported("a team's games without one of its players is a with_without question")
+        raise Unsupported("a team's games without one of its players is a with/without split's question")
     if game_n:
         raise Unsupported("a team's log does not number the games of a series yet")
 
@@ -635,7 +635,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     both, mixed = _team_log_types(scope, asked)
     team_text = scope.who.team
     if not team_text or scope.who.player:
-        raise Unsupported("game_log needs a team or a player")
+        raise Unsupported("a log needs a team or a player")
     team = resolved_team(con, team_text, season=slot_season(scope))
     if isinstance(team, Unanswered):
         return team

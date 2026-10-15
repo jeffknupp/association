@@ -118,5 +118,5 @@ def _as_split(split: str | None) -> Split | None:
     if split is None:
         return None
     if split not in get_args(Split):
-        raise ScopeError(f"split {split!r} is not one the Scope holds")
+        raise ScopeError(f"split {split!r} is not one the Reading holds")
     return cast("Split", split)

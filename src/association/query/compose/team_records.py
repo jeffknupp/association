@@ -99,7 +99,7 @@ def _team_record_month_and_split(split: str | None, situation: Situation | None,
         # Measured over the corpus, a month narrowing or a by-month split
         # never carries a real limit of its own,
         # so only a bare limit is read as "last N games".
-        raise Unsupported("a record over a limited set of games is a game_log question")
+        raise Unsupported("a record over a limited set of games is a log's question")
     return _RecordCut(split=split, month=month, calendar=narrowing, alignment=alignment)
 
 
@@ -129,7 +129,7 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Enti
         if isinstance(found, Unanswered):
             return found
         if found.id == team.id:
-            raise Unsupported("team_record's opponent must differ from the team")
+            raise Unsupported("a team's record needs an opponent other than the team")
         return team, found
     for text in listed:
         found = resolved_team(con, text, season=slot_season(scope))

@@ -70,7 +70,7 @@ def _splits_line(stat: str | None, base_line: tuple[tuple[str, str, str], ...], 
         return base_line
     extra = SPLIT_EXTRA_STATS.get(stat) if alias == "p" else None
     if extra is None:
-        raise Unsupported(f"player_splits has no column for stat {stat!r}")
+        raise Unsupported(f"splits have no column for stat {stat!r}")
     return (*base_line, extra)
 
 
@@ -82,7 +82,7 @@ def _splits_refusals(scope: Filtered) -> None:
     stop), and a home/away split beside a venue already narrowed to one
     (the same axis asked twice; the narrowing wins)."""
     if scope.window.count is not None and scope.window.count > 1:
-        raise Unsupported("player_splits has no notion of a limited number of recent games")
+        raise Unsupported("splits have no notion of a limited number of recent games")
     if scope.split == "home_away" and scope.cuts.venue is not None:
         raise Unsupported("a home/away split conflicts with a venue already narrowed to one")
 
@@ -296,7 +296,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
     if isinstance(opponent, Unanswered):
         return opponent
     if team is None:
-        raise Unsupported("player_splits needs a player or a team")
+        raise Unsupported("splits need a player or a team")
     if measures or scope.cuts.game_n or scope.cuts.season_n or scope.companions:
         # A team's own splits read the team tables directly, not the
         # player-games relation these narrow - so a line on a box-score
@@ -304,7 +304,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
         # absence (or role) have nowhere to apply. Refused by name rather
         # than silently ignored ("76ers splits without Embiid" would answer
         # the whole season).
-        raise Unsupported("player_splits cannot honor below/above, game_n, season_n, without or conditions for a team with no player named")
+        raise Unsupported("a team's splits cannot honor a line, a game of a series, an ordinal season or a teammate with no player named")
     if scope.split == "starter_bench" or scope.split in _STARTER_BENCH_SIDES:
         # "Bench scoring" is a sum over a team's players - a different
         # question from any this shape answers.

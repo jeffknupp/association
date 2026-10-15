@@ -209,7 +209,7 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Resul
     if isinstance(team, Unanswered):
         return team
     if team is None:
-        raise Unsupported("record_when needs a player or a team")
+        raise Unsupported("a record over a line needs a player or a team")
     stat, threshold = _record_when_team_stat(spelled(scope.measure), threshold_of(scope))
     # The line's own comparison: "10 or fewer turnovers" splits the games at
     # or under 10 from the rest, never as "10+" (ISSUES.md #325).
@@ -244,10 +244,10 @@ def _record_when_team_stat(stat: str | None, threshold: int | None) -> tuple[str
     own, and a stat that is only ever a PLAYER's (a team has no minutes
     total) says so by name."""
     if threshold is None or threshold < 1 or stat is None or stat not in THRESHOLD_STAT_COLUMNS:
-        raise Unsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+        raise Unsupported(f"a record over a line needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
     if stat not in TEAM_BOX_COLUMNS:
         # The only whitelisted player stat with no team figure.
-        raise Unsupported(f"record_when has no team figure for {STAT_LABELS.get(stat, stat)}s - a team has no minutes total")
+        raise Unsupported(f"a record over a line has no team figure for {STAT_LABELS.get(stat, stat)}s - a team has no minutes total")
     return stat, threshold
 
 

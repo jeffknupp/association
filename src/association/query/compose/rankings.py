@@ -193,7 +193,7 @@ def _leaderboard_career(scope: Filtered) -> bool:
     if not scope.span.career:
         return False
     if scope.span.season is not None:
-        raise Unsupported(f"leaderboard cannot tell whether a career span with {scope.span.season} named means that season, since it, or through it")
+        raise Unsupported(f"a ranking cannot tell whether a career span with {scope.span.season} named means that season, since it, or through it")
     return True
 
 
@@ -220,7 +220,7 @@ def _leaderboard_fields(scope: Filtered, metric: str) -> list[str]:
     requested = scope.measure.beside if scope.measure is not None else ()
     unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]
     if unknown:
-        raise Unsupported(f"unknown leaderboard field(s) {unknown}")
+        raise Unsupported(f"unknown ranking field(s) {unknown}")
     return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
 
 
@@ -239,7 +239,7 @@ def _leaderboard_metric(scope: Filtered, career: bool) -> str | None:
         # (the ``ranking_unit`` Cause, said by the planner) before the
         # point is planned; read here it is declined, never ranked as
         # another unit.
-        raise Unsupported(f"leaderboard has no {unit!r} form of {metric}")
+        raise Unsupported(f"a ranking has no {unit!r} form of {metric}")
     return metric
 
 
@@ -356,6 +356,6 @@ def _leaderboard_career_refusals(scope: Filtered, fields: list[str]) -> None:
     own. Declined, rather than answered with the
     league's list under the team's name."""
     if fields:
-        raise Unsupported("a career leaderboard cannot add per-game columns")
+        raise Unsupported("a career ranking cannot add per-game columns")
     if scope.who.team is not None:
         raise ShapeDeclined("franchise_career_ranking", {}, "franchise career leaderboards are not supported")

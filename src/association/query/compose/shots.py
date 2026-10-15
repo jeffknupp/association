@@ -252,7 +252,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result |
         return subject
     player, span = subject
     if span.career and _shots_windowed(scope):
-        raise Unsupported("shot_distance cannot combine a career span with a single game's order")
+        raise Unsupported("a shot distance cannot combine a career span with a single game's order")
     shot_value = shot_value_of(scope)
     if shot_value == 1:
         raise Unsupported("free throws have no meaningful shot distance")
@@ -529,7 +529,7 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result | Un
     player, ambiguous, span, defaulted = subject
     if span.career and _shots_windowed(scope):
         # "his last game" picks games inside one season; a career asks for every one.
-        raise Unsupported("shot_chart cannot combine a career span with a single game's order")
+        raise Unsupported("a shot chart cannot combine a career span with a single game's order")
     games = _shot_chart_games(con, player, span, scope, measures)
     if isinstance(games, Unanswered):
         return games

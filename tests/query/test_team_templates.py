@@ -1089,7 +1089,7 @@ def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: Ans
     by-month split is what is actually driving the answer."""
     assert "1-0" in (team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(situation=situation_of("in november")), window=Window(count=12))).text or "")
     assert team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), split="month", window=Window(count=12))).data["months"]
-    with pytest.raises(Unsupported, match="game_log"):
+    with pytest.raises(Unsupported, match="log's question"):
         team_record(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), window=Window(count=12)))
 
 

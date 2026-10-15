@@ -47,7 +47,7 @@ def _head_to_head_names(teams: tuple[str, ...], opponent_slot: str | None) -> li
     if opponent_slot is not None and opponent_slot.strip() and opponent_slot not in names:
         names = [*names, opponent_slot]
     if len(set(names)) < 2:
-        raise Unsupported("head_to_head needs two team names")
+        raise Unsupported("two teams' meetings need two team names")
     return names
 
 

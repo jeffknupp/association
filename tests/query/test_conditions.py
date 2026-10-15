@@ -596,7 +596,7 @@ def test_a_team_subject_refuses_without_rather_than_silently_dropping_it(league:
     without Tatum" used to answer the Celtics' whole season, identical to
     leaving `without` out and with nothing saying so. Refused now, the same
     way a starter/bench split already is for a team."""
-    with pytest.raises(Unsupported, match="without"):
+    with pytest.raises(Unsupported, match="a teammate"):
         player_splits(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),), span=Span(season_type=2)))
 
 
@@ -624,7 +624,7 @@ def test_a_team_subject_refuses_a_condition_rather_than_silently_dropping_it(lea
     ``conditions`` entry names a role - a start, a bench game, a line
     reached - for one specific player, and the team branch has no settled
     player to check it against."""
-    with pytest.raises(Unsupported, match="conditions"):
+    with pytest.raises(Unsupported, match="a teammate"):
         player_splits(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jayson Tatum", predicate="started"),), span=Span(season_type=2)))
 
 
@@ -1253,7 +1253,7 @@ def test_a_team_threshold_refuses_a_stat_with_no_team_figure(league: AnswerConte
     """minutes is a real record_when stat for a PLAYER, but a team has no
     minutes total - the refusal names that, not "record_when needs a
     player" (the wrong cause: a team WAS named)."""
-    with pytest.raises(Unsupported, match="record_when has no team figure for minutes"):
+    with pytest.raises(Unsupported, match="a record over a line has no team figure for minutes"):
         record_when(
             league,
             Reading(

@@ -854,7 +854,7 @@ def _compare_point(scope: Filtered) -> Reading:
     .. versionadded:: 5.0.0
     """
     if len(set(scope.who.players)) < 2:
-        raise Unsupported("player_compare needs at least two distinct player names")
+        raise Unsupported("a comparison needs at least two distinct player names")
     return Reading(**scope.filters(), read_as=PLAYER_COMPARISON, measures=(), group="player", predicates=[])
 
 
@@ -915,7 +915,7 @@ def _default_player_stat(scope: Filtered) -> Reading:
     games with averages beneath - the shape the question has - so the point
     is ``PLAYER_LOG``'s."""
     if not _named_player_in(scope):
-        raise Unsupported("player_stat needs a player")
+        raise Unsupported("a player's line needs a player")
     col = stat_column(scope.measure)
     measures = [col] if col else list(STAT_LINE)
     if scope.window.count or scope.window.order:
@@ -953,7 +953,7 @@ def _default_record_when(scope: Filtered) -> Reading:
     threshold = threshold_of(scope)
     if not _named_player_in(scope):
         # read_point reads a named player's moves only; a caller's mistake.
-        raise Unsupported("record_when needs a player, a stat and a positive threshold here")
+        raise Unsupported("a record over a line needs a player, a stat and a positive threshold here")
     stat = _named_stat(scope)
     if col is None and stat and stat.strip():
         raise PointRefused(Cause(kind="unknown_stat", facts={"shape": LINE_RECORD, "stat": stat}))
@@ -986,7 +986,7 @@ def _default_period_split(scope: Filtered) -> Reading:
     player is settled over the shot table, and over his career when a date
     names the game."""
     if not _named_player_in(scope):
-        raise Unsupported("period_split needs a player")
+        raise Unsupported("a player's quarter or half needs a player")
     measure = period_split_measure(scope.measure)
     date = scope.cuts.date
     if period_narrowing(scope) is None:
@@ -1037,7 +1037,7 @@ def _default_threshold_count(scope: Filtered) -> Reading:
         # The reason the count gives, where it has one (a threshold of 0
         # counts every game; no stat it keeps a line on), by its cause.
         threshold_count_line(scope)
-        raise Unsupported("threshold_count refuses; nothing to compare")
+        raise Unsupported("a count over a line refuses; nothing to compare")
     # A below/above phrase on the threshold's own number and stat - or
     # holding its words ("games with under 14 fta": the pair "14 fta" inside
     # the phrase, the model's stat another) - IS the count, misread as a
@@ -1061,7 +1061,7 @@ def _default_single_game_high(scope: Filtered) -> Reading:
     if col is None:
         raise PointRefused(Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": stat}) if stat else Cause(kind="needs_stat", facts={"shape": GAME_HIGHS}))
     if not _named_player_in(scope):
-        raise Unsupported("single_game_high needs a named player here")
+        raise Unsupported("a single game's high needs a named player here")
     return Reading(
         **scope.filters(),
         read_as=GAME_HIGHS,
@@ -1181,7 +1181,7 @@ def _default_with_without(scope: Filtered) -> Reading:
         texts = list(dict.fromkeys(n.strip() for n in scope.who.players))
         team_named = scope.who.team is not None
         if not ((team_named and len(texts) == 1) or (not team_named and len(texts) == 2)):
-            raise Unsupported(f"with_without needs exactly one teammate, got {texts!r}")
+            raise Unsupported(f"a with/without split needs exactly one teammate, got {texts!r}")
     return Reading(**scope.filters(), read_as=PRESENCE_SPLIT, measures=_RECORD, group="presence", predicates=[], relation="team")
 
 
@@ -1351,9 +1351,7 @@ def default_point(asked: PointShape | None, scope: Filtered) -> Reading:
     """
     reader = None if asked is None else DEFAULT_POINTS.get(asked)
     if reader is None:
-        # Every recorded reading's verdict quotes this sentence word for
-        # word, so it is kept as it stands.
-        raise Unsupported(f"no adapter for {key_path(asked)}")
+        raise Unsupported(f"no default point for {key_path(asked)}")
     return replace(reader(scope), asked=asked)
 
 

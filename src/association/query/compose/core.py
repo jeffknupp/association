@@ -666,7 +666,7 @@ def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Ent
     scope = q
     texts = list(dict.fromkeys(n.strip() for n in scope.who.players))
     if len(texts) != 2:
-        raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
+        raise Unsupported(f"a matchup needs exactly two players, got {texts!r}")
     first = replace(q, **(replace(scope, who=replace(scope.who, players=(texts[0],)), window=replace(scope.window, order=None, count=None), cuts=replace(scope.cuts, opponent=None))).filters())
     a, span, narrowed = _resolve_named(con, first)
     assert a is not None
@@ -743,7 +743,7 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
             # A real limit with no order on splits or a record over a line
             # is "his last N games" - a window refused rather than answered
             # for the whole span.
-            raise Unsupported("a limited number of recent games is game_log's question")
+            raise Unsupported("a limited number of recent games is a log's question")
         narrowed.window = None
 
 
@@ -1093,7 +1093,7 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     .. versionadded:: 4.4.0
     """
     if q.source != "games":
-        raise Unsupported(f"the {q.source} source is read by the templates' own readers, not compiled")
+        raise Unsupported(f"the {q.source} source is read by its own readers, not compiled")
     _check_relation_scoping(q, q.subject)
     _check_split_category(q)
     _check_period_measures(q)

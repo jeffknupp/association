@@ -337,7 +337,7 @@ class Agent:
             # rather than crashing.
             history.record_model_call(time.monotonic() - t0)
             history.log(f"  -> (scope) {exc}: refused")
-            self.unanswered = f"a slot the Reading cannot hold: {exc}"
+            self.unanswered = f"a value the Reading cannot hold: {exc}"
             return None
         history.record_model_call(time.monotonic() - t0)
         if read is None:

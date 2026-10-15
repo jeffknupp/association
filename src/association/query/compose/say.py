@@ -4907,8 +4907,7 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
         f"Ask for the team's points, threes, rebounds, turnovers or free throw percentage in that period, or for {facts['stat']} over whole games."
     ),
     "bench_points": lambda _facts: (
-        "Bench points are not read yet - the box score flags starters, so a bench total could be built, but no template or the compiler adds one up today. "
-        "Ask for a named player's points, or a team's points, instead."
+        "Bench points are not read yet - the box score flags starters, so a bench total could be built, but nothing here adds one up yet. Ask for a named player's points, or a team's points, instead."
     ),
     "team_boolean_count": _say_team_boolean_count,
     "cannot_honor": lambda facts: _shape_declined(facts, decline_body(facts)),
@@ -5013,10 +5012,10 @@ _DECLINE_REASONS: dict[DeclineReason, str] = {
     DeclineReason.BOTH_HALVES: "the bare starter/bench category is a table of both halves; this reader honors one named half",
     DeclineReason.NEEDS_NAMED_PLAYER: "only his own games can be narrowed that way",
     DeclineReason.NO_SINGLE_SUBJECT: "the league-wide streak has no single subject to narrow",
-    DeclineReason.LOG_WHOLE_GAMES: "the log's retired sentence heads whole games and never names a quarter or half",
-    DeclineReason.LINE_WHOLE_GAMES: "the season line's retired sentence heads whole games and never names a quarter or half",
+    DeclineReason.LOG_WHOLE_GAMES: "the log's sentence heads whole games and never names a quarter or half",
+    DeclineReason.LINE_WHOLE_GAMES: "the season line's sentence heads whole games and never names a quarter or half",
     DeclineReason.SPLITS_ONE_GAME: "one game has nothing to split",
-    DeclineReason.SPLITS_RECENT_GAMES: "a limited number of recent games is game_log's question",
+    DeclineReason.SPLITS_RECENT_GAMES: "a limited number of recent games is a log's question",
     DeclineReason.SPLITS_WHOLE_GAMES: "the splits table is headed as whole games; a quarter's or half's split would print under the same heading",
     DeclineReason.BOTH_TYPES_ASIDE: "the answer is one season type's; read over both at once its sentence would not say which games were the postseason's",
     DeclineReason.RECORD_ONE_GAME: "one game has no record",
@@ -5051,8 +5050,8 @@ _DECLINE_REASONS: dict[DeclineReason, str] = {
     DeclineReason.SEASON_COUNT_RANGE: "a count of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
     DeclineReason.HISTORY_RANGE: "a history is every season or the last N of them, newest first; a range bounded by years is not how its rows are chosen",
     DeclineReason.HISTORY_BOTH: "a history lists one season type's rows; both at once would interleave two rows per season",
-    DeclineReason.COMPARISON_SPAN: "a comparison of two lines is one season's; the retired words state no span",
-    DeclineReason.COMPARISON_NARROWINGS: "a comparison of two lines is one season's row each; the retired words state no line, teammate, split, window or quarter",
+    DeclineReason.COMPARISON_SPAN: "a comparison of two lines is one season's; its words state no span",
+    DeclineReason.COMPARISON_NARROWINGS: "a comparison of two lines is one season's row each; its words state no line, teammate, split, window or quarter",
     DeclineReason.QUARTER_RANKING_SEASON: "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
     DeclineReason.QUARTER_RANKING_TYPE: "a ranking by a quarter is one season's and one type's: the rebuilt figures' accuracy is measured per season and type",
     DeclineReason.QUARTER_RANKING_CUTS: (

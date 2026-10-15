@@ -163,7 +163,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
         period = scope.period
         quarter = period.number if period is not None and not period.half else None
         half = period.number if period is not None and period.half else None
-        raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={quarter!r} half={half!r}")
+        raise Unsupported(f"a player's quarter or half needs a period 1-10 or a half 1-2, got period={quarter!r} half={half!r}")
     measure = period_split_measure(scope.measure)
     if q.measures != [measure]:
         return None
@@ -591,11 +591,11 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Re
         period = scope.period
         quarter = period.number if period is not None and not period.half else None
         half = period.number if period is not None and period.half else None
-        raise Unsupported(f"team_quarter_points needs a period 1-10 or a half 1-2, got period={quarter!r} half={half!r}")
+        raise Unsupported(f"a team's quarter or half needs a period 1-10 or a half 1-2, got period={quarter!r} half={half!r}")
     periods, period_label = asked
     if scope.who.player is not None:
         # A named player's quarter or half is period_split's.
-        raise Unsupported("team_quarter_points cannot answer for a named player")
+        raise Unsupported("a team's quarter or half cannot answer for a named player")
     measured = _team_quarter_points_measure(scope.measure)
     if isinstance(measured, Unanswered):
         return measured
@@ -693,7 +693,7 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result 
     try:
         measure = period_split_measure(scope.measure)
     except Unsupported as exc:
-        raise Unsupported(f"period_leaderboard ranks only what the period's line rebuilds - {exc}") from exc
+        raise Unsupported(f"a ranking by a quarter or half ranks only what the period's line rebuilds - {exc}") from exc
     if measure in PERIOD_RATES:
         # A games-played qualifier says nothing about attempts, and a
         # percentage over a handful of them ranks noise.

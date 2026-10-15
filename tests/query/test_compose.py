@@ -380,7 +380,7 @@ def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: AnswerContext)
     is "his last N games" - a window ``player_splits`` refuses rather than
     silently answering for the whole span."""
     q = planned_query(PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=Window(count=5)))
-    with pytest.raises(Unsupported, match="game_log's question"):
+    with pytest.raises(Unsupported, match="a log's question"):
         compile_query(cx_ctx.con, q)
 
 

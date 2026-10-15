@@ -75088,7 +75088,7 @@
     }
    ],
    "point": null,
-   "point_declined": "no adapter for none",
+   "point_declined": "no default point for none",
    "point_refusal": null
   }
  },

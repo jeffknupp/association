@@ -219,7 +219,7 @@ def _with_without_infer_teammate(team: Entity | None, texts: list[str]) -> tuple
         return texts, []
     if team is None and len(texts) == 2:
         return texts[1:], texts[:1]
-    raise Unsupported(f"with_without needs exactly one teammate, got {texts!r}")
+    raise Unsupported(f"a with/without split needs exactly one teammate, got {texts!r}")
 
 
 def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str], texts: list[str], scope: _Scope) -> tuple[list[Entity], Entity | None] | Unanswered:
@@ -243,7 +243,7 @@ def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str],
         if found.id not in {m.id for m in mates} and found.id not in {s.id for s in subjects}:
             subjects.append(found)
     if len(subjects) > 1:
-        raise Unsupported(f"with_without answers for one player, got {[s.name for s in subjects]}")
+        raise Unsupported(f"a with/without split answers for one player, got {[s.name for s in subjects]}")
     subject = subjects[0] if subjects else None
     return mates, subject
 
