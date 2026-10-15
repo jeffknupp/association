@@ -1041,6 +1041,19 @@ EACH_SEASON = re.compile(r"\b(?:each|every|per)\s+(?:season|year)\b|\b(?:season|
 
 .. versionadded:: 6.0.0
 """
+MEASURES_COMBINED = re.compile(
+    r"(?<![\w%/])(?P<first>[a-z][\w%]*)\s*(?:\+|\*|\bplus\b|\bminus\b|\btimes\b)\s*(?:(?:opp|opponents?'?|opponent's)\s+)?(?=(?P<second>[a-z][\w%]*))",
+    re.IGNORECASE,
+)
+"""Two measure words joined by an arithmetic word - "fgm + opp fgm",
+"ortg + drtg", "ppg*ts%", "opp fga minus opp fgm" - a figure combined from
+both, which nothing reads (``point._measures_combined_refused``,
+ISSUES.md #424). Each side is checked to name a measure; "+/-" and "20+"
+are no such pair.
+
+.. versionadded:: 6.0.0
+"""
+
 FIRST_GAMES_OF_SEASONS = re.compile(rf"\b(?:first|opening)\s+(?:{_SEASON_COUNT})\s+games?\b(?=.*\b(?:last|past|previous)\s+{N_SEASONS}\b)", re.IGNORECASE)
 """A season's first games beside a count of seasons - "the first 15 games
 last 10 season" (ISSUES.md #432): a season's opening games over each of

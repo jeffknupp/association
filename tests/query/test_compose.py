@@ -2620,6 +2620,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
     "single_season_ranking": {"shape": PLAYER_RANKING, "words": "in a single season"},
     "ranking_needs_stat": {"shape": PLAYER_RANKING},
+    "measures_combined": {"shape": PLAYER_RANKING, "words": "fgm + opp fgm"},
 }
 
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence

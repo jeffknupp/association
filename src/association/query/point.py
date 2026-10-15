@@ -33,7 +33,20 @@ from association.query.cuts import CutsRead
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
 from association.query.line import LineCandidate, LineCandidates, LinesRead
 from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
-from association.query.measure import GAMES_STATS, MADE_TO_ATTEMPTED, NETPOINTS_PER_100, MeasureContext, MeasureRead, MeasureWords, how_of, key_of, measured, named_by_a_team_metric
+from association.query.measure import (
+    GAMES_STATS,
+    MADE_TO_ATTEMPTED,
+    NETPOINTS_PER_100,
+    MeasureContext,
+    MeasureRead,
+    MeasureWords,
+    how_of,
+    key_of,
+    measured,
+    named,
+    named_by_a_team_metric,
+    team_metric_named,
+)
 from association.query.measures import (
     BOOLEAN_MEASURES,
     DERIVED_LINES,
@@ -1674,6 +1687,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
     _player_rating_refused(reading.asked, question)
     _player_win_pct_refused(reading.asked, question)
+    _measures_combined_refused(reading.asked, question)
     scope = _season_lines_refused(reading.asked, question, scope)
     try:
         point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _seasons_counted(_read_point(reading.asked, scope, question, subject), reading.asked, question)
@@ -1755,6 +1769,27 @@ def _player_rating_refused(asked: PointShape | None, question: str) -> None:
     rating = lexicon.PLAYER_RATING.search(question)
     if rating is not None and lexicon.TEAM_WORD_HERE.search(question) is None:
         raise PointRefused(Cause(kind="fact_not_read", facts={"fact": "player rating", "words": rating.group(0)}), f"{rating.group(0)!r} is a team's figure")
+
+
+def _measures_combined_refused(asked: PointShape | None, question: str) -> None:
+    """Two measures joined by an arithmetic word ("fgm + opp fgm", "ortg +
+    drtg", "ppg*ts%") ask a figure combined from both, which no measure
+    reads: the measure tagger read the first and answered it alone
+    (ISSUES.md #424). Refused by a cause naming both - but on a log, whose
+    rows show each game's line, "points+rebounds game log" asks for the two
+    columns, which it shows."""
+    if asked is not None and asked.shape == "rows" and asked.by == "date":
+        return
+    for found in lexicon.MEASURES_COMBINED.finditer(question):
+        first, second = found.group("first"), found.group("second")
+        if _names_a_measure(first) and _names_a_measure(second):
+            raise PointRefused(Cause(kind="measures_combined", facts={"shape": asked, "words": question[found.start() : found.end("second")]}))
+
+
+def _names_a_measure(word: str) -> bool:
+    """Whether one word names a measure - a box-score word, a rate, a team
+    metric's alias (``measure.named``, ``team_metric_named``)."""
+    return named(word) is not None or team_metric_named(word) is not None
 
 
 def _player_win_pct_refused(asked: PointShape | None, question: str) -> None:

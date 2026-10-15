@@ -5316,7 +5316,14 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
     "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
+    "measures_combined": lambda facts: _measures_combined(facts["words"]),
 }
+
+
+def _measures_combined(words: str) -> str:
+    """The refusal for two measures combined by an arithmetic word (ISSUES.md
+    #424): no measure here is a sum or a product of two."""
+    return f"A figure combined from two stats ({words!r}) is read by nothing here yet - ask for each stat on its own."
 
 
 def _ranking_needs_stat() -> str:
