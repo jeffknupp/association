@@ -1,12 +1,8 @@
 """The point reader: the question's own words, read in code - the way the
-grammar's rules (:mod:`association.query.grammar`; the router's ``route()``,
-its ``CODE_ASSIGNED_INTENTS`` and ``_validate_*`` helpers, before them) read
-them, never through a prompt - move the measure or the shape off the
-default point of what the words ask (the aggregate is the planner's,
-derived from them since Phase 5, step 4: ``compose.plan.aggregate_of``)
-(:func:`default_point`; until Phase 2 deleted the adapters it was read on
-the answer side, ``compose.adapt``, this module's one reach there).
-:func:`read_point` is the parser's last step
+grammar's rules (:mod:`association.query.grammar`) read them, never
+through a prompt - move the measure or the shape off the default point of
+what the words ask (:func:`default_point`; the aggregate is the planner's,
+``compose.plan.aggregate_of``). :func:`read_point` is the parser's last step
 (``parse.with_point``): it writes the point into the Reading, or why there
 is none - a decline (:class:`~association.query.reading.Unsupported`) or a
 refusal's cause (:class:`~association.query.reading.PointRefused`) the
@@ -134,17 +130,15 @@ if TYPE_CHECKING:
 #: What a ``rows`` point a shared move reads is read as (its
 #: :class:`PointShape` on the player-games relation), under the words it
 #: was read under - what one row is said BY: a log's and a line's games by date
-#: (``compose.logs``, which the retired ``player_stat`` handed a single game
-#: to), a single game's high by the measure, a count's games by the count
+#: (``compose.logs``, which reads a line asked of a single game too), a single
+#: game's high by the measure, a count's games by the count
 #: (``compose.counts``); ``""`` under any other words - no reader takes the
 #: point, and the compiler's own sentence states what it lists. Keyed by
-#: what the words asked (the grammar's key) since Phase 3, step 4, the
-#: retired intent's name until then; the ``by`` alone until Phase 5, step 4
-#: (D9), when the point declared its shape as three fields.
+#: what the words asked (the grammar's key).
 _ROWS_BY: dict[PointShape | None, PointShape] = {PLAYER_LOG: PLAYER_LOG, PLAYER_LINE: PLAYER_LOG, GAME_HIGHS: GAME_HIGHS, GAMES_COUNTED: PointShape("player_games", "rows", "count")}
 #: The same for a count a shared move reads ("how many ... won", a boolean
 #: measure counted): his line (``compose.stats``), his count
-#: (``compose.counts``), or - under ``record_when``'s words - the record
+#: (``compose.counts``), or - under a record over a line's words - the record
 #: over a line the count is said as (``compose.records``, a split by the
 #: line); a scalar nothing reads otherwise.
 _COUNT_SHAPES: dict[PointShape | None, PointShape] = {PLAYER_LINE: PointShape("player_games", "scalar", "line"), GAMES_COUNTED: GAMES_COUNTED, LINE_RECORD: LINE_RECORD}
@@ -167,7 +161,7 @@ _TEAM_WORD_KEYS: dict[str, Measure] = {"points_allowed": Measure(key="points", w
 
 
 def _measured(*names: str) -> tuple[Measure, ...]:
-    """A point's measures, typed (``Reading.measures``, Phase 4, step 3):
+    """A point's measures, typed (``Reading.measures``):
     each name the point reader reads a measure by - the lexicon's measure
     words, a line's stat, a log's or a line's default columns
     (:data:`~association.query.measures.LINE`, ``SPLIT_LINE``,
@@ -265,11 +259,9 @@ def _everyone_threshold_predicates(scope: Filtered, measure: str | None, predica
     """The line the threshold grammar read ("a 30 point triple double game"
     is points >= 30, whatever stat the model filed beside the number): its
     own measure, read from the number's words; the model's stat only where
-    a line was built with no words of its own (one built by hand; the tests'
-    slot door's until Phase 4, step 0). Until Phase
-    3, step 2 this re-read the number's words from the question, and its
-    pattern could not pass a comma ("most games with 20 pt,s 10 reb, 5
-    ast" fell back to the model's "rebounds")."""
+    a line was built with no words of its own (one built by hand). The
+    typed line is the one reading of the number's words, so a comma inside
+    them ("most games with 20 pt,s 10 reb, 5 ast") keeps the words' stat."""
     line = threshold_line(scope)
     if line is None or int(line.value) <= 0:
         return predicates
@@ -340,7 +332,7 @@ def _everyone_boolean_game_ranking(asked: PointShape | None, question: str, scop
         # never the games ranked by the line's stat.)
         return None
     # "Most triple-doubles" is a COUNT per player (the season line's own
-    # metric, leaderboard's retired reader): the games are ranked only where
+    # metric): the games are ranked only where
     # the question sizes them - "highest scoring", "biggest", or a stat word
     # of its own ("most rebounds in a double double"), or the parser's
     # `ranked_by`.
@@ -366,9 +358,8 @@ def _numbered_lines(scope: Filtered) -> list[tuple[str, str, Any]]:
     league-wide multi-line count a single ``threshold`` slot could not carry
     (F161: "33 point and 13 rebound and 10 assist 2 blocks and 2 steals"):
     the subject's whole-game lines at or above a number, each column once.
-    Until Phase 3, step 2 this re-read every number's own trailing words
-    from the question (``_NUMBER_STAT``); the typed lines are the one
-    reading of them.
+    The typed lines are the one reading of every number's own trailing
+    words.
 
     .. versionadded:: 4.4.0
     """
@@ -422,8 +413,7 @@ def _everyone_multi_line_games(asked: PointShape | None, scope: Filtered, questi
 
 def _everyone_threshold_count_line(scope: Filtered) -> list[tuple[str, str, Any]]:
     """The question's own keyed line (:func:`~association.query.lines.threshold_line`:
-    the stat at its number, the router's ``stat`` and ``threshold`` slots
-    until Phase 3, step 2), as the one line a
+    the stat at its number), as the one line a
     league-wide count counts - where :func:`_everyone_threshold_predicates`
     added nothing because the line is on the very measure it would rank by.
     "Most games with 15+ assists in 2024?" declined for want of a line until
@@ -462,9 +452,8 @@ def _everyone_threshold_count(asked: PointShape | None, scope: Filtered, predica
     per-game ranking."""
     if asked != GAMES_COUNTED and not (predicates and scope.who.team):
         # A TEAM's players' boolean games ("thunder all-time triple doubles",
-        # yardstick-v2 F152) is this count too, whatever the words ask (the
-        # router filed it as any intent) - the team narrows the league read
-        # to its roster's games.
+        # yardstick-v2 F152) is this count too, whatever the words ask - the
+        # team narrows the league read to its roster's games.
         return None
     if not predicates and asked == GAMES_COUNTED:
         threshold = threshold_of(scope)
@@ -478,7 +467,6 @@ def _everyone_threshold_count(asked: PointShape | None, scope: Filtered, predica
     if not predicates:
         raise PointRefused(Cause(kind="needs_line"))
     if scope.cuts.season_n:
-        # The refusal threshold_count's retired template gave:
         # "his 15th season" is a place in one career, and the league has none -
         # read over everyone it narrowed to players in their 15th season of the
         # default year while the sentence named only the year.
@@ -559,7 +547,7 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
         stat = _named_stat(scope)
         if scope.measure is not None and scope.measure.key == "shot_distance":
             # The measure tagger's sentinel key (lexicon.SHOT_DISTANCE_RANKED):
-            # the retired template's own refusal, naming the real cause.
+            # refused by the real cause, no ranking of shot distance.
             raise PointRefused(Cause(kind="shot_distance_ranking"))
         if stat is not None and stat.strip():
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
@@ -569,8 +557,7 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
     if lexicon.TOTAL_WORD.search(question):
         # "most total points by a center": the measure is asked as a total
         # (``Measure.how``), what the planner derives the ranking's sum from
-        # (``compose.plan.aggregate_of``; the point stamped the aggregate
-        # until Phase 5, step 4) - a measure of no key where the words name
+        # (``compose.plan.aggregate_of``) - a measure of no key where the words name
         # none the catalog holds ("total corners"), the ranking's points the
         # total taken.
         scope = replace(scope, measure=Measure(how="total") if scope.measure is None else replace(scope.measure, how="total"))
@@ -604,8 +591,8 @@ def _everyone_ranking_counted(scope: Filtered, predicates: list[tuple[str, str, 
     not rank ("most triple doubles since 2020": a range of seasons, where
     the season line's metric counts one season or a whole career) - each
     player's count of the games it holds, the count's own ranking
-    (``player_games/ranking/count``), where the game-level ranking dropped
-    the predicate and ranked points per game until ISSUES.md #421. None
+    (``player_games/ranking/count``), never the game-level ranking, which
+    drops the predicate and ranks points per game (ISSUES.md #421). None
     where a predicate is no yes/no measure held true."""
     if not predicates or not all(name in BOOLEAN_MEASURES and value is True for name, _, value in predicates):
         return None
@@ -634,8 +621,8 @@ def _games_played_minimum(scope: Filtered) -> int | None:
 
 
 def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> Reading | None:
-    """``leaderboard``'s own point (its template retired, ROADMAP plan item
-    6, step (g)): a ranking of the league or a team over the SEASON LINE -
+    """A ranking of players' own point (``PLAYER_RANKING``): a ranking of
+    the league or a team over the SEASON LINE -
     ``run_leaderboard``'s pool, floors, traded-player dedup and NetPoints
     tables - read by ``compose.rankings.read_leaderboard`` and said by the sayer,
     for a stat that resolves to a leaderboard metric with no line on a
@@ -764,8 +751,8 @@ def _measure_for_named(scope: Filtered, question: str) -> str | None:
 def _move_single_game(asked: PointShape | None, scope: Filtered, question: str, measure: str | None) -> Reading | None:
     """ "Most ... in a game" for a named player: rows by measure - and
     "most points by curry vs lebron", with a player on the other side of
-    the games (ROADMAP step 3): against a named opponent, "most" is his best
-    meeting, the question a pair's summary never answered."""
+    the games: against a named opponent, "most" is his best meeting, the
+    question a pair's summary does not answer."""
     if not measure or measure in BOOLEAN_MEASURES:
         return None
     against = any(c.side == "opponent" for c in scope.companions)
@@ -795,7 +782,7 @@ def _move_boolean_count(question: str, measure: str | None, asked: PointShape | 
 
     Also the reading for a boolean measure on a one-figure shape with no
     "how many" at all - "sengun double-doubles vs southeast division career
-    away" (yardstick-v2 F055) routed ``player_splits``, whose figure is a
+    away" (yardstick-v2 F055) asks for splits (``PLAYER_SPLITS``), whose figure is a
     per-game line, and a condition has no per-game line: its count is the
     only figure there is (``core._agg`` refuses the average).
     """
@@ -819,8 +806,7 @@ def _move_boolean_count(question: str, measure: str | None, asked: PointShape | 
 def _move_boolean_count_is_line(measure: str, scope: Filtered) -> bool:
     """Whether a boolean measure is, by its one definition
     (:data:`~association.query.measures.DERIVED_LINES`), exactly the keyed
-    line (:func:`~association.query.lines.threshold_line`; the router's
-    ``stat``/``threshold`` slots until Phase 3, step 2) - ``fouled_out`` is
+    line (:func:`~association.query.lines.threshold_line`) - ``fouled_out`` is
     ``fouls >= 6``."""
     column = stat_measure(scope.measure)
     threshold = threshold_of(scope)
@@ -830,17 +816,16 @@ def _move_boolean_count_is_line(measure: str, scope: Filtered) -> bool:
 
 
 def _move_player_history(asked: PointShape | None, scope: Filtered, career: Filtered, measure: str | None) -> Reading | None:
-    """``player_history``: a per-season history, read from the season line
-    (``on="player_seasons"``) over the question's own filters - the retired template's own
-    read. Where the season line does not say it, the planner plans it as a
+    """A player's per-season history (``SEASON_HISTORY``), read from the
+    season line (``on="player_seasons"``) over the question's own filters.
+    Where the season line does not say it, the planner plans it as a
     career of games grouped by season, newest first (``compose.plan.plan``)."""
     if asked != SEASON_HISTORY:
         return None
     if measure is None and scope.measure is not None and scope.measure.named and scope.measure.key not in HISTORY_STATS:
         # A stat named that neither the season line nor the games carry
-        # ("shot_distance"): refused, as player_history's retired template
-        # refused it - never drawn as the points history the default measure
-        # below would read in its place.
+        # ("shot_distance"): refused - never drawn as the points history the
+        # default measure below would read in its place.
         raise Unsupported(f"no per-season history for stat {scope.measure.as_typed!r}")
     del career  # the season line reads the question's own span; the planner's game-level point widens it
     # No stat named: the whole line season by season (ISSUES.md #387), where
@@ -859,11 +844,10 @@ def _move_player_history(asked: PointShape | None, scope: Filtered, career: Filt
 
 
 def _compare_point(scope: Filtered) -> Reading:
-    """``player_compare``'s own point (its template retired, ROADMAP plan
-    item 6, step (g)): two or more named players' season lines side by side
-    (``on="player_seasons"``, grouped by player), read by
-    ``compose.seasons.read_player_compare`` and said by the sayer. The template's own
-    refusal is the point's: fewer than two distinct names. A narrowing -
+    """A comparison's own point (``PLAYER_COMPARISON``): two or more named
+    players' season lines side by side (``on="player_seasons"``, grouped by
+    player), read by ``compose.seasons.read_player_compare`` and said by the
+    sayer. Refused with fewer than two distinct names. A narrowing -
     it honors none - is the planner's to decline
     (:func:`~association.query.compose.plan.cells_declined`).
 
@@ -877,15 +861,13 @@ def _compare_point(scope: Filtered) -> Reading:
 # --- the default points -----------------------------------------------------------
 #
 # The point a bare key means before any of the question's own words move
-# it, for the shapes Phase 2 has ported (``ROADMAP.md``, "Phase 2, the
-# expected steps", step 1): read from the filters alone, on the reader's side.
-# Every default point is here since the last adapter went (step 3).
+# it: read from the filters alone, on the reader's side.
 
 
 def _default_game_log(scope: Filtered) -> Reading:
-    """``game_log``'s default point: the newest games, in date order. A REAL
-    stat neither the log's columns nor the relation carries is declined, as
-    the retired template refused it (:func:`~association.query.measures.log_extras`):
+    """A player's log's default point (``PLAYER_LOG``): the newest games, in
+    date order. A REAL stat neither the log's columns nor the relation
+    carries is declined (:func:`~association.query.measures.log_extras`):
     "luka shot distance log" listed without it would be the narrower answer
     passed off as the one asked for. A ``threshold`` on a log is the line it
     keeps games past ("games with 15+ fga"), on the stat's column - one that
@@ -1001,8 +983,8 @@ def _default_period_split(scope: Filtered) -> Reading:
     rebuilds (:func:`~association.query.measures.period_split_measure`) -
     points where no stat was named - or, with no period named, his four
     quarters side by side, a ``grouped`` read by ``period`` (#162). The
-    player is settled over the shot table, as the template settled him,
-    and over his career when a date names the game."""
+    player is settled over the shot table, and over his career when a date
+    names the game."""
     if not _named_player_in(scope):
         raise Unsupported("period_split needs a player")
     measure = period_split_measure(scope.measure)
@@ -1182,14 +1164,13 @@ def _default_player_matchup(scope: Filtered) -> Reading:
 
 
 def _default_with_without(scope: Filtered) -> Reading:
-    """``with_without``'s default point: a team's record in the games named
+    """A with/without split's default point (``PRESENCE_SPLIT``): a team's record in the games named
     teammates played against the games they missed - the team relation's
     ``presence`` group (``compose.team.compile_team_presence``) - with the
-    subject's averages in each where a player is named. The retired
-    template's own early refusal is the point's (ROADMAP plan item 6, step
-    (g)): no teammate to divide by - the teammates come from ``without`` or
-    ``with_player``, a ``conditions`` role
-    (:func:`~association.query.subject.with_without_named`), or failing those
+    subject's averages in each where a player is named. Refused with no
+    teammate to divide by - the teammates are the typed companions (an
+    absence, else the ones who played, else a stated role:
+    :func:`~association.query.subject.with_without_named`), or failing those
     the one name beside a team or the second of two; more than that is
     "record when A and B and C play", which nobody has defined. A narrowing
     its words do not state is the planner's to decline (its shape's row,
@@ -1256,7 +1237,7 @@ def _default_team_game_high(scope: Filtered) -> Reading:
     every team's where none is named, ranked by the figure the words name
     (points where they name none) - the team relation's rows by measure
     (``compose.highs.read_team_game_high``, over the team box row the
-    figure is on). D4 lifted for it (Jeff, 2026-10-13; ISSUES.md #364).
+    figure is on; ISSUES.md #364).
 
     .. versionadded:: 6.0.0
     """
@@ -1347,12 +1328,11 @@ DEFAULT_POINTS: dict[PointShape, Callable[[Filtered], Reading]] = {
     SHOT_CHART: _default_shot_chart,
     SHOT_DISTANCE: _default_shot_distance,
 }
-"""What the words ask (the grammar's key) -> its default point, read by the reader itself (Phase 2, step 1:
-slice (i)'s five; step 2: ``threshold_count``, ``single_game_high``, the
-streak and the matchup; step 3: the with/without split, the last of the
-adapters, which went with ``compose.adapt``; step 5: the NetPoints relation's
-two and the shot relation's two, :data:`~association.query.reading.DECLARED_RELATIONS`). A key with no entry here
-has its point read elsewhere in this module (:func:`read_point`) or none.
+"""What the words ask (the grammar's key) -> its default point, read by the
+reader itself, the declared relations' four
+(:data:`~association.query.reading.DECLARED_RELATIONS`) among them. A key
+with no entry here has its point read elsewhere in this module
+(:func:`read_point`) or none.
 
 .. versionadded:: 5.0.0
 
@@ -1374,9 +1354,8 @@ def default_point(asked: PointShape | None, scope: Filtered) -> Reading:
     """
     reader = None if asked is None else DEFAULT_POINTS.get(asked)
     if reader is None:
-        # The sentence the adapters' table gave until it went, kept so no
-        # reading's verdict moves with the file - the retired name, from
-        # the one table.
+        # Every recorded reading's verdict quotes this sentence word for
+        # word, so it is kept as it stands.
         raise Unsupported(f"no adapter for {key_path(asked)}")
     return replace(reader(scope), asked=asked)
 
@@ -1393,8 +1372,8 @@ def _move_named(asked: PointShape | None, scope: Filtered, question: str) -> Rea
     """The moves that apply once a player is named, tried in order - a
     single-game high, a career win count, a career boolean count, a
     per-season history, and finally the asked key's own default point. A
-    quarter or half of a named player's games is ``period_split``'s own
-    point (the retired template read its slots alone, so no word moves it);
+    quarter or half of a named player's games is the period log's own
+    point (``PERIOD_LOG``: no word moves it);
     under any other key it is declined, since the point would print the
     game's figure under the quarter's heading."""
     if asked == PERIOD_LOG:
@@ -1458,16 +1437,16 @@ def _read_as(scope: Filtered, subject: Subject) -> Filtered:
 
 
 def team_log_point(scope: Filtered, subject: Subject) -> Reading | None:
-    """A ``game_log`` question about a team and no player - "show me the
+    """A log question (``PLAYER_LOG``) about a team and no player - "show me the
     Knicks last 5 games" - as the team's own games listed: a ``rows`` point
     on the team relation, in date order, the window the question asked
-    (``compose.logs.read_team_log`` reads it and ``compose.say`` says it in
-    the retired template's words). The team is the typed subject's, or the one
+    (``compose.logs.read_team_log`` reads it and ``compose.say`` says it).
+    The team is the typed subject's, or the one
     the subject reading found where the model dropped it. ``None`` where
     the question is not that: a named player (his own log, the player
-    relation's), or a position group ("centers game log vs kings" - the
-    template answered the KINGS' log; the league-wide read lists the
-    centers' games against them, which is the question).
+    relation's), or a position group ("centers game log vs kings" is the
+    centers' games against the Kings, the league-wide read, never the
+    Kings' own log).
 
     .. versionadded:: 5.0.0
     """
@@ -1495,10 +1474,10 @@ def team_log_point(scope: Filtered, subject: Subject) -> Reading | None:
 
 
 def team_splits_point(scope: Filtered, subject: Subject) -> Reading | None:
-    """A ``player_splits`` question about a team and no player - "76ers wins
+    """A splits question (``PLAYER_SPLITS``) about a team and no player - "76ers wins
     vs losses" - as the team's own splits: a ``grouped`` point on the team
     relation (``compose.splits.read_team_splits`` reads it and ``compose.say``
-    says it in the retired template's words).
+    says it).
     The team is read as :func:`team_log_point` reads it.
 
     .. versionadded:: 5.0.0
@@ -1558,7 +1537,7 @@ def team_read_point(scope: Filtered, question: str, subject: Subject) -> Reading
         return None
     team_text = scope.who.team
     if team_text is None or team_text == "any_team":
-        # The model dropped the team (F127's shape; the router did too): the
+        # The model dropped the team (F127's shape): the
         # subject reading has it, from the question's own team word.
         if scope.who.kind not in ("team", "team_players") or not subject.teams:
             return None
@@ -1580,8 +1559,7 @@ question's words read no other point for the key - and a point the words
 DO read under one of these keys (a team's own total, "how many 3-pointers
 have the Magic made", :func:`team_read_point`) is read and said as this
 shape too (:func:`read_point`): the team-season reader is tried first and
-the team compiler's sum answers where it declines (``compose.answer``), as
-the retired template was tried before the compiler.
+the team compiler's sum answers where it declines (``compose.answer``).
 
 .. versionadded:: 5.0.0
 
@@ -1616,9 +1594,9 @@ def team_season_point(asked: PointShape, scope: Filtered) -> Reading:
     """The point on its team-season relation for what the words ask (``asked``, one of
     (:data:`TEAM_SEASON_POINTS`), over ``scope`` as the question settled it:
     the reader names the relation and the shape, and reads no metric - which
-    of ``team_metrics.TEAM_METRICS`` the ``stat`` slot names, and what a
+    of ``team_metrics.TEAM_METRICS`` the measure names, and what a
     word it does not know is refused with, is the relation's reader's
-    (``compose.team_stats``), as it was the retired templates'.
+    (``compose.team_stats``).
 
     .. versionadded:: 5.0.0
 
@@ -1632,7 +1610,7 @@ def team_season_point(asked: PointShape, scope: Filtered) -> Reading:
 
 def read_point(reading: Reading, question: str) -> Reading:
     """The default point of what ``reading``'s words ask, moved by ``question``'s own words: a
-    measure beyond a retired template's list, a skeleton move ("most ... in a game" =
+    measure beyond the default's, a skeleton move ("most ... in a game" =
     rows by measure; "how many ... won" = count with a predicate) - none of it
     through a prompt edit. A team named with no player
     (:func:`team_read_point`) is tried before the league-wide reading, since a
@@ -1695,9 +1673,7 @@ def read_point(reading: Reading, question: str) -> Reading:
         if reading.asked not in TEAM_SEASON_POINTS:
             raise
         # No other reading of the point: the team's own season is the
-        # question (Phase 2, step 4). Until then this was a decline - "a
-        # team's own question is not the player relation's" - which the
-        # retired template answered past.
+        # question, never a decline.
         point = team_season_point(reading.asked, replace(scope, who=scope.who.without_position()))
     _minimum_honored(scope, point)
     _lines_name_a_stat(scope)
@@ -1715,20 +1691,19 @@ def _leaderboard_declines(scope: Filtered, subject: Subject) -> None:
     out of :func:`_read_point` to keep it inside the complexity gate."""
     if scope.measure is not None and scope.measure.key in ("triple_double", "double_double") and scope.who.kind in ("team", "team_players") and not subject.players:
         # A TEAM's total of its players' triple-doubles ("oklahoma city
-        # thunder all-time triple doubles vs west", leaderboard with the team
-        # filed - day5): not a ranking this relation lacks a measure for, but
+        # thunder all-time triple doubles vs west", a ranking with the team
+        # named - day5): not a ranking this relation lacks a measure for, but
         # a team aggregate nothing reads. Declined here, where the subject
-        # is in hand (the router-era `repair` read "vs west" as the team's
-        # opponent here),
+        # is in hand,
         # so the reading's own cause names it (``team_boolean_count``,
         # Reading.unsupported, said where the answer side declines) rather
         # than the ranking's sentence naming the wrong one.
         raise Unsupported(f"a team's total of its players' {scope.measure.as_typed} is not read")
     if _named_player_in(scope):
-        # A leaderboard ranks the league or a team, never one named person -
-        # the retired template's own refusal ("Klay Thompson's 3pt percentage
-        # over the past 4 seasons" once landed here and came back with the
-        # league's true-shooting leaders, Klay silently dropped).
+        # A ranking ranks the league or a team, never one named person
+        # ("Klay Thompson's 3pt percentage over the past 4 seasons" once
+        # landed here and came back with the league's true-shooting leaders,
+        # Klay silently dropped).
         raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.who.player!r})")
 
 
@@ -1836,20 +1811,18 @@ def _players_counted(scope: Filtered, question: str, subject: Subject) -> Readin
 def _read_point(asked: PointShape | None, scope: Filtered, question: str, subject: Subject) -> Reading:
     """:func:`read_point`'s moves, in order; split out so the record carries
     the asked key and the subject whichever move settled it. A position group
-    narrows the league's own read alone (:func:`_everyone_point`, the
-    ``position`` its moves carried as a field of the point until Phase 3,
-    step 2): every other move reads the scope without it, so the point it
+    narrows the league's own read alone (:func:`_everyone_point`): every
+    other move reads the scope without it, so the point it
     builds carries none."""
     positioned, scope = scope, replace(scope, who=scope.who.without_position())
     if asked == TEAM_COACH:
         # No table here holds a coach: the reading's verdict, said by the
-        # planner in the retired template's words (compose.plan).
+        # planner (compose.plan).
         raise PointRefused(Cause(kind="no_coach_table", facts={"unanswerable": "coach"}))
     if on_a_declared_relation(asked):
-        # A declared relation's own point, whatever the words: the retired
-        # templates read their slots alone, and a player's games are not
-        # where a NetPoints rating, a fingerprint or a shot chart is read
-        # (Phase 2, step 5).
+        # A declared relation's own point, whatever the words: a player's
+        # games are not where a NetPoints rating, a fingerprint or a shot
+        # chart is read.
         return default_point(asked, scope)
     if asked == PLAYER_RANKING:
         _leaderboard_declines(scope, subject)
@@ -1862,10 +1835,8 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
         return Reading(**scope.filters(), read_as=PointShape("team_games", "split", "line"), measures=(_team_line_measure(scope),), relation="team")
     if asked == PLAYER_LOG:
         # A team's log, before the team's sums: "knicks last 5 games" lists
-        # them (the retired template's team half, ROADMAP plan item 6, step
-        # (g)); "total points scored by the raptors in the last 10 games" is
-        # routed here too and lists them with the total stated beneath, as
-        # the template did.
+        # them; "total points scored by the raptors in the last 10 games" is
+        # read here too and lists them with the total stated beneath.
         team_log = team_log_point(scope, subject)
         if team_log is not None:
             return team_log
@@ -1876,8 +1847,7 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
     if asked == PLAYER_COMPARISON:
         return _compare_point(scope)
     if asked in (LINE_RUNS, PLAYER_MEETINGS, PRESENCE_SPLIT, TEAM_MEETINGS, TEAM_PERIOD_TOTAL, PERIOD_RANKING, TEAM_RECORD, TEAM_GAME_HIGHS):
-        # The retired templates read their slots alone, so no word moves the
-        # point: a player's, a team's or the league's longest run
+        # No word moves these points: a player's, a team's or the league's longest run
         # (_default_streak), two players' meetings
         # (_default_player_matchup), a team's record with and without a
         # teammate (_default_with_without), two teams' meetings
@@ -1897,8 +1867,7 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
     if not _named_player_in(scope):
         if asked == LINE_RECORD:
             # A record "when" is a player's line or a team's own (the team
-            # branch above); naming neither, it has nobody to read - the
-            # reason record_when's retired template gave.
+            # branch above); naming neither, it has nobody to read.
             raise PointRefused(Cause(kind="needs_subject", facts={"shape": LINE_RECORD}))
         # The league's read, the one point a position group narrows: the
         # scope as read, its position with it.
@@ -1908,7 +1877,7 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
 
 # --- The key's reading of what the taggers read ----------------------------------
 #
-# Phase 3, step 4, slice (b): the taggers read the words alone - every line,
+# The taggers read the words alone - every line,
 # window, span, period, cut and measure word the question holds, with no key
 # - and the key the words ask (``Reading.asked``) decides here which of them
 # stand, one function per family, where the parser writes the Reading
@@ -1916,9 +1885,9 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
 # is the count's own line and nothing on a log, a quarter is kept on a
 # period shape alone - which is the point reader's to read; the planner's
 # check is whether a relation honors a cell (``compose.plan.cells_unhonored``),
-# and moving these there would move every recorded reading. Measured before
-# the move on the 2,710 readings (``~/association-research/stages/route_family.py``):
-# the key moved the lines on 124 readings, the measure on 176, the period on
+# and moving these there would move every recorded reading. Measured on the
+# 2,710 readings (``~/association-research/stages/route_family.py``): the
+# key moves the lines on 124 readings, the measure on 176, the period on
 # 120, the window on 150, the span on 219, the cuts on none.
 
 PERIOD_ASKS: frozenset[PointShape] = frozenset({PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL})
@@ -1960,10 +1929,8 @@ _LINES_ONE_NARROWS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS
 #: The keys of a player's games that narrow by ONE line however it is
 #: stated where the words set it on the games - "2 threes in games Jamal
 #: Murray played", "lebron stats in games with 30 points", "kobe 30 point
-#: games" (Phase 5, step 2, ISSUES.md #357): his line, his log or his
-#: splits over the games that hold it. It was refused by name
-#: (``unread_number``) since Phase 5, step 1, and answered past the line
-#: before that.
+#: games" (ISSUES.md #357): his line, his log or his
+#: splits over the games that hold it.
 _LINES_ON_GAMES_NARROW: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS, PLAYER_LINE})
 
 ORDER_ASKS: frozenset[PointShape] = frozenset({NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL, TEAM_MEETINGS})
@@ -2100,8 +2067,8 @@ def _lines_season(read: LineCandidates) -> tuple[LineCandidates, list[tuple[int,
     ("averaged 30 ppg", "> 5 apg": ISSUES.md #390) with where each stands
     and its claim - and the candidates left once the game lines read inside
     them are set aside ("30 points" of "averaged 30 points", "under 10
-    points" of "averaged under 10 points": the season's line, not a game's,
-    which the ranking read before averaging until 2026-10-13)."""
+    points" of "averaged under 10 points": the season's line, not a game's
+    the ranking would read before averaging)."""
     season = read.of("season")
     if not season:
         return read, []
@@ -2115,8 +2082,7 @@ def _lines_phrases(asked: PointShape | None, read: LineCandidates, *, has_pair: 
     and under a record over a line with no "N stat" pair beside it, a lone
     floor is the record's own line ("his record when playing 30 or more
     minutes" splits his games at 30), keyed and narrowing nothing, which a
-    narrowing would empty of the games under it: it was refused "none was
-    read" until 2026-10-11."""
+    narrowing would empty of the games under it."""
     # A line stated over or at a number ("more than 40 points", "exactly 129
     # three pointers") on a ranking of players' seasons is a season's line,
     # not a game's (ISSUES.md, "A season average stated as a line on the
@@ -2200,7 +2166,7 @@ def minimum_under(asked: PointShape | None, read: MinimumRead) -> MinimumRead:
     whose rankings apply it - :func:`_leaderboard_season_line`,
     :func:`_everyone_ranking` - or refuse it by name), and read by nothing
     on any other key, its words left unread, as a line no reader of the key
-    reads is (ISSUES.md #377, 2026-10-11).
+    reads is (ISSUES.md #377).
 
     .. versionadded:: 6.0.0
     """
@@ -2218,8 +2184,7 @@ def _season_lines_refused(asked: PointShape | None, question: str, scope: Readin
     ``metrics.SEASON_FIGURES``), a percentage beside one ("shot 54% or
     better"), the words of a season line no line was read from, and a
     count of a player's seasons over one ("most seasons averaging 30 ppg":
-    ``seasons_counted``, ISSUES.md #391). Each answered the unfiltered
-    ranking until 2026-10-13."""
+    ``seasons_counted``, ISSUES.md #391) - never the unfiltered ranking."""
     if _ranked_as(asked) != PLAYER_RANKING:
         return scope
     season = [line for line in scope.lines if line.per != "game"]
@@ -2361,9 +2326,9 @@ def _window_order(asked: PointShape | None, read: WindowCandidates, order: str |
     # On any other key the end stands as the grammar read it, whatever word
     # follows the count, and the planner refuses it by name where the key's
     # reader cannot honor one (ISSUES.md #352): dropped beside a count of two
-    # or more until then, the reader read the bare count as the newest N
-    # inside the default season, and "Warriors vs Mavs record last ten games"
-    # tallied this season's three meetings.
+    # or more, the reader would read the bare count as the newest N inside
+    # the default season, and "Warriors vs Mavs record last ten games" would
+    # tally this season's three meetings.
     return order, None, False
 
 

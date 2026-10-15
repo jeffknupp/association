@@ -63,10 +63,10 @@ def word_start(token: str) -> re.Pattern[str]:
 # ---------------------------------------------------------------------------
 # The grammar's text: the question as the grammars and the grammar's rules
 # read it - its words, and where each tagger typed a value, held apart from
-# them. The words carry no value because a value written into them once
-# could be forged by the question (a question typed with the private-use
-# character a line was written as read a line no tagger read, ISSUES.md
-# #383): every character a tagger typed is written as one character,
+# them. The words carry no value because a value written into them could be
+# forged by the question (a question typed with the character a value is
+# written as would read a value no tagger read, ISSUES.md #383): every
+# character a tagger typed is written as one character,
 # :data:`TYPED`, the same for
 # every kind, so a pattern over the words sees that something stands there
 # (no word, no space) and never what - and what stands there is asked of
@@ -595,15 +595,13 @@ RANGE_REGULAR_SEASON = re.compile(r"\breg(?:ular)?\.?[- ]season\b", re.IGNORECAS
 
 # Both season types at once, named outright: "including the playoffs",
 # "including postseason", "regular season and playoffs", "playoffs included".
-# Read APART from PLAYOFF_WORDS, which used to be consulted alone -
-# "including playoffs" contains the word "playoffs", so the type read as the
-# postseason alone, silently dropping the regular season the question asked
-# to KEEP: "warriors all-time record including playoff record at away"
-# answered only the playoff road record (51-52), and "Payton Prichard stats vs
-# 76ers at home including playoffs game log" answered 7 playoff meetings and
-# then told the reader "Only 7 games ... in his box scores" - a false claim
-# about games (the 9 regular-season meetings) that were never read at all, not
-# a true count of what was found.
+# Read APART from PLAYOFF_WORDS, never as it: "including playoffs" contains
+# the word "playoffs", so PLAYOFF_WORDS alone reads the postseason alone,
+# silently dropping the regular season the question asks to KEEP -
+# "warriors all-time record including playoff record at away" would answer
+# only the playoff road record, and "Payton Prichard stats vs 76ers at home
+# including playoffs game log" 7 playoff meetings with a false "Only 7 games
+# ... in his box scores" about the 9 regular-season meetings never read.
 BOTH_SEASON_TYPES_WORDS = re.compile(
     r"\bincluding\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
     r"|\b(?:playoffs?|post-?season)\s+included\b"
@@ -647,9 +645,9 @@ CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
 """
 # "since he/she joined the league", "since entering the league": the same
 # "every season" reading CAREER_WORDS' own "career" gets, in words that do
-# not contain it - yardstick-v2 F031, "Show me luka's avg assists since he
-# joined the league", used to answer one season (whichever season the
-# default happened to be) where the question asked for his whole career. Anchored on "the league" so it cannot fire on "since he joined the
+# not contain it - without it "Show me luka's avg assists since he joined
+# the league" (yardstick-v2 F031) answers one season, the default, where the
+# question asks for his whole career. Anchored on "the league" so it cannot fire on "since he joined the
 # team" (#147's own team question) or "since he joined the Mavericks".
 CAREER_JOINED_LEAGUE_WORDS = re.compile(r"\bsince\s+(?:he|she|they)\s+(?:joined|entered)\s+the\s+league\b|\bsince\s+(?:joining|entering)\s+the\s+league\b", re.IGNORECASE)
 """A career, named as the time since the player joined the league.
@@ -712,9 +710,9 @@ SHORT_DECADE = re.compile(
 """
 
 # A CLOSED range - both ends named - rather than the open "since 2020" above.
-# `until` was declared nowhere and honored nowhere until this existed
-# (AGENTS.md's own worst-failure-shape example: "best 3 point shooters of the
-# 2010s" answered 2010 through now), so every form here fills BOTH ends.
+# A range read by one end only answers a different question (AGENTS.md's
+# failure shape: "best 3 point shooters of the 2010s" read as 2010 through
+# now), so every form here fills BOTH ends.
 #
 # "2019-20 to 2023-24" / "from 2010-11 to 2018-19" / "02-03 to 06-07": a
 # season written as a span on each side of "to"/"through" - the words this
@@ -750,11 +748,10 @@ RANGE_SHORT_YEARS = re.compile(
 # `season_spans` (`SeasonSpan.is_range`), the one definition of a span.
 # CONSECUTIVE years are not a range at all: "the 2023-2024 season" is how
 # people write ONE season (2024) with both digits spelled out, exactly as
-# "2023-24" means; a regex of its own here once re-matched that text as
-# since=2023/until=2024, silently overwriting a right answer with a wrong one
-# a step later. "2024-2026" is Jeff's own yardstick wording ("how many 20+
-# point games did SGA have 2024-2026?"); "2015-18" read as 2018 alone, and
-# "00-02" as nothing, until the span said range (#261).
+# "2023-24" means, and a second regex here re-matching that text as
+# since=2023/until=2024 would overwrite a right answer with a wrong one.
+# "2024-2026" is Jeff's own yardstick wording ("how many 20+ point games did
+# SGA have 2024-2026?"); "2015-18" and "00-02" are ranges too (#261).
 # "knicks record by month 2024 2025": two bare, ADJACENT season numbers with
 # nothing joining them - only when the second is exactly one more than the
 # first, so this reads as a range and not two unrelated years mentioned in
@@ -766,13 +763,11 @@ RANGE_BARE_YEARS = re.compile(r"\b((?:19|20)\d\d)\s+((?:19|20)\d\d)\b")
 """
 # "from 2002 to 2004", "2009 through 2023": two bare years joined by "to" or
 # "through" are the closed range between them, both ends season numbers - the
-# reading "between 2013 and 2018" and "2013-2018" already get. Until Phase 3,
-# step 3 neither year was read (ISSUES.md #345): the question's subject
-# reading took two years as no season named, the span read no range, and "most
-# three pointers from 2002 to 2004" answered the 2026 leaders. Found by the
-# Reading's own unread words disagreeing with the claims ledger: deleting
-# either year left the other read as the season, so the ledger counted both
-# as read while nothing read either. A second year that opens a season span
+# reading "between 2013 and 2018" and "2013-2018" already get. Without it
+# the subject reading takes two years as no season named, the span reads no
+# range, and "most three pointers from 2002 to 2004" answers this season's
+# leaders (ISSUES.md #345) - while deleting either year leaves the other read
+# as the season, so the claims ledger counts both as read. A second year that opens a season span
 # ("tmac 2001 to 2001-02") is that span's, not a bare year.
 RANGE_YEARS_TO = re.compile(r"\b(?:from\s+)?((?:19|20)\d\d)\s+(?:to|through|thru)\s+((?:19|20)\d\d)\b(?![-/]\d)", re.IGNORECASE)
 """A closed range written as two bare years joined by "to" or "through".
@@ -820,7 +815,7 @@ PAST_N_SEASONS = re.compile(rf"\b(?:past|last)\s+({_SEASON_COUNT})\s+(?:seasons?
 """
 
 # ---------------------------------------------------------------------------
-# The window family (Phase 3, step 2's second slice): which rows a read keeps
+# The window family: which rows a read keeps
 # and from which end - "last 10 games", "his first game", "top 5", a count
 # of seasons for a history, which end of a team ranking, and the measure a
 # ranking of games is ordered by. Read by one tagger, ``query/window.py``.
@@ -828,9 +823,8 @@ PAST_N_SEASONS = re.compile(rf"\b(?:past|last)\s+({_SEASON_COUNT})\s+(?:seasons?
 
 # A count of games written in words. Read in code rather than with a package:
 # word2number is unmaintained, and text2num's rewrite of the whole question
-# would move every other reading. Until these existed the number was read
-# three times, and "last twelve games" read as a season line while "last 12
-# games" read the log (the package review, 2026-09-27).
+# would move every other reading. One reader of a number in words, so
+# "last twelve games" reads the log as "last 12 games" does.
 _ONES = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
 _TEENS = ("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen")
 _TENS = ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
@@ -892,11 +886,11 @@ def _games_one_edit(word: str) -> list[str]:
 # A window's "games" as a question types it (ISSUES.md #369): "games" or
 # "game", or one edit from either - "gMes", "gamew", "gane", "gamess",
 # "gamea", "hames" - and "match(es)" or "match ups" beside them, a synonym.
-# Until it, a misspelling after "last 5" stopped the window grammar, the
+# Without it a misspelling after "last 5" stops the window grammar, the
 # parent grammar's log row and the span's both-types rule alike, where a
-# bare "last 5" read the window: "Lamelo ball stats last 5 gMes" answered
-# his season average, "Draymond green vs mavs last 6 gamew" his 3 games
-# this season. The words one edit away that are words of their own
+# bare "last 5" reads the window: "Lamelo ball stats last 5 gMes" would
+# answer his season average, "Draymond green vs mavs last 6 gamew" his
+# games this season. The words one edit away that are words of their own
 # ("james", "names", "same", "gate") are not games: "last 10 james harden
 # games" holds a name there. Measured over the 2,999 distinct questions of
 # the recorded corpora and the StatMuse feed: every word after "last N"
@@ -944,8 +938,8 @@ grammar, the window and the span read a misspelling alike.
 # first match wins; a row's limit of 0 means "the number in the words".
 # Deliberately no "who led the league in ..." -> 1: a ranking with no limit
 # already leads with the one asked about and adds "Next: ..." (a ranking, a
-# count over a line, a single game's high), and a limit of 1 cost those answers
-# their runners-up (the lead's offline run of the agent, 2026-09-27).
+# count over a line, a single game's high), and a limit of 1 would cost those
+# answers their runners-up.
 WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
     (
         re.compile(
@@ -1122,13 +1116,11 @@ RANKED_BY_WORD = re.compile(r"\b(scoring|points?|rebounds?|assists?|steals?|bloc
 # A ranking's qualifier as the question states it - "minimum 100 games
 # played", "at least 300 gp", "with at least 400 attempts", "with atleast
 # 1000 fg attempted" (the one-word spelling as typed), "a minimum of 10
-# games" - read into a typed ``reading.Minimum`` (ISSUES.md #377,
-# 2026-10-11), which the season-line ranking and the game-level ranking
-# apply where they qualify by that unit and the point reader refuses by a
-# cause where they do not. Until then the game-level ranking read "at least
-# N <word>" with a pattern of its own (``point._AT_LEAST``) and nothing read
-# "minimum N": "nba plus minus per game leaders minimum 100 games played"
-# answered at the default 20 games. A floor of MINUTES is not one: "with 25
+# games" - read into a typed ``reading.Minimum`` (ISSUES.md #377), which the
+# season-line ranking and the game-level ranking apply where they qualify by
+# that unit and the point reader refuses by a cause where they do not, so
+# "nba plus minus per game leaders minimum 100 games played" qualifies at
+# 100 games, not the default 20. A floor of MINUTES is not one: "with 25
 # minutes" is the lines tagger's floor per game (:data:`ABOVE`), and a box-
 # score word after the number is a line ("at least 50 points", "minimum of
 # 20 points per game"), so neither is read here.
@@ -1234,7 +1226,7 @@ games, not their meetings.
 
 
 # ---------------------------------------------------------------------------
-# The games' cuts (Phase 3, step 2's third slice): which games of a span a
+# The games' cuts: which games of a span a
 # read sees - a venue, one calendar day, a circumstance (a weekday, a month,
 # a holiday, "since <day>", the conference or division the opponent is in,
 # or words nothing narrows by), a playoff round, a game of a series, an
@@ -1248,8 +1240,8 @@ games, not their meetings.
 
 # The one table of month words: the number each names, keyed by its first
 # three letters, which every spelling read here shares ("sept" included).
-# One table, because three copies of the months once drifted apart (ISSUES.md
-# #244); the sayer's capitalized names stay `season_text.MONTH_NAMES`.
+# One table, because copies of the months drift apart (ISSUES.md #244); the
+# sayer's capitalized names stay `season_text.MONTH_NAMES`.
 MONTH_NUMBERS: dict[str, int] = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
 """Each month's number, by the first three letters of its name.
 
@@ -1296,10 +1288,10 @@ CALENDAR_DATE = re.compile(
 # A range of calendar days with their years: "from january 1 2015 to june 2
 # 2021", "between October 10 2016 and february 19 2017", "Feb 28th to April
 # 14th 2026" - the first day's year may be left to the second's (ISSUES.md
-# #345). Until it the cuts tagger read the first day alone - "since January
+# #345). Read as one day, the first day alone would narrow - "since January
 # 1" within each season of the default span, or the one game on it - and
-# nothing read the end: "james harden ts playoffs from january 1 2015 to june
-# 2 2021" listed his 2026 playoff games since January 1. The days are read
+# nothing would read the end: "james harden ts playoffs from january 1 2015
+# to june 2 2021" would list this season's playoff games since January 1. The days are read
 # with their years, so the range is one cut across seasons (a "date_range"
 # narrowing, `calendar.parse_situation`) and the span is the seasons the two
 # days fall in. "and" joins the days only after "between".
@@ -1341,8 +1333,8 @@ NUMERIC_DATE_RANGE = re.compile(
 .. versionadded:: 6.0.0
 """
 # One calendar day written in numbers WITH its year: "on 2026-01-02",
-# "11/29/24", "11/28/2025" (ISSUES.md #323). Until it nothing read them, and
-# "sga game log on 2026-01-02" listed his last 10 games. The year is what
+# "11/29/24", "11/28/2025" (ISSUES.md #323): read by nothing, "sga game log
+# on 2026-01-02" would list his last 10 games. The year is what
 # makes it a day: a slashed pair with none ("7/14") is a shooting line, and
 # "50/40/90" names no month. A range word before it ("before 02/03/2024",
 # "prior to ...") makes it a range, as :data:`CALENDAR_DATE`'s does.
@@ -1398,7 +1390,7 @@ ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?final
 # number rather than left in the situation (where "Ayton stats in game 4
 # playoff games" refused), because the relation can find it - the nth game by
 # date between two teams in one postseason (Narrowed.narrow_series_game).
-# "game 7" used to be a round; it is a game like the others.
+# "game 7" is a game like the others, not a round.
 SERIES_GAME = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
 """One game of each playoff series, by its number.
 
@@ -1476,8 +1468,8 @@ HOLIDAY_WORDS: str = "|".join(
 (:data:`UNREAD_HOLIDAYS`), as one regex alternation (no group of its own),
 longest first so "christmas eve" is not read as "christmas". The situation
 pattern is built from it, so the words the tagger captures and the words
-the calendar reads cannot drift apart: "valentine's day" was once a key the
-captured words never held, and so narrowed nothing (#238).
+the calendar reads cannot drift apart: a key the captured words never hold
+("valentine's day", #238) would narrow nothing.
 
 .. versionadded:: 6.0.0
    ``calendar.HOLIDAY_WORDS`` until Phase 3, step 2.
@@ -1535,9 +1527,9 @@ ALIGNMENT = re.compile(rf"^(?:(?:vs\.?|against|in)\s+)?(?:the\s+)?(?P<name>{_ALI
 # do not state it steps aside, the planner refuses what a relation cannot
 # honor, and a value the calendar cannot read is refused by the relation BY
 # VALUE - the ranking AGENTS.md sets: a refusal beats a fluent wrong answer.
-# Measured against 343 real questions when it was written (the 261-query feed
-# plus the 83 routing corpus cases): 14 feed queries match and no corpus case
-# does, so no question that routed correctly started refusing.
+# Measured against 343 real questions (a 261-query feed and 83 corpus
+# cases): 14 feed queries match and no corpus case does, so no question
+# answered correctly refuses.
 SITUATION = re.compile(
     r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
     # "in the month of march" as well as "in march" (F096) - the calendar
@@ -1548,13 +1540,13 @@ SITUATION = re.compile(
     rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b(?!\s+\d{{1,2}}\b)|"
     # A season's month written right before its year, with no "in": "Luka
     # doncic march 2026", "steph stats may 2021" (the year is the span's,
-    # ISSUES.md #267's season rule). Until it the month was read by nothing
-    # and the whole season answered.
+    # ISSUES.md #267's season rule); read by nothing, the month would leave
+    # the whole season answered.
     rf"\b(?:{_SEASON_MONTH_WORDS})\.?(?=,?\s+(?:19|20)\d\d\b)|"
     # A conference or division, kept WITH its name and its "vs"/"against"/"in"
     # so `calendar.parse_alignment` reads it whole: "vs southeast division"
-    # used to be captured as the word "division" alone (#213), and the
-    # relation - which answers the phrase - refused the bare word. The bare
+    # captured as the word "division" alone (#213) is refused by the
+    # relation, which answers the phrase. The bare
     # forms stay as the last resort, still refused honestly by name.
     r"\b(?:vs\.?|against|in)\s+(?:the\s+)?(?:east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|southwest|pacific|midwest)(?:\s+(?:conference|division))?(?:\s+teams?)?\b|"
     # The opponents by their seeding ("vs top 3 seed teams", "against top
@@ -1582,12 +1574,11 @@ SITUATION = re.compile(
     # season's triple-double leaders - `players` holds no birth date at all
     # (DATA.md), so this one cannot be answered even in principle.
     # Hyphenated too ("18-year-old Lebron's ppg total", ISSUES.md #290):
-    # until Phase 3, step 3 that form matched nothing, and his 2026 line was
-    # answered with the age a number nothing read.
+    # unmatched, that form would answer his current line with the age a
+    # number nothing read.
     r"\b(?:before|after|by)\s+(?:turning|age)\s+\d+\b|\bat\s+age\s+\d+\b|\b\d+[\s-]+years?[\s-]+old\b|"
-    # A minutes condition used to be here ("paul reed gamelog with 25 minutes"
-    # returned his most recent game); it is a line (`below`/`above`) now, a
-    # cell the relation narrows by.
+    # A minutes condition ("paul reed gamelog with 25 minutes") is not
+    # here: it is a line (`below`/`above`), a cell the relation narrows by.
     # A window defined by an event rather than a date.
     r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
     # A quarter or half named as a vague condition on which games count -
@@ -1611,8 +1602,8 @@ SITUATION = re.compile(
     # question, which spans twenty Octobers and so fixes no year. Both refuse.
     r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}"
     r"(?:st|nd|rd|th)?\b",  # codespell:ignore nd - an ordinal suffix
-    # A season named by ordinal ("his 18th season") used to be here; it is
-    # ORDINAL_SEASON now, settled to a year once the player is known.
+    # A season named by ordinal ("his 18th season") is not here: it is
+    # ORDINAL_SEASON, settled to a year once the player is known.
     re.IGNORECASE,
 )
 """A circumstance the games are under, as the question worded it.
@@ -1647,15 +1638,14 @@ written out or short ("after dec 11", ISSUES.md #353).
 """
 # A range opened on a worded day WITH its year: "since january 31st 2020",
 # "after Dec 11 2023" - every game from that calendar day on, across
-# seasons, as "since 1/31/2020" is (ISSUES.md #353). Until it the words were
-# read twice - the year as THE season, the day as a "since <day>" inside it
-# - and "lebron ppg since january 31st 2020" answered the 2019-20 season's
-# last weeks.
+# seasons, as "since 1/31/2020" is (ISSUES.md #353), never twice - the year
+# as THE season, the day as a "since <day>" inside it, which answers
+# "lebron ppg since january 31st 2020" with the 2019-20 season's last weeks.
 # A range opened on a month with its year: "since january 2021", "from
 # oct 2019" - every game from the month's first day on, across seasons;
-# "after" a month is from the next month's first day. Until it the year was
-# read as THE season and the words "since january" by nothing, and
-# "nikola jokić stats since january 2021" answered the 2021 season's games.
+# "after" a month is from the next month's first day. Otherwise the year
+# reads as THE season and "since january" as nothing, and "nikola jokić
+# stats since january 2021" answers the 2021 season's games.
 SINCE_MONTH_YEAR = re.compile(
     rf"\b(?P<lead>since|from|after)\s+(?:the\s+)?(?:(?:start|beginning)\s+of\s+)?{_MONTH_WORD}\.?,?\s+(?P<year>(?:19|20)\d\d)\b",
     re.IGNORECASE,
@@ -1921,7 +1911,7 @@ def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
 
 
 # ---------------------------------------------------------------------------
-# The period family (Phase 3, step 2's fourth slice): what a read SEES of
+# The period family: what a read SEES of
 # each game - one quarter or one half - read by one tagger,
 # ``query/period.py`` (``which_period`` names the one, ``read_period`` keeps
 # it under a reader that takes one). The rest of the family's words choose
@@ -1966,16 +1956,10 @@ WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<
 
 # The words that name a quarter at all, which the grammar's rules read
 # (``grammar._period``: a player's quarter, players ranked by one, a team's
-# quarter - the retired period_split, period_leaderboard and
-# team_quarter_points). Called
-# `_AGENT_ONLY` until 5.0.0, for the tool-calling agent a quarter question
-# was once sent to. `[1-4]q` is the mirror of `q[1-4]` and was missing:
-# "Duncan Robison 1q log" and "Devin Vassell nba player per game stats 1q"
-# were both answered with a whole-game line in the 2026-09-15 feed replay -
-# the same shape as the "4th qtr" gap that made these patterns grow
-# abbreviations in the first place. `td3s` used to be here too, sending
-# "luka td3s home" to the agent because nothing counted one player's
-# triple-doubles; the compiler does now, and the grammar's rules read the word.
+# quarter). The abbreviations are here because a question that slips past
+# "quarter" is answered with a whole-game line: `[1-4]q` is the mirror of
+# `q[1-4]` ("Duncan Robison 1q log", "Devin Vassell nba player per game
+# stats 1q"), as "4th qtr" is of "4th quarter".
 QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
 """A quarter named at all - one, or every one ("by quarter"). Read over the
 lowercased question, as the grammar's rule reads it.
@@ -2043,9 +2027,9 @@ PERIOD_AS_CONDITION = re.compile(
    ``router._PERIOD_AS_CONDITION`` until Phase 3, step 2.
 """
 # Every quarter at once, side by side (yardstick-v2 F048, "nba playerspoints
-# by quarter average", which fell through for want of one period).
-# period_leaderboard with no period is the league's table; period_split with
-# no period is a NAMED player's (#162, ROADMAP step 2). A "by quarter"
+# by quarter average", which no one period answers).
+# Players ranked by a period with no period named is the league's table; a
+# period log with no period is a NAMED player's (#162). A "by quarter"
 # question reads NO period value: the breakdown is the point's shape.
 BY_QUARTER = re.compile(r"\b(?:by|per|each|every)\s+(?:quarter|qtr)s?\b|\bquarter\s+by\s+quarter\b", re.IGNORECASE)
 """Every quarter at once - a breakdown, which names no one period.
@@ -2063,7 +2047,7 @@ cause's second half, beside :data:`PERIOD_AS_CONDITION`.
 # The point reader's guard: a league-wide or a team's read that names a
 # quarter, a half, an overtime or a period is the period relation's
 # question, not the compiler's own - "least points by the Wizards in the
-# first half" once ranked players by their whole game.
+# first half" is no ranking of players by their whole game.
 PERIOD_GUARD = re.compile(r"\b(quarter|qtr|half|period|overtime|\d(?:st|nd|rd|th) q|q[1-4]|[1-4]q|[12]h)\b", re.I)  # codespell:ignore nd - an ordinal suffix
 """Any period word, for the point reader's "the period relation's question" guard.
 
@@ -2097,7 +2081,7 @@ PERIOD_CONDITION = re.compile(
 """
 
 
-# --- The line and the companions (Phase 3, step 2's fifth slice) ---------------------
+# --- The line and the companions ---------------------------------------------------
 
 MEASURE_WORDS: dict[str, str] = {
     "points": "points",
@@ -2243,7 +2227,7 @@ AT_LEAST_PAIR = re.compile(rf"\b(?:at\s+least|min(?:imum)?(?:\s+of)?)\s+(\d{{1,3
 # A line the words set on the games themselves - "games with 2 threes", "2
 # threes in games he played", "30 point games" - which a reader of a player's
 # games narrows by, where a bare "61 points" alone can as well name one game
-# (Phase 5, step 2, ISSUES.md #357). Read right before the pair and right
+# (ISSUES.md #357). Read right before the pair and right
 # after it.
 LINE_ON_GAMES_BEFORE = re.compile(r"\bgames?\s+(?:with|where\s+(?:he|she)\s+(?:had|has|made|makes|scored|scores|hit|hits))\s+$", re.IGNORECASE)
 """The words that set the line right after them on the games ("games
@@ -2312,14 +2296,13 @@ BELOW = re.compile(
 # refused) into a line the relation applies. Deliberately only minutes:
 # "30+ points" is the threshold grammar's, and the readers of a line
 # already carry it. Not the "35 minutes" inside "less than 35 minutes",
-# which is BELOW's. "N or more minutes" (ISSUES.md #374, 2026-10-11) was
-# read by nothing until the "or more" between the number and the word:
-# "Victor wembanyama stats when playing 20 or more minutes" answered every
-# game he played. "over N minutes" and "more than N minutes" are a line kept
-# OVER the number (:data:`OVER_LEADS`), where the bare number they lead was
-# read as a floor at it and the lead word unread. Not a number after "per"
+# which is BELOW's. "N or more minutes" (ISSUES.md #374) is read with the
+# "or more" between the number and the word, so "Victor wembanyama stats
+# when playing 20 or more minutes" keeps the games he played 20. "over N
+# minutes" and "more than N minutes" are a line kept OVER the number
+# (:data:`OVER_LEADS`), the lead word read with it. Not a number after "per"
 # (a rate, PER_MINUTES) or "last"/"final" ("the last 5 minutes of a game"),
-# which were read as floors until ISSUES.md #388.
+# which is no floor (ISSUES.md #388).
 ABOVE = re.compile(
     r"\b(?:(?:with|playing)\s+)?(?:(?:at\s+least|over|(?<!no\s)more\s+than)\s+|(?<!than\s)(?<!under\s)(?<!below\s)(?<!per\s)(?<!last\s)(?<!final\s))"
     r"\d+(?:\+|\s+or\s+more)?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?",
@@ -2613,9 +2596,9 @@ CONDITION_STAT_WORDS: dict[str, str] = {
 # like. The question words are here for the same reason the prepositions
 # are: each can follow a name, and none of them is one - without them
 # "without Tatum and how many wins" reads "how many wins" as a second
-# teammate and refuses a question that used to answer. The absence words end
-# one too: "with draymond green out" read "draymond green out" as the name,
-# and the answer asked whether Bo or Travis Outlaw was meant ("hurt" is not
+# teammate and refuses a question that has an answer. The absence words end
+# one too: without them "with draymond green out" reads "draymond green
+# out" as the name, and asks whether Bo or Travis Outlaw was meant ("hurt" is not
 # one: it is Matt Hurt's name).
 NAME_STOPWORDS: frozenset[str] = frozenset(
     "this last in on since during for vs vs. versus against at when while game games single season seasons record stats stat playing played plays from over the a an any his her their "
@@ -2721,7 +2704,7 @@ COMPANION_IN_GAMES = re.compile(
    ``subject._COMPANION_IN_GAMES`` until Phase 3, step 2.
 """
 # A player after a versus word is on the OTHER side of the subject's games -
-# a condition (ROADMAP step 3: "most points by curry vs lebron"), never a
+# a condition ("most points by curry vs lebron"), never a
 # second subject - wherever the words ask for the subject's games.
 VERSUS_PHRASE = re.compile(rf"\b(vs\.?|versus|against|v\.?)\s+((?:(?!\b(?:{COMPANION_STOP})\b)[\w'.,+-]+\s*){{1,9}})", re.IGNORECASE)
 """The words after a versus word, a name on the other side is read from.
@@ -2790,7 +2773,7 @@ NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "&", "+", ","})
 
 
 #: The word that makes the number right after it a ranking's count ("top 20
-#: rebound leaders"), which no line is read from (Phase 5, step 2).
+#: rebound leaders"), which no line is read from.
 _RANKED_COUNT_LEAD = re.compile(r"\b(?:top|bottom)[\s-]*$", re.IGNORECASE)
 
 
@@ -2813,7 +2796,7 @@ def threshold_pairs(text: str) -> list[re.Match[str]]:
         if number == 3 and word.startswith(("point", "pt")):
             continue
         # "2pt percentage", "2-point shooting", "2 point attempts": the shot,
-        # as "3 pt" is - a line of two points is "2 points" (Phase 5, step 2).
+        # as "3 pt" is - a line of two points is "2 points".
         if number == 2 and word in ("point", "pt"):
             continue
         # "top 20 rebound leaders": the ranking's count, never a line.
@@ -2954,8 +2937,8 @@ that is also an ordinary word ("TO", "MIN") is told from the word.
 # matches too eagerly leaves the model's key where it was. It is read
 # beyond the comparison - a quarter's line and its ranking, a team's line,
 # a streak - and there a word it misses DOES move a number: "vj edgecombe
-# 2nd half plus minus" lost its stat and answered his second-half points
-# (found 2026-10-09, Phase 3, step 0). Plus-minus is a stat the question
+# 2nd half plus minus" would lose its stat and answer his second-half
+# points. Plus-minus is a stat the question
 # names, and reads as one; a stat word added here is a number kept.
 STAT_WORDS = re.compile(
     r"\b(points?|scor\w*|pts?|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
@@ -3415,7 +3398,7 @@ HOW_MANY_GAMES = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 """
 
 LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
-"""A game log asked for by name ("luka ft log" routed to a season average once).
+"""A game log asked for by name ("luka ft log" is his log, not his season average).
 
 .. versionadded:: 6.0.0
    ``router._LOG_WORDS`` until Phase 3, step 2 (the router read it for the intent too; the grammar's rules read it for what the words ask since Phase 3, step 4).
@@ -3428,7 +3411,7 @@ WORD = re.compile(r"[a-z]+")
 """
 
 
-# --- The subject's own: who a question is about (Phase 3, step 2's seventh slice) ---------
+# --- The subject's own: who a question is about ---------------------------------------
 #
 # The words the subject reading reads WHO by - a position group, a team's
 # word, a city or an abbreviation, a singular nickname, the versus and "for"
@@ -3505,8 +3488,7 @@ CHILD_SINGLE_GAME_HIGH = ask(
     r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b(?![- ]+(?:triple|double)[- ]?doubles?\b)|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b"
     # "his best scoring game", "luka highest scoring games vs bucks": the
     # best scoring game is the high by points, and the plural the highs
-    # ranked - each read as his season line or his log by date until
-    # 2026-10-13 (lane N of the P1 sweep). "single game triple doubles"
+    # ranked - never his season line or his log by date. "single game triple doubles"
     # is a count of triple-doubles - every one is one game's - never a
     # single game's high of a yes/no measure (ISSUES.md #265). Only beside "scoring": "highest
     # win% games" is a ranking of players by a rate over games.
@@ -3560,8 +3542,8 @@ CHILD_THRESHOLD_COUNT = ask(
     # kobe have", ISSUES.md #375: refused "no 2026 postseason numbers" as a
     # player's line over a defaulted season).
     # A playoff round there too ("how many 40 point finals games does kobe
-    # have", Phase 5, step 2): the count, whose round the planner refuses by
-    # name, where a player's line refused the "40" as unread.
+    # have"): the count, whose round the planner refuses by name, where a
+    # player's line would refuse the "40" as unread.
     rf"|{_ANY_LINE_NUMBER}+[\s-]*{typed('line_stat')}+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away|(?:(?:nba|conference|conf)[\s-]+)?finals|semi[\s-]?finals|(?:first|second)[\s-]+round)[\s-]+)?games?\b"
     # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
     # 30+ point games", "how many games did he score 30 points or more in".
@@ -3569,7 +3551,7 @@ CHILD_THRESHOLD_COUNT = ask(
     # "how many games have players recorded 33 points, 13 rebounds, 10
     # assists, 2 blocks, and 2 steals" (ISSUES.md #290): a count of games
     # over bare lines, as "players with 33 point and 13 rebound ... games" is
-    # - until Phase 3, step 3 a rebounds ranking with the five numbers unread.
+    # - never a rebounds ranking with the five numbers unread.
     rf"|\bhow many\b.{{0,20}}\bgames?\b.*{LINE_NUMBER_NO_PLUS}\s+{typed('line_stat')}+"
     # "who scored 40 points the most times", "had 10 assists the most":
     # the line, then the most times it was reached - the players' count of
@@ -3778,8 +3760,7 @@ SUBJECT_OF_COUNT = ask(
     r"|games?\s+of\b"
     # The rules read it over their text, where a line's NUMBER stands typed
     # and its stat stays words (line.LinesNamed.numbered): the stat is read
-    # here by its words. (Until Phase 4, step 6 a second alternative read a
-    # typed stat, which the rules' text never holds.)
+    # here by its words.
     rf"|(?:\d+\+?|{_ANY_LINE_NUMBER}+)\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?\s+games?\b"
     # "bam adebayo career games in the month of march" (yardstick-v2 F096):
     # the model dropped Bam, and none of the shapes above follows a name
@@ -4063,9 +4044,9 @@ length floor (``abbreviation ILIKE ?``), so a bare three-letter word run
 through it can resolve to a team nobody meant: "was" is the Washington
 Wizards ("What was the highest scoring game by a player this year?"), "min"
 the Minnesota Timberwolves (a box-score "20+ min"), and "me" the Memphis
-Grizzlies ("show kat's average points for me" read Memphis as his own team,
-and answered that he never played for them - plan item 6, step (d), part
-3c). Unlike the player list, this one is checked against the SPAN tried
+Grizzlies ("show kat's average points for me" would read Memphis as his own
+team, and answer that he never played for them). Unlike the player list,
+this one is checked against the SPAN tried
 rather than the team's own name, because a team's matched span is often not
 a word of its display name at all.
 
@@ -4077,8 +4058,8 @@ a word of its display name at all.
 
 COMMON_WORDS_THAT_NAME_PLAYERS: frozenset[str] = frozenset({"best", "head"})
 """Ordinary English words that are also a player's whole surname - measured
-against the full routing corpus (the routing check's cases, retired in
-5.0.0, plus ``~/association-research/statmuse-2026-09/feed_queries.txt``,
+against a corpus of real questions
+(``~/association-research/statmuse-2026-09/feed_queries.txt`` among them,
 380 questions): "Best true shooting percentage last season?" and "Best
 record from 2010-11 to 2018-19 nba" both named Travis Best, and "Celtics vs
 Bulls head to head record" named Luther Head - three team or league
@@ -4125,12 +4106,12 @@ name the model copied is matched back to (``parse._as_typed``).
    ``parse._AS_TYPED_WORD`` until Phase 3, step 2.
 """
 
-# The words a reading has to account for (Phase 3, step 3). Until then this
-# rule was ``scripts/claims_ledger.py``'s alone, the ledger's measure of the
-# words whose deletion leaves the reading and the planned query unchanged;
-# the parser reads it too now, so the Reading states the words nothing
-# claimed (``Reading.unread``) by the same rule the ledger counts them by,
-# and the ledger is the check from outside that the two agree.
+# The words a reading has to account for: the rule
+# ``scripts/claims_ledger.py`` measures the words whose deletion leaves the
+# reading and the planned query unchanged by, and the parser reads, so the
+# Reading states the words nothing claimed (``Reading.unread``) by the same
+# rule the ledger counts them by, and the ledger is the check from outside
+# that the two agree.
 CONTENT_TOKEN = re.compile(r"\S+")
 """A word as the content rule counts one: a run of anything but white space
 (:func:`content_tokens`).
@@ -4269,7 +4250,7 @@ def content_words(question: str, names: tuple[str, ...] | list[str], stat: str) 
 CONTENT_SPACES = re.compile(r"\s+")
 """A run of white space, closed to one space where a word was deleted
 (:func:`without_word`), and in a line's stat words before they are looked
-up (``line.read_period_line``, its own ``re.sub`` until Phase 4, step 6).
+up (``line.read_period_line``).
 
 .. versionadded:: 6.0.0
 """
@@ -4303,7 +4284,7 @@ def unread_words(question: str, claimed: list[tuple[int, int]], names: tuple[str
     return tuple(word for start, end, word in content_words(question, names, stat) if not any(first < end and last > start for first, last in claimed))
 
 
-# --- Step 1 (Phase 5): the unread words that carry a meaning ----------------
+# --- The unread words that carry a meaning ----------------------------------
 #
 # An unread content word of one of four classes, where the family's own
 # value did not come from the words, is a default the reading took past
@@ -4383,16 +4364,15 @@ def letter_words(text: str) -> frozenset[str]:
 MEANING_WINDOW_NEXT: frozenset[str] = frozenset({"game", "games", "match", "matches", "meeting", "meetings", "season", "seasons", "year", "years", "contest", "contests", "outing", "outings"})
 """The words a window word counts beside ("last game", "top 5 games",
 "past seasons"): a window word standing alone ("top scorers", "past or
-present") names no stretch of games (the Phase 5 review, 2026-10-14).
+present") names no stretch of games.
 
 .. versionadded:: 6.0.0
 """
 
 MEANING_GLUED_DIGITS = re.compile(r"[a-z0-9'.,%-]*\d[a-z0-9'.,%-]*")
 """A token holding a digit that is no number as a question writes one
-("3ot", "20222-23"): read by nothing, it is an unread number too (the
-Phase 5 review: 15 of the ledger's 24 held unread-number questions
-answered fluently past one).
+("3ot", "20222-23"): read by nothing, it is an unread number too, since a
+question answered past one is answered fluently without it.
 
 .. versionadded:: 6.0.0
 """
@@ -4449,7 +4429,7 @@ that no name holds (:data:`NAME_STOPWORDS`, :data:`UNDER_NOT_A_COACH`, a
 number word, a stat word, a team's word) and refuses by the coach cause
 only where two are left - "under 10 points" and "under 25 years old" are a
 line and an age, and are no match here at all (no name-shaped word after
-"under"). Measured on the 2,710 readings (Phase 5, step 6): "under" stands
+"under"). Measured on the 2,710 readings: "under" stands
 in 6 questions, five before a number and the one coach.
 
 .. versionadded:: 6.0.0
@@ -4588,10 +4568,8 @@ split is read (:func:`~association.query.split.read_split`).
 
 
 # ---------------------------------------------------------------------------
-# The point reader's words (Phase 4, step 6): the patterns ``point.py``
-# compiled for itself until then, moved here whole, each under the name of
-# what it reads - the point reader reads the words through the lexicon as
-# every tagger does.
+# The point reader's words, each under the name of what it reads - the
+# point reader reads the words through the lexicon as every tagger does.
 
 TOP_IN_A_GAME = re.compile(
     r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b|\b(?:best|highest)\s+scoring\s+games?\b",
@@ -4599,7 +4577,7 @@ TOP_IN_A_GAME = re.compile(
 )
 """One game's top figure: "most points in a game", a "single-game", a
 "career high" or the best scoring games ("highest scoring games of 76ers
-players", which ranked the 76ers' points per game - Phase 5, step 6, lane N)
+players", never a ranking of the 76ers' points per game)
 - a ranking of single games, never of season lines.
 
 .. versionadded:: 6.0.0
@@ -4607,8 +4585,8 @@ players", which ranked the 76ers' points per game - Phase 5, step 6, lane N)
 """
 # Not this relation's question: a team as the subject, an opponent's or
 # allowed figure, or a period. Refused, never answered with a ranking of
-# players - "least points by the Wizards in the first half" ranked players
-# by fewest points until this existed.
+# players - "least points by the Wizards in the first half" is no ranking
+# of players by fewest points.
 NOT_THE_PLAYERS_QUESTION = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopponent'?s?\b|\bbench points\b|\bfranchise\b", re.IGNORECASE)
 """A team as the subject, an opponent's or allowed figure, or the bench's:
 not a ranking of players' games.
@@ -4713,8 +4691,7 @@ PLAYERS_ON_A_TEAM = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplay
 
 
 # ---------------------------------------------------------------------------
-# The refusals the parser reads (Phase 4, step 6: ``parse.py``'s own
-# patterns until then).
+# The refusals the parser reads.
 
 CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
 """A championship or a title won: no table holds titles, and a team
@@ -4767,8 +4744,8 @@ ABSENT_FACTS: tuple[
         ),
     ),
     ("birth", re.compile(r"\bborn\b|\bbirth(?:\s?(?:days?|dates?|places?|years?))?\b", re.IGNORECASE)),
-    # A player's death (Phase 5, step 2): "when did brandon clarke die" read
-    # "when ... brandon clarke" as a teammate's games and answered his line.
+    # A player's death: unread, "when did brandon clarke die" would read
+    # "when ... brandon clarke" as a teammate's games and answer his line.
     ("death", re.compile(r"\b(?:die|dies|died|death|deceased|passed\s+away)\b", re.IGNORECASE)),
     (
         "height",
@@ -4782,18 +4759,18 @@ ABSENT_FACTS: tuple[
     ("role", re.compile(r"\b(?:1st|2nd|3rd|first|second|third)\s+options?\b", re.IGNORECASE)),
     ("wins", re.compile(r"\b\d+[- ]?wins?\s+teams?\b", re.IGNORECASE)),
     # The last minutes of a game (ISSUES.md #388): the plays are on file and
-    # nothing narrows a game to its final minutes - read as a floor of
-    # minutes played until then.
+    # nothing narrows a game to its final minutes, and read otherwise it is a
+    # floor of minutes played.
     ("clutch", re.compile(r"\b(?:last|final)\s+(?:\d{1,2}|one|two|three|four|five)\s+(?:minutes?|mins?)\b|\bclutch\b", re.IGNORECASE)),
     # A defender's field-goal percentage - the shots he contested, a tracking
-    # figure nothing fetches (ISSUES.md #351): read as the player's own
-    # shooting until then.
+    # figure nothing fetches (ISSUES.md #351), never the player's own
+    # shooting.
     ("defended shots", re.compile(r"\bdefensive\s+(?:field[\s-]+goal|fg)\s*(?:%|percent(?:age)?|pct)|\bd[\s-]?fg\s*(?:%|pct)|\bdfg\b", re.IGNORECASE)),
     # A betting line (ISSUES.md #118): "ats", the spread, a total's
     # over/under, an underdog or a moneyline - the games hold the score and
     # no line, and each was answered as the plain record or log its other
     # words name ("76ers versus chicago bulls spread last 10 games" listed
-    # the meetings). Measured on the 2,710 readings (Phase 5, step 6): every
+    # the meetings). Measured on the 2,710 readings: every
     # "spread" is a line's ("point spread" as a margin of victory is no
     # wording either population holds); "odds" is left alone - "celtics
     # playoff odds" is the power index's projection, and answered so.
@@ -4823,8 +4800,7 @@ BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
-# The parent grammar's words (Phase 4, step 6: ``parse.PARENT_GRAMMAR``'s own
-# strings, compiled there until then). Each row of the grammar is a
+# The parent grammar's words (``parse.PARENT_GRAMMAR``'s rows). Each row of the grammar is a
 # predicate over the grammar's text (:data:`GrammarRow`) built from these
 # and from the typed values a row asks for where they stand; the table of
 # rows, which kinds each applies to and the shape it names, is the parser's.
