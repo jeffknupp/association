@@ -1640,10 +1640,11 @@ agents' reports named here are in `~/association-research/stages/`.
     them fluent answers past a word becoming refusals that name it and 77
     becoming reads; the feed's fluent answers 1,653 -> 1,506. The step's
     cadence under D12: 6-8 minutes per commit, about 24 commits an hour
-    across the lanes. What it taught: a keep-both merge of ISSUES.md loses
-    a lane's rewrite of an entry when a later lane's branch still holds the
-    old text (two entries recovered at the close from the merged commits,
-    two closed ones resurrected and removed); and the agents kept more
+    across the lanes. What it taught: a keep-both merge of ISSUES.md keeps
+    both versions of an entry a lane rewrote when a later lane's branch
+    still holds the old text (two duplicated and two closed ones
+    resurrected, all caught by the close's cross-check against GitHub and
+    the duplicate-heading check); and the agents kept more
     proof than D12 asked, running the corpus and per-commit feed runs for
     attribution, so the saving went to cleaner enumeration rather than
     time. Open P1s 2 of 189 at the close.
