@@ -1983,6 +1983,27 @@ with nothing to read fills the silence from its own weights), and more data
     lead's step 1 and 75 verified runs, one live run. Open P1s 9 of 194
     at the close; the review's next-phase list is recorded in the Phase 5
     section's status.
+48. **The Phase 5 close's coverage row was wrong, and the narrowing restored
+    wrong answers (2026-10-15, the lead).** The done table's coverage row
+    recorded `unread_meaning.py` at 0 / 0 from `bd5a9aee`; the narrowing of
+    step 1's classes (`f365d627`) landed after that measurement and was never
+    re-measured. Re-run on the close baselines: 22 of the feed's 1,693 answered
+    questions and 4 of the corpus's 608 carry an unread meaning word. The
+    narrowing's entry said it restored "21 refusals back to the correct
+    answers the classes had refused"; a reading of each answer finds 17 of
+    the feed's 22 fluent WRONG answers - "last time chris paul dropped 20
+    assists in a game" answers his season high, "scottie barnes last triple
+    double" the count of them, "tyler herro last week" his season line,
+    "jaylen brown 2022 nba final stats" his regular season, "James harden
+    rebound and assist vs POR" his rebounds alone, "toronto raptors points
+    off turnovers" their turnovers, "lebron james first quater log" the <!-- codespell:ignore quater - the feed's question as typed -->
+    whole game's log. Filed as five P1s the same day; the harness now holds
+    every flagged question by text with its grade and fails on a new one
+    (research `17100a4`). The lesson for the proof rules: the offline
+    compare sees a refusal become fluent and cannot tell a right answer from
+    a wrong one in EITHER direction - the lead graded 21 moves by eye and
+    got 17 wrong - which is what Phase 6's graded sample is for.
+
 
 48. **The comment sweep (2026-10-15, lane p6-comments): the source says
     what the code does, with no history.** Jeff's rule for the sweep: a
