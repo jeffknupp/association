@@ -132,8 +132,8 @@ Re-running a pull over seasons that are already complete costs a handful of
    real 0m0.477s
 
 Two things make that true. A pull only fetches NetPoints for the seasons it was
-asked for — the source is one league-wide file covering every season, so a pull
-of 2024 used to download and reparse all of it and rewrite the *current*
+asked for — the source is one league-wide file covering every season, and a
+pull of 2024 must not download and reparse all of it and rewrite the *current*
 season's file as a side effect. And the warehouse is reloaded only for the
 tables the run actually wrote: a full rebuild rescans the entire Parquet tree,
 which on a mature warehouse is over a hundred thousand files.
@@ -265,10 +265,8 @@ Some questions are refused rather than answered:
   filter ("Celtics record in the eastern conference", "Western Conference
   standings"), it is one of the narrowings above and refused the same way.
 
-Every refusal says what is missing. Until 5.0.0 a question the fast path
-could not read went to a tool-calling agent that wrote its own SQL; measured, it answered one
-question in 23 over minutes, so it is gone, and the refusal that names the
-gap is the answer.
+Every refusal says what is missing, and no model writes SQL for a question
+nothing here reads: the refusal that names the gap is the answer.
 
 Shot charts
 -----------

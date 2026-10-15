@@ -76,8 +76,7 @@ association query "who had the most assists in a single game this season?"
 Questions like these are answered in about a second. Anything outside that
 set is refused, and the refusal says what is missing - a shape nothing
 answers, a narrowing the data cannot honor, a season a table does not reach.
-No model writes SQL here: the one that used to, for questions the fast path
-could not read, answered one in 23 and is gone.
+No model writes SQL here.
 
 The readers cover the shapes real NBA stat questions take, measured against
 StatMuse's live query feed. For example:

@@ -116,26 +116,21 @@ players' and teams' names into memory once, before the parser runs
 :func:`association.query.names.loaded`), plans once
 (:func:`association.query.compose.plan.plan_point`) and hands the plan to
 the answer side (:func:`association.query.compose.answer`). Measured over
-the 628 recorded questions on 2026-10-13: the subject is read once on every
+the 628 recorded questions: the subject is read once on every
 question the parser reads, the grammar's rules run once (twice on 4, each a
 child the rules declined), the planner runs once, and the reader issues no
 statement but on 2 questions, where a typo near more than five players is
 narrowed by who played in the latest season.
 
-The design is the product of one measurement. A single model was originally
-asked to do two jobs at once — understand the question *and* write correct
-SQL for it — which forced the entire schema and every correctness rule to be
-resident for every question. That preamble reached **10,295 tokens against a
-context window of 8,192**. ollama truncates head-first and silently, so only
-4,098 tokens ever reached the model, and what it discarded was the schema
-summary and most of the correctness rules. Questions took minutes and
-answered the wrong thing. So the two jobs were separated; a router model's
-classification of the whole question was then replaced by grammar tables
-over the words (5.0.0; measured on the same 277 wordings, the parser scored
-162/175 against the router's 160, with fewer wrong answers, in half the
-time); and the model that wrote SQL for what the fast path could not read
-was measured and removed ("Refusals", below). What is left for a model is
-the smallest job there is.
+The design rests on one measurement. A model asked to do two jobs at once -
+understand the question *and* write correct SQL for it - needs the entire
+schema and every correctness rule resident for every question: **10,295
+tokens against a context window of 8,192**, which ollama truncates
+head-first and silently, so what the model loses is the schema and the
+correctness rules. So understanding the question is code - grammar tables
+over its words and typed readers - and SQL is compiled, never written by a
+model ("Refusals", below). What is left for a model is the smallest job
+there is.
 
 READ: the model, then the words
 -------------------------------
@@ -314,9 +309,9 @@ reads the point's typed cells against the row
 :func:`~association.query.compose.plan.cells_declined` refuses, before any
 reader runs, what a shape refuses outright. A reader declares and applies no
 scoping of its own - two tests read the source to keep it so - which makes a
-new narrowing one clause on the relation's shared steps, never a slot
-taught to one reader at a time: twelve slots honored on one reader and one
-on another, over the same relation, is how it was before.
+new narrowing one clause on the relation's shared steps, never a cell
+taught to one reader at a time, which leaves twelve honored on one reader
+and one on another over the same relation.
 
 **A season a table cannot reach is refused, with the reason.**
 :func:`association.query.coverage.check_coverage` reads the planned point's
@@ -372,8 +367,8 @@ a table and the rules of reading it:
   (:func:`~association.query.team_relation.scoped_team`,
   :func:`~association.query.team_relation.team_games`), which is where a
   postseason is selected by the calendar year it was played in and the NBA
-  Cup final is kept out of a regular-season record - facts that used to be
-  written three times and were wrong in two of them;
+  Cup final is kept out of a regular-season record - facts written once,
+  because copies of them drift apart;
 * the **season line** (:mod:`association.query.season_line`): one row per
   player per season in ``player_season_stats_deduped``, the advanced stats
   beside it, the rankings' floors, dedup and qualifiers, and the
@@ -449,10 +444,10 @@ what the CLI prints; everything beside it is what the pipeline computed:
 
 * ``answered_by`` - ``"fast"`` where something here read the question and
   had something to say (an answer, a clarification, a "no match", a refusal
-  a reader or the planner came to by its cause - since Phase 5, step 5 every
-  decline too, and words that ask for no shape), ``"refused"`` only for a
-  question too short to be one (fewer than three words), refused unread. Until 5.0.0 the
-  second value was ``"agent"``, a 7B model writing the SQL.
+  a reader or the planner came to by its cause - every decline too, and
+  words that ask for no shape), ``"refused"`` only for a question too
+  short to be one (fewer than three words), refused unread, a reply the
+  normalizer could not give, or a value the Reading cannot hold.
 * ``shape`` - the planned ``PointShape`` the answer was read and said as,
   or ``None`` where the words came to no point. The web page renders by it:
   seven renderers, one per shape (``RENDERERS`` in
@@ -485,17 +480,13 @@ one the warehouse has no column for - the thing itself: a playoff round, an
 age, a stat by quarter the plays cannot rebuild, a coach
 (``Reading.unsupported`` and the point reader's causes, said by the
 planner). Before writing one, check which fact is missing: "No NetPoints
-fingerprint on record for season 2026" was once the answer about a player
-who had resolved to the wrong Maxey, and a refusal naming the wrong cause
-reads as honest while sending the reader somewhere useless.
+fingerprint on record for season 2026" about a player who resolved to the
+wrong Maxey reads as honest while sending the reader somewhere useless.
 
-Until 5.0.0 such a question fell through to a tool-calling agent that wrote
-SQL by hand. Measured at production defaults over 24 questions (ISSUES.md
-#129), it answered one in 23, did not finish 61% of the time, and was wrong
-five times in six where it finished - an agent with nothing to read fills
-the silence from its own weights. So it went, with its prompt, its tools and
-its budget; the refusal it left behind is the answer
-``--disable-fallthrough`` used to raise as an error.
+No model is handed such a question to answer by writing SQL: a model with
+nothing to read fills the silence from its own weights (measured over 24
+questions, #129: one answered in 23, wrong five times in six where it
+finished).
 
 Why deterministic readers rather than better prompting
 ------------------------------------------------------
