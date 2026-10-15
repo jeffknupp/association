@@ -1917,6 +1917,7 @@ those were found.
 - **Next step:** a coverage floor for the double-double and triple-double columns at 1994 on the season table (`nba/coverage.py`), refused or caveated as the empty box scores are; check `tripleDouble` the same way.
 - **Priority:** P2 - a figure quietly wrong where the span reaches before 1994.
 - **Source:** ESPN.
+- **GitHub:** #465
 
 ### A position group reads one point-in-time label
 - **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
@@ -1925,6 +1926,7 @@ those were found.
 - **Next step:** the position group's read (`Query.position`, `point._everyone_point`) folds the generic labels into their groups (G into PG and SG, F into SF and PF) and says the label is the current roster's, not the season's; or refuses a position group over past seasons by name.
 - **Priority:** P2 - a fluent ranking of a group the data cannot form.
 - **Source:** ESPN.
+- **GitHub:** #466
 
 ### A game score over empty box scores reads 0.0
 - **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
@@ -1933,6 +1935,7 @@ those were found.
 - **Next step:** the build writes NULL where no box score was read (`fetch/warehouse.py`'s advanced table), and the ranking's qualifier excludes NULL; backfill by `association data load --tables player_season_advanced_stats`.
 - **Priority:** P2 - a fluent zero.
 - **Source:** ours (the build).
+- **GitHub:** #467
 
 ## P3: refusal or gap
 
@@ -2757,6 +2760,7 @@ those were found.
 - **Next step:** find the endpoint's request shape for the play-in (the standings endpoint knows the season type), pull it as its own `season_type`, and say it in the coverage declaration; until then a coverage note on any span that includes mid-April from 2021.
 - **Priority:** P3 - a gap in the data, visible only where a question names it.
 - **Source:** ESPN.
+- **GitHub:** #468
 
 ### A period read cannot see the 31 games without a full linescore
 - **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
@@ -2764,6 +2768,7 @@ those were found.
 - **Next step:** the period reads count the games they could not see, as `_empty_box_scores` does for a per-game answer, and say so.
 - **Priority:** P3 - a small gap, unsaid.
 - **Source:** ESPN.
+- **GitHub:** #469
 
 ## P4: tooling, docs, low impact
 
