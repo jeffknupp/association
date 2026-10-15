@@ -570,7 +570,7 @@ def test_each_move_of_the_key_off_the_grammars_parent_is_a_decision(con: duckdb.
     route = _route(con, "How many times did embiid score 30+ points", ["embiid"], "points")
     assert route.decisions == (Decision("parser", "asked", "player_games/rows/date", "player_games/scalar/count", "the words 'How many times did embiid score 30+' name player_games/scalar/count"),)
     route = _route(con, "rebounds allowed per team", [], "rebounds")
-    assert route.decisions == (Decision("parser", "asked", "player_seasons/ranking/player", "team_seasons/ranking/team", "the stages settle it from the question's words"),)
+    assert route.decisions == (Decision("parser", "asked", "player_seasons/ranking/player", "team_seasons/ranking/team", "the grammar's rules settle it from the question's words"),)
     route = _route(con, "what was the sixers record when maxey scored 15+ points?", ["sixers", "maxey"], "points")
     team_rule = "a team's record in the games a player named beside it reached a line"
     assert route.decisions == (Decision("parser", "asked", "team_games/split/presence", "player_games/split/line", team_rule),) and route.who.asked_reason == team_rule
@@ -579,7 +579,7 @@ def test_each_move_of_the_key_off_the_grammars_parent_is_a_decision(con: duckdb.
     # A child the words name and the rules decline: said, and the parent
     # stands (a history with no stat named is the whole line).
     route = _route(con, "embiid career averages over the past 4 seasons", ["embiid"], "")
-    declined = "the words 'over the past 4 seasons' name player_seasons/split/season, and the stages declined it"
+    declined = "the words 'over the past 4 seasons' name player_seasons/split/season, and the grammar's rules declined it"
     assert route.asked == PLAYER_LINE and route.decisions == (Decision("parser", "asked", "player_seasons/split/season", "player_seasons/scalar/line", declined),)
 
 

@@ -811,12 +811,12 @@ def _read_route_staged(
         if staged.asked == child or words is None:
             decisions.append(Decision("parser", "asked", key_path(parent), key_path(child), _why_named(child, words)))
             if staged.asked != child:
-                decisions.append(Decision("parser", "asked", key_path(child), key_path(staged.asked), "the stages settle it from the question's words"))
+                decisions.append(Decision("parser", "asked", key_path(child), key_path(staged.asked), "the grammar's rules settle it from the question's words"))
             return staged, tuple(decisions), words, child_claims
-        decisions.append(Decision("parser", "asked", key_path(child), key_path(parent), f"the words {words!r} name {key_path(child)}, and the stages declined it"))
+        decisions.append(Decision("parser", "asked", key_path(child), key_path(parent), f"the words {words!r} name {key_path(child)}, and the grammar's rules declined it"))
     staged = settle(numbered, parent, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines, reached_when=reached_when)
     if staged.asked != parent:
-        decisions.append(Decision("parser", "asked", key_path(parent), key_path(staged.asked), "the stages settle it from the question's words"))
+        decisions.append(Decision("parser", "asked", key_path(parent), key_path(staged.asked), "the grammar's rules settle it from the question's words"))
     return staged, tuple(decisions), None, child_claims
 
 

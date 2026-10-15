@@ -6267,7 +6267,7 @@
      "field": "asked",
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -6496,7 +6496,7 @@
      "field": "asked",
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -19382,7 +19382,7 @@
      "field": "asked",
      "before": "player_seasons/ranking/player",
      "after": "team_seasons/ranking/team",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -19919,7 +19919,7 @@
      "field": "asked",
      "before": "player_seasons/ranking/player",
      "after": "player_periods/rows/date",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -20135,7 +20135,7 @@
      "field": "asked",
      "before": "player_games/rows/date",
      "after": "player_periods/rows/date",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     },
     {
      "stage": "subject",
@@ -20545,7 +20545,7 @@
      "field": "asked",
      "before": "player_seasons/scalar/line",
      "after": "player_periods/rows/date",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     },
     {
      "stage": "subject",
@@ -20960,7 +20960,7 @@
      "field": "asked",
      "before": "team_games/comparison/opponent",
      "after": "team_periods/scalar/total",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -21139,7 +21139,7 @@
      "field": "asked",
      "before": "player_periods/ranking/player",
      "after": "none",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": null,
@@ -31679,7 +31679,7 @@
      "field": "asked",
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
-     "reason": "the words 'in the past two seasons' name player_seasons/split/season, and the stages declined it"
+     "reason": "the words 'in the past two seasons' name player_seasons/split/season, and the grammar's rules declined it"
     }
    ],
    "point": {
@@ -31906,7 +31906,7 @@
      "field": "asked",
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
-     "reason": "the words 'in the past 3 seasons' name player_seasons/split/season, and the stages declined it"
+     "reason": "the words 'in the past 3 seasons' name player_seasons/split/season, and the grammar's rules declined it"
     }
    ],
    "point": {
@@ -32133,7 +32133,7 @@
      "field": "asked",
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
-     "reason": "the words 'in the last two years' name player_seasons/split/season, and the stages declined it"
+     "reason": "the words 'in the last two years' name player_seasons/split/season, and the grammar's rules declined it"
     }
    ],
    "point": {
@@ -32360,7 +32360,7 @@
      "field": "asked",
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
-     "reason": "the words 'in the last 5 years' name player_seasons/split/season, and the stages declined it"
+     "reason": "the words 'in the last 5 years' name player_seasons/split/season, and the grammar's rules declined it"
     }
    ],
    "point": {
@@ -37973,7 +37973,7 @@
      "field": "asked",
      "before": "player_games/scalar/count",
      "after": "player_seasons/ranking/player",
-     "reason": "the words 'games with at least 30 minutes' name player_games/scalar/count, and the stages declined it"
+     "reason": "the words 'games with at least 30 minutes' name player_games/scalar/count, and the grammar's rules declined it"
     }
    ],
    "point": null,
@@ -62521,7 +62521,7 @@
      "field": "asked",
      "before": "player_periods/rows/date",
      "after": "none",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": null,
@@ -68042,7 +68042,7 @@
      "field": "asked",
      "before": "player_seasons/ranking/player",
      "after": "team_seasons/ranking/team",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -73577,7 +73577,7 @@
      "field": "asked",
      "before": "player_seasons/ranking/player",
      "after": "player_periods/rows/date",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -74694,7 +74694,7 @@
      "field": "asked",
      "before": "player_periods/ranking/player",
      "after": "player_periods/rows/date",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -75084,7 +75084,7 @@
      "field": "asked",
      "before": "player_seasons/scalar/line",
      "after": "none",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": null,
@@ -75412,7 +75412,7 @@
      "field": "asked",
      "before": "team_periods/scalar/total",
      "after": "player_periods/ranking/player",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -75591,7 +75591,7 @@
      "field": "asked",
      "before": "player_periods/ranking/player",
      "after": "none",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": null,
@@ -75716,7 +75716,7 @@
      "field": "asked",
      "before": "team_periods/scalar/total",
      "after": "player_periods/ranking/player",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -76116,7 +76116,7 @@
      "field": "asked",
      "before": "player_periods/rows/date",
      "after": "player_periods/ranking/player",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -76921,7 +76921,7 @@
      "field": "asked",
      "before": "player_games/rows/date",
      "after": "player_periods/rows/date",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": {
@@ -82767,7 +82767,7 @@
      "field": "asked",
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
-     "reason": "the words 'in the past two seasons' name player_seasons/split/season, and the stages declined it"
+     "reason": "the words 'in the past two seasons' name player_seasons/split/season, and the grammar's rules declined it"
     }
    ],
    "point": {
@@ -103679,7 +103679,7 @@
      "field": "asked",
      "before": "team_games/split/presence",
      "after": "player_games/split/line",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     },
     {
      "stage": "subject",
@@ -103951,7 +103951,7 @@
      "field": "asked",
      "before": "team_games/split/presence",
      "after": "player_games/split/line",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     },
     {
      "stage": "subject",
@@ -109913,7 +109913,7 @@
      "field": "asked",
      "before": "player_seasons/ranking/player",
      "after": "none",
-     "reason": "the stages settle it from the question's words"
+     "reason": "the grammar's rules settle it from the question's words"
     }
    ],
    "point": null,
