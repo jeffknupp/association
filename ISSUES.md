@@ -169,6 +169,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the span tagger's default (`span.read_span`, `point.span_under`) reads the career where the words imply history - a record with or against, a count of events ("50 point games", "triple doubles"), a single-game record ("most ... in a game"), a series between two players or teams, "playoff stats" of a player not active - and the current season only where the words ask a current line; a test per wording class; the sample's 47 re-graded `correct` as the proof; the yardstick not lower.
 - **Priority:** P1 - the largest wrong-answer class the sample found.
 - **Source:** ours.
+- **GitHub:** #470
 
 ## P2: misleading or incomplete
 
@@ -1952,6 +1953,7 @@ those were found.
 - **Next step:** the season line and the games line show the full box line (shooting splits, steals, blocks, turnovers) where the words say "stats" or name a shooting word, as the comparison does; the sample's 14 re-graded `correct` as the proof.
 - **Priority:** P2 - a correct but incomplete answer.
 - **Source:** ours.
+- **GitHub:** #471
 
 ## P3: refusal or gap
 
