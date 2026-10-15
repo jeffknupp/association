@@ -1946,6 +1946,44 @@ with nothing to read fills the silence from its own weights), and more data
    from the tests - each is a consumer to move onto the Scope, not a
    second writer.
 
+47. **Phase 5 closed (2026-10-15): the review, the compaction, and what
+    the review found.** One Opus agent, read-only, reviewed the phase as
+    Phases 3 and 4 were reviewed: both populations at all 62 `src` trees
+    of `520a94b..3dc37821`, every move named by its commit, every merge the
+    three-way composition of its parents (nine feed questions two lanes
+    both moved recorded nowhere - filed), the live run equal to the offline
+    run on 277 of 277, D12 safe. Its verdict against the rows: the exits
+    hold as the harnesses measure them, and the harnesses measure less
+    than the rows say - step 1's unread-meaning harness shares the
+    parser's guards, so its zero is self-consistency; step 1's first
+    classes refused correct answers no population held ("top scorers",
+    "who may lead the league", a list of stats on a log), and 15 of the
+    ledger's held unread-number questions answered fluently past a glued
+    digit; the open P1 list was 9, not 2, once the section was read by its
+    tags. The lead fixed the classes the same night (`f365d627`: 21
+    refusals back to correct answers, 13 fluent answers past a glued digit
+    refused by name, the refusal said after the floor), adopted the
+    review's grade-aware compare as a standing check on every corpus
+    compare - the check that would have caught both of step 7's
+    regressions offline - and repaired ISSUES.md (re-sectioned by tag,
+    three lost entries restored, eight filed, GitHub aligned). A second
+    agent compacted AGENTS.md under its rules: 3,067 lines to 1,800, every
+    one of 474 rule sentences mapped to its place with a check that was
+    watched to fail, 51 paragraphs of provenance quoted verbatim into this
+    file's last section, the review's nine inaccuracies corrected. What
+    the phase taught, beyond its rows: a refusal rule proved on the
+    recorded populations alone is proved on what people typed there, not
+    on what they will type - the live run and a probe outside the corpus
+    are the only checks on the other side; "fluent to refusal" is the
+    allowed direction only where the fluent answer was wrong, which a
+    grade can tell and a diff cannot; and a keep-both merge of a ranked
+    list needs a cross-check at every close. What it cost: eleven agent
+    runs over two days (the sweep's three dispatches, step 4's one, steps
+    2 and 5's two, step 6's three, the review, the compaction), the
+    lead's step 1 and 75 verified runs, one live run. Open P1s 9 of 194
+    at the close; the review's next-phase list is recorded in the Phase 5
+    section's status.
+
 ## AGENTS.md's provenance, folded 2026-10-14
 
 Phase 5, step 7 (Jeff's call, 2026-10-14) compacted `AGENTS.md` to its rules: each rule a short
