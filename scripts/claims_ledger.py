@@ -200,6 +200,16 @@ def run(args: argparse.Namespace) -> int:
         for line in path.read_text().splitlines():
             row = json.loads(line)
             replies.setdefault(row["q"], row["out"])
+    items = list(replies.items())
+    if args.workers > 1 and not args.shard:
+        # D12 (2026-10-14): the feed pass is run at every commit, so it is
+        # sharded across processes as the stage snapshots are - each
+        # question is probed on its own, so N workers write the same rows
+        # in the same order in about 1/N the time.
+        return _run_sharded(args, items)
+    if args.shard:
+        which, of = (int(part) for part in args.shard.split("/"))
+        items = items[which::of]
     read = _reader(args.db_path)
     meta = {
         "code": str(Path(association.__file__).resolve()),
@@ -207,6 +217,7 @@ def run(args: argparse.Namespace) -> int:
         "today": args.today,
         "questions": len(replies),
         "population": population_of(args.recorded, args.match),
+        **({"shard": args.shard} if args.shard else {}),
     }
     print(json.dumps(meta), flush=True)
     started = time.monotonic()
@@ -215,25 +226,70 @@ def run(args: argparse.Namespace) -> int:
         # it to (HELD_PATH): the 628 recorded questions, the 2,082 feed
         # questions, or neither.
         out.write(json.dumps({"meta": meta}) + "\n")
-        for index, (question, reply) in enumerate(replies.items(), 1):
+        for index, (question, reply) in enumerate(items, 1):
             if "error" in reply or (args.match and not any(word.lower() in question.lower() for word in args.match)):
                 continue
-            names = [name.strip() for name in reply.get("names") or [] if isinstance(name, str) and name.strip()]
-            stat = reply.get("stat") if reply.get("stat") in NORMALIZER_STATS else ""
-            joined: list[str] = []
-            whole = read(question, names, stat, joined)
-            words = content_words(question, [*names, *names_read(whole)], stat)
-            probed = _probed(whole)
-            unread = [word for start, end, word in words if _probed(read(without(question, start, end), names, stat)) == probed]
-            row = {"question": question, "content_words": [word for _, _, word in words], "unread": unread}
-            stated = stated_unread(whole)
-            if stated is not None:
-                row["reading_unread"] = stated
-                row["joined"] = joined
-            out.write(json.dumps(row) + "\n")
+            out.write(json.dumps(_row(read, question, reply, NORMALIZER_STATS)) + "\n")
             if index % 100 == 0:
                 print(f"{index}/{len(replies)} {time.monotonic() - started:.0f}s", flush=True)
     print(f"wrote {args.out} in {time.monotonic() - started:.0f}s", flush=True)
+    return 0
+
+
+def _row(read: Any, question: str, reply: dict[str, Any], stats: Any) -> dict[str, Any]:
+    """One question's ledger row (:func:`run`): read whole, then with each
+    content word deleted; the words whose deletion leaves the reading and the
+    planned query unchanged are unread, beside the Reading's own list."""
+    names = [name.strip() for name in reply.get("names") or [] if isinstance(name, str) and name.strip()]
+    stat = reply.get("stat") if reply.get("stat") in stats else ""
+    joined: list[str] = []
+    whole = read(question, names, stat, joined)
+    words = content_words(question, [*names, *names_read(whole)], stat)
+    probed = _probed(whole)
+    unread = [word for start, end, word in words if _probed(read(without(question, start, end), names, stat)) == probed]
+    row: dict[str, Any] = {"question": question, "content_words": [word for _, _, word in words], "unread": unread}
+    stated = stated_unread(whole)
+    if stated is not None:
+        row["reading_unread"] = stated
+        row["joined"] = joined
+    return row
+
+
+def _run_sharded(args: argparse.Namespace, items: list[tuple[str, dict[str, Any]]]) -> int:
+    """``run`` over ``args.workers`` processes, each reading every
+    ``workers``-th question (``--shard K/N``) into its own file, the shards
+    then joined into ``args.out`` in the questions' own order under one
+    meta line - the file a single process would have written."""
+    import subprocess
+
+    started = time.monotonic()
+    shard_paths = [args.out.with_name(f"{args.out.name}.shard{which}") for which in range(args.workers)]
+    command = [sys.executable, str(Path(__file__).resolve()), "run", "--db-path", str(args.db_path), "--today", args.today, "--recorded", *(str(path) for path in args.recorded)]
+    for word in args.match or []:
+        command += ["--match", word]
+    procs = [subprocess.Popen([*command, "--shard", f"{which}/{args.workers}", str(path)], stdout=subprocess.DEVNULL) for which, path in enumerate(shard_paths)]
+    failed = [which for which, proc in enumerate(procs) if proc.wait() != 0]
+    if failed:
+        print(f"shard(s) {failed} failed", flush=True)
+        return 1
+    meta: dict[str, Any] = {}
+    rows: dict[str, str] = {}
+    for path in shard_paths:
+        for line in path.read_text().splitlines():
+            row = json.loads(line)
+            if "meta" in row:
+                meta = meta or {key: value for key, value in row["meta"].items() if key != "shard"}
+            else:
+                rows[row["question"]] = line
+        path.unlink()
+    meta["workers"] = args.workers
+    print(json.dumps(meta), flush=True)
+    with args.out.open("w") as out:
+        out.write(json.dumps({"meta": meta}) + "\n")
+        for question, _reply in items:
+            if question in rows:
+                out.write(rows[question] + "\n")
+    print(f"wrote {args.out} in {time.monotonic() - started:.0f}s ({args.workers} workers)", flush=True)
     return 0
 
 
@@ -483,6 +539,8 @@ def main() -> int:
     run_parser.add_argument("--today", default=DEFAULT_TODAY, help="the date the run reads as (ASSOCIATION_TODAY)")
     run_parser.add_argument("--match", action="append", help="only questions containing this text (repeatable)")
     run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"read the 2,082 feed questions instead ({FEED_RECORDED})")
+    run_parser.add_argument("--workers", type=int, default=1, help="read in this many processes, each its own shard, joined into one file in the questions' order (D12)")
+    run_parser.add_argument("--shard", default="", metavar="K/N", help=argparse.SUPPRESS)
     run_parser.set_defaults(func=run)
     report_parser = commands.add_parser("report", help="print the count of unread content words and the most common")
     report_parser.add_argument("ledger", type=Path)
