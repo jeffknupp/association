@@ -1316,6 +1316,67 @@ measured. Count foul-outs from the box score.
   `scripts/check_net_points_games.py` runs that over a whole season.
 - **Tracked in:** no action needed — fixed in `f152b5e`.
 
+### Play-in games are not in `games` at all
+
+- **What ESPN does:** the schedule endpoint the pull reads serves regular
+  season and playoffs; the play-in tournament (since 2021) is in neither.
+- **Evidence:** measured 2026-10-15 (the feed sample's keyer, re-run by the
+  lead): from 2021 on, no postseason pairing in `real_games` has fewer than
+  four games, and no game falls on the 2023 play-in dates (April 11-14, 0
+  of 0); `net_points_player` holds 545 `PlayIn` rows for the same seasons.
+- **Does a refetch fix it?** Not tested; it needs the play-in's own request
+  shape if ESPN has one.
+- **How we handle it:** nothing - a play-in game is in no answer. Tracked in
+  ISSUES.md ("Play-in games are in no answer").
+
+### `player_season_stats.doubleDouble` is 0, not NULL, in every season before 1993-94
+
+- **What ESPN does:** serves a 0 double-double count on every pre-1994
+  season line where it has no count (the 152 short career files above lack
+  the column instead).
+- **Evidence:** measured 2026-10-15: the regular-season sum of
+  `doubleDouble` is 0 for 1990, 1991, 1992 and 1993 against 2,474 in 1994
+  and 2,259 in 1995; Karl Malone's 1988 line reads 0 beside 12.0 rebounds a
+  game.
+- **Does a refetch fix it?** Not tested.
+- **How we handle it:** nothing yet; tracked in ISSUES.md ("A double-double
+  count reaching before 1994 reads ESPN's zeros").
+
+### `player_season_advanced_stats` holds 0.0 game score where the box scores were empty
+
+- **What ESPN does:** nothing - the table is built here from box scores, and
+  a season whose box scores are the empty Chicago and New Orleans ones gets
+  a game score of 0.0 with NULL true shooting and usage.
+- **Evidence:** measured 2026-10-15: 762 rows with `avg_game_score = 0.0` and
+  `ts_pct` NULL; DeMarcus Cousins 2018 reads 48 games played, NULL ts_pct,
+  NULL usage_pct, 0.0 game score.
+- **Does a refetch fix it?** Not applicable - the build's.
+- **How we handle it:** tracked in ISSUES.md ("A game score over empty box
+  scores reads 0.0"); the fix is NULL where no box score was read.
+
+### 31 real games from 1994 to 2000 lack a full linescore
+
+- **What ESPN does:** serves fewer than four period scores for one side or
+  both.
+- **Evidence:** measured 2026-10-15 (`len(home_linescores) < 4 or
+  len(away_linescores) < 4`): 5 games in 1994, 1 in 1995, 5 in 1996, 11 in
+  1997, 5 in 1998, 4 in 2000; none after 2000 by this measure (the keyer's
+  looser count found 37 through 2005).
+- **Does a refetch fix it?** Not tested.
+- **How we handle it:** a quarter, half or overtime read over those games
+  cannot see them; tracked in ISSUES.md ("A period read cannot see the 31
+  games without a full linescore").
+
+### Isiah Thomas has no postseason line in `player_season_stats`
+
+- **What ESPN does:** the career endpoint serves his 13 regular seasons
+  (1982-1994) and no playoff line, though he played in nine postseasons.
+- **Evidence:** measured 2026-10-15: `athlete_id = '3507'` has 13 rows, all
+  `season_type = 2`.
+- **Does a refetch fix it?** Not tested.
+- **How we handle it:** nothing; one player, recorded so a playoff question
+  about him is not mistaken for a reader fault.
+
 ### `player_box_stats.plusMinus` is 0, never NULL, on every played row before 2008-09
 
 - **What ESPN does:** serves a plus-minus of 0 for every player who played,
@@ -1662,6 +1723,13 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
 - **Tracked in:** nothing open; #17 was closed by the fix.
 
 ### A player's bio is point-in-time, stored as if it were static
+
+- **The season table inherits it unchanged** (measured 2026-10-15): all
+  3,038 players in `player_season_stats_deduped` carry exactly one position
+  across every season, the bio's current label - Shawn Marion "SG", Kobe
+  Bryant "SF", Ron Harper "F", Jordan and Dwyane Wade a generic "G". A
+  position group over seasons rests on that label (ISSUES.md, "A position
+  group reads one point-in-time label").
 
 - **What ESPN does:** serves whatever jersey number, short name and position
   are current on the day the bio is fetched, with no effective date.

@@ -1910,6 +1910,30 @@ those were found.
 - **Source:** ESPN.
 - **GitHub:** #462
 
+### A double-double count reaching before 1994 reads ESPN's zeros
+- **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
+- **Evidence:** `player_season_stats.doubleDouble` is 0, not NULL, on every season line before 1993-94 (DATA.md): the regular-season sum is 0 for 1990-1993 against 2,474 in 1994. A career double-double count or a per-season history over a span reaching before 1994 (Karl Malone, Charles Barkley, Hakeem Olajuwon) is short every early season, and a ranking over those seasons is all zeros.
+- **User sees:** a fluent count that is too low, or a ranking of zeros, with no caveat.
+- **Next step:** a coverage floor for the double-double and triple-double columns at 1994 on the season table (`nba/coverage.py`), refused or caveated as the empty box scores are; check `tripleDouble` the same way.
+- **Priority:** P2 - a figure quietly wrong where the span reaches before 1994.
+- **Source:** ESPN.
+
+### A position group reads one point-in-time label
+- **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
+- **Evidence:** every player carries one position across all his seasons, the bio's current label (DATA.md, "A player's bio is point-in-time"): Shawn Marion "SG", Kobe Bryant "SF", LeBron James "F", Jordan and Wade a generic "G". "most career rebounds by a small forward" answers Paul Pierce (7,527) with LeBron (12,095) outside the group; "point guards under 8,000 career points" sees 237 "PG" players and not the 862 "G".
+- **User sees:** a fluent ranking of the wrong group, with the group named as if it were exact.
+- **Next step:** the position group's read (`Query.position`, `point._everyone_point`) folds the generic labels into their groups (G into PG and SG, F into SF and PF) and says the label is the current roster's, not the season's; or refuses a position group over past seasons by name.
+- **Priority:** P2 - a fluent ranking of a group the data cannot form.
+- **Source:** ESPN.
+
+### A game score over empty box scores reads 0.0
+- **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
+- **Evidence:** 762 rows of `player_season_advanced_stats` carry `avg_game_score = 0.0` with `ts_pct` NULL (DATA.md): the Chicago and New Orleans seasons 2013-2018, built from the empty box scores. DeMarcus Cousins 2018 reads 0.0 over 48 games played. A game-score ranking lists them at the bottom; a player's own game score answers 0.0.
+- **User sees:** a 0.0 said as a figure.
+- **Next step:** the build writes NULL where no box score was read (`fetch/warehouse.py`'s advanced table), and the ranking's qualifier excludes NULL; backfill by `association data load --tables player_season_advanced_stats`.
+- **Priority:** P2 - a fluent zero.
+- **Source:** ours (the build).
+
 ## P3: refusal or gap
 
 ### A dated "since" beside a conference is read as a single season and a career at once: "celtics all-time record vs eastern conference including playoffs since september 11th 2001"
@@ -2725,6 +2749,21 @@ those were found.
 - **Priority:** P3 - the era is under most floors; the inconsistency is real.
 - **Source:** ESPN.
 - **GitHub:** #464
+
+### Play-in games are in no answer
+- **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
+- **Evidence:** `games` holds no play-in game since 2021 (DATA.md, "Play-in games are not in `games` at all"); NetPoints holds 545 play-in rows. A log over April, a team's record in a span, a player's game count in a season are short the play-in games; "miami's play-in games 2023" has nothing to read.
+- **User sees:** a fluent answer short those games, with no caveat; a play-in question refused for want of a reading or answered from the regular season.
+- **Next step:** find the endpoint's request shape for the play-in (the standings endpoint knows the season type), pull it as its own `season_type`, and say it in the coverage declaration; until then a coverage note on any span that includes mid-April from 2021.
+- **Priority:** P3 - a gap in the data, visible only where a question names it.
+- **Source:** ESPN.
+
+### A period read cannot see the 31 games without a full linescore
+- **Found:** 2026-10-15, the feed sample's keyer (shard A), re-measured by the lead.
+- **Evidence:** 31 real games from 1994 to 2000 have fewer than four period scores on one side (DATA.md): a quarter, half or overtime question over a span holding them reads them as missing with no note.
+- **Next step:** the period reads count the games they could not see, as `_empty_box_scores` does for a per-game answer, and say so.
+- **Priority:** P3 - a small gap, unsaid.
+- **Source:** ESPN.
 
 ## P4: tooling, docs, low impact
 
