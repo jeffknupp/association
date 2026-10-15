@@ -37,7 +37,7 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate
 # an opponent, a venue, one Eastern date, a career that starts partway through
 # (`since`), one game of each playoff series (`game_n`), and a window of the
 # newest or oldest N of the narrowed games (the typed `reading.Window`'s
-# `window` cell, an end with its count, since Phase 3, step 2). `span`
+# `window` cell, an end with its count). `span`
 # ("career") is here too, even though it is settled by `scoped_team`/`span_of`
 # rather than narrowed by `team_games` itself - the same shape RELATION_SCOPING
 # already keeps `season_n` in for the player relation, which `scoped_player`
@@ -50,15 +50,15 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate
 # streak's team/league branches still refuse ..."), so none of the three is a
 # cell the relation itself carries. A read that wants one leans on
 # `TeamNarrowed.narrow` directly, the way the team's record over its own line
-# (`compose.team.compile_team_line`; `_record_when_team_base` when this was
-# written) joins `team_box_stats` for its own stat threshold.
+# (`compose.team.compile_team_line`) joins `team_box_stats` for its own stat
+# threshold.
 #
-# `situation` and `until` are step 3, K1's two additions, bringing the team
-# relation to parity with the player one's own RELATION_SCOPING:
+# `situation` and `until` keep the team relation at parity with the player
+# one's own RELATION_SCOPING:
 # `situation` is a calendar narrowing - a weekday, a month, a fixed holiday,
 # or "since <month day>" within each game's own season - applied by
 # `team_games` itself via `TeamNarrowed.narrow_calendar`, the exact mirror of
-# `scoped_games`' own reading for the player relation, OR (K3-2) an
+# `scoped_games`' own reading for the player relation, OR an
 # opponent's conference or division for that game's own season, via
 # `TeamNarrowed.narrow_alignment` - both read by the one `apply_situation`
 # helper both relations' shared steps call; `until` is the
@@ -67,8 +67,8 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate
 # never alone (`validated_until`), so a reader honors it only by also
 # honoring `since`.
 #
-# `period` is the period relation's team half (ROADMAP plan item 4; the
-# typed `Period` since Phase 3, step 2, one cell for a quarter or a half): it
+# `period` is the period relation's team half (the typed `Period`, one cell
+# for a quarter or a half): it
 # narrows what a read SEES of each game - the linescore's points, and every
 # other column rebuilt from the plays (`team_games.team_period_line_sql`) -
 # applied by `team_games` through `TeamNarrowed.narrow_periods`, the
@@ -85,7 +85,7 @@ cuts a team's games carry (:data:`TEAM_CUTS`: ``opponent``, ``venue``,
 ``date``, ``situation``, ``game_n``, each applied by :func:`team_games`
 and said by :meth:`~association.query.team_games.TeamNarrowed.filters`),
 the window, a quarter or half, and the span's three cells
-(:attr:`~association.query.reading.Span.CELLS`, Phase 3, step 2) -
+(:attr:`~association.query.reading.Span.CELLS`) -
 ``career``, ``range`` (``since``, ``until``) and ``both`` - each applied
 by :func:`~association.query.player_relation.span_of` through
 :func:`scoped_team` and :func:`team_span_clause` (a postseason by the
@@ -126,10 +126,7 @@ refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 # which say where the question belongs (`compose.logs._team_log_refusals`,
 # `compose.splits`, `compose.records.read_team_record_when`); anything else a
 # team's games do not carry is the planner's refusal ("a team's games cannot
-# be narrowed by [...]"). The three said what their words state through the
-# PLAYER relation's rows until Phase 3, step 2's closing slice
-# (`relation_scoping("game_log")` and its kin) beside the planner's
-# `_TEAM_READER_REFUSES`; the reasons are those rows', read from them.
+# be narrowed by [...]").
 TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # A team's log keeps its games past a line on its own figure or its
     # opponents' (ISSUES.md #430: "when allowing 120+ points"), as the record
@@ -169,8 +166,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         taken=frozenset({"companion"}),
         declined="plan",
     ),
-    # The shapes Phase 2's slice (iv) ported from templates the reader gave no
-    # point, each the point's only answer: every meeting in a season, on a
+    # The shapes whose reader is the point's only answer: every meeting in a season, on a
     # date, at a venue, or over a since-bounded or whole-career span (a window
     # and `game_n` pick out a subset of the tally); a team's quarter or half
     # over the relation's whole set, the quarter the relation's own
@@ -178,14 +174,12 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # both season types together).
     PointShape("team_games", "comparison", "opponent"): ShapeCells(
         unstated={
-            # The window is read since Phase 5, step 7: the last or first N
-            # meetings, sliced from the one read (compose.meetings).
+            # The window is read: the last or first N meetings, sliced from
+            # the one read (compose.meetings).
             "game_n": DeclineReason.MEETINGS_TALLY_GAME_N,
-            # step 3, K1 wires the calendar narrowing into team_quarter_points
-            # and team_record; head_to_head's own since/career span result
-            # (_head_to_head_span_result) does not read it yet - a weekday or
-            # holiday cut of an all-time series is a real question, just not
-            # this step's.
+            # A team's quarter and its record read the calendar narrowing;
+            # the meetings' tally does not - a weekday or holiday cut of an
+            # all-time series is a real question no reader answers.
             "situation": DeclineReason.MEETINGS_TALLY_SITUATION,
             "period": DeclineReason.MEETINGS_TALLY_PERIOD,
             "both": DeclineReason.MEETINGS_TALLY_BOTH,
@@ -196,14 +190,12 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         unstated={"both": DeclineReason.TEAM_PERIOD_BOTH},
         declined="plan",
     ),
-    # A record for one game is a single result, which game_log already
+    # A record for one game is a single result, which a log already
     # answers directly, and a record over a limited number of recent games is
     # the same substitution the player relation refuses for the same two
-    # cells. `since` and `game_n` used to be excluded here too ("not built
-    # yet" - a reason about the code, which the rule above forbids) - step 3,
-    # team cells, reads both: `since` the same since-bounded `ResolvedSpan` a
-    # career already reads (`_record_narrowed`), `game_n` the relation's own
-    # `narrow_series_game` check (`_games_record_games`).
+    # cells. `since` and `game_n` are read: `since` the same since-bounded
+    # `ResolvedSpan` a career already reads (`compose.team_records._record_narrowed`),
+    # `game_n` one game of each playoff series (`compose.team_records`).
     PointShape("team_games", "scalar", "record"): ShapeCells(
         unstated={
             "date": DeclineReason.TEAM_RECORD_ONE_GAME,
@@ -213,8 +205,8 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         taken=frozenset({"split"}),
         declined="plan",
     ),
-    # A team's best single game, or every team's (D4 lifted for it, Jeff
-    # 2026-10-13): its games ranked by one figure over the span, at a venue,
+    # A team's best single game, or every team's: its games ranked by one
+    # figure over the span, at a venue,
     # against an opponent, on a weekday, month or holiday, or in one game of
     # a series - the point's only answer.
     PointShape("team_games", "rows", "measure"): ShapeCells(
@@ -286,7 +278,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             "both": DeclineReason.TEAM_RANKING_BOTH,
             "window": DeclineReason.TEAM_RANKING_WINDOW,
             "game_n": DeclineReason.TEAM_RANKING_GAME_N,
-            # step 3, K1: a leaderboard ranks a season or a since/until-bounded
+            # A ranking ranks a season or a since/until-bounded
             # span of them; narrowing that pool to one weekday, month or holiday
             # within it is a different question from ranking the span itself.
             "situation": DeclineReason.TEAM_RANKING_SITUATION,
@@ -342,7 +334,7 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Filtered, needs: str, *, 
     Returns ``(team, span)``, or the :class:`~association.query.result.Clarify` asking which team was
     meant. Honors ``since`` the same way :func:`scoped_player` does for a
     player - a career that starts partway through, rather than at the table's
-    own floor (step 3, C4b) - and ``until`` beside it (step 3, K1): the
+    own floor - and ``until`` beside it: the
     inclusive last season of a range, read by :func:`span_of`.
 
     .. versionadded:: 4.4.0
@@ -369,8 +361,7 @@ def team_span_clause(span: ResolvedSpan) -> tuple[str, list[Any]]:
 
     A postseason is selected by the CALENDAR YEAR it was played in, from the
     relation's own Eastern date, never by ESPN's pre-1993-94 label
-    (`AGENTS.md`, "Select a postseason by the calendar year"). Unlike
-    ``association.query.templates.games._season_games``, this does not also
+    (`AGENTS.md`, "Select a postseason by the calendar year"). It does not
     exclude the phantom 1993 label by hand: ``team_games``' own ``played`` CTE
     already keeps one row per ``(season_type, home, away, eastern_date)``, so
     a 1993 row that is really 1994's game has already been collapsed into it
@@ -480,7 +471,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
     if team is None:
         # Every team's games - the league's teams, each game once per side
         # (a team's best single game asked of any team: "most 3s made in a
-        # single game by a team", D4 lifted for it, Jeff 2026-10-13).
+        # single game by a team").
         narrowed = TeamNarrowed(base=[*typed, clause], base_params=[*type_params, *params], team=None)
     else:
         narrowed = TeamNarrowed(base=["tg.team_id = ?", *typed, clause], base_params=[team.id, *type_params, *params], team=team)
@@ -489,9 +480,8 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
         if isinstance(rival, Unanswered):
             return rival
         if team is not None and rival.id == team.id:
-            # A cause the planner says, naming the team named twice (Phase 5,
-            # step 5; ISSUES.md #277): "a team cannot be its own opponent"
-            # named the rule and not the question's slip until then.
+            # A cause the planner says, naming the team named twice (ISSUES.md
+            # #277) - the question's slip, not only the rule.
             raise ShapeDeclined("own_opponent", {"team": rival.name}, f"the {rival.name} are named as both the team and its opponent - name the team they played")
         narrowed.opponent = rival
         narrowed.narrow("tg.opponent_id = ?", rival.id)
@@ -601,18 +591,12 @@ def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: 
     """Nothing to report for a team's own games under a condition read
     (:func:`~association.query.compose.splits.read_team_splits`,
     :func:`~association.query.compose.records.read_team_record_when`,
-    :func:`~association.query.compose.runs.read_team_streak`; the retired
-    templates' ``_player_splits_team``, ``_record_when_team_answer`` and
-    ``_streak_team``) - which fact is missing, the team's games in this
-    span at all or the match to an opponent/venue narrowing, the same
-    discipline the team's log applies (``compose.logs._team_log_none``; the
-    retired ``templates.games._team_game_log_none`` and ``common._no_games``
-    before it). Before ``opponent``/``venue``
-    reached these three branches (step 3, C4) there was only one tier to get
-    wrong; now a team with real games in a span but none against a named
-    opponent gets that sentence instead of the misleading "no games in this
-    span" it would have read as before opponent/venue could narrow anything
-    here at all."""
+    :func:`~association.query.compose.runs.read_team_streak`) - which fact
+    is missing, the team's games in this span at all or the match to an
+    opponent/venue narrowing, the same discipline the team's log applies
+    (``compose.logs._team_log_none``): a team with real games in a span but
+    none against a named opponent gets that sentence, never the misleading
+    "no games in this span"."""
     where, params = narrowed.clauses(narrowed=False)
     season_col = "year(tg.eastern_date)" if span.season_type == 3 else "tg.season"
     found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
@@ -630,20 +614,20 @@ def league_team_narrowed(span: ResolvedSpan) -> TeamNarrowed:
     :func:`common.team_games` always takes one, so the base clause is built
     the same way it builds one, minus the ``team_id`` clause it always adds.
     A postseason before 1993-94 is selected by the calendar year it was
-    played in, not ESPN's own-year label (step 3, C4).
+    played in, not ESPN's own-year label.
 
     .. versionadded:: 5.0.0
     """
     clause, clause_params = team_span_clause(span)
     # Teams the `teams` table does not hold are exhibition opponents that
     # turn up in a few regular-season rows (1992-2000), not franchises - the
-    # same guard `_team_games` used to apply inline.
+    # same guard every team read applies.
     return TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[span.season_type, *clause_params])
 
 
-# --- the reads the team readers take (Phase 4, step 5) -------------------------
-# Statements over the team-games relation a team reader ran itself until
-# then (compose.team_records' two checks, the team compiler's narrowed
+# --- the reads the team readers take ----------------------------------------------
+# Statements over the team-games relation a team reader needs
+# (compose.team_records' two checks, the team compiler's narrowed
 # total), run here and handed back as rows - the relation's own executor,
 # as condition_team_no_games' is.
 

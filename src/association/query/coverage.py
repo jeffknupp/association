@@ -8,7 +8,7 @@ declaration of which tables they read (:data:`SOURCES`, one entry per
 resolved per question where the table depends on the measure asked for -
 and :data:`RELATION_SOURCES` for a point no reader takes) and the checks
 the answering loop and the readers run against it, keyed by the planned
-point's shape and never by an intent.
+point's shape and never by a label.
 
 .. versionadded:: 5.0.0
    Moved from ``association.query.templates.common`` (Phase 2, step 6); ``SOURCES`` was ``TEMPLATE_SOURCES``.
@@ -155,9 +155,8 @@ SOURCES: dict[PointShape, Tables] = {
     # The season line for an unnarrowed line and the box scores for a
     # narrowed one - which is which the point reader settled when it named
     # the relation: a 1990 season line is answerable, and a 1990 line
-    # against one opponent, or since a date, is not (#212, closed by
-    # keying the floor on the point: until Phase 3, step 1 the floor read
-    # four slots of its own and the reader a longer list).
+    # against one opponent, or since a date, is not (#212): the floor is
+    # keyed on the point, so the floor and the reader read one list.
     PointShape("player_seasons", "scalar", "line"): _player_line_tables,
     PointShape("player_games", "scalar", "line"): _player_games_line_tables,
     PointShape("player_seasons", "comparison", "subject"): ("player_season_stats_deduped",),
@@ -165,11 +164,10 @@ SOURCES: dict[PointShape, Tables] = {
     # A season-line ranking's table depends on the metric asked for. The
     # game-level ranking (the planner's re-plan of a season-line ranking its
     # reader did not read, which no reader takes) has no entry: it reads
-    # the box scores, and RELATION_SOURCES floors it there. Until the commit
-    # after Phase 3, step 1 it was held to the metric's table - none, for a
-    # line the season line has no metric for - and "how many players
-    # averaged 30 ppg in 1986" answered "No games for every player in the
-    # 1986 regular season", the wrong cause.
+    # the box scores, and RELATION_SOURCES floors it there - never the
+    # metric's table, none for a line the season line has no metric for,
+    # under which "how many players averaged 30 ppg in 1986" would answer
+    # "No games for every player in the 1986 regular season", the wrong cause.
     PointShape("player_seasons", "ranking", "player"): _metric_tables,
     PointShape("player_seasons", "scalar", "count"): _metric_tables,
     PointShape("player_seasons", "ranking", "seasons"): ("player_season_stats",),

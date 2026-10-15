@@ -1,12 +1,11 @@
 """The shot relation: one player's located shots, ``shot_chart``, and every
 statement read over them - built here and executed through the compiler's
 one door (:func:`~association.query.compose.core.values_of`), as the season
-line's are (:mod:`association.query.season_line`). Phase 4, step 5
-(``ROADMAP.md``, "Every statement is a relation's"): the three statements
-the shot relation's reader ran (:mod:`association.query.compose.shots`: the
-games a narrowing sends a shot read to, a player's average shot distance,
-the shots a chart draws) moved here whole, text-identical, with the
-parameters each took. The reader keeps its words and the chart its drawing
+line's are (:mod:`association.query.season_line`; ``ROADMAP.md``, "Every
+statement is a relation's"): the three the shot reader needs
+(:mod:`association.query.compose.shots`: the games a narrowing sends a shot
+read to, a player's average shot distance, the shots a chart draws). The
+reader keeps its words and the chart its drawing
 (``compose.shots.draw_shot_chart``), and runs no statement of its own. Not
 every read of ``shot_chart`` is this relation's: the period relations
 rebuild a quarter's points from it (:mod:`association.query.player_games`,
@@ -121,8 +120,8 @@ def _chart_statement(athlete_id: str, season: int | None, season_type: int | Non
         where.append("season_type = ?")
         params.append(season_type)
     # The games pinned, as an IN list even for one: these ids came FROM the
-    # relation, and a bare equality on the game is the shape the relation
-    # templates' source check forbids a reader to write.
+    # relation, and a bare equality on the game is the shape the readers'
+    # source check (tests/query/test_templates.py) forbids a reader to write.
     if pinned is not None:
         where.append(f"event_id IN ({', '.join('?' for _ in pinned)})")
         params.extend(pinned)

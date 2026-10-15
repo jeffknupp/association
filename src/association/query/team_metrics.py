@@ -36,7 +36,7 @@ What was measured, against the built warehouse:
 - ``team_season_stats.avgRebounds`` is NOT the game-level fault
   :mod:`association.query.conditions` works around (DATA.md, "The team
   ``totalRebounds`` column stops including team rebounds in 2022"). Checked
-  against the 2026-09-17 warehouse: it equals ``avgOffensiveRebounds +
+  against the warehouse: it equals ``avgOffensiveRebounds +
   avgDefensiveRebounds`` to rounding in every regular season from 1994 to
   2026, 2008 included, with no drop across 2021-2022 - unlike
   ``team_box_stats.totalRebounds`` (the per-game column), ESPN's season
@@ -170,9 +170,9 @@ DEFAULT_TEAM_LINE: tuple[str, ...] = (
 
 # The words a question names a team metric by are the lexicon's
 # (lexicon.TEAM_METRIC_WORDS), and which measure each names is the catalog's
-# (measure.ALIASES): a whitelist, not a fuzzy match - `stat` was the one
-# REQUIRED router slot, and is the normalizer's one required key, so the
-# model fills it on every question with free text, and an unlisted word
+# (measure.ALIASES): a whitelist, not a fuzzy match - `stat` is the
+# normalizer's required key, so the model fills it on every question with
+# free text, and an unlisted word
 # refuses rather than being guessed at.
 
 

@@ -5,9 +5,7 @@ here in code instead of re-derived by the model from prose on every query.
 Standalone (it imports nothing from the rest of query/) so every consumer can
 read it without a cycle: season_line.py builds the ranking's SQL from it, and
 the point reader, the ranking's reader and the sayer read a metric's facts
-from it. Until 5.0.0 prompt.py listed the known metrics in the
-get_leaderboard tool description, and until Phase 2 the templates package
-validated the router's slots against it."""
+from it."""
 
 from __future__ import annotations
 
@@ -462,11 +460,8 @@ def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: 
     )
 
 
-# Every stat name the router's prompt taught it (until 5.0.0) that had no metric behind
-# it - so every leaderboard question naming one fell through. Kept out of
-# CORE_METRIC_NAMES, which the agent's preamble once spelled out three times
-# against a token budget; the split is kept because the core set is what an
-# unknown metric's error lists.
+# The box-score stats as ranking metrics. Kept out of CORE_METRIC_NAMES,
+# because the core set is what an unknown metric's error lists.
 _BOX_SCORE_METRICS: dict[str, LeaderboardMetric] = {
     "total_points": _season_total("points", "total points"),
     "total_rebounds": _season_total("totalRebounds", "total rebounds"),
@@ -484,12 +479,12 @@ _BOX_SCORE_METRICS: dict[str, LeaderboardMetric] = {
     # About 6, 2.5 and 1.5 attempts a game, over 82 / 10 / 400 / 50 games,
     # rounded. fg_pct's 480 is eFG%'s floor, and the attempts floor that best
     # matches the league's own 300-made rule (ISSUES.md #12, measured
-    # 2026-10-09 on 2019 and 2022-2026: a 400-attempt floor put 4, 5, 2, 1, 5
+    # on 2019 and 2022-2026: a 400-attempt floor put 4, 5, 2, 1, 5
     # and 4 players into the top 15 that the rule leaves out, 480 put 2, 1, 0,
     # 0, 2 and 1, and 500 or 550 more again). All five scale to the schedule.
     "fg_pct": _percentage("fieldGoalPct", "fieldGoalsMade", "fieldGoalsAttempted", "field-goal percentage", (480, 59, 2400, 300), scales_with_schedule=True),
     # Scaled to the schedule like the three floors #13 measured, on the same
-    # measurement (ISSUES.md #104, 2026-10-09): at the flat floors 2020 and
+    # measurement (ISSUES.md #104): at the flat floors 2020 and
     # 2021 qualified 149 and 161 for 3-point percentage against 163-197 in
     # every full season from 2019 on, and 128 and 129 for free-throw
     # percentage against 146-166; scaled (176 and 110 attempts) they

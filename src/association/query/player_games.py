@@ -1,11 +1,8 @@
 """The ``player_game`` relation: one row per player per game, read one way.
 
-Every template that answers from box scores used to write its own FROM, its
-own "did he play" guard and its own season clause - three definitions of the
-same relation that had already drifted (one read ``real_games``, two read
-``games`` with the phantom excluded by name; one blanked the columns a rebuilt
-line cannot be trusted for, the others never read them). This module is the
-one definition. The rules it carries are the ones `DATA.md` and `AGENTS.md`
+This module is the one definition of the relation - its FROM, its "did he
+play" guard and its season clause - because definitions kept per reader
+drift apart. The rules it carries are the ones `DATA.md` and `AGENTS.md`
 record, applied on every read:
 
 - **the phantom 1993 season is excluded by name** in a career span, and every
@@ -51,7 +48,7 @@ from association.query.measures import PERIOD_COLUMNS as PERIOD_COLUMNS
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
 from .notes import Note
-from .reading import STARTER_SIDES as STARTER_SIDES  # the one table, on the reader's side since Phase 2's step 1; a split names one half of it
+from .reading import STARTER_SIDES as STARTER_SIDES  # the one table, on the reader's side; a split names one half of it
 from .shotchart import SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 
 # A player-game ESPN lists as played but records no minutes for. Every such row
@@ -78,10 +75,7 @@ _RECORDED = "pgl.minutes IS NOT NULL"
 #: ``season_type`` column itself. Read for a "last N games" log naming no
 #: season type at all, and for a question that asks for both outright
 #: ("including the playoffs", "regular season and playoffs") - the span
-#: tagger's :attr:`~association.query.reading.Span.both` (the
-#: ``season_type_unstated`` slot until Phase 3, step 2, set by
-#: ``router._route_game_log_recent_span`` and
-#: ``router._BOTH_SEASON_TYPES_WORDS``). :func:`season_type_clause` is the one
+#: tagger's :attr:`~association.query.reading.Span.both`. :func:`season_type_clause` is the one
 #: place this turns into SQL; every other reader of the relation still sees a
 #: real ``season_type`` (2 or 3) or this sentinel, never a third meaning.
 #:
@@ -155,15 +149,15 @@ _RECORDED_OR_REBUILT = "(pgl.minutes IS NOT NULL OR pgl.reconstructed)"
 _PLAYER_GAMES = "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season"
 
 
-# The period relation (ROADMAP plan item 4): a player's quarter or half as a
-# NARROWING of this relation rather than a template of its own. Nothing in
+# The period relation: a player's quarter or half as a NARROWING of this
+# relation rather than a relation of its own. Nothing in
 # ESPN's box score is split by period, so the period's line is rebuilt from
 # the shots and the plays - points, field goals and free throws from
 # `shot_chart` (points valued through SHOT_VALUE_SQL, never the play's prose -
 # see period_split's docstring for why that is the whole accuracy), and
 # rebounds, assists, steals, blocks, turnovers and fouls from `plays`, by the
 # rules `fetch/repairs/reconstructed_box` measured, with three corrections
-# measured here (2026-09-29, every player-game 2002-2026 summed over all its
+# measured here (every player-game 2002-2026 summed over all its
 # periods against its own box score):
 #
 # - a missed end-of-period heave is not a field goal attempt. 2026 alone types
@@ -180,7 +174,7 @@ _PLAYER_GAMES = "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event
 #   not the 23 whose text is "Tyler Zeller no turnover Ray Allen"), and a
 #   `Not Available` play whose text says "foul" is one (2018's 89 "personal
 #   blocking foul"s), and so is one whose text says "turnover" (2016's 344,
-#   "John Wall turnover"). Measured 2026-09-29 at team level, where one
+#   "John Wall turnover"). Measured at team level, where one
 #   missing play breaks a whole team-game: 2018 turnovers 85.4% -> 93.8%,
 #   2019 92.6% -> 95.5%, 2022 95.7% -> 97.5%, 2016 60.6% -> 64.9%; 2018
 #   fouls 80.7% -> 83.2%. 2016's 24 `Not Available` "offensive rebound"s are
@@ -205,7 +199,7 @@ _PERIOD_FOUL = (
 
 REGULATION_QUARTERS: tuple[int, ...] = (1, 2, 3, 4)
 """The four quarters a "by quarter" breakdown divides each game into - the
-league's table (``templates.games._period_leaderboard_by_quarter``) and a
+league's table (``PERIOD_RANKING``) and a
 named player's (``compose.core._compile_by_period``) alike. Overtime is no
 quarter and is left out, and each answer says so.
 
@@ -234,7 +228,7 @@ is refused (it is not in :data:`PERIOD_COLUMNS`).
 """
 
 
-# Measured 2026-09-29 by `period_line_sql` over EVERY period of each game,
+# Measured by `period_line_sql` over EVERY period of each game,
 # against the game's own box score: 628,103 player-games in 2002-2026 (both
 # season types; played, and in a game the shot table covers). Nothing in the
 # source splits a box score by period, so this is the only independent check a
@@ -278,7 +272,7 @@ column in a listed season says so, and refuses under 90%;
 
 # Per-period points are summed from `shot_chart`, and how closely that sums to
 # ESPN's own linescore is a property of the SEASON, not of the method. Measured
-# 2026-09-16 over every regular season, one row per team-quarter, against
+# over every regular season, one row per team-quarter, against
 # `games.home_linescores`/`away_linescores`: the percentage of team-quarters
 # where the sum is EXACTLY the official figure. Only the seasons below 99% are
 # listed; the other nineteen run 99.2-100.0%.
@@ -501,8 +495,7 @@ def _period_source(narrowed: Narrowed) -> tuple[str, list[Any]]:
     asking for a period's minutes is refused before this is read.
 
     Only games the shot table covers are kept - a game with no located shots
-    would otherwise contribute a confident zero (the retired period template's own
-    rule, now the relation's). The period line is summed over the games the
+    would otherwise contribute a confident zero. The period line is summed over the games the
     base clauses (player, span, season type) select, never all 14 million
     plays.
     """
@@ -584,8 +577,8 @@ class Condition:
     the ``bench``, or ``reached`` a line (``column op value``, said as
     ``label``). "Without Durant", "when Embiid and Paul George play", "when
     Maxey scores 20+", "vs LeBron" are each one of these; a list of them is
-    ANDed. ROADMAP plan item 3: the one shape ``Narrowed.without`` (own,
-    absent), the starter half (the subject's own ``started``), record_when's
+    ANDed: the one shape ``Narrowed.without`` (own,
+    absent), the starter half (the subject's own ``started``), a record over a line's
     threshold (own, reached) and the pair relation's second player
     (opponent, played) were special cases of.
 
@@ -688,8 +681,8 @@ class Narrowed:
     #: narrowed games, or None for all of them. Cut AFTER every row filter and
     #: BEFORE whatever a reader does with the rows, so "30-point games in his
     #: last 10" counts inside the ten and "his average over his last 5 vs
-    #: Boston" averages the five Boston games - step 3's one rule that is
-    #: about the skeleton rather than the rows.
+    #: Boston" averages the five Boston games - the one rule that is about
+    #: the skeleton rather than the rows.
     window: tuple[str, int] | None = None
     #: The ordinal season a league-wide read was narrowed to - each player's
     #: Nth regular season ("most points in a 15th season") - or None.
@@ -820,7 +813,7 @@ class Narrowed:
         say it a second time in theirs. Only a caller that reads its rows
         through :func:`games_subquery`/:func:`aggregate_sql`/:func:`grouped_sql`
         - where ``.window`` is what actually cut the rows - has a reason to
-        ask for it (step 3, C5's ``shot_chart``/``shot_distance``).
+        ask for it (``SHOT_CHART``/``SHOT_DISTANCE``).
 
         .. versionchanged:: 4.4.0
            Takes ``windowed`` (default ``False``); the window phrase moved
@@ -923,7 +916,7 @@ class Narrowed:
     def narrow_period_condition(self, periods: tuple[int, ...], column: str, threshold: int, phrase: str, *, op: str = ">=", plays: bool = True, log_columns: frozenset[str] | None = None) -> None:
         """Only the games whose line in ``periods`` - a quarter, a half - held
         ``column`` at or above ``threshold``, or exactly at it with ``op``
-        ``"="`` (ROADMAP step 2, #275: "three
+        ``"="`` (#275: "three
         points made per game after making one three in first quarter" is his
         whole-game threes over the games whose first quarter held one). One
         more clause over the same rows, like every narrowing here: an EXISTS
@@ -1361,8 +1354,8 @@ def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | N
     """SQL keeping the games ``pgl`` played on a team ``mate`` was on at the
     time - see _teammate_stints for how "was on" is read - or, with ``side``
     ``"opponent"``, the games played AGAINST a team he was on at the time
-    ("vs lakers without lebron": the Lakers games of his Lakers years,
-    ROADMAP step 3). ``season`` is the one season asked about, or None for
+    ("vs lakers without lebron": the Lakers games of his Lakers years).
+    ``season`` is the one season asked about, or None for
     a career.
 
     .. versionchanged:: 5.0.0
@@ -1380,8 +1373,8 @@ def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | N
 
 
 # Stat key -> real player_box_stats column. A whitelist, not a passthrough:
-# a stat key can be model-generated text (the normalizer's stat, the router's
-# `stat` slot before it), and this is the only place it can reach SQL.
+# a stat key can be model-generated text (the normalizer's stat), and this
+# is the only place it can reach SQL.
 # Same reasoning as metrics.EXTRA_FIELD_COLUMNS.
 THRESHOLD_STAT_COLUMNS = {
     "points": "points",

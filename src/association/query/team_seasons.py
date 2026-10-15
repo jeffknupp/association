@@ -15,17 +15,9 @@ its own, and the plain values its rows are read into. A reader names the
 read it takes (:func:`read_team_lines`, :func:`read_team_records`,
 :func:`read_team_since_records`, :func:`read_team_venue_rows`,
 :func:`read_team_outlook_snapshots`, :func:`read_team_outlook_rows`,
-:func:`read_team_season_total`) - since Phase 4, step 5, when the
-statements the readers ran themselves moved here, unchanged.
-Phase 2's slice (iv) (``ROADMAP.md``): the statements are the retired
-templates' (``templates.teams.team_outlook``'s two power-index reads,
-``team_metrics.season_table`` and ``record_table``,
-``templates.teams._venue_records`` and
-``_team_leaderboard_since_records``), moved whole. The standings read for
-one team's record (``templates.teams._standings_season``,
-``_standings_career`` and ``_standings_gap``) are built and run by
-:mod:`association.query.standings`, the same relation's, since Phase 4,
-step 5's close.
+:func:`read_team_season_total`). The standings reads for one team's
+record are built and run by :mod:`association.query.standings`, the same
+relation's.
 
 .. versionadded:: 5.0.0
 """
@@ -224,7 +216,7 @@ def team_outlook_chosen(snapshots: list[tuple[Any, ...]], postseason: bool) -> t
 
     A postseason question reads the postseason snapshot. A regular-season
     question reads the regular-season snapshot outright whenever it holds the
-    team, never "whichever pre-playoff snapshot is latest" - that used to be
+    team, never "whichever pre-playoff snapshot is latest" - that would be
     the play-in one (season type 5) in 2023, 2025 and 2026, because the paging
     fix gave it all 30 teams and it is stamped after the regular-season
     snapshot in those years. See ``DATA.md``, "ESPN's power index is a paged
@@ -306,7 +298,7 @@ def team_venue_records_statement(season: int, season_type: int, venue: str) -> S
 
 def record_text(text: Any) -> tuple[int, int] | None:
     """The standings' "Home"/"Road" strings: '30-10' -> (30, 10), anything
-    else None - ``templates.teams._parse_record``'s reading, by its digits.
+    else None, read by its digits.
 
     .. versionadded:: 5.0.0
     """
@@ -358,10 +350,10 @@ def team_since_records_statement(season_type: int, since: int, until: int | None
     )
 
 
-# --- the reads (Phase 4, step 5) ---------------------------------------------
+# --- the reads -----------------------------------------------------------------
 # Each statement above run here, through the compiler's one door, and handed
-# back read: the team-season readers (compose.team_stats) and the team
-# compiler's season total (compose.team) ran them themselves until then.
+# back read to the team-season readers (compose.team_stats) and the team
+# compiler's season total (compose.team).
 
 
 def _values(con: duckdb.DuckDBPyConnection, statement: Statement) -> list[tuple[Any, ...]]:

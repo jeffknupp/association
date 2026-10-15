@@ -11,10 +11,8 @@ statements and runs them, each through the compiler's one door
 (:mod:`association.query.compose.standings`) its rows or values - so
 ``compose/`` executes nothing it did not compile. The standings' floor is
 ``nba.coverage.COVERAGE["standings"]`` (1988), and a team record over them
-declares the table (``coverage.SOURCES``). Phase 4, step 5 (``ROADMAP.md``,
-"Every statement is a relation's"): the reader's four reads, moved here,
-and the four statements they run with them at the step's close (built in
-:mod:`association.query.team_seasons` until then).
+declares the table (``coverage.SOURCES``; ``ROADMAP.md``, "Every statement
+is a relation's").
 
 .. versionadded:: 6.0.0
 """

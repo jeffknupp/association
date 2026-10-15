@@ -1,18 +1,15 @@
 """The NetPoints relation: ESPN Analytics' NetPoints tables, and every
 statement read over them - built here and executed through the compiler's
 one door (:func:`~association.query.compose.core.values_of`), as the season
-line's are (:mod:`association.query.season_line`). Phase 4, step 5
-(``ROADMAP.md``, "Every statement is a relation's"): the three statements
-the NetPoints reader ran (:mod:`association.query.compose.netpoints`, a
-player's season line, the categories behind it, one game's) and the three
-the fingerprint's loaders ran (:mod:`association.query.fingerprint`, the
-season's pool, the per-game pool, a player's first or last game) moved
-here whole, text-identical, with the parameters each took. The readers keep
-their words and the fingerprint its pool and drawing, and run no statement
-of their own. A comparison's NetPoints rows (:func:`netpoints_row`) are
-the relation's too, since the same day: the season line's comparison
-reader (:mod:`association.query.compose.seasons`) ran them through the
-season line until then. Not yet every statement over these tables: the
+line's are (:mod:`association.query.season_line`; ``ROADMAP.md``, "Every
+statement is a relation's"): the NetPoints reader's three
+(:mod:`association.query.compose.netpoints`: a player's season line, the
+categories behind it, one game's) and the fingerprint loaders' three
+(:mod:`association.query.fingerprint`: the season's pool, the per-game
+pool, a player's first or last game). The readers keep their words and the
+fingerprint its pool and drawing, and run no statement of their own. A
+comparison's NetPoints rows (:func:`netpoints_row`) are the relation's too.
+Not every statement over these tables is here: the
 season line ranks its NetPoints metrics
 (:mod:`association.query.season_line`), and the name resolver reads which
 players have a row (``entities.narrow_to_available``).
@@ -72,7 +69,7 @@ def _values(con: duckdb.DuckDBPyConnection, statement: Statement) -> list[tuple[
 
 
 def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
-    """A statement's first row, as ``fetchone`` gave the retired reads."""
+    """A statement's first row, as ``fetchone`` gives it."""
     return rows[0] if rows else None
 
 
@@ -248,8 +245,7 @@ def game_fingerprints(con: duckdb.DuckDBPyConnection, season: int, season_type: 
             f"SELECT f.event_id, f.athlete_id, max(g.t_poss), {_game_pivots(columns)} "
             "FROM net_points_player_game_fingerprint f "
             # A plain join: net_points_player_game holds one row per
-            # player-game. It used to hold two for 611 of them in 2026 alone,
-            # disagreeing, because two NetPoints dates resolved to one ESPN
+            # player-game - not two, as when two NetPoints dates resolved to one ESPN
             # game - fixed at the source in NetPointsGameIndex rather than
             # collapsed here. max() over the group is still what reads the
             # possessions, since the group is the category pivot.

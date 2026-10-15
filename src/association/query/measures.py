@@ -4,30 +4,29 @@ One definition, read by two readers that may not import each other:
 ``query/lines.py`` turns a phrase into a line on a column
 ("under 14 fta"), and the lines tagger reads the stat beside a threshold
 ("20+ points"). The reader imports nothing from the answer side on purpose -
-the stage before it must not be made to depend on it - so before this
-module existed the router kept its own copy, and nothing checked that the two
-agreed (`ISSUES.md` #164).
+the stage before it must not be made to depend on it - and one definition
+leaves no second copy to disagree with (`ISSUES.md` #164).
 
 .. versionadded:: 4.4.0
 """
 
 from __future__ import annotations
 
-# The words a question calls a column by are the lexicon's (Phase 3, step 2,
-# the line); re-exported here under the name every column list is built from.
+# The words a question calls a column by are the lexicon's; re-exported here
+# under the name every column list is built from.
 from association.query.lexicon import MEASURE_WORDS
 
 # The words a question uses for a TEAM metric are the lexicon's
-# (lexicon.TEAM_METRIC_WORDS, Phase 3, step 2: the measure); the flat table
+# (lexicon.TEAM_METRIC_WORDS); the flat table
 # is re-exported here under the name team_metrics keys its catalog by.
 from association.query.lexicon import STAT_ALIASES as STAT_ALIASES
 from association.query.measure import YES_NO_MEASURES, column_name, measure_name, metric_name
 from association.query.reading import LINE_RUNS, PLAYER_LOG, Cause, Measure, PointRefused
 
 # The columns a quarter or half rebuilds - the period relation's own list,
-# moved here from player_games.py on 2026-10-02 because the parser reads it
-# to check a period condition's stat (ROADMAP.md, Phase 1); player_games
-# re-exports it under its old name.
+# here because the parser reads it to check a period condition's stat and
+# the reader imports nothing from the answer side; player_games re-exports
+# it.
 
 PERIOD_COLUMNS: tuple[str, ...] = (
     "points",
@@ -89,9 +88,8 @@ names: ``points`` from the linescore, the rest rebuilt by
 # computes each lives where it runs (compose.core.DERIVED, compose.team's
 # GAME_MEASURES and SEASON_MEASURES, season_line.HISTORY_COLUMNS), keyed
 # by exactly these names: tests/query/test_measures.py holds the two sides
-# together. Moved here from those modules on 2026-10-02 (ROADMAP.md, Phase 1,
-# the read_point move, step 2), where the reader imported the SQL to learn a
-# name; each re-exports its old name.
+# together. Here, on the reader's side, so the reader learns a name without
+# importing the SQL; each of those modules re-exports its name.
 
 GAME_COLUMNS: frozenset[str] = frozenset(MEASURE_WORDS.values()) | frozenset(
     {"plusMinus", "offensiveRebounds", "defensiveRebounds", "ts_pct", "efg_pct", "usage_pct", "game_score", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"}

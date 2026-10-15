@@ -77,32 +77,30 @@ from association.query.team_games import TeamNarrowed
 # teammate's absence, a named half of the starter/bench split, one game of
 # each playoff series, a line on a box-score column, one Eastern date, a
 # calendar or alignment situation, a span of seasons, a first season, an
-# ordinal season. The window (`reading.Window`, typed since Phase 3, step 2:
-# an end of the span with its count) is the newest or oldest N of the
+# ordinal season. The window (`reading.Window`: an end of the span with its
+# count) is the newest or oldest N of the
 # narrowed games, which the relation cuts after every row filter and before
 # whatever the reader does with the rows, so "30-point games in his last 10"
-# counts inside the ten (step 3, C0's one skeleton-specific rule).
+# counts inside the ten (the one skeleton-specific rule).
 # `scoped_games` sets it (`relation_window`, below): a NAMED end wins
 # outright, and a bare count with no end still means the newest N - the
 # grammar reads "Create a shot chart for Steph Curry's last two games of the
 # regular season" as a count alone once the chart's one-game end is dropped,
-# so a rule gated on the end alone would never reach that question (step 3, C5).
+# so a rule gated on the end alone would never reach that question.
 #
-# This replaced six per-template lists that had drifted: game_log honored
-# twelve of these, single_game_high one, on the same relation - a slot taught
-# to one template at a time, which is the O(templates x slots) matrix the
-# algebra port exists to remove. A shape on the relation whose words cannot
+# One declaration for the relation, never a list per reader: lists kept per
+# reader drift apart, a cell taught to one reader at a time. A shape on the relation whose words cannot
 # honor one of these says so in its row of RELATION_SCOPING_EXCLUDED, with the
 # reason.
 #
-# The games' cuts (`reading.Cuts`, typed since Phase 3, step 2) are seven of
+# The games' cuts (`reading.Cuts`) are seven of
 # the eight by name: `round` is left out, since no game is labeled by its
 # round and every reader refuses it (`unhonored_cells` lists it wherever it
 # is set). The tenure is a cell of this relation alone: a team has none.
 RELATION_SCOPING = frozenset({"split", *ReadLine.CELLS, *Companion.CELLS, *(Cuts.CELLS - {"round"}), *Span.CELLS, *Window.CELLS, *Period.CELLS})
 """The cells every reader on the player-games relation honors: the split,
-the subject's lines (:attr:`~association.query.reading.Line.CELLS`, Phase
-3, step 2: ``line``, a line the relation narrows the games by - kept under
+the subject's lines (:attr:`~association.query.reading.Line.CELLS`:
+``line``, a line the relation narrows the games by - kept under
 a number, a floor of minutes, two or more "N+ stat" pairs on one game -
 applied by :func:`narrow_measures` and said by
 :meth:`~association.query.player_games.Narrowed.filters`; ``period_line``,
@@ -113,8 +111,8 @@ the companions (:attr:`~association.query.reading.Companion.CELLS`:
 less ``round``: ``opponent``, ``tenure``, ``venue``, ``date``,
 ``situation``, ``game_n``, ``season_n``, each applied by :func:`scoped_games`
 and said by :meth:`~association.query.player_games.Narrowed.filters`), and
-the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
-Phase 3, step 2) - ``career`` (every season on record), ``range`` (a
+the span's three cells (:attr:`~association.query.reading.Span.CELLS`) -
+``career`` (every season on record), ``range`` (a
 career cut at one or both ends: ``since``, ``until``) and ``both`` (both
 season types in one read), each applied by :func:`span_of` through
 :func:`scoped_player`, said by :meth:`ResolvedSpan.during` and
@@ -151,14 +149,11 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 # (`reading.ShapeCells`). A reason has to be about the shape's answer, not its
 # code: a cell that merely was not wired is not excluded, it is wired. Keyed
 # by the planned point's shape (`reading.PointShape`, the answer side's one
-# key since Phase 3, step 1): one row per reader on this relation or one
-# settling its player and span through this relation's steps - the season
-# line's, the NetPoints relation's and the shot relation's (`compose._ROUTES`,
-# whose keys a test holds equal to the two tables'). Until Phase 3, step 2's
-# closing slice these rows were keyed by the retired templates' names, and
-# what each shape's words stated was the planner's own table built from them
-# (`compose.plan.STATED_SCOPING`), beside four more declarations of how a cell
-# a shape does not state is refused (`plan._shape_declines`' branches).
+# key): one row per reader on this relation or one settling its player and
+# span through this relation's steps - the season line's, the NetPoints
+# relation's and the shot relation's (`compose._ROUTES`, whose keys a test
+# holds equal to the two tables'). The row is the one declaration of a
+# shape's cells; the planner reads it and keeps no table of its own.
 #
 # The span's `both` cell (both season types in one read) is stated by a
 # log, a line and a count - their words said "including the playoffs", or
@@ -167,15 +162,12 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 # own sentence, which reads both and says so, answers. The reason is the
 # answer's in each case, as the rule above asks (`BOTH_TYPES_ASIDE`). Each
 # reason is a `reading.DeclineReason` member, which the sayer words
-# (`compose.say.decline_reason_phrase`): the sentences stood on these rows
-# until Phase 5, step 5.
+# (`compose.say.decline_reason_phrase`).
 # The relation's cells beyond the span and the cuts - the line family, the
 # companions, a split, a window, the ranked measure, a quarter - are the
 # narrowings a shape that reads one row per player per season or per game,
-# or one season's rating, has no game to narrow by. Until the closing slice
-# those shapes' rows named none of them and their words' table simply left
-# them out (`STATED_SCOPING`); each is said here with its reason, as every
-# cut and span cell such a shape steps aside for is.
+# or one season's rating, has no game to narrow by; each is said here with
+# its reason, as every cut and span cell such a shape steps aside for is.
 
 
 def _excluded_rows(cells: frozenset[str], why: DeclineReason) -> dict[str, DeclineReason]:
@@ -184,7 +176,7 @@ def _excluded_rows(cells: frozenset[str], why: DeclineReason) -> dict[str, Decli
 
 
 RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
-    # A log's and a line's retired sentences head whole games and never name
+    # A log's and a line's sentences head whole games and never name
     # a quarter or half: their readers step aside for one, and the
     # compiler's own sentence, which names the period through
     # Narrowed.filters, answers. Each honors one named half of the
@@ -216,9 +208,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # half, an ordinal season or a line is a fact about a named player's game,
     # and the games "game 4 of each series" picks out are not consecutive to
     # each other; the league's run has no single subject for an opponent or a
-    # venue to narrow against. The retired template's two refusals
-    # (`conditions.condition_needs_player_refusal` and the planner's
-    # `_streak_league_cells` until the closing slice).
+    # venue to narrow against.
     PointShape("player_games", "runs", "line"): ShapeCells(
         unstated={
             "date": DeclineReason.RUN_ONE_GAME,
@@ -459,7 +449,7 @@ def career_end(season: int | None) -> int | None:
     narrows by ``season`` itself; the current season for a career, which keeps
     everybody with a row on record - Dell Curry's career is a real answer to
     "curry career points" - but names whoever plays now first, rather than
-    cutting Stephen behind five retired Currys the way the season question did."""
+    cutting Stephen behind five retired Currys."""
     return current_season() if season is None else None
 
 
@@ -566,7 +556,7 @@ class ResolvedSpan:
 def validated_until(until: int | None, since: int | None) -> int | None:
     """The validated ``until`` slot: an inclusive last season, named beside
     ``since`` only - the span tagger never reads one without the other (a
-    decade, or a named range like "2019-20 to 2023-24"; nor did the router),
+    decade, or a named range like "2019-20 to 2023-24"),
     so a caller checks this before ``since`` has necessarily reached
     :func:`span_of` itself (a reader that reads ``since`` through its own
     code path, the way ``TEAM_RANKING``'s did for a non-record metric, would otherwise drop
@@ -746,7 +736,7 @@ def _narrow_player_games(
         if isinstance(mate, Unanswered):
             return mate
         narrowed.add_condition(_absence_condition(con, mate, player, span, narrowed.opponent), box_source(con))
-    # The general shape of the same thing (ROADMAP plan item 3): any
+    # The general shape of the same thing: any
     # player, on either side, under any predicate - "when Embiid and Paul
     # George start", "vs LeBron without Durant", "in games Maxey had 20+".
     for entry in conditions:
@@ -763,11 +753,8 @@ def player_relation_season_type(scope: Filtered) -> int:
     """The ``season_type`` to read the player relation for: ``BOTH_SEASON_TYPES``
     when the question asked for both explicitly ("including the playoffs") or
     named none at all in a "last N games" question
-    (:attr:`~association.query.reading.Span.both`, the span tagger's; the
-    ``season_type_unstated`` slot until Phase 3, step 2, which
-    ``router._BOTH_SEASON_TYPES_WORDS`` and
-    ``router._route_game_log_recent_span`` both set, for the same honored
-    meaning), else the season type the span tagger read from the question's
+    (:attr:`~association.query.reading.Span.both`, the span tagger's), else
+    the season type the span tagger read from the question's
     own words.
 
     The game log's own "last N games" merge
@@ -802,9 +789,9 @@ def scoped_player(
     The span comes first because it is what narrows an ambiguous name: a career
     keeps Dell Curry and this season does not. An ordinal season ("his 18th
     season") cannot be a year until he is known, so the name is narrowed over
-    his career and the ordinal settled after. Every template that read a
-    player's games wrote these same steps out for itself; a fix to one - the
-    raw ``season`` slot, not a defaulted one, is what narrows the name - had to
+    his career and the ordinal settled after. Every reader of a player's
+    games takes these steps from here, so a fix to one - the raw season,
+    not a defaulted one, is what narrows the name - does not have to
     be found and repeated in each.
 
     ``span`` overrides the scope's own where a reader has a reason to: a
@@ -881,11 +868,9 @@ def relation_window(scope: Filtered) -> tuple[str, int] | None:
     on ``scope.window``) names neither an end nor a count.
 
     A named end (``Window.order``) wins outright. Absent one, a count alone
-    still means "his last N games": measured against the router's
-    traces, while it routed, for "Create a shot chart for Steph Curry's last two games of the
-    regular season" (step 3, C5's finding) - four separate runs, three
-    different builds, all emit ``{'limit': 2, ...}`` with no ``order`` at
-    all, and the grammar reads it the same way now that the chart's one-game
+    still means "his last N games": "Create a shot chart for Steph Curry's
+    last two games of the regular season" comes with a count and no end,
+    as the grammar reads it once the chart's one-game
     end is dropped - so a rule gated on the end alone would never reach the
     real question. No reader on the relation has any other use for a bare
     count - it ranks nothing here, only `leaderboard` does that, over a
@@ -1004,8 +989,7 @@ def scoped_games(
     name is resolved. The tenure (``scope.cuts.tenure``, "lebron stats as a
     starter for Miami" - his games for that team, written by
     ``subject._apply_own_team`` for the one reader whose words state it) is
-    read here like every other cut; until Phase 3, step 2 the compiler
-    alone passed it, as ``team``.
+    read here like every other cut.
 
     .. versionadded:: 4.4.0
 
@@ -1175,10 +1159,10 @@ def condition_player(
     (splits, a record above a threshold, a streak, with/without) and read
     them as a subquery (:func:`association.query.player_games.games_subquery`).
 
-    ``condition_scope`` is the retired template's own ``_Scope``, kept because it reads "career
-    ... in 2015" as 2015 where ``span_of`` refuses the pair - the one place
-    the two readers of a player's games disagreed, and not this refactor's to
-    settle. ``team`` narrows to the games he played for that team. ``measures``
+    ``condition_scope`` is :class:`~association.query.conditions._Scope`,
+    kept because it reads "career ... in 2015" as 2015 where ``span_of``
+    refuses the pair - the one place the two readers of a player's games
+    disagree (ISSUES.md). ``team`` narrows to the games he played for that team. ``measures``
     is the lines a caller has already read off ``below``/``above`` with
     :func:`measure_filters` - built by the caller, before any name is
     resolved, the same way :func:`player_stat` does it - and defaults to none
@@ -1216,12 +1200,11 @@ def whole_span[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT) -> Narr
     record, a run - are read over every game in the span, which is why each
     of them excludes the ``window`` cell in :data:`RELATION_SCOPING_EXCLUDED`
     (DeclineReason.SPLITS_RECENT_GAMES). A bare count
-    was the router's filler on those questions (``limit: 1`` beside "76ers
+    is filler on those questions (``limit: 1`` beside "76ers
     record when Maxey scores 20+"), and :func:`relation_window` reads a bare
     count as the newest N for the readers that DO honor a window - so the
     skeleton that does not says so here, once, instead of the filler cutting a
-    63-game record to one game. Measured on the step 3 golden set: three
-    recorded questions did exactly that before this existed.
+    63-game record to one game.
 
     .. versionadded:: 4.4.0
     """
@@ -1261,7 +1244,7 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Companion, playe
     An absence the question wrote on the subject's own side ("without X")
     whose player was never his teammate in the span is read on the OTHER
     side where the games are narrowed to an ``opponent`` he played for then
-    - "vs lakers without lebron" (ROADMAP step 3, Jeff's call: the side is
+    - "vs lakers without lebron" (Jeff's call: the side is
     settled where the name is resolved, since the parser does not read the
     warehouse) - bounded to his time on that team and said as "without X
     on the other side"; else the teammate refusal stands, naming both.
@@ -1301,9 +1284,9 @@ def _absence_condition(con: duckdb.DuckDBPyConnection, mate: Entity, player: Ent
     the subject's team (bounded to that tenure), or - where X was never his
     teammate in the span and the games are narrowed to an ``opponent`` X
     played for then - the games X missed on the OTHER side ("vs lakers
-    without lebron", ROADMAP step 3), bounded to his time on that team and
+    without lebron"), bounded to his time on that team and
     said as "without X on the other side". Settled here, where the name is
-    resolved, since the parser reads no roster (Jeff's call, 2026-09-30).
+    resolved, since the parser reads no roster (Jeff's call).
     A man on neither side keeps the own-side reading, whose empty answer
     says he was never the subject's teammate.
 
@@ -1385,7 +1368,7 @@ def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     caller that answers with it says what the page shows beside it
     (``shown``).
 
-    ``rebuilt`` has to match whatever the caller's own query used to decide a
+    ``rebuilt`` has to match whatever the caller's own query decides a
     played game: with it, a game reconstructed from play-by-play already counts
     as recorded, so what is left over here is genuinely unrecorded, not merely
     unread. Passing the wrong value would either call a rebuilt game "empty" or
@@ -1423,7 +1406,7 @@ def _no_narrowed_games_in_span(con: duckdb.DuckDBPyConnection, player: Entity, s
     # wrong missing fact (the season, rather than the box scores). Every
     # Chicago and New Orleans game from 2013 to 2018 is one of these, and a
     # player whose games in the span are entirely such games has none that
-    # pass the guard above - which used to read as "he has no games at all".
+    # pass the guard above - which alone reads as "he has no games at all".
     empty_where, empty_params = narrowed.clauses(narrowed=False, recorded=False, rebuilt=rebuilt)
     empty_total, empty_first, empty_last = con.execute(f"SELECT COUNT(*), MIN(pgl.season), MAX(pgl.season) {_PLAYER_GAMES} WHERE {empty_where}", empty_params).fetchone() or (0, None, None)
     if empty_total:
@@ -1466,8 +1449,8 @@ def log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bo
     carries, before the window (``order``/``limit``) cuts them to the rows
     listed - what a game log's heading says "of how many" with (F149) - and
     the first and last season among them, which the heading's parenthesis
-    names: until ISSUES.md #285/#277 it named the seasons of the rows SHOWN,
-    so a career's "last 10 of 118 games" read "(2026 regular season)". Read
+    names - never the seasons of the rows SHOWN, which would read a career's
+    "last 10 of 118 games" as "(2026 regular season)" (ISSUES.md #285/#277). Read
     through :func:`~association.query.player_games.aggregate_sql` over
     :func:`whole_span` (which takes the window off ``narrowed`` itself),
     never a hand-written ``COUNT(*)``.
@@ -1551,7 +1534,7 @@ def condition_scope(span: Span, tables: tuple[str, ...]) -> _Scope:
     2022 and 2020 at once" as though only "since 2022" had been asked,
     with nothing saying the named year was dropped. The range's ``until``
     is not read here: the condition reads are the streak's, the splits'
-    and the pair's, whose retired bodies read ``since`` alone.
+    and the pair's, which read ``since`` alone.
 
     .. versionchanged:: 4.3.0
        Honors ``since``.
@@ -1606,7 +1589,7 @@ def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team
 def rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> int:
     """How many games in scope carry a line rebuilt from play-by-play.
 
-    Used to explain a refusal rather than to answer: when the stat asked for is
+    It explains a refusal rather than answers: when the stat asked for is
     outside :data:`REBUILT_STATS`, "no games with a box score" is true of the
     fetched lines and hides that rebuilt ones exist and were withheld on
     purpose. Saying which is the difference between a gap and a decision.
@@ -1696,9 +1679,9 @@ def _team_slot_played_for(con: duckdb.DuckDBPyConnection, player: Entity, team: 
 def team_slot_for_player(con: duckdb.DuckDBPyConnection, player: Entity, team_text: str, *, season: int | None, opponent: Any) -> Any:
     """What a ``team`` slot means once ``player`` is named - see #147.
 
-    An ``opponent`` already named wins outright: a ``team`` slot beside it is
-    the same noise the router routinely filled alongside an already-correct
-    opponent, not a second fact to reconcile - measured on the filed corpus
+    An ``opponent`` already named wins outright: a model's ``team`` beside it
+    is measured noise beside an already-correct opponent, not a second fact
+    to reconcile - measured on the filed corpus
     rows, it is Payton Pritchard's invented "Phoenix Suns" beside a correct
     "Philadelphia 76ers" opponent, and Kobe Bryant's own "Los Angeles Lakers"
     beside a correct "Houston Rockets" one. Comparing the two and refusing
@@ -1709,7 +1692,8 @@ def team_slot_for_player(con: duckdb.DuckDBPyConnection, player: Entity, team_te
     With no ``opponent`` already named, his own team narrows nothing, so it is
     dropped; a different, real team is his opponent (the Curry shape); and a
     name nothing resolves to - a model inventing a team the way it
-    sometimes invents a player, see AGENTS.md's "The router invents names" -
+    sometimes invents a player, see AGENTS.md's "A model invents names, and
+    an invented name resolves" -
     or an ambiguous one, is dropped rather than guessed at or asked about: the
     player, not the team, is what the question is about.
 

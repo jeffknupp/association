@@ -49,14 +49,13 @@ MAX_CANDIDATES = 10
 def _read_table(con: duckdb.DuckDBPyConnection, sql: str) -> tuple[list[tuple[str, str]], list[tuple[Any, ...]], Exception | None]:
     """One table's columns (name and type), rows and - instead of raising it
     - the error reading it raised: a partial warehouse with no ``teams``
-    still names players, and each lookup raises the error where its own SQL
-    used to (:func:`_player_index`, :func:`_team_index`).
+    still names players, and each lookup raises the error reading its table
+    raised (:func:`_player_index`, :func:`_team_index`).
 
     The two statements it runs (:func:`_read_players`, :func:`_read_teams`)
     stay here, beside the lookups the index answers: they are what the
     index is built from - :mod:`association.query.names` runs no statement,
-    it is handed these readers - and no relation owns a name (``ROADMAP.md``,
-    Phase 4, step 5)."""
+    it is handed these readers - and no relation owns a name."""
     try:
         cursor = con.execute(sql)
         described = [(str(column[0]), str(column[1])) for column in cursor.description or []]
@@ -152,8 +151,8 @@ def names_of(con: duckdb.DuckDBPyConnection) -> names.NameIndex:
 
 
 def checked_players(index: names.PlayerIndex) -> names.PlayerIndex:
-    """``index``, for a lookup that used to read ``players`` - raising what
-    reading ``players`` raised, as that lookup's SQL did.
+    """``index``, for a lookup over the ``players`` index - raising what
+    reading ``players`` raised.
 
     .. versionadded:: 6.0.0
     """
@@ -237,7 +236,7 @@ def _entities(index: names.PlayerIndex, rows: list[int]) -> list[Entity]:
 # in ordinary use, because a question carrying only the shorthand cannot
 # reliably have meant the other player either - "show me Melo's fingerprint"
 # is not a plausible request for Fab Melo's. First names are here on the same
-# reasoning: "luka" and "kobe" resolve, where they used to ask. What stays out
+# reasoning: "luka" and "kobe" resolve rather than ask. What stays out
 # is a shorthand that is simply someone's ordinary name ("timmy" is Timmy
 # Allen's actual first name, "buck" is Buck Williams's), and a surname on its
 # own, which nobody can expect to complete: "brown" still asks, across ten
@@ -299,10 +298,10 @@ PLAYER_NICKNAMES = {
     # Betancourt. The curated lookup is checked before that ordering ever
     # runs, so it settles the one case a plain search could not.
     "rui": "Rui Hachimura",
-    # Players whose careers reach back toward the warehouse's 1993-94 floor.
-    # These are the ones the router got wrong rather than merely missed: it
-    # answered "The Answer" with Klay Thompson and "The Glove" with Jayson
-    # Tatum, both confidently.
+    # Players whose careers reach back toward the warehouse's 1993-94 floor:
+    # the nicknames a model gets wrong rather than merely misses ("The
+    # Answer" read as Klay Thompson, "The Glove" as Jayson Tatum, both
+    # confidently).
     "ai": "Allen Iverson",
     "a.i.": "Allen Iverson",
     "the answer": "Allen Iverson",
@@ -467,10 +466,9 @@ _TEAM_NICKNAMES: dict[str, str] = {
     "nop": "New Orleans Pelicans",
     "nyk": "New York Knicks",
     "sas": "San Antonio Spurs",
-    # ESPN stores the Clippers as "LA Clippers", so the full form the router
-    # wrote - its prompt asked for full team names, and every other Los Angeles
-    # team has one - matched nothing at all; a question or a model's name may
-    # still spell it so.
+    # ESPN stores the Clippers as "LA Clippers", so the full form - every
+    # other Los Angeles team has one - matches nothing at all; a question or
+    # a model's name may spell it so.
     "los angeles clippers": "LA Clippers",
 }
 
@@ -602,10 +600,10 @@ def _franchise_in(teams: names.TeamIndex, text: str, season: int | None) -> list
 def _by_nickname(teams: names.TeamIndex, text: str, season: int | None) -> Entity | None:
     """The one team a name's NICKNAME points to, when its city is garbled.
 
-    The router expanded a question's nickname into a full name, and the city it
-    supplied was sometimes invented: "blazers" came back as "Portland Blazers"
-    (ESPN writes Portland TRAIL Blazers) and "kings" as "Los Angeles Kings";
-    a model's name may still. Literal matching finds nothing for either.
+    A model expands a question's nickname into a full name, and the city it
+    supplies is sometimes invented: "blazers" as "Portland Blazers" (ESPN
+    writes Portland TRAIL Blazers) and "kings" as "Los Angeles Kings".
+    Literal matching finds nothing for either.
 
     The nickname decides, and the city may only confirm it or be unknown - it
     may never contradict it. "Portland Blazers" resolves, since Portland is the
@@ -722,8 +720,7 @@ def _team_named(teams: names.TeamIndex, text: Any, season: int | None = None) ->
 
 
 def teammate_names(value: Any) -> list[str]:
-    """The teammates a list of companions' names holds, in order (the
-    ``without`` or ``with_player`` slot's until Phase 3, step 2).
+    """The teammates a list of companions' names holds, in order.
 
     The subject reading reads every name the phrase holds - "without Tatum
     and Brown" is two people - so the value is a list. A bare string is
@@ -802,7 +799,7 @@ def suggest_players(index: names.NameIndex, text: str) -> list[Entity]:
     failures:
 
     1. **The surname alone.** A model invents the half of a name the
-       question does not contain. Asked to "compare sga and embid" the router emitted
+       question does not contain. Asked to "compare sga and embid" a model emitted
        ``'Jemel Embiid'`` - the surname corrected, the given name made up - and
        since every token must match, one fabricated word buried a player the
        warehouse holds. Dropping back to the last token is exact matching, not
@@ -818,7 +815,7 @@ def suggest_players(index: names.NameIndex, text: str) -> list[Entity]:
     ``MAX_CLARIFY_CANDIDATES`` of them. A long list is not a suggestion: it
     means the name was too common to narrow anything ("Smith" is within one
     edit of 25 players), and the question is better off falling through than
-    reading out a directory. Pass 1 finding too many no longer ends the
+    reading out a directory. Pass 1 finding too many does not end the
     search, though - it falls through to pass 2, which is stricter (every
     token has to be close, not just the surname) and can still land on one
     real match: six Harpers share the surname alone, and only Dylan is also
@@ -1095,7 +1092,7 @@ def _available_ids(con: duckdb.DuckDBPyConnection, ids: list[str] | None, source
     among ``ids``, or among everyone where ``ids`` is None (the players
     active in a season, :func:`active_of`) - for ``season``, or up to
     ``through``: the one statement :func:`narrow_to_available` runs. It
-    stays the resolver's (``ROADMAP.md``, Phase 4, step 5): its tables are
+    is the resolver's, not a relation's: its tables are
     the callers' - the box scores, the season line, the shots, the NetPoints
     tables - and what it reads is which candidates cannot be the answer,
     never an answer."""
@@ -1329,9 +1326,8 @@ def find_teams(teams: names.TeamIndex, text: str, season: int | None = None) -> 
     historic = _franchise_in(teams, text, season)
     if historic is not None:
         return historic
-    # "Sixers" and "Cavs" are no word of any ESPN team name; the router emitted
-    # them verbatim often enough that they fell through to the agent, and the
-    # model copies them as the question types them.
+    # "Sixers" and "Cavs" are no word of any ESPN team name, and the model
+    # copies them as the question types them.
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
 
     index = team_columns(teams, "team_id", "abbreviation", "display_name")
@@ -1343,10 +1339,10 @@ def find_teams(teams: names.TeamIndex, text: str, season: int | None = None) -> 
     # Only the best tier survives, and the two steps do different jobs. Dropping
     # rank 0 keeps "LA" inside "Atlanta" out of a clarification, so it offers
     # plausible teams rather than everything the LIKE touched. Ranking an
-    # ABBREVIATION above a name match settles a collision that used to be
-    # offered as a real ambiguity: "ORL" is Orlando's abbreviation and also a
-    # substring of "New Orleans", so it returned both, and a question naming
-    # one team could be answered about another. "LA" is still honestly
+    # ABBREVIATION above a name match settles a collision that is no real
+    # ambiguity: "ORL" is Orlando's abbreviation and also a substring of "New
+    # Orleans", and a question naming one team is never answered about the
+    # other. "LA" is still honestly
     # ambiguous - no team is abbreviated that - and both Los Angeles teams sit
     # at rank 1 together.
     if not rows:
@@ -1617,7 +1613,7 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
 
 
 def clarify(text: str, candidates: list[str], kind: Literal["player", "team"] = "player", active: int = 0) -> Clarify:
-    """A handled outcome, not a fall-through: the reader knows exactly what
+    """A handled outcome: the reader knows exactly what
     is ambiguous, so it asks instead of passing the problem along. The
     sentence is the sayer's (``compose.say.clarification``), because the
     chart resolution reaches the same ambiguity and has to phrase it
@@ -1636,9 +1632,7 @@ def clarify(text: str, candidates: list[str], kind: Literal["player", "team"] = 
 def name_missing(needs: str) -> ShapeDeclined:
     """The decline of a read that needs a name the reading has none of - a
     ``player``, a ``team`` or a ``teammate`` (``needs``): the ``name_missing``
-    cause the planner says ("it needs a player's name, and none was read"),
-    where each reader raised a sentence of its own naming its retired
-    template ("shot_chart needs a player name") until Phase 5, step 5.
+    cause the planner says ("it needs a player's name, and none was read").
 
     .. versionadded:: 6.0.0
     """
@@ -1691,10 +1685,9 @@ def resolved_player(
             near = tuple(player.name for player in suggest_players(names_of(con), text))
             if near:
                 return Clarify(asked=text, candidates=near, why="near_spelling")
-            # The read's own refusal, as the near-spelling question above is its
-            # own Clarify: raised as a decline until 6.0.0, the user saw "Nothing
-            # here answers this question: with_without: relation: no player
-            # matching 'mpj'" - the intent's and the relation's identifiers.
+            # The read's own refusal, as the near-spelling question above is
+            # its own Clarify - never a decline, which would print the
+            # relation's identifiers to the user.
             return Refusal(kind="name_unmatched", facts={"asked": text})
 
 

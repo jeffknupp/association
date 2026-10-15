@@ -23,21 +23,12 @@ statement is built AND run here, through the compiler's one door
 rows by column name), taken at call time since the compiler imports this
 module: a reader names the read it takes (:func:`season_row`,
 :func:`career_row`, :func:`advanced_row`, :func:`history_rows`,
-:func:`history_total`) and executes nothing of its
-own - since Phase 4, step 5, when the six reads ``compose.seasons`` ran
-itself through the door moved here, the statements unchanged; the sixth, a
-comparison's NetPoints rows, went on the same day to the NetPoints
-relation (:func:`association.query.netpoints.netpoints_row`), whose
-table it reads. Phase 2's slice (iii)
-(``ROADMAP.md``): the statements are the retired templates'
-(``templates.players._season_row``, ``_career_player_stat``,
-``_player_stat_advanced``, ``_player_history_read``,
-``_player_history_career_count``), moved whole;
-since step 4 the ranking's (``query/leaderboard.py``, folded in whole, its
-own execution gone) and the season-range reads
-(``templates.common.season_redirect``,
-``templates.players.seasons_on_record``, a shot chart's and a NetPoints
-answer's own) are here too.
+:func:`history_total`) and executes nothing of its own; a comparison's
+NetPoints rows are the NetPoints relation's
+(:func:`association.query.netpoints.netpoints_row`), whose table they
+read. The ranking's statements and the season-range reads (the season
+redirect, the seasons a player is on record for, a shot chart's and a
+NetPoints answer's own) are here too.
 
 .. versionadded:: 5.0.0
 """
@@ -65,9 +56,8 @@ from association.query.player_relation import ResolvedSpan, scoped_player, span_
 # The most rows a ranking lists: the reader's one cap on a question's count
 # (``reading.MAX_LIMIT``, which ``_clamp_limit`` applies before a ranking is
 # asked for). Applied to the SQL LIMIT itself as well, so a direct caller's
-# count cannot fetch more. It was a cap of its own, 100, for the retired
-# agent's model-supplied ``limit``; with the agent gone the ranking reader's
-# clamped count (``compose.rankings``) is the only one that reaches here.
+# count cannot fetch more; the ranking reader's clamped count
+# (``compose.rankings``) is the only one that reaches here.
 from association.query.reading import MAX_LIMIT, Filtered, Line, ShapeDeclined
 from association.query.result import Grouped, Unanswered
 
@@ -335,9 +325,7 @@ def advanced_statement(athlete_id: str, span: ResolvedSpan, spec: AdvancedStat) 
 
 def history_seasons(scope: Filtered) -> int | None:
     """How many seasons a history reads: ``None`` for a career - every
-    season, however many: not the default four, and not a count the router's
-    model put in ``limit`` (asked for on this intent whether or not the
-    question gave one, until 5.0.0) - else the count asked for, up to
+    season, however many, not the default four - else the count asked for, up to
     :data:`MAX_HISTORY_SEASONS`, or :data:`DEFAULT_HISTORY_SEASONS`.
 
     .. versionadded:: 5.0.0
@@ -423,9 +411,9 @@ def season_redirect(
     ``season_type`` - or None with nothing on record there at all.
 
     Backs the redirect a defaulted season's empty refusal gives (issue #18): a
-    retired player's question that names no season used to be answered as
-    though the current one had been asked outright - a true statement about
-    the wrong year, the mirror-image refusal AGENTS.md warns against. Reading
+    retired player's question that names no season, answered as though the
+    current one had been asked outright, is a true statement about the
+    wrong year, the mirror-image refusal AGENTS.md warns against. Reading
     the player's own range lets the answer redirect instead of guessing which
     season, career, or nothing was meant. ``season_type_column`` names a
     table that keeps its own (``net_points_player``'s string
@@ -479,13 +467,11 @@ def seasons_played(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type:
 # The reads the season line's readers (compose.seasons) take: each statement
 # above run here, through the compiler's one door, and handed back as the
 # rows or the one row the reader reads by position - so the SQL a reader runs
-# lives in the relation that owns its table and the reader names the read
-# (Phase 4, step 5: until then each reader ran the statement itself through
-# compose.core.values_of).
+# lives in the relation that owns its table and the reader names the read.
 
 
 def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
-    """A statement's first row, as ``fetchone`` gave the retired reads."""
+    """A statement's first row, as ``fetchone`` gives it."""
     return rows[0] if rows else None
 
 
@@ -552,8 +538,7 @@ def history_total(con: duckdb.DuckDBPyConnection, athlete_id: str, stat: str, se
 # columns) rather than a free-text filter/column passthrough. A career
 # ranking is a separate statement, because its pool is a different thing and
 # has to be reported as one: every player whose career reached 1993-94, not
-# every player who ever played. Until step 4 this was query/leaderboard.py,
-# which executed its own statements.
+# every player who ever played.
 
 # What a `scales_with_schedule` floor was calibrated against - see
 # `metrics.LeaderboardMetric.scales_with_schedule` and `default_min_sample`
@@ -1413,7 +1398,7 @@ def _ranking_body(metric: str, rows: list[dict[str, Any]]) -> Grouped:
 # stat -> (per-game column, season-total column or None, display label).
 # Per-game and total are reported together, so "how many points did X average"
 # and "how many did X score" need not be told apart from wording - a
-# distinction the router got wrong more often than right.
+# distinction a model gets wrong more often than right.
 PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
     "points": ("avgPoints", "points", "points"),
     "rebounds": ("avgRebounds", None, "rebounds"),
@@ -1422,11 +1407,11 @@ PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
     "blocks": ("avgBlocks", "blocks", "blocks"),
     "turnovers": ("avgTurnovers", "turnovers", "turnovers"),
     "minutes": ("avgMinutes", None, "minutes"),
-    # ROUTER_PROMPT listed `fouls` among the stat names it may emit, and without
-    # a column here every question naming one fell through to the agent.
+    # A stat the model may name; without a column here a question naming
+    # one has no line to read.
     "fouls": ("avgFouls", "fouls", "fouls"),
-    # The router emitted these routinely; without them a question naming one was
-    # silently answered with the default stat line instead.
+    # Stat names a model emits routinely; without them a question naming one
+    # would be silently answered with the default stat line instead.
     "threePointFieldGoalsMade": ("avgThreePointFieldGoalsMade", "threePointFieldGoalsMade", "3-pointers"),
     "fieldGoalsMade": ("avgFieldGoalsMade", "fieldGoalsMade", "field goals"),
     "freeThrowsMade": ("avgFreeThrowsMade", "freeThrowsMade", "free throws"),
@@ -1440,12 +1425,9 @@ PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
 # `key` is the STABLE name `player_history`'s `data["seasons"]` rows carry
 # each column under - identical to `column` for every entry but
 # `twoPointFieldGoalPct`'s, whose `column` is a SQL expression (see its own
-# comment below), not a valid key. Before `key` existed, that expression WAS
-# the dict key: the page looked up "twoPointFieldGoalPct" by its own slot
-# name, found nothing under a key that long, and printed the raw SQL as a
-# column header with an empty column beneath it and a flat sparkline (seen
-# live on the rendered page, 2026-09-24, on "lebron's 2-pt percentage over
-# the last 10 years").
+# comment below), not a valid key: keyed by the expression, the page would
+# look up "twoPointFieldGoalPct", find nothing, and print the raw SQL as a
+# column header over an empty column.
 HISTORY_LINE = "line"
 """The history of the whole line (no stat named), by its ``HISTORY_COLUMNS`` key.
 
@@ -1471,7 +1453,7 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
     # a total and a 3-point split, not a 2-point one. Computed the same way a
     # career figure is elsewhere in this module: makes and attempts less the
     # threes, never the stored FG% read as though it meant this (ISSUES.md
-    # #114 - "2pt percentage" used to arrive as fieldGoalPct and answer OVERALL
+    # #114 - "2pt percentage" read as fieldGoalPct would answer OVERALL
     # shooting, 55.3% for a season whose real 2-point split is 60.2%).
     # NULLIF guards a season with no 2-point attempts at all (every shot a
     # three) rather than dividing by zero.
@@ -1528,11 +1510,9 @@ class ShootingStat:
     ``made_key``/``attempted_key`` are the STABLE names an answer's
     ``data["stats"]`` exposes the makes and attempts under - identical to
     ``made``/``attempted`` for every stat but ``twoPointFieldGoalPct``, whose
-    SQL expression is not a valid key at all. Before these existed, the raw
-    expression itself became the dict key: the page looked up the stat it
-    wanted by its slot name (``twoPointFieldGoalPct``), found nothing, and
-    printed the SQL text as a column header with no value beneath it (seen
-    live on the rendered page, 2026-09-24). ``made_label``/``attempted_label``/
+    SQL expression is not a valid key at all: keyed by the expression, the
+    page would find nothing under ``twoPointFieldGoalPct`` and print the SQL
+    text as a column header. ``made_label``/``attempted_label``/
     ``pct_label`` are the short forms ("2PM", "2PA", "2PT%") a page prints
     beside those keys, carried in ``data["labels"]`` alongside ``data["stats"]``
     rather than left for a renderer to guess from the key's own spelling.
@@ -1590,9 +1570,9 @@ percentage, so a season, a career and a set of games are all the same sum.
 
 # A made-count stat's attempted sibling column - the same name in the season
 # table and in player_game_log, exactly like SHOOTING_STATS' own pairs, but
-# for the three stats the router filed as a plain COUNT ("3-pointers made")
-# rather than a percentage. "Davion Mitchell 3 point stats" answered makes and
-# games and nothing else - not the attempts or the percentage they make,
+# for the three stats read as a plain COUNT ("3-pointers made") rather than a
+# percentage: "Davion Mitchell 3 point stats" with makes and games and
+# nothing else misses the attempts and the percentage they make,
 # both `must_include` in the yardstick key (F051, ISSUES.md). `player_stat`
 # reads this only for a single named made-count stat, never a multi-stat
 # line, where singling out one entry's "out of how many?" would read as
@@ -1628,13 +1608,10 @@ class AdvancedStat:
     volume: str = ""
 
 
-# These were RANKABLE and not LOOKUP-ABLE, which is one concept carrying two
-# vocabularies. `leaderboard` has ranked true shooting, effective FG% and usage
-# since 2.1.0, and the router emitted their names correctly - "kevin durant true
-# shooting percentage career" arrived with `stat="ts_pct"` - but `player_stat`
-# knew only PLAYER_STAT_COLUMNS and refused it with "no per-game column for
-# stat 'ts_pct'". A stat the system can rank is one it should be able to look
-# up, and the gap was invisible because each half was correct on its own.
+# A stat the system can rank is one it can look up: the ranking reads true
+# shooting, effective FG% and usage, and a player's line ("kevin durant true
+# shooting percentage career") reads them here, beside PLAYER_STAT_COLUMNS -
+# one concept, one vocabulary.
 #
 # A career is weighted by the stat's OWN denominator, never averaged across
 # seasons - the discipline SHOOTING_STATS already states. TS% weighted by true

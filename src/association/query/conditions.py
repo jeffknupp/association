@@ -49,8 +49,7 @@ against the warehouse rather than assumed:
   the shared relation (:mod:`association.query.player_games`), which joins
   ``games`` under its played-game guard; measured, no played box-score row
   sits on a game ``real_games`` drops, so the two agree by construction (see
-  ``_player_games``). This module used to
-  apply ``winner_team_id IS NOT NULL`` and nothing else, which caught the
+  ``_player_games``). ``winner_team_id IS NOT NULL`` alone would catch the
   placeholders and no other kind.
 
 Season 1993 is a copy of 1994 (see :mod:`association.nba.coverage`), so a span of
@@ -228,10 +227,9 @@ def _box_source_read(con: duckdb.DuckDBPyConnection) -> BoxSource:
     # The log is asked too: every reader of rebuilt lines reads the flag
     # off ``player_game_log`` (``pgl.reconstructed``), which the warehouse
     # builds OVER the filled view, so the two carry it together - and this
-    # is the one definition of "the warehouse carries rebuilt lines" (until
-    # 2026-10-04 ``player_games.log_carries_rebuilt`` asked the log alone,
-    # the compiler asked the view alone, and a fixture holding one without
-    # the other raised a Binder error on the compiled read).
+    # is the one definition of "the warehouse carries rebuilt lines" (asking
+    # the log alone and the view alone, a fixture holding one without the
+    # other raises a Binder error on the compiled read).
     return BoxSource("player_box_stats_filled", True, frozenset(columns)) if "reconstructed" in columns and "reconstructed" in log_columns else RAW_BOX
 
 
@@ -319,9 +317,8 @@ def _player_games(scope: _Scope, player: str = "player", extra: str = "", box: B
     read with named parameters: the same join, keyed on ``season`` as well as
     ``event_id``; the same played guard; the same blanking of the columns a
     rebuilt line cannot be trusted for (:func:`association.query.player_games.column`).
-    It used to join ``real_games`` and ``team_box_stats`` on its own - measured
-    on the 2026-09-19 warehouse, no played box-score row sits on a game
-    ``real_games`` drops, so the two reads agreed by fact; now they agree by
+    Measured on the warehouse, no played box-score row sits on a game
+    ``real_games`` drops, so this and a read of ``real_games`` agree by
     construction. The side and the scores come from ``games`` directly.
     """
     from .player_games import _RECORDED, _RECORDED_OR_REBUILT, column
@@ -447,7 +444,7 @@ _TEAM_LINE: tuple[tuple[str, str, str], ...] = (
     # exactly offensiveRebounds + defensiveRebounds with the team rebounds
     # gone - 2021 is half and half. A split spanning the change would show a
     # team's rebounding falling off a cliff for no basketball reason (measured
-    # against the 2026-09-17 warehouse: team_box_stats.totalRebounds averages
+    # against the warehouse: team_box_stats.totalRebounds averages
     # ~52/game in 2019-2020, ~48 in 2021, 44.45 from 2022 on, while
     # offensiveRebounds + defensiveRebounds already equals ESPN's own
     # totalRebounds in every 2022+ row). offensiveRebounds and defensiveRebounds
@@ -631,9 +628,9 @@ def _with_without_team_games(scope: _Scope, teams: Sequence[str]) -> TeamNarrowe
     :meth:`_Scope.where` - the season-LABEL definition
     :mod:`association.query.team_games`'s module docstring names as the wrong
     one - with the relation's own (:data:`association.query.team_games.TEAM_GAMES_SQL`).
-    Measured on the 2026-09-22 warehouse, every 1994+ row of the two sources
-    agrees exactly (team, season, event_id, won, both scores) - the old read
-    already joined ``real_games``, the same source the relation is built
+    Measured on the warehouse, every 1994+ row of the two sources
+    agrees exactly (team, season, event_id, won, both scores) - both read
+    ``real_games``, the same source the relation is built
     from, and no game in it lacks a ``team_box_stats`` row to join. The
     correction this port makes reachable in principle is the pre-1993-94
     postseason label; ``PRESENCE_SPLIT``'s own coverage floor
@@ -648,8 +645,8 @@ def _with_without_team_games(scope: _Scope, teams: Sequence[str]) -> TeamNarrowe
 
 def _with_without_held(mates: Sequence[str], predicates: Sequence[tuple[str, tuple[str, int] | None]] | None, params: dict[str, Any]) -> str:
     """The SQL deciding which of the named teammates a game counts on the
-    "held" side: each by his own predicate (ROADMAP plan item 3 - "record
-    when Embiid, Maxey and Edgecombe start"), binding ``$c<i>``/``$v<i>``
+    "held" side: each by his own predicate ("record when Embiid, Maxey and
+    Edgecombe start"), binding ``$c<i>``/``$v<i>``
     into ``params``; or, with none stated, that he appeared - the one clause
     :func:`presence_games_sql` always had, over ``$mates``.
 
@@ -724,9 +721,8 @@ def presence_games_sql(
     if subject is not None:
         params["subject"] = subject
     # Which of the named teammates the game counts on the "held" side: each
-    # by his own predicate (ROADMAP plan item 3 - "record when Embiid, Maxey
-    # and Edgecombe start"), or, with none stated, that he appeared, which is
-    # the one clause this always had.
+    # by his own predicate ("record when Embiid, Maxey and Edgecombe start"),
+    # or, with none stated, that he appeared.
     held = _with_without_held(mates, predicates, params)
     line = (
         "s.minutes, s.points, s.rebounds, s.assists, s.fieldGoalsMade AS fgm, s.fieldGoalsAttempted AS fga"

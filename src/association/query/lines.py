@@ -6,9 +6,7 @@ by with how the answer says each (:func:`measure_filters`), and the one line
 a count, a record, a streak or a high is keyed on (:func:`threshold_line`,
 :func:`threshold_count_line`). The reader's: it reads words, from the
 lexicon, and names no SQL; the relation applies what it reads
-(``player_relation.narrow_measures``). Lived in ``templates.common`` until
-Phase 2's first slice moved the default points that read it to the
-reader's side (``ROADMAP.md``, "Phase 2, the expected steps", step 1).
+(``player_relation.narrow_measures``).
 
 .. versionadded:: 5.0.0
 

@@ -1,7 +1,7 @@
 """The ``team_game`` relation: one row per team per played game, read one way.
 
-"A team's games" used to be defined three times, and they disagreed. The
-correct one is the one this module adopts, built once as ``team_games`` (see
+"A team's games" is defined once, here, because definitions kept per
+reader disagree: built once as ``team_games`` (see
 :data:`TEAM_GAMES_SQL`, moved here from :mod:`association.query.team_metrics`,
 which re-exports it): from ``real_games`` alone, home and away sides unioned
 into a team-perspective row, with two things every reader gets for free
@@ -10,10 +10,7 @@ because they live in the relation instead of in each caller:
 - **the phantom 1993 season cannot double a game.** ``team_games``' own
   ``played`` step keeps one row per ``(season_type, home_team_id,
   away_team_id, eastern_date)`` - the highest ``season`` label when two agree
-  - so a caller never needs its own ``season NOT IN (1993, ...)`` guard the
-  way ``association.query.templates.games._season_games`` used to write one
-  per call site (removed, step 3, C4b: its one caller, ``TEAM_PERIOD_TOTAL``,
-  now takes its games from this relation);
+  - so a caller never needs its own ``season NOT IN (1993, ...)`` guard;
 - **a postseason is selected by the calendar year it was played in**, from
   the relation's own :data:`Eastern date <association.nba.season.eastern_date_sql>`
   rather than a raw UTC timestamp - never by ESPN's pre-1993-94 label, which
@@ -38,14 +35,11 @@ answer can say which narrowing emptied it, and the same four readers
 rule the player relation follows: this module takes ids the entity layer has
 already resolved, never a name.
 
-The old ``conditions._team_games``, which scoped by season LABEL rather than
-calendar year (the wrong-year fault this module's docstring above describes),
-is gone: ``PLAYER_SPLITS``, ``LINE_RECORD`` and ``LINE_RUNS``'s team branches and
-``PRESENCE_SPLIT``'s windows were ported onto this relation in step 3, C4, and
-``TEAM_MEETINGS`` and ``PLAYER_LOG``'s team half in the same step. Every reader of
-a team's games now goes through here.
+Every reader of a team's games goes through here - ``PLAYER_SPLITS``,
+``LINE_RECORD`` and ``LINE_RUNS``'s team branches, ``PRESENCE_SPLIT``'s
+windows, ``TEAM_MEETINGS`` and ``PLAYER_LOG``'s team half.
 
-Step 3, C4b adds the cells a team's games can be narrowed to that C4 left off:
+The cells a team's games can be narrowed to include
 :attr:`TeamNarrowed.window` (the newest or oldest N of the narrowed games, the
 team counterpart of :attr:`association.query.player_games.Narrowed.window`)
 and :attr:`TeamNarrowed.series_game` (one game of each playoff series, the
@@ -56,7 +50,7 @@ reads it into the ``_Span`` a caller passes as ``team_games``'s own ``span``,
 so the relation's ``team_games`` CTE and :func:`association.query.team_relation.team_span_clause`
 narrow by it the same way they already narrow a career.
 
-Step 3, K1 brings the player relation's remaining two cells over: :meth:`TeamNarrowed.narrow_calendar`
+The player relation's two calendar cells are here too: :meth:`TeamNarrowed.narrow_calendar`
 (a ``situation`` - a weekday, a month, a fixed holiday, "since <month day>" - the same
 :func:`association.query.calendar.calendar_clause` the player relation's own
 :meth:`association.query.player_games.Narrowed.narrow_calendar` reads, over the relation's
@@ -78,12 +72,8 @@ from association.nba.season import eastern_date_sql
 from .entities import Entity
 from .measures import TEAM_PERIOD_COLUMNS as TEAM_PERIOD_COLUMNS
 
-# TYPE_CHECKING avoided a real circular import at module load: until
-# 2026-10-03 `calendar.py` imported `_MONTH_NAMES` from `conditions.py`,
-# which imports `TeamNarrowed` from this module, so a top-level
-# `from .calendar import ...` here cycled back on itself (the months are
-# `season_text.MONTH_NAMES` now). `narrow_calendar` below still imports the
-# names it calls at call time.
+# `narrow_calendar` below imports the names it calls at call time; the
+# types are imported for the checker alone.
 if TYPE_CHECKING:
     import duckdb
 
@@ -96,12 +86,10 @@ if TYPE_CHECKING:
 #
 # `real_games` (fetch/repairs/real_games.py) is the shared filtered list, and
 # it is where the 0-0 placeholders, the rows naming a team id no franchise
-# has, and the same-day duplicates now go. This used to do two of those three
-# for itself: it dropped rows with no winner and same-day duplicates, and kept
-# every phantom that carried a winner - which is how the 1995 Finals game
-# filed as MIA-ORL gave Orlando an 11th playoff loss and Miami a postseason it
-# never played. Building it here meant `conditions` and `head_to_head` each
-# had to reach the same conclusion separately, and neither did.
+# has, and the same-day duplicates go - one list, because a phantom carrying
+# a winner (the 1995 Finals game filed as MIA-ORL) otherwise gives Orlando
+# an 11th playoff loss and Miami a postseason it never played, and each
+# reader filtering for itself reaches a different list.
 #
 # What is left here is the ONE thing `real_games` deliberately does not do:
 # collapse season 1993, which is a full copy of 1994 under a second label
@@ -394,7 +382,7 @@ _TEAM_SERIES_GAMES = (
 )
 
 
-# A team's period line (ROADMAP plan item 4, the team half; ISSUES.md #161).
+# A team's period line (the period relation's team half; ISSUES.md #161).
 # Nothing ESPN serves splits a team's box score by period except the
 # linescore, which holds points alone, so the rest is rebuilt: the sum of the
 # team's players' period lines (`player_games.period_line_sql`, each player
@@ -406,7 +394,7 @@ _TEAM_SERIES_GAMES = (
 # relation's own.
 #
 # Which box column each rebuilt column reproduces, decided by measurement
-# (2026-09-29, every 2002-2026 team-game the shot table covers, summed over
+# (every 2002-2026 team-game the shot table covers, summed over
 # every period against `team_box_stats`):
 #
 # - rebounds are the players' own, the split columns
@@ -433,7 +421,7 @@ _TEAM_SERIES_GAMES = (
 #
 # The list itself is the reader's vocabulary (measures.TEAM_PERIOD_COLUMNS,
 # beside the player's PERIOD_COLUMNS): the parser reads it to know a team's
-# quarter of a stat nothing rebuilds (Phase 3, step 0). Re-exported here, under
+# quarter of a stat nothing rebuilds. Re-exported here, under
 # the relation's own name, by the import at the top.
 
 TEAM_PERIOD_BOX: dict[str, str] = {
@@ -456,7 +444,7 @@ match ESPN's own count in 99.9-100% of team-games in 2016, 2017 and 2019.
 .. versionadded:: 5.0.0
 """
 
-# Measured 2026-09-29 (`scripts/check_team_period_lines.py`) over 60,422
+# Measured (`scripts/check_team_period_lines.py`) over 60,422
 # team-games 2002-2026, both season types, in games the shot table covers
 # and with a team box score: each team-game's line summed over EVERY period,
 # overtime included, against `team_box_stats`, and the linescore's periods
@@ -792,8 +780,7 @@ def _team_period_source(narrowed: TeamNarrowed) -> tuple[str, list[Any]]:
     and for a warehouse without the tables it is read from. The line is
     summed over the games the base clauses (team, span, season type) select,
     never all 14 million plays. Every alias here is one ``TEAM_GAMES_SQL``
-    does not use (see ``templates.games._team_quarter_points_games`` for the
-    binder error a reused one raised).
+    does not use, since a reused alias raises a binder error.
     """
     assert narrowed.periods is not None
     periods = narrowed.periods
