@@ -759,121 +759,83 @@ by its `PointShape` key. The populations record the typed Reading
   pattern of its own; and no second copy of a word list exists - one period
   reader (`period.which_period`) for every "first | 1st | q4", one measure
   catalog.
-- **The families, by tagger** (the vocabulary to read the code by):
+- **The families, by tagger** (the vocabulary to read the code by; each
+  tagger writes its typed value on the Reading and claims what it read):
   - *Period* (`query/period.py`): `read_period` reads one quarter or half
-    ("1st quarter", "q4", "2h"; a half read first and apart) into
-    `reading.Period` on `Reading.period`; `which_period` is the ONE reader of
-    which period any words name, for the grammar's rules choosing among the
-    three period keys and for `line.read_period_line`. A "by quarter"
-    question reads NO period (the breakdown is the point's `by`), and a
-    period as a condition on which games count is the line family's
-    `period_line`. One cell, `period`, in both relation tables.
-  - *Cuts* (`query/cuts.py`): `read_cuts(question, CutsContext)` reads
-    which games of the span a read sees - a venue, a situation (a weekday, a
-    month, a holiday, "since <day>", the opponent's conference or division,
-    or words nothing narrows by; `SITUATION`), one calendar day
-    (`CALENDAR_DATE`, its year from the season named or the current one,
-    never on a career question - where it, or a date opening a range, is a
-    situation), a range of days with their years (`DATE_RANGE`: one
-    `date_range` situation across seasons, handing the span the seasons it
-    falls in and both season types where it can hold a postseason game and
-    names no type), a round, a game of a series, an ordinal season - over the
-    opponent and the absent teammates the subject reading read (an opponent
-    that is a `without` name again is dropped; a venue beside a venue split
-    is the split's, dropped by `point.cuts_under`). It writes `reading.Cuts`
-    on `Reading.cuts`, the situation parsed once (`situation_of`: a
-    `CalendarNarrowing` or `AlignmentNarrowing`, which the relations apply
-    and never re-read). `reading.cell_set(scope, cell)` is the one reading
-    of a cell name against the filters for the tables that list cells by
-    name.
-  - *Lines* (`query/line.py`): `read_lines` reads the lines on a stat a
-    question keeps the games past ("30+ points", "20+ point 5+ assist
-    games", "scores 30", "fouled out", "under 14 fta", "with 25 minutes"),
-    each with how the words state it (`LineCandidate.how`), and
-    `point.lines_under` writes `reading.Line` values on `Reading.lines` (the
-    measure, `op`, `value`, `as_typed`, `keyed` for the shape's own line,
-    `narrows` for one the relation filters by, `period`, `whose` - the
-    opponents' figure after a given-up verb or "opponents"
-    (`lexicon.GIVEN_UP_LINE_LEAD`), the `opponent_line` cell, which a team's
-    record over a line takes and every other shape refuses - and `per`). A
-    shape that IS a line (`point.THRESHOLD_ASKS`: the count, the record, the
-    streak, the high) reads a bare "N stat" as its own; every other reader
-    only what the words say outright - a floor of minutes, a line under a
-    number, a line stated over or at a number by its lead
-    (`lexicon.OVER_LEADS`, `LINE_OVER_OR_AT`, `EQUALS_LINE`; under a line's
-    shape "more than 40" is the shape's own "41+"), two or more "N+ stat"
-    pairs on one game. On a ranking of players' seasons a line is the
-    SEASON figure ("averaged 30 ppg", "10000 points": `Line.per` `season` or
-    `total`, the `season_line` cell, kept by `season_line.ranking_statement`
-    and `career_ranking_statement`); "how many players ..." counts them
-    (`reading.PLAYERS_COUNTED`), and "most seasons averaging 30 ppg" is
-    planned `player_seasons/ranking/seasons`. `threshold_named` is what the
-    grammar's rules ask before the lines are read (a count with no line is a
-    ranking). `read_period_line` reads a line in a quarter or half before
-    the grammar and the taggers run, and BLANKS its words to spaces - not
-    cut - so every later claim keeps its offset. The lines are read from
-    the WHOLE question, a companion's phrase included, and a typed `Line` is
-    built from the words, never from a model pair. (history)
-  - *Measure* (`query/measure.py`, the tagger AND the one catalog of what a
-    question can ask about): `read_measure` reads every word the measure is
-    read by, and `point.measure_under(asked, words, MeasureContext)` reads
-    the measure - the words over the normalizer's key (`measure.named`:
-    `MEASURE_GRAMMAR`, then the longest box-score word, `MEASURE_WORDS`),
-    then the rules in order (a stat kept on a quarter's, a comparison's, a
-    line's, a team's or a run's reader only where the words name one,
-    `names_a_stat`; the LONGEST team-metric alias, `team_metric_named`,
-    made the opponent's by "allowed", "opp" or a giving-up verb,
-    `lexicon.GIVEN_UP_VERB`, `GIVEN_UP_KEYS`; a NetPoints rate folded into
-    its key, any other unit the `rate` cell; ...) - into `reading.Measure`
-    (`key`, `as_typed`, `how`, `unit`, `whose`, `side`, `shot_value`,
-    `category`, `won`, `beside`) on `Reading.measure`. The model's key is
-    CONTEXT (the one REQUIRED key the normalizer fills whether or not the
-    question names a stat): the words win where they name a measure, and
-    where they name none the key stands. `measure.CATALOG` (`MeasureKey`,
-    42 keys) says how each key is read on each relation, and whether it is a
-    yes or a no of each game (`yes_no`: a double-double, a triple-double, a
-    foul-out, a win, a game played; the compiler's `BOOLEAN_MEASURES` are
-    read from it); `measure.ALIASES` is every spelling a measure is named
-    by, through `key_of`. The answer side's lookups
-    (`measures.resolve_metric`, `stat_measure`, `stat_column`, `log_extras`,
-    `period_split_measure`, `streak_column`,
+    into `reading.Period` (`Reading.period`); `which_period` is the ONE
+    reader of which period any words name (the grammar's rules use it to
+    choose among the three period keys, `line.read_period_line` for a
+    condition's period). "By quarter" reads no period (the breakdown is the
+    point's `by`); a period as a condition on which games count is
+    `period_line`.
+  - *Cuts* (`query/cuts.py`): `read_cuts(question, CutsContext)` reads a
+    venue, a situation (`SITUATION`: a weekday, a month, a holiday, "since
+    <day>", the opponent's conference or division, or words nothing
+    narrows by), one calendar day (`CALENDAR_DATE`, never on a career
+    question, where it is a situation), a range of days (`DATE_RANGE`, one
+    situation across seasons, handing the span its seasons), a round, a
+    game of a series, an ordinal season - over the opponent and absent
+    teammates the subject reading read - into `reading.Cuts`, the situation
+    parsed once (`situation_of`: a `CalendarNarrowing` or
+    `AlignmentNarrowing`, which the relations apply and never re-read).
+    `reading.cell_set(scope, cell)` is the one reading of a cell name
+    against the filters.
+  - *Lines* (`query/line.py`): `read_lines` reads every line on a stat
+    ("30+ points", "20+ point 5+ assist games", "scores 30", "fouled out",
+    "under 14 fta", "with 25 minutes") with how the words state it
+    (`LineCandidate.how`), and `point.lines_under` writes `reading.Line`
+    values (`op`, `value`, `as_typed`, `keyed` for the shape's own line,
+    `narrows`, `period`, `whose` - the opponents' figure, the
+    `opponent_line` cell only a team's record over a line takes - and
+    `per`). A shape that IS a line (`point.THRESHOLD_ASKS`) reads a bare
+    "N stat" as its own; every other reader only what the words state
+    outright (`lexicon.OVER_LEADS`, `LINE_OVER_OR_AT`, `EQUALS_LINE`). On a
+    ranking of players' seasons a line is the SEASON figure (`Line.per`,
+    the `season_line` cell, `season_line.ranking_statement`), counted by
+    `reading.PLAYERS_COUNTED`. `threshold_named` is what the grammar's
+    rules ask first (a count with no line is a ranking).
+    `read_period_line` runs before the grammar and BLANKS its words to
+    spaces, so later claims keep their offsets. Lines are read from the
+    WHOLE question, a companion's phrase included, and built from the
+    words, never from a model pair.
+  - *Measure* (`query/measure.py`, the tagger and the one catalog):
+    `read_measure` reads the words and `point.measure_under(asked, words,
+    MeasureContext)` the measure - the words over the normalizer's key
+    (`measure.named`: `MEASURE_GRAMMAR`, then the longest box-score word),
+    then the rules in order (`names_a_stat`, `team_metric_named`, the
+    given-up words `lexicon.GIVEN_UP_VERB`, `GIVEN_UP_KEYS`, a rate) - into
+    `reading.Measure` (`key`, `as_typed`, `how`, `unit`, `whose`, `side`,
+    `shot_value`, `category`, `won`, `beside`). The model's key is CONTEXT:
+    the words win where they name a measure. `measure.CATALOG` says how each
+    `MeasureKey` is read on each relation and whether it is a yes or a no of
+    a game (`yes_no`; the compiler's `BOOLEAN_MEASURES` read from it);
+    `measure.ALIASES` holds every spelling, through `key_of`. The answer
+    side's lookups (`measures.resolve_metric`, `stat_measure`,
+    `stat_column`, `log_extras`, `period_split_measure`, `streak_column`,
     `team_metrics.resolve_team_metric`) take the `Measure` and read the
     catalog's facets, held to `tests/query/measure_spellings.json`.
     `Measure.as_typed` is what a refusal prints. The point's `measures` are
-    typed (`tuple[Measure, ...]`, through `measure.measured`), and the
-    compilers' names are built once, where the planner hands the point over
-    (`compose.core.measure_names`, `compose.team.team_metric`). (history)
-  - *Aggregate*: a closed enum (`reading.Aggregate`: `NONE`, `PER_GAME`,
-    `TOTAL`, `COUNT`, `RECORD`, the compiler's own `LINE`) on the `Query`
-    and the `TeamQuery`, and the PLANNER's (D5): `compose.plan.aggregate_of`
-    derives it from what the point is read as (`read_as`, never the planned
-    key) and its measure (the `yes_no` facet, a predicate held true,
-    `Measure.how` "total"); its docstring is the table. The point reader
-    stamps none. (history)
+    typed (`measure.measured`); the compilers' names are built once where
+    the planner hands the point over (`compose.core.measure_names`,
+    `compose.team.team_metric`).
+  - *Aggregate*: `reading.Aggregate` (`NONE`, `PER_GAME`, `TOTAL`,
+    `COUNT`, `RECORD`, `LINE`) is the PLANNER's (decision D5):
+    `compose.plan.aggregate_of` derives it from the point's `read_as` and
+    its measure, and its docstring is the table. The point reader stamps
+    none.
   - *Window* (`query/window.py`): `read_window(question, WindowContext)`
-    reads, and `point.window_under` keeps under the key, which rows a
-    question keeps and from which end - the grammar's count and end ("last
-    10 games", "his first game", "top 5"), a history's "past 5 years" as a
-    count of SEASONS (`Window.of`), one game of a player's line ("his last
-    home game"), an end from the looser `ORDER_WORDS` on a reader that
-    honors one, a team ranking's end (`rank`), the measure a ranking of
-    yes/no games is ordered by (`by`) - into `reading.Window` on
-    `Reading.window`. A ranking's stated qualifier is `reading.Minimum`
-    (`window.read_minimum`, its words blanked from what every other tagger
-    reads; kept on the players' ranking alone by `point.minimum_under`,
-    applied by the season-line ranking where the metric qualifies by its
-    unit, `metrics.qualifies_by`, and by the game-level ranking in games,
-    refused by a cause elsewhere).
+    and `point.window_under` read which rows are kept and from which end
+    (a count and an end, a history's count of SEASONS `Window.of`, one game
+    of a player's line, `ORDER_WORDS`, a team ranking's `rank`, a yes/no
+    ranking's `by`) into `reading.Window`. A ranking's stated qualifier is
+    `reading.Minimum` (`window.read_minimum`, `point.minimum_under`,
+    applied where the metric qualifies by its unit,
+    `metrics.qualifies_by`, refused by a cause elsewhere).
   - *Span* (`query/span.py`): `read_span(question, SpanContext)` and
-    `point.span_under` read the seasons and the season type (a season
-    named, a career, a range, the postseason, both types) into
-    `reading.Span` on `Reading.span`, returning the `Claim`s
-    (`(start, end, what)`) of the characters consumed. The span tagger runs
-    LAST, after the subject is settled and the window read, because its
-    rules read the typed window (a bare "last N games" log reads both types;
-    "how many" with a player named is his career; "last N vs the Pistons" is
-    every meeting). The point reader writes no span of its own: where it
-    settles the subject's span apart from the scope's it says so in
+    `point.span_under` read the seasons and the season type into
+    `reading.Span`, returning `Claim`s (`(start, end, what)`). It runs LAST,
+    because its rules read the typed window. The point reader writes no
+    span of its own: a span it settles apart from the scope's is
     `Reading.subject_span`, the one typed override.
 - **Names arrive as typed.** A typo reaches the entity index, which reads a
   single near spelling as that player and says so; nothing corrects it
