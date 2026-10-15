@@ -1582,3 +1582,13 @@ def test_a_seasons_first_games_beside_a_count_of_seasons_is_a_window_per_season(
     season the reader refuses by name, as "every season" beside one is."""
     reading = _read(con, question)
     assert reading.refused is not None and reading.refused.kind == "window_per_season"
+
+
+@pytest.mark.parametrize("question", ["threes allowed by the celtics this season", "celtics opp 3pm this season"])
+def test_a_teams_figure_given_up_is_the_team_compilers_total(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ISSUES.md #425: the opponents' threes were planned as the team's
+    season line, which has no opponent metric, and refused; the team
+    compiler sums the opponents' box rows, so the point is its total."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.relation == "team"
+    assert reading.measure is not None and reading.measure.whose == "opponent"

@@ -1407,13 +1407,17 @@ def _team_measure(scope: Filtered, question: str) -> Measure | None:
         if pattern.search(question):
             return _TEAM_WORD_KEYS.get(word) or measured(word)
     measure = scope.measure
-    if measure is None or measure.key is None or named_by_a_team_metric(measure):
+    if measure is None or measure.key is None or (named_by_a_team_metric(measure) and measure.whose == "own"):
         # A team metric's alias text ("fgm", "ppg") names the team-season
         # relation's per-game line, never a total: the alias text
         # matched no column, and the per-game reader answers it as before
         # (ISSUES.md, "A team total named by a metric's alias").
         return None
-    name: str | None = "points_allowed" if measure.key == "points" and measure.whose == "opponent" else measure.key if measure.whose == "own" else None
+    # The opponents' figure of a box-score count ("threes allowed by the
+    # celtics") is the team's total too: the compiler reads the typed
+    # measure's ``whose`` and sums the opponents' box rows (ISSUES.md #425),
+    # where it was planned as the season line and refused.
+    name: str | None = "points_allowed" if measure.key == "points" and measure.whose == "opponent" else measure.key if measure.whose in ("own", "opponent") else None
     if name is not None and (name in TEAM_GAME_MEASURES or name in TEAM_SEASON_MEASURES):
         return _TEAM_WORD_KEYS.get(name) or measured(name)
     return None
