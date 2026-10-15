@@ -1299,410 +1299,283 @@ relation's statements):
 ## Working on the fetch path
 
 `data pull` is checkpoint-driven and must stay cheap to re-run: a pull over
-seasons already on disk makes no request and rebuilds nothing (0.4s against
-126,000 Parquet files). Three things keep that true, and each is easy to break.
+seasons already on disk makes no request and rebuilds nothing. Three
+things keep that true, each easy to break:
 
 - **Write through `Pipeline._write_rows`, never `storage.write_rows`.** It
-  records the table (derived from the path) in `Pipeline.written`, and the CLI
-  reloads exactly those tables into DuckDB. A new fetch method that calls
-  `storage` directly writes a Parquet file the warehouse never loads — no
-  error, just a table that is quietly one pull behind.
-- **Anything built from "what this run fetched" must merge with disk, not
-  replace it.** A run only collects from the endpoints it actually called, so a
-  pull that skipped everything checkpointed sees almost nothing. The stat
-  glossary was written this way and a single current-season pull cut it from
-  140 keys to 94, losing exactly the box-score entries nothing would re-derive.
-- **Scope league-wide sources to the seasons asked for.** NetPoints is one flat
-  file covering every season, so there is no per-season request to skip — but
-  there is the whole download to skip, and a pull of 2024 has no business
-  rewriting 2026's file. It used to, and that one rewrite is what made an
-  "everything is already complete" run rebuild the entire warehouse.
+  records the table in `Pipeline.written`, and the CLI reloads exactly
+  those tables; a direct `storage` write is a Parquet file the warehouse
+  never loads - no error, a table quietly one pull behind.
+- **Anything built from "what this run fetched" merges with disk, never
+  replaces it.** A run collects only from the endpoints it called, so a
+  pull that skipped everything checkpointed sees almost nothing. (history)
+- **Scope league-wide sources to the seasons asked for.** NetPoints is one
+  flat file for every season: a pull of 2024 has no business rewriting
+  2026's file (that rewrite once made an "everything is complete" run
+  rebuild the whole warehouse).
 
 **A change that alters warehouse data is not finished until the warehouse
-holds it.** This covers a parser fix, a new or reshaped view, a new column, a
-corrected derived table, and a fetch fix. A fix merged but never loaded looks
-done in the code and stays wrong in every answer. The view fixes in `220f8aa`
-were in the code for hours, and reached the warehouse only when someone ran a
-separate `data load`. Do both halves:
+holds it** - a parser fix, a view, a column, a derived table, a fetch fix.
+A fix merged but never loaded looks done and stays wrong in every answer.
+Do both halves:
 
-- **The fetch path must produce the corrected data by itself.** A fresh
-  `association data pull` of an affected season has to come out right with no
-  manual step. Add a test that pins the correction, with a fixture in the shape
-  of the real bad row.
-- **Backfill what is already on disk and in the warehouse.** Which command
-  depends on where the fix lives:
-  - **Anything built at load time** (views and derived tables in
-    `fetch/warehouse.py`): run `association data load`, or
-    `association data load --tables <names>` for a subset. It rebuilds from the
-    Parquet already on disk.
-  - **A parser or fetch fix:** the Parquet on disk was written by the old code,
-    so a load alone changes nothing. Re-fetch the affected seasons with
-    `association data pull --seasons <range> --force`, adding `--include-pbp`
-    when plays or shots are involved. The pull reloads the tables it wrote.
-  - **Anything narrower** (a list of event ids, one athlete's career): a
-    one-off script is fine, **but only if it runs the real code path**. It must
-    fetch through the `Pipeline` fetch methods, write through `_write_rows`,
-    and load through `warehouse.build` or `association data load`. Commit it
-    under `scripts/` so the backfill can be re-run.
+- **The fetch path produces the corrected data by itself.** A fresh
+  `association data pull` of an affected season comes out right with no
+  manual step; a test pins the correction with a fixture in the shape of
+  the real bad row.
+- **Backfill what is already on disk and in the warehouse:**
+  - built at load time (views and derived tables in `fetch/warehouse.py`):
+    `association data load`, or `association data load --tables <names>`;
+  - a parser or fetch fix (the Parquet on disk is the old code's): re-fetch
+    with `association data pull --seasons <range> --force`, adding
+    `--include-pbp` for plays or shots; the pull reloads what it wrote;
+  - anything narrower (a list of event ids, one athlete's career): a
+    one-off script, **but only if it runs the real code path** - fetch
+    through the `Pipeline` methods, write through `_write_rows`, load
+    through `warehouse.build` or `association data load` - committed under
+    `scripts/` so the backfill can be re-run.
 
   Never patch a Parquet file or the DuckDB file directly, and never run an
-  `UPDATE` against the warehouse. The next `data load` rebuilds from Parquet
-  and silently undoes it, and a fresh pull would not reproduce it.
+  `UPDATE` against the warehouse: the next `data load` silently undoes it
+  and a fresh pull would not reproduce it. Both commands default to
+  `./data/parquet` and `./nba.duckdb`, which a worktree lacks: run them
+  from the main checkout, or pass `--data-dir` and `--db-path`.
+- **Then re-measure** against the rebuilt warehouse with the query that
+  found the problem, and update or delete the `ISSUES.md` entry. If you
+  cannot run the backfill (no network, no permission to write the
+  warehouse), say so in your report, give the exact command, and leave the
+  entry open with "fixed in code, not yet backfilled".
 
-  Both commands default to `./data/parquet` and `./nba.duckdb`, relative to
-  the current directory, and a worktree has neither. Run them from the main
-  checkout, or pass `--data-dir` and `--db-path` pointing at its files.
-- **Then re-measure** against the rebuilt warehouse, with the query that found
-  the problem. Update or delete the `ISSUES.md` entry to match. If you cannot
-  run the backfill yourself (no network, or no permission to write the
-  warehouse), say so in your report. Give the exact command, and leave the
-  `ISSUES.md` entry open with "fixed in code, not yet backfilled".
+**Fetching is latency-bound, and the fetch path is threaded.** `--workers`
+(default 4) runs the per-item loops through `Pipeline._map`. Shared state
+on `Pipeline` takes `_state_lock` (`written` and `glossary` do), and
+anything writing a path two workers might both write needs a unique temp
+name (`storage.write_rows` does - two games sharing a player both cache his
+bio). `--rate-limit` bounds the request rate across all workers; raising it
+alone does nothing. (history)
 
-**Fetching is latency-bound, and the fetch path is threaded.** Profiling a live
-pull put 96% of the main thread inside one curl call, at 5% CPU and zero bytes
-read from disk; ESPN answers a cold game summary in 250-400ms against a 12ms
-round trip. `--workers` (default 4) runs the per-item loops through
-`Pipeline._map`. Two consequences for anything you add there: shared state on
-`Pipeline` needs `_state_lock` (`written` and `glossary` already do), and
-anything writing a path two workers might both write needs a unique temp name —
-`storage.write_rows` handles that, but only because two games sharing a player
-both cache that player's bio, and a shared `.tmp` let them interleave into one
-file that then got renamed into place looking perfectly normal. `--rate-limit`
-still bounds the request rate across all workers; raising it alone does nothing,
-because the limiter never had to sleep in the first place.
+**A NetPoints date is not an ESPN date.** NetPoints names each daily file
+for the US Eastern date of its games; ESPN stores a UTC tip timestamp, and
+matching on the UTC day is wrong for some real schedule either way round.
+The game's own Eastern date is read off the timestamp
+(`NetPointsGameIndex` in `fetch/parse.py`, one exact lookup, since a team
+plays at most one game per Eastern date). Load-bearing:
 
-**A NetPoints date is not an ESPN date, and matching them on the calendar day
-is a guess that mostly works.** NetPoints names each daily file for the US
-Eastern date the games were played on; ESPN stores a UTC tip timestamp, which
-rolls over to the next day for anything after 7pm Eastern. Matching on the UTC
-date meant choosing between `date + 1` and `date`, and *both orderings are
-wrong for some real schedule*: `date`-first steals a back-to-back's first
-night, and `date + 1`-first — what shipped — steals the *next* night, after
-which that next night's own file claims the same game again through the other
-half of the rule. 505 doubly-claimed team-games since 2019, 611 disagreeing
-`(event_id, athlete_id)` pairs in 2026's `net_points_player_game` alone, and
-no error anywhere: the row count looked right and every event_id was a real
-game the player really played in.
-
-The fix is to stop guessing and read the game's own Eastern date off the
-timestamp — `NetPointsGameIndex` in `fetch/parse.py`, one exact lookup, since
-a team plays at most one game per Eastern date. Three things about it are
-load-bearing:
-
-- **The real Eastern clock, written out rather than read from a tz database.**
-  This was a fixed five-hour shift, on the reasoning that EST and EDT disagree
-  about a date only in the midnight-to-1am hour and no game tips then. True of
-  tips - and false of the stamps that are not tips. ESPN stores a game with no
-  tip time as *midnight* Eastern (`04:00Z` in summer), exactly the hour the
-  shift gets wrong, and 391 games, the whole 1989-1992 postseason among them,
-  printed a day early. `nba/season.py` holds the US daylight-time rules by hand
-  (so a machine with no tz database still dates games), a test checks them
-  against zoneinfo for every day 1976-2039, and **every** stamp-to-date
-  conversion goes through `eastern_date`, `eastern_date_sql` or
+- **The real Eastern clock, written out rather than read from a tz
+  database.** A fixed five-hour shift is wrong in the midnight-to-1am hour,
+  which is exactly where ESPN stores a game with no tip time.
+  `nba/season.py` holds the US daylight-time rules by hand (checked against
+  zoneinfo for every day 1976-2039), and **every** stamp-to-date conversion
+  goes through `eastern_date`, `eastern_date_sql` or
   `eastern_day_utc_range`. Do not write another `- INTERVAL 5 HOUR`.
-- **A date holding two of one team's games resolves to neither.** A team
-  cannot play twice in a day, so a duplicate key is ESPN's clock being wrong,
-  not a choice — and the dict this replaced silently kept whichever row it
-  read last, shadowing 126 `(team, UTC date)` keys in the NetPoints era.
-- **The UTC window survives as a fallback**, in the old order. Four games in
-  late February 2020 are stored hours from when they were played (Detroit at
-  Portland, a 6pm Pacific tip, is recorded as `2020-02-24T12:00Z`), so their
-  Eastern date is meaningless while their stored *date* is still right.
+- **A date holding two of one team's games resolves to neither** - a team
+  cannot play twice in a day, so a duplicate key is ESPN's clock being
+  wrong, not a choice.
+- **The UTC window survives as a fallback**, in the old order, for games
+  stored hours from when they were played. (history)
 
-The way to check any of this is the source's own box score. The daily file
-carries `pts` beside the NetPoints values and the parser deliberately drops it
-— which makes it a free, independent cross-check that a row landed on the
-right game: NetPoints' 2025-10-25 file gives Ryan Kalkbrenner 14 points and
-its 2025-10-26 file gives him 4, and `player_box_stats` says which game is
-which. `scripts/check_net_points_games.py` runs that over a whole season.
+Check it against the source's own box score: the daily file carries `pts`
+beside the NetPoints values (the parser drops it), a free cross-check that
+a row landed on the right game; `scripts/check_net_points_games.py` runs it
+over a season.
 
-**Filtering a read by season prunes no files.** The trees are laid out under
-`season=X/season_type=Y` directories but read raw, not hive partitioned (the
-reason is in the comment above `TABLES` — the directory names would collide
-with the embedded columns), so `WHERE season = 2024` over `read_parquet` is a
-filter applied *after* reading all 40,558 `games` files, not a way to read
-fewer. `data check` counted one season/season_type per query on that
-assumption and took 7.5 minutes for what one grouped scan does in 3 seconds.
-Count once and group; do not filter in a loop.
+**Filtering a read by season prunes no files.** The trees are read raw,
+not hive partitioned (the reason is in the comment above `TABLES`), so
+`WHERE season = 2024` over `read_parquet` filters after reading every
+file. Count once and group; do not filter in a loop. (history)
 
-**A full `warehouse.build()` is memory-hungry.** It needs
-`preserve_insertion_order=false` (set in `_tune`); without it, loading `plays`
-from 17,500 files dies at 12.4 GiB. Each table is its own statement, so an OOM
-leaves the earlier tables replaced and the rest silently at their old contents
-— the build fails loudly, but the *warehouse* does not look broken afterwards.
-Row order carries no meaning in any of these tables.
+**A full `warehouse.build()` is memory-hungry, and needs two settings**
+(both set in `_tune`):
 
-It also needs `enable_external_file_cache=false` (same place). DuckDB keeps the
-Parquet a statement read resident after that statement ends, and the cache
-accumulates across the 18 loads a build runs on one connection. It is sized for
-re-reading a few large files; this tree is the opposite shape — 208,000 small
-ones — and it charges far more per file than a file holds. `games` alone (40,558
-files, 320 MiB on disk) parked 5.6 GiB in it; a full build under a 6 GiB cap was
-killed on that third table, and with the cache off the same build peaks at 3.0
-GiB and is no slower.
+- `preserve_insertion_order=false` - without it, loading `plays` dies with
+  `could not allocate`. Each table is its own statement, so an OOM leaves
+  the earlier tables replaced and the rest silently at their old contents.
+  Row order carries no meaning in these tables.
+- `enable_external_file_cache=false` - DuckDB keeps the Parquet a statement
+  read resident after it ends, accumulating across a build's loads over
+  this tree's many small files. That failure is a SIGKILL with nothing in
+  the traceback (dmesg explains it): `memory_limit` bounds the cache but
+  not the overhead above it. Turning the cache off is the lever that
+  works. (history)
 
-**The two failures look nothing alike, and only one of them is DuckDB's.** The
-insertion-order one raises `could not allocate ... (12.4 GiB/12.4 GiB used)`.
-The file-cache one is a SIGKILL with nothing in the traceback: DuckDB was
-accounting for 6.5 GiB of a 12.4 GiB budget when the kernel killed the process,
-because `memory_limit` defaults to 80% of RAM and RSS runs ~2 GiB above what the
-buffer manager tracks. So on a 16 GiB machine the limit is only reached well
-past the point the process dies — dmesg is the only place that failure is
-explained, and lowering `memory_limit` bounds the cache but not the overhead
-above it (measured: 4 GiB limit, 6.7 GiB RSS). Turning the cache off is the
-lever that works.
-
-`union_by_name=true` is not the thing to reach for here even though it is what
-makes many files expensive: dropping it fails outright on real schema drift
-(`venue_id` is VARCHAR in the 1993 files and absent in others).
+`union_by_name=true` is not the thing to drop for speed: it fails outright
+on real schema drift (`venue_id` is VARCHAR in the 1993 files and absent in
+others).
 
 ## Working on the web path
 
-`association web` is a thin layer over the same `Agent` the CLI uses. Almost
-everything about it is constrained by things measured elsewhere in this file.
+`association web` is a thin layer over the same `Agent` the CLI uses.
 
 - **The server answers one question at a time, and that is not caution.**
-  ollama keeps a single KV cache slot per model, so two questions in flight
-  evict each other's prefix and both come back slow (1.3s becomes 11.2s).
-  `AgentRunner` holds a `threading.Lock` for the whole of `ask`. A
-  `threading.Lock` and not `asyncio.Lock`: everything below is blocking, and
-  FastAPI runs `def` endpoints in a threadpool already.
-- **The trace sink is swapped under that lock**, which is the only thing that
-  makes swapping it safe. If the serialization ever goes, that swap goes with
-  it.
-- **Nothing in `web/app.py` may import a model client.** `Answerer.ready` is a
-  property on the runner precisely so the health check does not reach ollama
-  from the API layer — that is what keeps the web tests offline by
-  construction rather than by discipline. This is enforced now, twice:
-  import-linter forbids `web.app` reaching `ollama` by any chain, and
-  `test_importing_the_api_layer_loads_no_model_client` checks a fresh
-  interpreter. The rule was already broken when the contract was written -
-  `web/runner.py` imported `Agent` at module level for one annotation, which
-  loaded ollama - so a type-only import of the query engine goes under
-  `if TYPE_CHECKING:`. The whole suite still runs with no
-  network and no ollama, and that has to stay true.
-- **Events carry trace lines verbatim.** Do not parse `"-> (compose) ... shape=..."`
-  back into structured fields. Everything a client acts on — which path
-  answered, the planned shape (`Answer.shape`, the `reading.PointShape` the
-  answer side chose its reader by: relation, shape, by; since Phase 4,
-  step 1), the timing, the artifacts — is on the `answer` event,
-  as values, because Phase 0 put it there. Parsing prose back out is the exact
-  move that phase removed.
-- **The page is one self-contained HTML file** with its CSS and JS inline, like
-  the chart renderers' output. That is one asset to survive packaging, declared
-  in `[tool.setuptools.package-data]`, and `serve()` checks it exists at
-  startup rather than serving a 404 on the first request. Verify packaging by
-  installing the wheel into a fresh venv *outside* the repo and loading the
-  page — importing the module proves nothing about the HTML.
-- **`fastapi`/`uvicorn` are the `web` extra**, so CI syncs `--extra web` and a
-  missing install must print the `pip install 'association-py[web]'` line rather
-  than raising ImportError.
-- **`GET /api/artifacts/{name}` serves a directory a person owns.** The name is
-  checked twice, and the two checks stop different things: an allowlist regex
-  rules out anything shaped like a path, and resolving the file and requiring
-  it to sit directly in the resolved output directory catches a symlink whose
-  *name* is perfectly innocent. Keep both. Test the guard directly as well as
-  through the route - measured, with the guard removed most traversal names
-  still 404 because Starlette never matches a path parameter containing a
-  separator, so a route-only test proves less than it looks like it does.
+  ollama keeps one KV cache slot per model, so two questions in flight
+  evict each other's prefix and both come back slow. `AgentRunner` holds a
+  `threading.Lock` (not `asyncio.Lock`: everything below is blocking, and
+  FastAPI runs `def` endpoints in a threadpool) for the whole of `ask`.
+- **The trace sink is swapped under that lock**, the only thing that makes
+  swapping it safe; if the serialization goes, that swap goes with it.
+- **Nothing in `web/app.py` may import a model client.** `Answerer.ready` is
+  a property on the runner so the health check does not reach ollama from
+  the API layer, which keeps the web tests offline by construction.
+  Enforced twice: import-linter forbids `web.app` reaching `ollama` by any
+  chain, and `test_importing_the_api_layer_loads_no_model_client` checks a
+  fresh interpreter. A type-only import of the query engine goes under
+  `if TYPE_CHECKING:`. The whole suite runs with no network and no ollama,
+  and that stays true.
+- **Events carry trace lines verbatim.** Do not parse a trace line back
+  into fields: everything a client acts on - the path that answered, the
+  planned shape (`Answer.shape`, a `reading.PointShape`), the timing, the
+  artifacts - is on the `answer` event as values.
+- **The page is one self-contained HTML file** with its CSS and JS inline,
+  declared in `[tool.setuptools.package-data]`; `serve()` checks it exists
+  at startup. Verify packaging by installing the wheel into a fresh venv
+  *outside* the repo and loading the page - importing the module proves
+  nothing about the HTML.
+- **`fastapi`/`uvicorn` are the `web` extra**, so CI syncs `--extra web`,
+  and a missing install prints the `pip install 'association-py[web]'` line
+  rather than raising ImportError.
+- **`GET /api/artifacts/{name}` serves a directory a person owns, and the
+  name is checked twice:** an allowlist regex rules out anything shaped
+  like a path, and resolving the file and requiring it to sit directly in
+  the resolved output directory catches a symlink with an innocent name.
+  Keep both, and test the guard directly as well as through the route
+  (Starlette 404s most traversal names on its own, so a route-only test
+  proves less than it looks).
 - **Chart iframes run with scripts off.** `court.py` and `radar.py` emit no
-  script and a test asserts they still do not; if one ever needs to, the frame
-  stops working and that test says why. `allow-same-origin` is load-bearing
-  separately - it is how the page reads the chart's height to size the frame.
-- **The page renders an answer by its planned shape, never by its label.**
-  `static/index.html`'s `RENDERERS` holds one renderer per `reading.Shape`
-  (`scalar`, `rows`, `ranking`, `comparison`, `split`, `runs`, `chart`;
-  Phase 4, step 1, where 22 were keyed by `Answer.intent`), read off
-  `Answer.shape`. Each names the bodies its shape's readers say (`bodies`:
-  a draw and the `Answer.data` keys it `needs`) and chooses one by the
-  shape's `by`, the relation where two readers of one `by` say different
-  bodies, and the compiler's own body (`skeleton`) where no reader took the
-  point (`of`); a chart's body is its artifacts' frames, each framed by its
-  kind (`chartFrame`). An answer with no shape - a refusal, a turn this
-  browser kept from before - is its sentence. The bodies still read each
-  reader's own `data` keys, since the API's data is the sayer's per-reader
-  dict and not the typed body (ISSUES.md, "No future template gets a
-  renderer for free"). A change to a renderer is proven by rendering every
-  recorded answer through the page before and after
-  (`~/association-research/stages/page_renders.py`, Chromium, the stage
-  snapshots' records, seconds): step 1 drew 2,709 of 2,710 identically.
-- **The page's JavaScript has one behavioral check, and it is not a gate.**
-  pytest can only read `static/index.html` as text: `test_renderers.py` parses
-  the renderer table out of it, runs each renderer's choice of body in node
-  on every case's planned shape and data, and syntax-checks the script with
-  `node --check`. Anything that is a key event, a caret position or a
-  clipboard needs a browser, so `scripts/check_web_ui.py` drives the real page
-  in Chromium with real key presses - `uv run --with playwright python
-  scripts/check_web_ui.py`. It is deliberately outside the gates: playwright
-  is not in the `dev` extra (deptry has a per-rule ignore saying why), its
-  browser is a large download, and the gates here run offline in seconds. Run
-  it when you touch the page's script, the way `check_coverage.py` is run
-  after editing a floor. It needs no ollama, no warehouse and no network - the
-  API is stubbed in the page - and it serves `static/` over a loopback address
-  rather than a `file://` URL, because `navigator.clipboard` exists only in a
-  secure context.
-- **Print the URL with `flush=True`.** stdout is block-buffered when it is not
-  a terminal, and with an ephemeral port that URL is the only way to find the
-  server at all.
+  script and a test asserts it. `allow-same-origin` is load-bearing
+  separately: it is how the page reads the chart's height.
+- **The page renders an answer by its planned shape, never by a label.**
+  `static/index.html`'s `RENDERERS` holds one renderer per `reading.Shape`,
+  read off `Answer.shape`; each names the bodies its shape's readers say
+  (`bodies`: a draw and the `Answer.data` keys it `needs`) and chooses one
+  by the shape's `by`, the relation where two readers of one `by` differ,
+  and the compiler's own body (`skeleton`) where no reader took the point
+  (`of`); a chart's body is its artifacts' frames (`chartFrame`). An answer
+  with no shape is its sentence. A change to a renderer is proven by
+  rendering every recorded answer through the page before and after
+  (`~/association-research/stages/page_renders.py`, Chromium). (history)
+- **The page's JavaScript has one behavioral check, and it is not a
+  gate.** `test_renderers.py` parses the renderer table, runs each
+  renderer's choice of body in node on every case and syntax-checks the
+  script with `node --check`; key events, carets and the clipboard need a
+  browser, so `scripts/check_web_ui.py` drives the real page in Chromium
+  (`uv run --with playwright python scripts/check_web_ui.py`; playwright is
+  deliberately outside the `dev` extra, deptry's ignore says why). Run it
+  when you touch the page's script. It needs no ollama, no warehouse and no
+  network, and serves `static/` over loopback, not `file://`, because
+  `navigator.clipboard` exists only in a secure context.
+- **Print the URL with `flush=True`**: stdout is block-buffered off a
+  terminal, and with an ephemeral port the URL is the only way to find the
+  server.
 
 ## Data gotchas
 
-- **A season is named for the year it ends.** 2023-24 is season `2024`. See
-  `nba/season.py`.
+- **A season is named for the year it ends.** 2023-24 is season `2024`
+  (`nba/season.py`).
 - **"This season" is the latest season with games on record, not the
-  calendar's.** The calendar turns over on October 1 and the first game is
-  weeks later: read from the calendar alone, every unstated season from
-  2026-10-01 was 2027, a season with no games. `Agent.ask` answers inside
-  `season_on_record(latest_season_on_record(con))`, which caps
-  `current_season()`; the fetch path pulls `calendar_season()`, uncapped. A
-  harness that must answer the same on any day sets `ASSOCIATION_TODAY`:
-  the stage snapshots and every research harness under
-  `~/association-research` pin 2026-09-30 (the day the recorded corpus's
-  answers were graded as of), and a new harness does the same. The test
-  suite pins it too (`tests/conftest.py`): fifteen tests encode the
-  2025-26 season and went red under an October date with nothing wrong.
-- **NetPoints tables disagree with each other about `season_type`.**
-  `net_points_player` uses its own *string* column (`net_points_season_type`,
-  e.g. "Regular Season"); `net_points_player_game` and
-  `net_points_player_game_fingerprint` use the normal *numeric* 2/3;
-  `net_points_player_fingerprint` has no season_type at all. Filtering the
-  string column with a numeric matches nothing, with no error.
+  calendar's** (the calendar turns over on October 1, weeks before a game).
+  `Agent.ask` answers inside `season_on_record(latest_season_on_record(con))`,
+  which caps `current_season()`; the fetch path pulls `calendar_season()`,
+  uncapped. A harness that must answer the same on any day sets
+  `ASSOCIATION_TODAY`: the stage snapshots, every research harness and the
+  test suite (`tests/conftest.py`) pin 2026-09-30, and a new harness does
+  the same. (history)
+- **NetPoints tables disagree about `season_type`.** `net_points_player`
+  has its own *string* column (`net_points_season_type`, "Regular
+  Season"); `net_points_player_game` and
+  `net_points_player_game_fingerprint` use the numeric 2/3;
+  `net_points_player_fingerprint` has none. A numeric filter on the string
+  column matches nothing, with no error.
 - **Only six fingerprint categories partition the total**
-  (`FINGERPRINT_PARTITION`): two_pt, three_pt, free_throw, turnover, rebound,
-  foul. They sum to the season average almost exactly. The other 15 are
-  overlapping slices — summing all 21 is meaningless.
+  (`FINGERPRINT_PARTITION`: two_pt, three_pt, free_throw, turnover,
+  rebound, foul). The other 15 overlap; summing all 21 is meaningless.
 - **Do not conclude a source does not publish something from one file's
-  schema.** ESPN Analytics publishes *two* objects per date, and the per-game
-  play-type one went unread for months because the season file had no game id
-  and the daily file's `assister` / `putback` / `corner`-shaped field NAMES
-  were read as the taxonomy — but their VALUES are integer counts
-  (`pts: 36`, `assister: 4`), not net points. Checking one file's schema and
-  one file's field names, without checking a value against the season columns
-  or looking at what the site's own page fetches, produced a confident and
-  wrong claim about what exists. `DATA.md` ("The play-type split exists per
-  game as well as per season") has what the two files actually hold.
-- **`net_points_player_game_fingerprint` is LONG, and the only such table
-  here.** One row per player per game per `category`, rather than the season
-  file's 66 columns. Deliberate: the wide shape would be 93 columns and would
-  change again the next time ESPN adds a category, and the categories are
-  normalized to the season file's own column prefixes on the way in
-  (`net_points_category`, over the existing `FINGERPRINT_CATEGORIES` map) so
-  one skill list drives both tables. The query side pivots.
+  schema.** Check a value against the season columns and look at what the
+  site's own page fetches: ESPN Analytics publishes two objects per date,
+  and field NAMES read as a taxonomy were integer counts. `DATA.md` ("The
+  play-type split exists per game as well as per season"). (history)
+- **`net_points_player_game_fingerprint` is LONG, the only such table**:
+  one row per player per game per `category` (the wide shape would change
+  with every category ESPN adds), the categories normalized to the season
+  file's column prefixes on the way in (`net_points_category`, over
+  `FINGERPRINT_CATEGORIES`). The query side pivots.
 - **A single game's fingerprint is drawn in that game's net points, not per
-  100 possessions.** Over ~30 possessions a per-100 rate turns one made corner
-  three into a league-leading season figure. Its percentiles are ranked against
-  every player-*game* in the season rather than against season rates, since a
-  season average is the mean of games like the one being drawn and nearly any
-  decent game would land in the 99th percentile against it. `Unit` carries the
-  labels with the numbers so a per-game plot is never captioned "per 100 poss".
-- **Each table starts in a different year, and the gaps are ESPN's, not ours.**
-  A question is only answerable as far back as its *narrowest* table, and there
-  is no pull that fills these in. **`DATA.md` ("Coverage floors") has the table
-  and what is before each floor**; `association/nba/coverage.py` is the enforced
-  copy. Three rules to carry while writing code:
+  100 possessions** (a per-100 rate over ~30 possessions turns one corner
+  three into a league-leading figure), its percentiles ranked against every
+  player-*game* of the season. `Unit` carries the labels with the numbers,
+  so a per-game plot is never captioned "per 100 poss".
+- **Each table starts in a different year, and the gaps are ESPN's.** A
+  question is answerable only as far back as its *narrowest* table, and no
+  pull fills them in. `DATA.md` ("Coverage floors") has the table;
+  `association/nba/coverage.py` is the enforced copy. Three rules:
   - **Select a postseason by the calendar year it was played in, never by
     label** (`team_relation.team_span_clause`, `team_metrics.games_scope`,
-    `check_coverage.py`). Before 1993-94 ESPN labels a season by the year it
-    STARTED, so matched by label "the 1991 playoffs" answered 1992's.
-  - **Season 1993 is a phantom** — its 1,185 events are the identical rows
-    ESPN returns for 1994. Treat 1994 as the earliest real regular season, and
-    **key joins over that era on `season` as well as `event_id`**, or every
-    1993-94 player-game is listed twice over.
-  - **`player_season_stats` reaches back to 1977 but is a survivor sample**, so
-    a lookup and a ranking have different floors (`first_ranking_season`).
-- **Shot coordinates measure y from the rim, not the baseline, and
-  `points_attempted = 0` means unlabeled, not zero points.** The rim is at
-  `(25, 0)` (`court.HOOP_Y`). **Never filter `points_attempted` for a shot's
-  value**; read `shotchart.SHOT_VALUE_SQL`, which derives it where ESPN left it
-  0 and keeps the per-season refusals and caveats beside it. Free throws carry
-  a position through 2018, so "has coordinates" does not exclude them. The
-  numbers and the seasons are in `DATA.md`; the method that caught it is worth
-  keeping: **where a column has a sibling that restates it (a described
-  distance, a box score's attempts), fit against the sibling before trusting a
-  constant.**
-- **ESPN's career endpoint copies some regular seasons into the postseason**,
-  so **read `player_season_stats_deduped` for postseason lines; the raw table
-  still has them.** The view drops a postseason line claiming more than 28
-  games (four best-of-seven rounds is the most a run can hold) or repeating
-  that season's regular-season games and points exactly. `DATA.md` has the
-  evidence and the counts.
-- **Whole team-seasons of box scores are empty, and they are not scattered
-  games.** Every Chicago and New Orleans game from 2013 to 2018 but two lists
-  each player as having played with NULL minutes and every stat 0, beside a
-  NULL team box row — 1,025 events, both tables empty. Anything summing
-  `player_box_stats` over 2013-2018 is about 87% of ESPN's own season totals,
-  and a streak or a with/without split cannot tell whether a player sat those
-  games out. **Say how many games a per-game answer could not see** — that is
-  what `_empty_box_scores` is for. `DATA.md` has the counts and the seasons.
-  Where those games are rebuilt from play-by-play, a measure the rebuild
-  never measured (a rate over attempts, turnovers, minutes:
-  `core.unread_on_rebuilt`) is read over the fetched games alone, so it
-  carries its own count (`"<measure>_games"`), a ranking by it qualifies on
-  that count, and the answer says the games it could not read (a
-  `lines_rebuilt` note, `what` "unread"; ISSUES.md #327, closed).
-
-  **Do not confuse that with the team-box-only fault**, which looks similar and
-  is not. Vancouver 1996 has an all-NULL `team_box_stats` row for every game
-  beside **real player rows with real minutes** — so a per-player answer is
-  fine and only team-level reads are affected. An earlier note here called
-  Vancouver 1996 "the same shape" as Chicago and New Orleans; it was measured
-  on `team_box_stats` alone and is wrong. `player_box_stats` holds 785
-  Vancouver rows with minutes, 12 a game, which is the league-normal roster
-  size that season. Chicago 2000 and 1999 were briefly grouped in with
-  Vancouver under this same fault; re-measured, their all-NULL team rows sit
-  on zero `real_games` events — placeholder rows `real_games` already drops —
-  so those two seasons are not this fault at all.
+    `check_coverage.py`): before 1993-94 ESPN labels a season by the year
+    it STARTED.
+  - **Season 1993 is a phantom** (its events are 1994's rows). Treat 1994
+    as the earliest real regular season, and **key joins over that era on
+    `season` as well as `event_id`**, or every 1993-94 player-game is
+    listed twice.
+  - **`player_season_stats` reaches back to 1977 but is a survivor
+    sample**, so a lookup and a ranking have different floors
+    (`first_ranking_season`).
+- **Shot coordinates measure y from the rim (`court.HOOP_Y`), and
+  `points_attempted = 0` means unlabeled, not zero points.** **Never filter
+  `points_attempted` for a shot's value**; read `shotchart.SHOT_VALUE_SQL`,
+  which derives it and keeps the per-season refusals and caveats beside it.
+  Free throws carry a position through 2018. The method that caught it:
+  **where a column has a sibling that restates it, fit against the sibling
+  before trusting a constant.**
+- **ESPN's career endpoint copies some regular seasons into the
+  postseason, so read `player_season_stats_deduped` for postseason lines**
+  (the raw table still has them; the view drops a line claiming more than
+  28 games or repeating the regular season's games and points exactly).
+- **Whole team-seasons of box scores are empty** (Chicago and New Orleans,
+  2013-2018: players listed as playing with NULL minutes and every stat 0,
+  a NULL team row): a sum over those years is short, and a streak or a
+  with/without split cannot tell whether a player sat. **Say how many games
+  a per-game answer could not see** (`_empty_box_scores`). Where those games
+  are rebuilt from play-by-play, a measure the rebuild never measured (a
+  rate over attempts, turnovers, minutes: `core.unread_on_rebuilt`) is read
+  over the fetched games alone, carries its own count
+  (`"<measure>_games"`), qualifies a ranking on that count, and the answer
+  says the games it could not read (a `lines_rebuilt` note). **Do not
+  confuse it with the team-box-only fault** (Vancouver 1996: all-NULL team
+  rows beside real player rows - per-player answers are fine, team reads
+  are not). `DATA.md` has the counts. (history)
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
-**Those floors are enforced, not just documented.** `association/nba/coverage.py`
-holds them as a table — `COVERAGE`, one entry per queryable table — and
+**The floors are enforced, not just documented.** `association/nba/coverage.py`
+holds them (`COVERAGE`, one entry per queryable table), and
 `query/coverage.py`'s `check_coverage(shape, scope)` refuses a question
-whose planned point lands under one. Add an entry whenever a reader reads
-a new table, and declare the shape's tables in `coverage.SOURCES`, keyed
-by the planned point's `reading.PointShape` (one entry per route in
-`compose._ROUTES`, which a test holds equal; resolved per question where the table depends on the
-measure asked for - an advanced stat, a ranking's metric, a team ranking's
-standings - and `RELATION_SOURCES` for a point no reader takes; keyed by
-intent and resolved from slot lists of its own until Phase 3, step 1,
-which is how `player_stat`'s floor read four slots where the reader read
-a longer list, ISSUES.md #212, closed). The answering loop checks the
-floor of the point the words named (`compose.plan.planned_shape`, on every
-verdict) over the point's own scope; a reading with no point has no floor. Three
-things about that module are load-bearing:
+whose planned point lands under one. Add an entry whenever a reader reads a
+new table, and declare the shape's tables in `coverage.SOURCES`, keyed by
+the planned point's `reading.PointShape` (one entry per route in
+`compose._ROUTES`, a test holds them equal; resolved per question where the
+table depends on the measure; `RELATION_SOURCES` for a point no reader
+takes). The answering loop checks the floor of the planned point
+(`compose.plan.planned_shape`, on every verdict) over the point's own scope;
+a reading with no point has no floor. Load-bearing:
 
-- **It returns the refusal rather than raising it.** That is the opposite of
-  a reader declining a narrowing, and deliberate: a decline lets the
-  compiler's own sentence take its turn at the same point, and it may do
-  better. Nothing does better here: a season under the floor is empty for
-  every reader, and (while the agent existed) an agent handed it queried the
-  same empty tables, more slowly, and was then free to fill the silence from
-  its own weights.
-- **A lookup and a ranking have different floors.** `player_season_stats` holds
-  Michael Jordan's real 1990 line, so his own average is answerable from it;
-  ranking that season is not, because the pool is 217 players against a
-  ~350-player league. In 1980 the pool is *seven* — and before this existed,
-  "who led the league in scoring in 1980" answered "Moses Malone, at 25.8.
-  Next: Bill Cartwright (21.7)". Kareem, Bird and Erving are not in `players`
-  at all. `first_ranking_season` is that second floor, and it applies
-  where the planned shape is a `ranking` (the flag only speaks through a
-  season-line table's ranking floor; on a count's or a high's box-score
-  tables the box floor is the narrower and names itself either way).
-- **A missing season and an unrepresentative one need different sentences.**
-  Saying "there is no data for 1980" about a warehouse holding Moses Malone's
-  real 1980 line is the same false-cause answer in the other direction, which
-  is why `Floor.unrepresentative` exists.
+- **It returns the refusal rather than raising it** - the opposite of a
+  reader's decline, deliberately: a decline lets the compiler's own sentence
+  try, and nothing does better under a floor, where every reader's tables
+  are empty.
+- **A lookup and a ranking have different floors.** A survivor sample holds
+  a star's real line but not a representative pool to rank (1980's holds
+  seven players). `first_ranking_season` is the second floor, applied where
+  the planned shape is a `ranking`. (history)
+- **A missing season and an unrepresentative one need different
+  sentences** (`Floor.unrepresentative`): "no data for 1980" beside a real
+  1980 line is the false-cause answer the other way round.
 
-Seasons that exist but only partly (2002 play-by-play is ~half a year) are
-answered with a caveat instead, and a *phantom* season — 1993, whose rows
-duplicate 1994 — is declared as such so the checker can verify the duplication
-rather than read a full-looking season as a floor set too high.
-
-`scripts/check_coverage.py` verifies every floor against a built warehouse,
-the same way `check_nicknames.py` does for the nickname table: these are claims
-about the data, and pytest runs offline. Run it after editing `COVERAGE` and
-after any pull that reaches further back than the last one. "Usable" there is
-deliberately not "present" — 82 games where a league plays 1,100 is rows, not
-a season.
+A partial season (2002 play-by-play is about half a year) is answered with a
+caveat; a *phantom* season (1993) is declared so the checker verifies the
+duplication. `scripts/check_coverage.py` verifies every floor against a
+built warehouse, as `check_nicknames.py` does the nickname table (these are
+claims about the data, and pytest runs offline): run it after editing
+`COVERAGE` and after any pull that reaches further back. "Usable" there is
+deliberately not "present" - 82 games where a league plays 1,100 is rows,
+not a season.
 
 ## Verifying your work
 
