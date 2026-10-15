@@ -49,12 +49,10 @@ def test_a_module_that_executes_sql_is_found() -> None:
     assert ratchets.sql_outside_the_relations(modules) == {"player_games": 1, "leaderboard": 1}
 
 
-def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
-    """Six ways past the ratchets that passed on 2026-10-03 (the review of
-    Phase 1): SQL through a string-SQL helper or ``.query``, a question
-    parameter under another name, ``re`` through importlib, a reader's
-    compiled pattern reused (and a private template name through a module
-    alias, while ``templates/`` existed)."""
+def test_sql_through_a_helper_a_renamed_question_and_a_borrowed_pattern_are_caught() -> None:
+    """Five ways past the ratchets are caught: SQL through a string-SQL
+    helper or ``.query``, a question parameter under another name, ``re``
+    through importlib, and a reader's private compiled pattern reused."""
     modules = _modules(
         point="from association.query.entities import _read_table\ndef read(con):\n    return _read_table(con, 'SELECT 1')",
         compose__present=(
@@ -70,9 +68,9 @@ def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
 def test_a_string_sql_helper_counts_its_callers_and_not_its_own_body() -> None:
     """A function that runs the SQL it is handed (``con.execute(sql)``, ``sql``
     a parameter) is a door: each call of it is a statement, and its own call
-    is not one more. ``entities._read_table`` counted three for the name
-    index's two loads until 2026-10-12; a helper of any name is found by its
-    body, so renaming one is no way past the count."""
+    is not one more (the two loads below count two, beside ids's own
+    statement). A helper of any name is found by its body, so renaming
+    one is no way past the count."""
     modules = _modules(
         entities=(
             "def _read_table(con, sql):\n    return con.execute(sql).fetchall()\n"
@@ -88,9 +86,8 @@ def test_a_string_sql_helper_counts_its_callers_and_not_its_own_body() -> None:
 def test_the_compilers_door_runs_its_parameters_attribute_and_counts_as_no_statement() -> None:
     """``compose.core._executed(con, statement)`` runs ``statement.sql`` -
     an ATTRIBUTE of its parameter - and every compiled and relation
-    statement goes through it; until lane C4's commit (2026-10-12,
-    ISSUES.md #397) only a bare parameter made a door, so the door read as
-    one statement of ``compose.core``'s. A helper of it that hands on its
+    statement goes through it, so it is a door and no statement of
+    ``compose.core``'s (#397). A helper of it that hands on its
     own parameter is a door too, and its callers are counted; ``rows_of``
     and ``values_of`` hand theirs on and stay counted by where their
     statement comes from (a compiled one is none); a method running its own
@@ -113,10 +110,10 @@ def test_the_compilers_door_runs_its_parameters_attribute_and_counts_as_no_state
 
 
 def test_a_connection_under_another_name_is_a_connection_in_the_reader() -> None:
-    """``con_in_the_reader`` read a parameter's name alone until 2026-10-10,
-    when the list reached zero: a reader function handed the warehouse as
-    ``warehouse: duckdb.DuckDBPyConnection`` passed it. The annotation
-    counts now; the name index the reader takes does not."""
+    """``con_in_the_reader`` reads a parameter's annotation as well as its
+    name: a reader function handed the warehouse as ``warehouse:
+    duckdb.DuckDBPyConnection`` is found; the name index the reader takes
+    is not."""
     modules = _modules(
         parse="import duckdb\ndef read(warehouse: duckdb.DuckDBPyConnection, question): ...\ndef words(index: names.NameIndex, question): ...",
         subject="def read_subject(index, question, *, con=None): ...",
@@ -125,9 +122,8 @@ def test_a_connection_under_another_name_is_a_connection_in_the_reader() -> None
 
 
 def test_a_hand_built_statement_through_the_compilers_door_counts_and_a_compiled_one_does_not() -> None:
-    """The bypass the Phase 2 review found (2026-10-05): 35 hand-written
-    statements moved whole behind ``core.rows_of``/``core.values_of``, which
-    the count did not see. A statement the compiler built passes through
+    """A hand-written statement run through ``core.rows_of`` or
+    ``core.values_of`` is counted. A statement the compiler built passes through
     the same door and is not counted; a function that only hands its
     parameter on is a door too, and its callers are counted."""
     modules = _modules(
@@ -160,8 +156,8 @@ def test_a_hand_built_statement_through_the_compilers_door_counts_and_a_compiled
 
 
 def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
-    # Phase 1's order from here, step 4: a listed module could grow
-    # statements freely while the ratchet listed modules; it counts them.
+    # A listed module could grow statements freely if the ratchet listed
+    # modules; it counts them.
     modules = _modules(leaderboard="def top(con):\n    con.execute('SELECT 1')\n    return con.sql('SELECT 2').fetchall()")
     assert ratchets.sql_outside_the_relations(modules) == {"leaderboard": 2}
     listed = {name: ([] if name != "sql_outside_the_relations" else {"leaderboard": 2}) for name in ratchets.CHECKS}
@@ -178,17 +174,13 @@ def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
 
 def test_a_regex_outside_the_lexicon_is_found() -> None:
     """Every module but the lexicon: one outside the reader that imports
-    ``re`` by any route, and - since Phase 4, step 6, when
-    ``regex_in_the_reader`` was folded in - a reader module too."""
+    ``re`` by any route, and a reader module too."""
     modules = _modules(grammar="import re", refusals="import re", entities="from re import compile", metrics="import json", lexicon="import re\nWORD = re.compile(r'\\w+')")
     assert ratchets.regex_outside_the_lexicon(modules) == {"grammar", "refusals", "entities"}
 
 
 def test_a_regex_inside_the_reader_is_found_and_an_annotation_is_not() -> None:
-    """The Phase 3 review (2026-10-11): the step 4 exit "the reader's regexes
-    outside the lexicon are gone" was measured by a ratchet that counted
-    modules OUTSIDE the reader and read 0 over 18 ``re`` calls in
-    ``point``, ``parse`` and ``line``. A reader module but the lexicon that
+    """A reader module but the lexicon that
     calls ``re`` or imports it at run time is found; one that imports it
     under ``TYPE_CHECKING`` for an annotation is not, and neither is the
     lexicon."""

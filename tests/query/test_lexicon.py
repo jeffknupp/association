@@ -1,8 +1,5 @@
-"""Tests for reading a season out of the question text.
-
-This exists because the router reliably dropped the season slot: "plot Curry's
-threes from last season" came back with no season, so the answer silently
-covered the current season instead.
+"""Reading a season out of the question text: "plot Curry's threes from
+last season" names last season, never the current one by default.
 """
 
 import pytest
@@ -123,8 +120,7 @@ def test_last_n_games_is_not_last_season() -> None:
 
 def test_a_year_before_the_data_starts_is_still_read() -> None:
     """The floor here is the league's first season, not the warehouse's. A year below a table's floor has to
-    reach coverage.py to be refused with the reason. At 1990 it was dropped, and "who led the league in scoring
-    in 1980" was answered with the current season's leaders."""
+    reach coverage.py to be refused with the reason, never be dropped for the current season to answer."""
     assert season_from_text("who led the league in scoring in 1980") == 1980
     assert season_from_text("Bulls record in 1985") == 1985
     assert season_from_text("stats from 1946") is None
@@ -133,8 +129,7 @@ def test_a_year_before_the_data_starts_is_still_read() -> None:
 @pytest.mark.parametrize(
     ("question", "expected"),
     [
-        # #168: every one of these was answered for another season while the
-        # short form went unread.
+        # #168: the short form names the season.
         ("points per game leaders for the 23-24 nba season", 2024),
         ("average PJ Washington last 29 games 23/24 regular season", 2024),
         ("nba leaders in plus minus in 25-26", 2026),
@@ -143,7 +138,7 @@ def test_a_year_before_the_data_starts_is_still_read() -> None:
         ("stats for 95-96", 1996),
         ("the '23-24 season", 2024),
         ("most bench points by team in 22/23 season nba", 2023),
-        # The four-digit form still reads the same.
+        # The four-digit form reads the same.
         ("the 2023-24 season", 2024),
         ("lakers 2023/24", 2024),
     ],
@@ -189,8 +184,8 @@ def test_a_two_digit_pair_that_is_not_one_season_is_not_read_as_one(question: st
 
 @pytest.mark.parametrize("question", ["most triple doubles since 12/13", "lebron on 10/11", "since 01/02", "from 11/12"])
 def test_a_slash_pair_that_is_also_a_calendar_day_is_the_day(question: str) -> None:
-    """ "12/13" is December 13 as much as 2012-13, and the router reads "since
-    12/13" as the date (`router._NUMERIC_DATE_RANGE`): a season read from the
+    """ "12/13" is December 13 as much as 2012-13, and the cuts tagger reads
+    "since 12/13" as the date (``lexicon.NUMERIC_DATE_RANGE``): a season read from the
     same characters would answer another year's games. A hyphen, or a first
     number no month has, is still a season."""
     assert season_from_text(question) is None
@@ -204,14 +199,14 @@ def test_a_hyphen_or_a_first_number_no_month_has_is_still_a_season() -> None:
 @pytest.mark.parametrize(
     ("question", "first", "last"),
     [
-        # #261: read as its last season ("2015-18" was the 2018 postseason
-        # alone) or, short, as nothing ("00-02" answered the current season).
+        # #261: the range, not its last season alone ("2015-18") nor, short,
+        # nothing ("00-02").
         ("curry playoff stats 2015-18", 2015, 2018),
         ("Love stats 2012-14", 2012, 2014),
         ("kobe bryant 00-02", 2000, 2002),
         ("Vince carter stats 00-02", 2000, 2002),
         ("Heat game played 2009-23", 2009, 2023),
-        # Two years written out, as the router always read them, either way round.
+        # Two years written out, either way round.
         ("how many 20+ point games did SGA have 2024-2026?", 2024, 2026),
         ("stats 2024-2020", 2020, 2024),
         ("shaq 1996-04", 1996, 2004),
@@ -221,9 +216,9 @@ def test_a_hyphen_or_a_first_number_no_month_has_is_still_a_season() -> None:
     ],
 )
 def test_a_span_whose_years_do_not_follow_is_a_range(question: str, first: int, last: int) -> None:
-    """Both ends are season numbers, the way "2020-2024" always read: the
-    router's range reader takes it (``since``/``until``), and the season a
-    caller asks for is its last, as a four-digit range's always was."""
+    """Both ends are season numbers, as in "2020-2024": the span tagger's
+    range reader takes it (``since``/``until``), and the season a caller
+    asks for is its last, as a four-digit range's is."""
     (span,) = season_spans(question)
     assert (span.is_range, span.first, span.season) == (True, first, last)
     assert season_from_text(question) == last
@@ -239,8 +234,8 @@ def test_a_span_whose_years_follow_is_one_season_not_a_range(question: str) -> N
     ("question", "season"), [("lebron james stats in 2015 16", 2016), ("victor wembanyama 2024 25 stats", 2025), ("victor wembanyama 2025 26 stats", 2026), ("shaq 1999 00", 2000)]
 )
 def test_a_year_and_the_next_ones_last_two_digits_spaced_are_one_season(question: str, season: int) -> None:
-    """The feed's "2015 16" (ISSUES.md #382): the season both years span, where
-    the first year's season answered and the second number was unread."""
+    """ "2015 16" (#382) is the season both years span, the second number
+    read, not the first year's season alone."""
     (span,) = season_spans(question)
     assert not span.is_range and span.season == season
     assert season_from_text(question) == season
@@ -263,9 +258,9 @@ def test_a_four_digit_span_that_is_no_range_keeps_the_season_it_ends_in(question
 
 
 def test_season_spans_finds_each_span_where_it_is_written() -> None:
-    """The router reads a range and a "since" from where the spans sit: "to"
-    between two of them, "since" before one."""
+    """The span tagger reads a range and a "since" from where the spans sit:
+    "to" between two of them, "since" before one."""
     text = "kobe bryant playoff stats from 02-03 to 2006-07"
     spans = season_spans(text)
     assert [(text[s.start : s.end], s.first, s.season) for s in spans] == [("02-03", 2002, 2003), ("2006-07", 2006, 2007)]
-    assert season_from_text(text) == 2003  # the first, as a four-digit range always read; the router reads the range
+    assert season_from_text(text) == 2003  # the first, as a four-digit range reads; the span tagger reads the range

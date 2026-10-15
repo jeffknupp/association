@@ -4,9 +4,9 @@
 ROADMAP.md, contract 2: each word of a question is read once, and a content
 word nothing read is recorded, never silently dropped - the dropped word is
 how a narrower question gets answered fluently ("players with 30 points in
-games where ..." answered without the 30). The new reader will claim spans
-as it reads; this measures the same thing from OUTSIDE the reader, so the
-number means the same before, during and after the reader is replaced:
+games where ..." answered without the 30). The reader claims spans as it
+reads; this measures the same thing from OUTSIDE the reader, so the number
+means the same across any rewrite of it:
 
     a content word is UNREAD when deleting it from the question leaves the
     reading and the planned query exactly as they were.
@@ -18,8 +18,7 @@ number means the same before, during and after the reader is replaced:
 reply, the date pinned, as ``scripts/stage_snapshots.py``), then once more
 per content word with that word deleted, and writes one line per question
 with its unread words. ``report`` prints the count and the most common
-unread words; the count on the day Phase 0 measured it is the baseline the
-roadmap's "done" table holds ("not grown").
+unread words, held in ``scripts/ledger_held.json`` ("not grown").
 
 Three kinds of word are not counted, each for a reason:
 
@@ -35,7 +34,7 @@ So the instrument is blind to a word only the model could have dropped.
 The baseline is a number to hold, not a list of bugs; the report's list is
 where to look for them.
 
-Since Phase 3, step 3 the rule is the package's
+The rule is the package's
 (:mod:`association.query.lexicon`: ``content_words``, ``CONTENT_STOPWORDS``,
 ``MODEL_STAT_WORDS``), and the Reading states its own unread words by it -
 the content words no reader rule claimed (``Reading.unread``). This is the
@@ -105,22 +104,20 @@ def without(question: str, start: int, end: int) -> str:
 
 def names_read(whole: dict[str, Any]) -> list[str]:
     """Every name the reading settled on - the typed subject's players and
-    teams, the cuts' opponent and tenure, the companions the slot era carried
-    by name (the absent ones; the teammates who played, on the with/without
+    teams, the cuts' opponent and tenure, the companions named (the absent
+    ones; the teammates who played, on the with/without
     split alone and only where none is absent) and the subject reading's
     own players, teams, opponent and tenure (``parse._reading_from_route_names``,
     the same list from the Reading) - so a word of one counts as read where
     the model copied only part of the name ("steph" for "steph curry", which
-    the nickname table completes). Read off the typed record since Phase 3,
-    step 4, slice (c); the slot-era ``scope`` record until then."""
+    the nickname table completes), read off the typed record."""
     reading = whole.get("reading") or {}
     who = reading.get("who") or {}
     cuts = reading.get("cuts") or {}
     found: list[str] = [*who.get("players", []), *who.get("teams", []), *(name for name in (cuts.get("opponent"), cuts.get("tenure")) if isinstance(name, str))]
     companions = reading.get("companions") or []
     absent = [c["player"] for c in companions if c.get("predicate") == "absent" and c.get("side") == "own"]
-    # The with/without split, by the key the words asked (its label,
-    # "with_without", until Phase 4, step 2 deleted the label).
+    # The with/without split, by the key the words asked.
     if reading.get("asked") == {"relation": "team_games", "shape": "split", "by": "presence"} and not absent:
         found.extend(c["player"] for c in companions if c.get("side") == "own" and c.get("predicate") == "played")
     found.extend(absent)
@@ -149,8 +146,8 @@ def _probed(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def stated_unread(whole: dict[str, Any]) -> list[str] | None:
-    """The Reading's own unread words, where its record holds them (a tree
-    since Phase 3, step 3), or None."""
+    """The Reading's own unread words, where its record holds them, or
+    None."""
     reading = whole.get("reading")
     return list(reading["unread"]) if isinstance(reading, dict) and "unread" in reading else None
 
@@ -202,7 +199,7 @@ def run(args: argparse.Namespace) -> int:
             replies.setdefault(row["q"], row["out"])
     items = list(replies.items())
     if args.workers > 1 and not args.shard:
-        # D12 (2026-10-14): the feed pass is run at every commit, so it is
+        # The feed pass is run at every push (decision D12), so it is
         # sharded across processes as the stage snapshots are - each
         # question is probed on its own, so N workers write the same rows
         # in the same order in about 1/N the time.
@@ -425,8 +422,7 @@ def _report_held_disagreements(rows: list[dict[str, Any]], held: dict[str, Any])
 
 
 #: The questions whose Reading states other unread words than the deletion
-#: finds, held by Jeff's ruling (2026-10-10, Phase 3, step 3: 625 of the 628
-#: agreeing is the step's exit), each with why: every one is the subject
+#: finds, held by Jeff's ruling, each with why: every one is the subject
 #: reading's, which is read once and never asked again for its claims
 #: (``ROADMAP-TYPES.md``, "Still open" 16). ``report`` exits 0 while the
 #: questions that differ are exactly these, and 1 on any other question - or
@@ -453,7 +449,7 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
     was run on a tree whose Reading states none)."""
     stated = [row for row in rows if "reading_unread" in row]
     if not stated:
-        print("the Reading's own unread words: not recorded (a tree before Phase 3, step 3)")
+        print("the Reading's own unread words: not recorded by this tree")
         return 0
     differ = [row for row in stated if row["reading_unread"] != row["unread"]]
     print(f"the Reading's own unread words: {len(stated) - len(differ)} of {len(stated)} questions agree with the deletion, {len(differ)} differ")
@@ -470,32 +466,11 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
 
 #: Every claim the 628's readings join from two that overlap without one
 #: holding the other (``span.claimed``: one claim named for both readings),
-#: by its ``what``, held as a count - Jeff's ruling (2026-10-10, Phase 3,
-#: step 3): the join stays, and the joins are held by kind and count, so a
-#: new kind or a grown count fails ``report``, and a kind that vanishes or a
-#: count that falls is lowered here with the change (the ratchets' GONE
-#: rule). Measured at the step's end (`63f1ca0`); on the 2,710 readings 48.
-#: Phase 3, step 4, slice (b) made two kinds one reading - the grammars
-#: read the line and the opponent as the taggers type them, written over
-#: their words (``lexicon.mark_lines``, ``mark_opponent``), so a grammar
-#: claims its own words around them: ``intent+line`` 12 -> 0 (17 -> 0 on the
-#: 2,710) and ``intent+opponent`` 4 -> 0 (5 -> 0); and the count's child
-#: grammar names a count from a line the tagger read, never a bare number
-#: no line is read from (``intent+measure``, 11 -> 0 on the 2,710: "games
-#: with 40 field goal percentage" - a P1 the join hid, ISSUES.md).
-#: None is held since Phase 3, step 4, slice (c) (2026-10-11): the five the
-#: 628 had after slice (b) went when the parent grammar read the companions'
-#: phrases, the windows of games and a dated range as the taggers typed
-#: them (``lexicon.mark_companions``, ``WINDOW_MARK``, ``DATE_MARK``), the
-#: rules were handed the team words, a reached companion's "when" clause and
-#: his name typed, and the bench recognizer read the typed measure
-#: (``companion+intent`` 2, ``intent+companion`` 1, ``situation+intent`` 1,
-#: ``refused+measure`` 1); on the 2,710 the same took ``window+intent`` 3,
-#: ``opponent+intent`` 2 and ``opponent+intent+window`` 1, and #354's
-#: ``situation+date`` 4 (one tagger reading a day's month again as a
-#: situation - a word two RULES of one tagger read, which is a bug, ISSUES.md
-#: "A month is read from the words of a day in it") are the only joins left.
-#: A join on the 628 fails the report outright.
+#: by its ``what``, held as a count (Jeff's ruling): a new kind or a grown
+#: count fails ``report``, and a kind that vanishes or a count that falls
+#: is lowered here with the change (the ratchets' GONE rule). None is held:
+#: a join on the 628 fails the report outright, since a word two rules of
+#: one tagger read is a bug.
 HELD_JOINS_QUESTIONS = 628
 """The recorded questions :data:`HELD_JOINS` was counted over."""
 HELD_JOINS: dict[str, int] = {}

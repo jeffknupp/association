@@ -1,10 +1,10 @@
-"""The ``situation`` slot's two readers: a calendar narrowing
-(:func:`association.query.calendar.parse_situation`) and - K3-2 - a
-conference or division one (:func:`~association.query.calendar.parse_alignment`).
-Neither had a dedicated test module before this; each relation's own use of
-them is covered end to end in ``tests/query/test_templates.py`` and
-``tests/query/test_player_games.py``, so these stay at the level of what a
-value parses to and what SQL it produces."""
+"""The ``situation`` cut's two readers: a calendar narrowing
+(:func:`association.query.calendar.parse_situation`) and a conference or
+division one (:func:`~association.query.calendar.parse_alignment`). Each
+relation's own use of them is covered end to end in
+``tests/query/test_readers.py`` and ``tests/query/test_player_games.py``,
+so these stay at the level of what a value parses to and what SQL it
+produces."""
 
 from __future__ import annotations
 
@@ -85,11 +85,11 @@ def _calendar_days(con: duckdb.DuckDBPyConnection, first: str, last: str) -> Non
 
 
 def test_mlk_day_is_the_third_monday_of_january_in_every_season() -> None:
-    """ "on mlk day" used to match every January 15, which is MLK Day in 5 of
-    the 33 seasons 1994-2026 (#238). Every day from 1988 to 2040, through the
-    clause the relations run: exactly one a season, a Monday, the one the
-    published calendar names, and the day the ISSUES.md entry's own
-    expression computes - the two rules, written independently, agree."""
+    """ "on mlk day" is the third Monday of January, not every January 15
+    (#238). Every day from 1988 to 2040, through the clause the relations
+    run: exactly one a season, a Monday, the one the published calendar
+    names, and the day an independent SQL expression computes - the two
+    rules, written independently, agree."""
     con = duckdb.connect(":memory:")
     _calendar_days(con, "1988-01-01", "2040-12-31")
     sql, params = calendar_clause(HOLIDAYS["mlk day"], "g.eastern_date", "g.season")
@@ -113,8 +113,8 @@ def test_thanksgiving_is_the_fourth_thursday_of_november() -> None:
 
 @pytest.mark.parametrize(("spelling", "day"), [("christmas eve", "2025-12-24"), ("new year's eve", "2025-12-31"), ("new year's", "2026-01-01"), ("valentine's day", "2026-02-14")])
 def test_a_fixed_holiday_is_its_own_day_and_not_the_next(spelling: str, day: str) -> None:
-    """ "christmas eve" was captured as "christmas" and "new year's eve" as
-    "new year's", each answering the day after the one asked about."""
+    """ "christmas eve" is its own day, not "christmas", and "new year's eve"
+    not "new year's" - never the day after the one asked about."""
     con = duckdb.connect(":memory:")
     _calendar_days(con, "2025-10-01", "2026-06-30")
     sql, params = calendar_clause(HOLIDAYS[spelling], "g.eastern_date", "g.season")
@@ -122,8 +122,8 @@ def test_a_fixed_holiday_is_its_own_day_and_not_the_next(spelling: str, day: str
 
 
 def test_holiday_words_hold_every_spelling_longest_first() -> None:
-    """What the router captures is built from this: every spelling read or
-    refused, and an Eve before its day. A typographic apostrophe is the
+    """What the cuts tagger captures is built from this: every spelling read
+    or refused, and an Eve before its day. A typographic apostrophe is the
     parser's to fold before any of it reads the question (ISSUES.md #259,
     ``tests/query/test_parser.py``)."""
     words = re.compile(rf"\b(?:{HOLIDAY_WORDS})\b", re.IGNORECASE)
@@ -165,8 +165,8 @@ def test_parse_alignment_returns_none_for_anything_else(text: object) -> None:
 
 def test_the_two_readers_never_both_match() -> None:
     """A value is a calendar narrowing or a conference/division one, never
-    both - the discipline `_apply_situation` (`templates/common.py`) relies
-    on to try one reader and then the other, in order, exactly once."""
+    both - the discipline ``reading.situation_of`` relies on to try one
+    reader and then the other, in order, exactly once."""
     calendar_values = ["monday", "tuesdays", "in march", "christmas", "since february 1st"]
     alignment_values = ["vs the west", "against eastern conference teams", "vs southeast division", "midwest"]
     for text in calendar_values:

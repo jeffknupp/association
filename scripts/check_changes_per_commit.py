@@ -8,10 +8,8 @@
 ``scripts/check_changes_md.sh`` (the pre-commit hook) asks that a change to
 ``src/`` touches ``CHANGES.md`` - of the index it is run on, never of a
 commit. A rebase that folds neighbors together, or a hook skipped once,
-leaves a commit holding source with no entry, and nothing local can see it:
-three Phase 3 commits did (``bfe09f7``, ``6aa0dca``, ``d1078c8``; ISSUES.md
-#380, found by the Phase 3 review), so a bisect or a revert lands on a fix
-the message does not name. This reads each non-merge commit of a range and
+leaves a commit holding source with no entry, and nothing local can see it,
+so a bisect or a revert lands on a fix the message does not name. This reads each non-merge commit of a range and
 fails on one that touches ``src/`` without ``CHANGES.md``.
 
 Which range: an explicit ``--range``; else a pull request's own commits
@@ -22,9 +20,8 @@ alone, said so. A merge commit is not checked: its diff is the two sides',
 each checked as its own commits.
 
 The history before this check existed is not held to it: commits reachable
-from :data:`FLOOR` (master when it was written) are left out, so the three
-commits above stay where they are, recorded, rather than failing every push
-(``--no-floor`` reads them, which is how the check was watched to fail).
+from :data:`FLOOR` are left out, so commits made before it stay where they
+are rather than failing every push (``--no-floor`` reads them too).
 """
 
 from __future__ import annotations
@@ -35,8 +32,8 @@ import subprocess
 import sys
 
 FLOOR = "8e1a78749898d70cf97e3b1f507f50e81a5298ae"
-"""master when this check was written (2026-10-12): every commit reachable
-from it is history the check does not hold."""
+"""The commit before which the check holds nothing: every commit reachable
+from it is left out."""
 
 ZEROS = "0" * 40
 

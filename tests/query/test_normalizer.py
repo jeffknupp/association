@@ -40,8 +40,9 @@ def test_an_unusable_reply_is_none_and_an_absent_server_says_so() -> None:
 
 
 def test_the_prompt_and_the_schema_agree() -> None:
-    """Every example's stat is one the schema can emit - the router's prompt
-    and schema disagreeing is how ``player_compare`` became unreachable."""
+    """Every example's stat is one the schema can emit: a value the prompt
+    teaches that the enum lacks can never be emitted, and silently becomes
+    something else."""
     assert NORMALIZER_SCHEMA["properties"]["stat"]["enum"] == list(NORMALIZER_STATS)
     examples = [json.loads(found) for found in re.findall(r"-> (\{.*\})", NORMALIZER_PROMPT)]
     assert len(examples) == 5
@@ -49,24 +50,22 @@ def test_the_prompt_and_the_schema_agree() -> None:
 
 
 def test_the_schema_asks_for_the_names_and_the_stat_and_requires_both() -> None:
-    """A slot the schema does not require is one the decoder may never
+    """A field the schema does not require is one the decoder may never
     consider, and no prompt wording fixes that (AGENTS.md) - so both are
-    required. And nothing else is asked for: no intent and no slot a grammar
-    reads from the words, so there is no enum an intent could be parked in
-    and no slot that crowds out another, the two lessons the router's schema
-    taught (its tests went with it in 5.0.0)."""
+    required. And nothing else is asked for: nothing a grammar reads from
+    the words, so no enum a question's shape could be parked in and no field
+    that crowds out another."""
     assert set(NORMALIZER_SCHEMA["properties"]) == {"names", "stat"}
     assert NORMALIZER_SCHEMA["required"] == ["names", "stat"]
 
 
 def test_the_prompt_leaves_room_for_the_question_and_the_reply() -> None:
     """ollama truncates an over-length prompt head-first and silently, and this
-    prompt, like the router's before it, has no per-question assembly step to
-    raise at the way the agent's ``PreambleTooLarge`` does. It is a constant,
+    prompt has no per-question assembly step to raise at. It is a constant,
     so this is the guard: the prompt plus a long question may cost no more
-    than three quarters of ``NORMALIZER_NUM_CTX``, measured at the same ~4
-    characters a token as the retired agent's budget was; the quarter left holds the chat
-    template and a reply of a few dozen tokens of JSON."""
+    than three quarters of ``NORMALIZER_NUM_CTX``, measured at ~4 characters
+    a token (``estimate_tokens``); the quarter left holds the chat template
+    and a reply of a few dozen tokens of JSON."""
     long_question = "what was the record of the los angeles lakers against the boston celtics at home in the 2024 regular season, and how many games did they win by ten or more points? " * 2
     cost = estimate_tokens(NORMALIZER_PROMPT) + estimate_tokens(f"Q: {long_question}")
     assert cost <= NORMALIZER_NUM_CTX * 3 // 4, f"the normalizer's prompt plus a long question is ~{cost} tokens, over three quarters of NORMALIZER_NUM_CTX ({NORMALIZER_NUM_CTX})"

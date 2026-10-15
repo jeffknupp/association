@@ -2,18 +2,18 @@
 
 These guard the project's standing failure shape from its other side. A
 question under a floor does not error - it returns nothing, and nothing is then
-phrased as a real answer or as the wrong cause. Both were measured on the
-current snapshot before this existed: a 1996 shot chart said "No shots found
-for Michael Jordan with the given filters", blaming the filters for ESPN having
-no play-by-play that far back, and a 1980 scoring leaderboard confidently
-ranked a league of seven players.
+phrased as a real answer or as the wrong cause: a 1996 shot chart would say
+"No shots found for Michael Jordan with the given filters", blaming the
+filters for ESPN having no play-by-play that far back, and a 1980 scoring
+ranking would confidently rank a league of seven players.
 """
 
 from __future__ import annotations
 
+from routed import measure_of
+
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
-from association.query.measure import measure_of
 from association.query.reading import (
     GAME_HIGHS,
     GAMES_COUNTED,
@@ -103,7 +103,7 @@ def test_a_covered_season_is_not_refused() -> None:
     assert check_coverage(PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season=1994, season_type=2))) is None
 
 
-def test_an_absent_season_slot_means_the_current_season_and_is_never_refused() -> None:
+def test_a_span_with_no_season_means_the_current_season_and_is_never_refused() -> None:
     assert check_coverage(SHOT_CHART, Reading(span=Span(season_type=2))) is None
 
 
@@ -132,13 +132,11 @@ def test_a_ranking_is_refused_where_a_named_player_is_not() -> None:
 
 
 def test_the_floor_follows_the_relation_the_point_reader_named() -> None:
-    """ISSUES.md #212 (closed by Phase 3, step 1): the floor read four slots
-    of its own to tell a season-line question from a box-score one, and the
-    point reader a longer list, so "Jordan's points in 1990 on tuesdays"
-    (a calendar narrowing, which only the reader knew sends the read to the
-    box scores) was checked against the season line's 1977 floor and
-    answered "no 1990 games found" - the wrong cause. The floor is keyed by
-    the point now, so the two cannot disagree."""
+    """#212: the floor is keyed by the planned point, so the floor and the
+    reader cannot disagree on which relation is read: "Jordan's points in
+    1990 on tuesdays" (a calendar narrowing, which sends the read to the box
+    scores) is checked against the box scores' floor, not the season line's
+    1977 one, which would answer "no 1990 games found" - the wrong cause."""
     from association.query.compose.plan import point_shape
     from association.query.point import default_point
 
@@ -269,10 +267,10 @@ def test_the_same_season_carries_no_caveat_for_its_regular_season() -> None:
 
 
 def test_the_recovered_2000_postseason_carries_no_caveat() -> None:
-    """2000's gap WAS recoverable: its nine missing games are on the scoreboard
-    endpoint even though no team's schedule lists them, so they were fetched
+    """2000's gap is recoverable: its nine missing games are on the scoreboard
+    endpoint even though no team's schedule lists them, so they are fetched
     rather than caveated. Declaring it partial would be an apology for data
-    that is now there."""
+    that is there."""
     assert coverage_caveat(TEAM_MEETINGS, Reading(span=Span(season=2000, season_type=3))) is None
 
 
@@ -284,11 +282,11 @@ def test_a_postseason_caveat_covers_the_team_box_as_well_as_the_game_list() -> N
     assert caveat(("team_box_stats",), 2001, REGULAR_SEASON) is None
 
 
-def test_the_2001_caveat_reaches_the_templates_that_never_read_the_game_list() -> None:
-    """`single_game_high` and `threshold_count` read only the player tables, so
-    a caveat declared on `games` alone never reached them: Shaquille O'Neal's
-    "4 games with 30+ points" was stated as fact over 11 of the 16 playoff
-    games he played."""
+def test_the_2001_caveat_reaches_the_shapes_that_never_read_the_game_list() -> None:
+    """A single game's high and a count of games over a line read only the
+    player tables, so a caveat declared on `games` alone would never reach
+    them: Shaquille O'Neal's "4 games with 30+ points" would be stated as
+    fact over 11 of the 16 playoff games he played."""
     for shape in (GAME_HIGHS, GAMES_COUNTED):
         note = coverage_caveat(shape, Reading(who=Who(kind="player", players=("Shaquille O'Neal",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=3)))
         assert note is not None and "2001 playoffs" in note, shape
@@ -302,7 +300,7 @@ def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
     player's own line."""
     team = caveat(("team_box_stats",), 2001, POSTSEASON)
     assert team is not None and "Philadelphia's run" in team
-    # Every table the player templates read says it in the player's words, and
+    # Every table a player's readers read says it in the player's words, and
     # says it alone - the log is declared separately from the box because
     # SOURCES is free to list either without the other.
     for table in ("player_box_stats", "player_game_log", "player_season_advanced_stats"):
@@ -368,9 +366,9 @@ def test_a_2013_to_2018_shooting_board_says_who_is_missing_from_it() -> None:
 
 
 def test_the_shooting_caveats_ranking_sentence_is_left_off_a_lookup() -> None:
-    """ISSUES.md #293: "21 to 33 players ... are missing from this ranking
-    entirely" was appended to one player's own rate. The note's lookup half
-    stands alone off a ranking."""
+    """#293: "21 to 33 players ... are missing from this ranking entirely"
+    is no part of one player's own rate. The note's lookup half stands alone
+    off a ranking."""
     ranked = caveat(("player_season_advanced_stats",), 2015)
     looked_up = caveat(("player_season_advanced_stats",), 2015, ranking=False)
     assert ranked is not None and looked_up is not None

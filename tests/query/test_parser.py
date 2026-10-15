@@ -1,7 +1,5 @@
-"""The parser (query/parse.py): a question read into one Reading with no
-router - ROADMAP plan item 6, step (b). The measurements live in
-``~/association-research/parser-greenfield/`` (``measure.py``); these are the
-rules' own cases on the small fixture warehouse."""
+"""The parser (query/parse.py): a question read into one Reading. These are
+the rules' own cases on the small fixture warehouse."""
 
 from __future__ import annotations
 
@@ -74,13 +72,13 @@ def con() -> duckdb.DuckDBPyConnection:
 
 def test_a_span_is_a_team_a_player_or_nothing(con: duckdb.DuckDBPyConnection) -> None:
     """The names the normalizer copies are classified before they become a
-    subject (ISSUES.md #236): a division, the word "team" and a typo two
+    subject (#236): a division, the word "team" and a typo two
     players could be are nobody's; a single near spelling is that player
     (the typo policy: the index defaults, visibly, never the model)."""
     assert classify_span(names_of(con), "sixers") == "team" and classify_span(names_of(con), "Boston Celtics") == "team" and classify_span(names_of(con), "PHI") == "team"
     assert classify_span(names_of(con), "Embiid") == "player" and classify_span(names_of(con), "maxey") == "player"
     assert classify_span(names_of(con), "Embid") == "player" and classify_span(names_of(con), "embids") == "player"
-    assert classify_span(names_of(con), "jolic") is None  # Jokic or Jovic: two near spellings ask, as they always did
+    assert classify_span(names_of(con), "jolic") is None  # Jokic or Jovic: two near spellings ask
     assert classify_span(names_of(con), "southeast division") is None and classify_span(names_of(con), "team") is None
 
 
@@ -111,8 +109,8 @@ def test_the_measure_grammar_reads_the_words_before_the_models_key() -> None:
 
 def test_the_parent_grammar_by_kind_and_words() -> None:
     assert parent_asked("show sga fingerprint for this season", "player") == NETPOINTS_FINGERPRINT
-    # A player's own record is his games' W-L (F088, "Embiid's record against Boston this year"): player_splits, never
-    # the team's with/without split; a line in it is record_when, which player_stat's reading assigns.
+    # A player's own record is his games' W-L (F088, "Embiid's record against Boston this year"): his splits, never
+    # the team's with/without split; a line in it is a record over a line, which the grammar's rules assign.
     assert parent_asked("Embiid's record against Boston this year", "player") == PLAYER_SPLITS
     assert parent_asked("Sga record 36 plus points", "player") == PLAYER_LINE
     assert parent_asked("36-plus points SGA record", "player") == PLAYER_LINE
@@ -128,7 +126,7 @@ def test_the_parent_grammar_by_kind_and_words() -> None:
     assert parent_asked("Lakers vs Celtics record this season", "teams") == TEAM_MEETINGS
     assert parent_asked("What was the Lakers record last season?", "team") == TEAM_RECORD
     assert parent_asked("Display the Knicks' previous 5 games", "team") == PLAYER_LOG
-    # with_without needs a companion the reading found: "when playing away" names nobody.
+    # The with/without split needs a companion the reading found: "when playing away" names nobody.
     assert parent_asked("Record of the 76ers when playing away", "team") == TEAM_RECORD
     assert parent_asked("PHI's record when Embiid and Paul George are both in the game", "team", companions=True) == PRESENCE_SPLIT
     assert parent_asked("westbrook's stats when he started for the kings", "player") == PLAYER_LINE
@@ -154,10 +152,8 @@ class _Read(Routed):
 
 def _route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> _Read:
     """The parser's reading of ``question`` (:func:`read_route`), as the
-    route-level checks below assert on it: the key, the scope as slots, the
-    subject, the parser's own decisions - read off the Reading itself since
-    Phase 3, step 4, slice (b), when the route the parser carried to its
-    last step went."""
+    route-level checks below assert on it: the key, the typed filters, the
+    subject, the parser's own decisions - read off the Reading itself."""
     reading = read_route(names_of(con), question, names, stat)
     parser = tuple(decision for decision in reading.decisions if decision.stage == "parser")
     return _Read(reading.asked, reading, reading.subject, parser, reading.claims, reading=reading)
@@ -175,17 +171,17 @@ def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None
 
 
 def _quarter(read: Routed | Reading) -> int | None:
-    """The quarter the reading sees, where it sees one (the ``period`` slot)."""
+    """The quarter the reading sees, where it sees one (``Reading.period``, not a half)."""
     return read.period.number if read.period is not None and not read.period.half else None
 
 
 def _half(read: Routed | Reading) -> int | None:
-    """The half the reading sees, where it sees one (the ``half`` slot)."""
+    """The half the reading sees, where it sees one (``Reading.period``, a half)."""
     return read.period.number if read.period is not None and read.period.half else None
 
 
 def _threshold(read: Routed | Reading) -> float | None:
-    """The shape's own line on the whole game (the ``threshold`` slot)."""
+    """The shape's own line on the whole game (the keyed ``Line`` with no period)."""
     return next((line.value for line in read.lines if line.keyed and line.period is None), None)
 
 
@@ -217,14 +213,14 @@ def test_the_parser_with_no_names_and_no_stat_still_reads_the_question(con: duck
 
 
 def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duckdb.DuckDBPyConnection) -> None:
-    """ROADMAP step 3: the route carries the other-side player as a typed
-    condition (``_read_route_versus``) - written by the first reading, which
-    has the model's names, so the second (``reading_from_route``) keeps him
-    even where his name alone is two players' - and the point is the
-    subject's own: a high (rows by measure, "most" against a named opponent
-    being his best meeting), a count, a log. A bare pair is still the
-    matchup, and "vs <team> without <player>" is the player's own question,
-    not a with/without split."""
+    """The Reading carries the other-side player as a typed companion
+    (``side="opponent"``, read by the subject reading's
+    ``_versus_companions`` with the model's names, so he is kept even where
+    his name alone is two players') - and the point is the subject's own: a
+    high (rows by measure, "most" against a named opponent being his best
+    meeting), a count, a log. A bare pair is two players' meetings, and "vs
+    <team> without <player>" is the player's own question, not a
+    with/without split."""
     against = Companion(player="Jayson Tatum", side="opponent", predicate="played")
     high = _read(con, "most points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
     assert high.asked == PLAYER_LINE and high.who.player == "Tyrese Maxey" and high.companions == (against,)
@@ -242,13 +238,10 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
 
 
 def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnection) -> None:
-    """The router dressed one player against a team as a two-player matchup -
-    with the team, or a garbled spelling of it, or a teammate named as absent
-    in the second player's slot ("oubre vs warriors without embiid", "de'aaron
-    fox vs magic without wembyanama"), and ``player_matchup`` carried two
-    repairs to fold each back into the player's own games. A matchup is read
-    only where the question names two players (the pair kind), so neither
-    shape reaches it; the repairs are gone (5.0.0)."""
+    """One player against a team is his own games, never two players'
+    meetings - whether the model hands the team, a garbled spelling of it,
+    or only a teammate named as absent beside him. Two players' meetings
+    are read only where the question names two players (the pair kind)."""
     for question, names in (
         ("maxey vs celtics without embiid", ["maxey", "celtics", "embiid"]),
         ("maxey vs celtics without embiid", ["maxey", "Celtcs", "embiid"]),
@@ -263,12 +256,11 @@ def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnecti
 
 
 def test_read_route_takes_the_names_from_the_subject_reading(con: duckdb.DuckDBPyConnection) -> None:
-    """The model's spans are where the reading starts, not what the slots
-    hold (ROADMAP plan item 6, step c): a name it dropped that the question
-    holds is the reading's; a companion is a narrowing, never a second
-    player; a team beside a player is his opponent; a team code is the
-    team; an ambiguous span the reading could not settle is kept as typed,
-    for the template to ask about."""
+    """The model's spans are where the reading starts, not what the subject
+    holds: a name it dropped that the question holds is the reading's; a
+    companion is a narrowing, never a second player; a team beside a player
+    is his opponent; a team code is the team; an ambiguous span the reading
+    could not settle is kept as typed, for the answer side to ask about."""
     dropped = _route(con, "plot the fingerprint for Nikola Jokic for the 2025 season", [], "")
     assert dropped.who.player == "Nikola Jokic"
     companion = _route(con, "Tyrese Maxey game log without Joel Embiid", ["Tyrese Maxey", "Joel Embiid"], "")
@@ -294,10 +286,10 @@ def test_a_conference_or_a_pronoun_is_never_a_name(con: duckdb.DuckDBPyConnectio
     assert classify_span(names_of(con), "Delonte West") == "player"
 
 
-def test_read_route_reads_the_window_before_the_stages_and_the_quarter_from_the_words(con: duckdb.DuckDBPyConnection) -> None:
-    """A bare "last 10 games" reads both season types, which the stages
-    decide only beside the window (``_route_game_log_recent_span``); a
-    team's quarter is a slot the router's model used to fill."""
+def test_read_route_reads_the_window_before_the_span_and_the_quarter_from_the_words(con: duckdb.DuckDBPyConnection) -> None:
+    """A bare "last 10 games" reads both season types, which the span's
+    reading decides only beside the window (``point.span_under``); a team's
+    quarter is read from the words."""
     recent = _route(con, "How did the Celtics do in their last 10 games?", ["Celtics"], "")
     assert (recent.asked, recent.window.count, recent.span.both) == (PLAYER_LOG, 10, True)
     quarter = _route(con, "show sixers first quarter scoring for their last 10 games", ["sixers"], "points")
@@ -307,7 +299,7 @@ def test_read_route_reads_the_window_before_the_stages_and_the_quarter_from_the_
 def test_a_players_record_reads_his_splits_through_a_window_but_not_over_a_log_word() -> None:
     """ "rec" is a record, and a record narrowed by a date or a window is still
     his record (yardstick-v2 F110, "towns home rec including playoffs since
-    1/26/20 vs spurs" read as a game log); a game log asked for is a log."""
+    1/26/20 vs spurs" is no game log); a game log asked for is a log."""
     assert parent_asked("towns home rec including playoffs since 1/26/20 vs spurs", "player") == PLAYER_SPLITS
     assert parent_asked("embiid's record in his last 10 games", "player") == PLAYER_SPLITS
     assert parent_asked("embiid game log since 1/26/20", "player") == PLAYER_LOG
@@ -315,11 +307,10 @@ def test_a_players_record_reads_his_splits_through_a_window_but_not_over_a_log_w
     assert parent_asked("Sga record 36 plus points", "player") != PLAYER_SPLITS
 
 
-def test_the_hold_out_rows_the_router_answered_and_the_parser_did_not(con: duckdb.DuckDBPyConnection) -> None:
-    """The recorded routing corpus outside day10 (75 questions no step (b) or
-    (c) fix was tuned on), answered by both paths: each of these was a
-    fluent wrong answer or a fall-through on the parser's alone."""
-    # "%" takes no \b: "3pt %" read as 3-pointers made.
+def test_the_hold_out_wordings_read_their_measure_and_their_parent(con: duckdb.DuckDBPyConnection) -> None:
+    """Hold-out wordings the reader was not tuned on, each read to the
+    measure or the parent its words ask."""
+    # "%" takes no \b: "3pt %" is the percentage, not 3-pointers made.
     assert _measure("who had the highest 3pt % this season") == "threePointFieldGoalPct"
     # Attempts AND makes asked for: the made line reports both.
     assert _measure("show embiid's 3pt attempts and 3pts mad for his career") == "threePointFieldGoalsMade"
@@ -335,8 +326,9 @@ def test_the_hold_out_rows_the_router_answered_and_the_parser_did_not(con: duckd
 
 def test_read_route_reads_the_columns_a_ranking_asks_to_see(con: duckdb.DuckDBPyConnection) -> None:
     """ "with their rebounds and assists" and "the team they play for"
-    (yardstick-v2 F017) are the leaderboard's `fields`, which the router's
-    model used to fill; a ranking that asks for none gets none."""
+    (yardstick-v2 F017) are the ranking's columns beside its measure
+    (``Measure.beside``), read from the words; a ranking that asks for none
+    gets none."""
     extra = _route(con, "Top 5 scorers with their rebounds and assists", [], "points")
     assert (extra.asked, extra.measure.beside, extra.window.count) == (PLAYER_RANKING, ("rebounds", "assists"), 5)
     team = _route(con, "show the top 50 in total adjusted netpoints and the team they play for", [], "netpoints")
@@ -348,11 +340,10 @@ def test_read_route_reads_the_columns_a_ranking_asks_to_see(con: duckdb.DuckDBPy
 
 
 def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: duckdb.DuckDBPyConnection) -> None:
-    """The model copies names exactly 299 times in 302 and corrects the
-    rest: "how many points does embid average" came back "embiid", and the
-    answer read Joel Embiid with nothing saying a typo was read. A typo is
-    the entity index's to read, visibly, so the question's own spelling goes
-    back in; a completion of a surname typed as-is is left alone."""
+    """The model sometimes corrects a name ("embid" handed back as
+    "embiid"). A typo is the entity index's to read, visibly, so the
+    question's own spelling goes back in; a completion of a surname typed
+    as-is is left alone."""
     typo = _route(con, "how many points does embid average", ["embiid"], "points")
     assert typo.who.player == "embid"
     both = _route(con, "how many points does embidd average", ["Joel Embiid"], "points")
@@ -361,14 +352,13 @@ def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: du
     assert completed.who.player in ("Joel Embiid", "embiid")
     # A possessive "s" left on a typo ("embids" for "embid's") is the
     # question's own spelling too, as the index reads it: put back, it is a
-    # player's history, where two edits from "embiid" it read as a name the
-    # question never held and was refused (ISSUES.md #180).
+    # player's history, not a name the question never held (#180).
     possessive = _route(con, "show me embids 3pt percentage over the last 5 years", ["embiid"], "threePointFieldGoalPct")
     assert (possessive.asked, possessive.who.player, possessive.who.invented) == (SEASON_HISTORY, "embids", ())
 
 
 def test_an_invented_name_never_changes_the_kind_or_the_key(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #373: a model name the question never held rides on
+    """#373: a model name the question never held rides on
     ``misread`` alone - never among the players, so the subject's kind and
     the grammar's key are the question's own - and is replaced from the
     question's names where the count is exact (AGENTS.md, "Replace only
@@ -390,11 +380,11 @@ def test_an_invented_name_never_changes_the_kind_or_the_key(con: duckdb.DuckDBPy
 
 
 def test_a_companions_line_is_never_the_subjects(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #359: the one line in "maxey record when embiid scores 20+
+    """#359: the one line in "maxey record when embiid scores 20+
     points" is Embiid's, so the record has no line of its own and refuses by
     a cause naming his line and the wordings that reach each reading; the
     count whose "companion" the rules restored as the subject himself keeps
-    its line; a team's record keyed on its player's line is unchanged."""
+    its line; a team's record keyed on its player's line keeps it."""
     from association.query.reading import GAMES_COUNTED, LINE_RECORD
 
     record = _route(con, "maxey record when embiid scores 20+ points", ["Tyrese Maxey", "Joel Embiid"], "points")
@@ -410,18 +400,16 @@ def test_a_companions_line_is_never_the_subjects(con: duckdb.DuckDBPyConnection)
 
 def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> None:
     """One number table, every count pattern built from it: "last twelve
-    games" read as a season line while "last 12 games" read the log (the
-    package review's F2)."""
+    games" reads the log as "last 12 games" does."""
     for spelled, n in (("twelve", 12), ("eleven", 11), ("twenty five", 25), ("twenty-five", 25), ("fifty", 50)):
         route = _route(con, f"tyrese maxey last {spelled} games", ["tyrese maxey"], "")
         assert (route.asked, route.window.order, route.window.count) == (PLAYER_LOG, "recent", n), spelled
 
 
 # ---------------------------------------------------------------------------
-# A companion beside the subject, with the role the question gives him (ROADMAP
-# plan item 6, step (d) follow-ups). The route is what these assert - the
-# intent and the slots - never an answer: `player_stat`'s reading of a
-# condition is another change.
+# A companion beside the subject, with the role the question gives him. The
+# Reading is what these assert - the key the words ask and the typed filters
+# - never an answer.
 
 
 def _with_the_warriors(con: duckdb.DuckDBPyConnection) -> None:
@@ -429,13 +417,11 @@ def _with_the_warriors(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("INSERT INTO teams VALUES ('9', 'Golden State Warriors', 'GS')")
 
 
-def test_a_teammates_start_is_his_condition_on_the_subjects_own_intent(con: duckdb.DuckDBPyConnection) -> None:
-    """ "maxey points when embiid starts" read Embiid's start as Maxey's own
-    starter split, under the with/without row, and fell through
-    ("with_without cannot honor ['split']"); "maxey points in games embiid
-    started" read the two as a pair and compared them. A teammate's start or
-    bench is his condition, on the subject's own intent - never the subject's
-    split, never a second subject."""
+def test_a_teammates_start_is_his_condition_on_the_subjects_own_key(con: duckdb.DuckDBPyConnection) -> None:
+    """ "maxey points when embiid starts" and "maxey points in games embiid
+    started": a teammate's start or bench is his companion's role, on the
+    subject's own key - never the subject's starter split, never a second
+    subject."""
     started = (Companion(player="Joel Embiid", predicate="started"),)
     for question, stat, asked in (
         ("maxey points when embiid starts", "points", PLAYER_LINE),
@@ -457,9 +443,9 @@ def test_a_teammates_start_is_his_condition_on_the_subjects_own_intent(con: duck
 
 
 def test_a_teammates_start_narrows_a_shot_chart_or_a_distance_not_the_players_own_starts(con: duckdb.DuckDBPyConnection) -> None:
-    """ "stephen curry shot chart when draymond green starts" drew Curry's
-    own starts, and "... average shot distance when draymond green starts"
-    fell through on the same split."""
+    """ "stephen curry shot chart when draymond green starts" and "...
+    average shot distance when draymond green starts" narrow to Green's
+    starts, not Curry's own."""
     _with_the_warriors(con)
     for question, asked in (("stephen curry shot chart when draymond green starts", SHOT_CHART), ("stephen curry average shot distance when draymond green starts", SHOT_DISTANCE)):
         route = _route(con, question, ["stephen curry", "draymond green"], "")
@@ -469,8 +455,8 @@ def test_a_teammates_start_narrows_a_shot_chart_or_a_distance_not_the_players_ow
 
 def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.DuckDBPyConnection) -> None:
     """Only the teammate's phrase is his: the subject's own start still
-    reads as his split, a team's split by a teammate's start is
-    with_without's own side, and a start the question denies stays the
+    reads as his split, a team's split by a teammate's start is the
+    presence split's own side, and a start the question denies stays the
     with/without split, whose other half is the one asked for - as a
     condition it would narrow to the very games the question excludes."""
     route = _route(con, "maxey points as a starter when embiid comes off the bench", ["maxey", "embiid"], "points")
@@ -482,9 +468,8 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     route = _route(con, "maxey points when embiid doesn't start", ["maxey", "embiid"], "points")
     assert route.asked == PRESENCE_SPLIT
     # Where nothing reads the start as a condition, the condition is still
-    # written - the reader does not ask what will answer - and the answer
-    # refuses it by name, never answering every game (until 5.0.0's last
-    # change the misread split was left in place to do the refusing).
+    # written - the reader does not ask what will answer - and the planner
+    # refuses it by name, never answering every game.
     question = "sixers first quarter points when embiid starts"
     route = _route(con, question, ["sixers", "embiid"], "points")
     assert route.asked == TEAM_PERIOD_TOTAL and route.split is None
@@ -496,10 +481,9 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
 
 
 def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: duckdb.DuckDBPyConnection) -> None:
-    """ "with draymond green out" was read and written to no slot - the
-    whole season charted, his whole log listed - or read by "with" as a
-    teammate who PLAYED, named "draymond green out", which asked whether Bo
-    or Travis Outlaw was meant. It is ``without``, the way "without X" is."""
+    """ "with draymond green out" is his absence, the way "without X" is -
+    never dropped, and never a teammate who PLAYED named "draymond green
+    out" (Bo or Travis Outlaw)."""
     _with_the_warriors(con)
     for question, names, asked in (
         ("stephen curry shot chart with draymond green out", ["stephen curry", "draymond green"], SHOT_CHART),
@@ -520,24 +504,23 @@ def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: 
 
 
 def test_a_record_with_a_teammate_out_is_the_split_from_the_other_side() -> None:
-    """The stages the parser runs through ``settle``, under the intents a
-    record with no line arrives as: "with X out" is the with/without split
+    """The grammar's rules the parser runs through ``settle``, under the keys
+    a record with no line arrives as: "with X out" is the with/without split
     by his absence - never a teammate who played, named "draymond green
     out" or "draymond green" with the absence dropped."""
     warriors = Who(kind="team", teams=("Golden State Warriors",))
     for asked in (LINE_RECORD, TEAM_RECORD):
         route = settle(asked, "warriors record with draymond green out", (Companion(player="draymond green", predicate="absent"),), who=warriors)
-        # The stages settle the split and write no name: the subject reading writes him onto the Reading (apply_subject).
+        # The rules settle the split and write no name: the subject reading writes him onto the Reading (apply_subject).
         assert (route.asked, route.companions) == (PRESENCE_SPLIT, ()), asked
         # Who sat out is the subject reading's: with nobody beside the team, the record stays a record.
         assert settle(asked, "warriors record with draymond green out", who=warriors).asked == asked
 
 
-def test_a_companion_who_played_is_a_condition_where_with_player_is_read_by_nothing(con: duckdb.DuckDBPyConnection) -> None:
-    """ "stephen curry shot chart when draymond green plays" was read and
-    written to no slot. ``with_player`` is with_without's alone, so on a log
-    or a chart the role is the relation's own ``played`` condition; the
-    with/without split keeps its ``with_player``."""
+def test_a_companion_who_played_is_a_condition_off_the_presence_split(con: duckdb.DuckDBPyConnection) -> None:
+    """ "stephen curry shot chart when draymond green plays": on a log or a
+    chart a teammate who played is the relation's own ``played`` companion,
+    and the with/without split reads the same companion as its side."""
     _with_the_warriors(con)
     names = ["stephen curry", "draymond green"]
     played = (Companion(player="Draymond Green"),)
@@ -549,9 +532,8 @@ def test_a_companion_who_played_is_a_condition_where_with_player_is_read_by_noth
 
 
 def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyConnection) -> None:
-    """ "celtics record when jayson tatum scores 30" read no threshold - no
-    stat word follows the number - and was refused as a question about a
-    team named Jayson Tatum. The verb names the stat."""
+    """ "celtics record when jayson tatum scores 30" reads a threshold though
+    no stat word follows the number: the verb names the stat."""
     for question, stat, since in (
         ("celtics record when jayson tatum scores 30", "points", None),
         ("celtics record when jayson tatum scores 30 since 2022", "points", 2022),
@@ -574,20 +556,17 @@ def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyC
 
 
 # ---------------------------------------------------------------------------
-# The intent the parser's words assign, as decisions (ISSUES.md #258): a child
-# or a stage's intent was a trace line only, so the answer's decisions showed
-# who a question was about but never that "how many 30+ point games" was read
-# as a count rather than a game log.
+# The key the parser's words assign, as decisions (#258): the answer's
+# decisions show that "how many 30+ point games" was read as a count rather
+# than a game log, beside who the question is about.
 
 
-def test_each_move_of_the_intent_off_the_grammars_parent_is_a_decision(con: duckdb.DuckDBPyConnection) -> None:
-    """The ways the intent leaves the parent the grammar named, each with
-    its own reason: the words naming a child for the subject's kind, the
-    stages settling another intent, a team's record in the games a
-    companion reached a line, and a child the stages declined. A question
-    whose intent is the parent's carries none. (Until the stages ran once,
-    a child's decision listed every slot its run moved against the
-    parent's; there is no parent run to list against now.)"""
+def test_each_move_of_the_key_off_the_grammars_parent_is_a_decision(con: duckdb.DuckDBPyConnection) -> None:
+    """The ways the key leaves the parent the grammar named, each with its
+    own reason: the words naming a child for the subject's kind, the
+    grammar's rules settling another key, a team's record in the games a
+    companion reached a line, and a child the rules declined. A question
+    whose key is the parent's carries none."""
     route = _route(con, "How many times did embiid score 30+ points", ["embiid"], "points")
     assert route.decisions == (Decision("parser", "asked", "player_games/rows/date", "player_games/scalar/count", "the words 'How many times did embiid score 30+' name player_games/scalar/count"),)
     route = _route(con, "rebounds allowed per team", [], "rebounds")
@@ -597,7 +576,7 @@ def test_each_move_of_the_intent_off_the_grammars_parent_is_a_decision(con: duck
     assert route.decisions == (Decision("parser", "asked", "team_games/split/presence", "player_games/split/line", team_rule),) and route.who.asked_reason == team_rule
     route = _route(con, "how many points does embiid average", ["embiid"], "points")
     assert (route.asked, route.decisions, route.who.asked_reason) == (PLAYER_LINE, (), None)
-    # A child the words name and the stages decline: said, and the parent
+    # A child the words name and the rules decline: said, and the parent
     # stands (a history with no stat named is the whole line).
     route = _route(con, "embiid career averages over the past 4 seasons", ["embiid"], "")
     declined = "the words 'over the past 4 seasons' name player_seasons/split/season, and the stages declined it"
@@ -606,20 +585,18 @@ def test_each_move_of_the_intent_off_the_grammars_parent_is_a_decision(con: duck
 
 def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote(con: duckdb.DuckDBPyConnection) -> None:
     """The Reading's decisions read in order: who the question is about, how
-    the parser moved the intent, then what the subject wrote into the scope
+    the parser moved the key, then what the subject wrote into the Reading
     (here the question's own spelling of the companion, "maxey" read as
     Tyrese Maxey) - and a replayed route, which the parser never read,
-    carries none of the parser's. The team rule's own decision is only where
-    it moves the player: it used to read the slot after rewriting it, and
-    said "subject player: 'maxey' -> 'maxey'" on every such question."""
+    carries none of the parser's. The team rule records no decision of its
+    own where it leaves the player as he was."""
     question = "what was the sixers record when maxey scored 15+ points?"
     route = _route(con, question, ["sixers", "maxey"], "points")
     assert route.reading is not None
     decisions = route.reading.decisions
     # The record's player is the companion who reached the line, written once
-    # by the rules from the typed companion (slice (c)): until then the
-    # grammar's spelling was written first and the companion's resolved
-    # name over it, a decision recorded on every such question.
+    # by the rules from the typed companion: no spelling is written first and
+    # overwritten, so no decision records one.
     assert [(d.stage, d.field) for d in decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions"), ("parser", "asked")]
     assert route.reading.who.player == "Tyrese Maxey"
     handed = Reading(**{**route.scope.filters(), "who": Who.from_slots({"player": "Tyrese Maxey", "team": route.who.team})})
@@ -627,17 +604,17 @@ def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote
     assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]
 
 
-# ISSUES.md #259: the apostrophe a phone keyboard types (U+2019, and U+2018,
+# #259: the apostrophe a phone keyboard types (U+2019, and U+2018,
 # its opening twin) is a straight one to every reader, folded once at the
 # parser's door - the question and the names the model copied out of it.
 
 
 @pytest.mark.parametrize("apostrophe", ["\u2019", "\u2018"])
 def test_a_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyConnection, apostrophe: str) -> None:
-    """ "most points in the 2010\u2019s" answered the 2010 season alone, and a
-    name the model copied with its possessive on ("Devin Booker\u2019s") or an
-    apostrophe inside ("D\u2019Angelo Russell") matched nobody, so the question
-    was answered about the league. Each reads as its straight twin now."""
+    """ "most points in the 2010\u2019s" is the decade, and a name the model
+    copied with its possessive on ("Devin Booker\u2019s") or an apostrophe
+    inside ("D\u2019Angelo Russell") is the player: each reads as its
+    straight twin."""
     con.execute("INSERT INTO players VALUES ('11', 'Devin Booker'), ('12', 'D''Angelo Russell')")
     con.execute("INSERT INTO teams VALUES ('5', 'Minnesota Timberwolves', 'MIN')")
     for typed, names, stat in (
@@ -661,7 +638,7 @@ def test_a_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyCo
     # the question as typed too, and reads who it is about from its words.
     reading = _read(con, f"D{apostrophe}Angelo Russell game against the Timberwolves", [f"D{apostrophe}Angelo Russell", "Timberwolves"])
     assert reading.subject is not None and (reading.subject.kind, reading.subject.players, reading.misread) == ("player", ("D'Angelo Russell",), ())
-    # A denial is one: typed with U+2019, "doesn't play" was his games played.
+    # A denial is one: typed with U+2019, "doesn't play" is his absence.
     denied = _read(con, f"maxey points when embiid doesn{apostrophe}t play", ["maxey", "embiid"], "points")
     assert denied.filters() == _read(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points").filters()
     assert denied.subject is not None and [c.predicate for c in denied.subject.conditions] == ["absent"]
@@ -669,10 +646,9 @@ def test_a_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyCo
 
 def test_a_name_the_model_copied_with_a_typographic_apostrophe_anchors_to_the_question(con: duckdb.DuckDBPyConnection) -> None:
     """The model copies a name as the question typed it, so the names are
-    folded with the question: left as typed, "De\u2019Aaron" is no span of the
-    folded question and is dropped (the league answered), and "Kel\u2019el Ware"
-    is cut back to the part the question still holds, "Ware", which two
-    players share."""
+    folded with the question: "De\u2019Aaron" is a span of the folded
+    question and is kept, and "Kel\u2019el Ware" is the whole name, not "Ware",
+    which two players share."""
     con.execute("INSERT INTO players VALUES ('11', 'De''Aaron Fox'), ('12', 'Kel''el Ware'), ('13', 'Casey Ware')")
     for apostrophe in ("\u2019", "\u2018"):
         first = _route(con, f"De{apostrophe}Aaron stats this season", [f"De{apostrophe}Aaron"], "")
@@ -682,10 +658,9 @@ def test_a_name_the_model_copied_with_a_typographic_apostrophe_anchors_to_the_qu
 
 
 def test_a_quarter_ranking_that_says_player_ranks_the_teams_players(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F049, "hornets average 1st quarter points player": the
-    team's own first-quarter average answered where its leading player's was
-    asked. "player" ranks, as "who" and "leaders" do, and only where no player
-    is named."""
+    """yardstick-v2 F049, "hornets average 1st quarter points player" asks
+    the team's leading player, not the team's own average: "player" ranks,
+    as "who" and "leaders" do, and only where no player is named."""
     route = _route(con, "celtics average 1st quarter points player", ["celtics"], "points")
     assert (route.asked, _quarter(route)) == (PERIOD_RANKING, 1)
     team = _route(con, "celtics average 1st quarter points", ["celtics"], "points")
@@ -694,8 +669,8 @@ def test_a_quarter_ranking_that_says_player_ranks_the_teams_players(con: duckdb.
 
 def test_a_named_players_period_games_are_listed(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F060, "Rudy gobert first half games this season": the key
-    lists his first halves, and a total answered it. "games" with no stat
-    named is a log, as "log" is; with a stat named it stays the total."""
+    lists his first halves. "games" with no stat named is a log, as "log"
+    is; with a stat named it stays the total."""
     route = _route(con, "tyrese maxey first half games this season", ["tyrese maxey"], "")
     assert (route.asked, _half(route), route.measure is not None and route.measure.how == "per_game") == (PERIOD_LOG, 1, True)
     total = _route(con, "tyrese maxey first half points over his games this season", ["tyrese maxey"], "points")
@@ -703,9 +678,10 @@ def test_a_named_players_period_games_are_listed(con: duckdb.DuckDBPyConnection)
 
 
 def test_points_by_quarter_with_no_one_named_is_the_leagues_table(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F048, "nba playerspoints by quarter average", fell through
-    for want of one period: every quarter at once is period_leaderboard with
-    none. A named player's breakdown is period_split with none (#162)."""
+    """yardstick-v2 F048, "nba playerspoints by quarter average": every
+    quarter at once is a ranking of a period (``PERIOD_RANKING``) with no
+    period. A named player's breakdown is a period log (``PERIOD_LOG``) with
+    none (#162)."""
     route = _route(con, "nba playerspoints by quarter average", [], "")
     assert route.asked == PERIOD_RANKING and route.period is None
     named = _route(con, "Jokic points by quarter", ["Jokic"], "points")
@@ -722,10 +698,10 @@ def test_most_ranks_a_quarter_only_where_no_team_is_named(con: duckdb.DuckDBPyCo
 
 
 def test_a_teams_quarter_of_any_stat_is_the_teams_quarter(con: duckdb.DuckDBPyConnection) -> None:
-    """The period relation's team half (ISSUES.md #161): a team's rebounds,
-    threes or turnovers in a quarter or half are read as team_quarter_points
-    with the stat kept and the period read from the words - hyphenated too
-    ("first-quarter rebounds"), which read no period at all."""
+    """The period relation's team half (#161): a team's rebounds, threes or
+    turnovers in a quarter or half are read as a team's period total
+    (``TEAM_PERIOD_TOTAL``) with the stat kept and the period read from the
+    words - hyphenated too ("first-quarter rebounds")."""
     rebounds = _route(con, "how many first-quarter rebounds do the celtics average", ["celtics"], "rebounds")
     assert (rebounds.asked, _quarter(rebounds), rebounds.measure.as_typed) == (TEAM_PERIOD_TOTAL, 1, "rebounds")
     threes = _route(con, "magic stats last 10 games 3 point average 1st quarter", ["magic"], "threePointFieldGoalsMade")
@@ -736,17 +712,16 @@ def test_a_teams_quarter_of_any_stat_is_the_teams_quarter(con: duckdb.DuckDBPyCo
     assert (assists.asked, _half(assists), assists.measure.as_typed) == (TEAM_PERIOD_TOTAL, 2, "assists")
 
 
-def test_a_period_used_as_a_condition_is_read_into_the_scope_and_off_the_period_templates(con: duckdb.DuckDBPyConnection) -> None:
+def test_a_period_used_as_a_condition_is_read_into_the_lines_and_off_the_period_readers(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F062, "... three points made per game after making one
     three in first quarter": his whole-game threes over the games whose first
-    quarter held one. Once period_split read any stat it answered his
-    first-quarter threes - a different question, fluently. The condition is
-    read into the scope (`read_period_condition`, ROADMAP step 2, #275) and
-    its words taken out of the question the grammar sees, so the rest reads
-    as the per-game average it is; a bare "one" is exactly one (the key's
-    reading, said as "exactly" in the answer) and "at least"/"+" at least.
-    A condition whose line cannot be read ("after scoring a lot") is still
-    kept off the period templates, for the refusal to name."""
+    quarter held one, never his first-quarter threes. The condition is read
+    into the Reading's lines (``line.read_period_line``, #275) and its words
+    taken out of the question the grammar sees, so the rest reads as the
+    per-game average it is; a bare "one" is exactly one (the key's reading,
+    said as "exactly" in the answer) and "at least"/"+" at least. A
+    condition whose line cannot be read ("after scoring a lot") is kept off
+    the period readers, for the refusal to name."""
     from association.query.reading import Line, Period
 
     def in_period(route: Routed) -> Line | None:
@@ -768,11 +743,9 @@ def test_a_period_used_as_a_condition_is_read_into_the_scope_and_off_the_period_
 
 
 def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:
-    """Jeff, 2026-09-29: "Tatum rec" and the feed's bare names are a user
-    hitting enter early, and are refused with a generic sentence rather than
+    """ "Tatum rec" and bare names are a user hitting enter early, and are refused with a generic sentence rather than
     guessed at. Three words is a question ("76ers away record"). The
-    parser's first verdict, a cause the planner says (Phase 3, step 0: it
-    was ``refusals.too_short``, which returned the sentence)."""
+    parser's first verdict, a cause the planner says."""
     from association.query.compose.plan import refusal_result
     from association.query.parse import MIN_QUESTION_WORDS, too_short
     from association.query.reading import Cause
@@ -795,13 +768,10 @@ def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:
     ],
 )
 def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.DuckDBPyConnection, question: str, named: list[str], asked: PointShape) -> None:
-    """ "vj edgecombe 2nd half plus minus" answered his second-half POINTS and
-    "who has the most 4th quarter plus minus" the league's fourth-quarter
-    scorers: the stages kept a period question's stat only where a stat word
-    named one, plus-minus was no such word, and a quarter's line defaults to
-    points (found 2026-10-09, Phase 3, step 0). The stat is kept now, and a
-    quarter has no plus-minus to give - refused for it, never answered with
-    points."""
+    """ "vj edgecombe 2nd half plus minus" and "who has the most 4th quarter
+    plus minus" keep plus-minus as their stat though a quarter's line
+    defaults to points; a quarter has no plus-minus to give, so each is
+    refused for it, never answered with points."""
     route = _route(con, question, named, "")
     reading = route.reading
     assert reading is not None
@@ -815,14 +785,12 @@ def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.
 
 
 def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: duckdb.DuckDBPyConnection) -> None:
-    """Phase 3, step 4, slice (b): the child grammars read each line the
-    lines tagger reads as the value it typed, and the parent grammar the
-    opponent the subject reading read (``lexicon.GrammarText``, marks
-    written into the question until Phase 4, step 6), so a grammar claims
-    its own words around them and
-    the line's and the opponent's characters are their readers' alone - no
-    claim is joined from the two (``intent+line``, ``intent+opponent``), and
-    the child's words in its decision are the question's own."""
+    """The child grammars read each line the lines tagger reads as the value
+    it typed, and the parent grammar the opponent the subject reading read
+    (``lexicon.GrammarText``), so a grammar claims its own words around them
+    and the line's and the opponent's characters are their readers' alone -
+    no claim is joined from the two (``intent+line``, ``intent+opponent``),
+    and the child's words in its decision are the question's own."""
     question = "How many games did SGA score 30+ points this season?"
     r = _read(con, question, names=["SGA"], stat="points")
     assert r.asked == GAMES_COUNTED
@@ -837,8 +805,8 @@ def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: 
 
 
 def test_the_grammars_read_the_companions_the_windows_and_the_dates_as_the_taggers_type_them(con: duckdb.DuckDBPyConnection) -> None:
-    """Slice (c): a companion's phrase, a window of games and a dated range
-    are typed the same way (``parse.grammar_text``), and the rules are
+    """A companion's phrase, a window of games and a dated range are typed
+    the same way (``parse.grammar_text``), and the rules are
     handed the team words, a reached
     companion's "when" clause and his name typed - no claim is joined from
     two readings of one word. The names go in before the first read: the
@@ -850,8 +818,8 @@ def test_the_grammars_read_the_companions_the_windows_and_the_dates_as_the_tagge
         ("What was the sixers record this season when maxey scored 20+ points?", ["sixers", "maxey"], LINE_RECORD, ("when maxey", "companion")),
         ("randle last 10 game log vs lakers", ["randle", "lakers"], PLAYER_LOG, ("last 10 game", "window")),
         ("since 1/26/20, what are the towns home records including playoffs against the spurs?", ["towns", "spurs"], PLAYER_LOG, ("since 1/26/20", "situation")),
-        # The opponent's nickname is no team whose half is asked (ISSUES.md
-        # #367): with no player read, the words ask for no shape.
+        # The opponent's nickname is no team whose half is asked (#367): with
+        # no player read, the words ask for no shape.
         ("miles bridges stats vs raptors second half", ["raptors"], None, ("vs raptors", "opponent")),
     ):
         r = _read(con, question, names=names, stat="")
@@ -861,9 +829,9 @@ def test_the_grammars_read_the_companions_the_windows_and_the_dates_as_the_tagge
 
 def test_a_rank_word_beside_no_quarter_names_no_team(con: duckdb.DuckDBPyConnection) -> None:
     """ "gafford v warriors most recent 5 games": the period rule's check for
-    a ranking of players wrote the one nickname as the subject's team on
-    the way to deciding nothing (no quarter named) - a player's log with
-    the Warriors as his team (slice (c))."""
+    a ranking of players, deciding nothing where no quarter is named, writes
+    no team - the Warriors are the opponent of a player's log, not his
+    team."""
     _with_the_warriors(con)
     con.execute("INSERT INTO players VALUES ('30', 'Daniel Gafford')")
     reading = read_route(names_of(con), "Gafford v warriors most recent 5 games", ["Gafford", "warriors"], "")
@@ -872,8 +840,7 @@ def test_a_rank_word_beside_no_quarter_names_no_team(con: duckdb.DuckDBPyConnect
 
 def test_a_line_and_an_opponent_are_typed_where_their_words_stand() -> None:
     """The grammar's text keeps every character where it stands and holds
-    what each tagger typed apart from the words (Phase 4, step 6; marks
-    written into the question until then): a line's number by how it is
+    what each tagger typed apart from the words: a line's number by how it is
     stated and its stat, the words that lead a line under a number (each
     word, the spaces between left), an opponent by its versus word, a
     companion's phrase by its presence word with a line inside it kept, a
@@ -954,10 +921,10 @@ def test_an_ask_reads_a_typed_value_by_value_and_never_a_character_typed_in() ->
 
 
 #: Characters a user could type to try to forge a typed value: the
-#: private-use characters the grammars read typed values as until Phase 4,
-#: step 6 (U+E000-U+E00B), the alphabet an ask spells a kind by inside its
-#: match (from U+E100), and the one every typed character is written as in
-#: the grammar's words (U+FFFC, ``lexicon.TYPED``).
+#: private-use characters U+E000-U+E00B, which no reader reads as a value,
+#: the alphabet an ask spells a kind by inside its match (from U+E100), and
+#: the one every typed character is written as in the grammar's words
+#: (U+FFFC, ``lexicon.TYPED``).
 _MARKS = tuple(chr(code) for code in (*range(0xE000, 0xE00C), *range(0xE100, 0xE10C), 0xFFFC))
 
 
@@ -967,16 +934,11 @@ _MARKS = tuple(chr(code) for code in (*range(0xE000, 0xE00C), *range(0xE100, 0xE
     ["nikola jokic {} stats this season", "how many games {}{} {}{} did nikola jokic have", "{}joel embiid game log vs boston", "luka doncic {} points per game in 2024 {}"],
 )
 def test_a_mark_typed_into_the_question_forges_no_value(con: duckdb.DuckDBPyConnection, question: str, mark: str) -> None:
-    """A user who types one of these characters forges nothing (ISSUES.md
-    #383): until Phase 4, step 6 the grammars read the question with each
-    typed value written over by a mark, so a mark typed by hand was read as
-    a value the taggers never read - "nikola jokic <WINDOW_MARK> stats this
-    season" answered a 10-game log - and the parser's first step read every
-    private-use character as a space. Now no value is read from a
-    character: the grammars read what the taggers typed
-    (``lexicon.GrammarText``), and an ask spells it inside its match alone,
-    so the reading is the one of the question with a space there, every
-    claim at the same place, with no intake rewriting the question."""
+    """A user who types one of these characters forges nothing (#383): no
+    value is read from a character - the grammars read what the taggers
+    typed (``lexicon.GrammarText``), and an ask spells it inside its match
+    alone - so the reading is the one of the question with a space there,
+    every claim at the same place, with no intake rewriting the question."""
     char = mark
     typed = question.format(*[char] * question.count("{}"))
     spaced = question.format(*[" "] * question.count("{}"))
@@ -992,10 +954,8 @@ def test_a_mark_typed_into_the_question_forges_no_value(con: duckdb.DuckDBPyConn
     ],
 )
 def test_a_line_on_a_percentage_is_the_points_cause_on_every_key(con: duckdb.DuckDBPyConnection, question: str, names: list[str], kind: str, phrase: str) -> None:
-    """ISSUES.md #371: a log kept past a line on a percentage was declined
-    through the planner ("Nothing here answers this question as a game log:
-    relation: ..."), where a count said the cause; the point reader says it
-    on every key now."""
+    """#371: a line on a percentage is the point reader's cause on every
+    key - a log kept past one as well as a count - not a decline."""
     reading = _read(con, question, names)
     assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts["phrase"] == phrase
 
@@ -1016,11 +976,10 @@ def test_a_line_on_a_percentage_is_the_points_cause_on_every_key(con: duckdb.Duc
     ],
 )
 def test_a_line_on_a_season_is_read_by_the_season_ranking(con: duckdb.DuckDBPyConnection, question: str, lines: list[tuple[str, str, float, str]]) -> None:
-    """ISSUES.md #390: a ranking of players' seasons stating a line on the
-    season's figure answered the unfiltered ranking, the line unread (and
-    "averaged under 10 points" read as a GAME line, the games under 10
-    points averaged); the season ranking keeps its players past the season
-    lines, a line naming no stat on the ranking's own measure."""
+    """#390: a ranking of players' seasons stating a line on the season's
+    figure keeps its players past the season lines ("averaged under 10
+    points" a season line, not a game line), a line naming no stat on the
+    ranking's own measure."""
     reading = _read(con, question)
     # "How many players ..." is the ranking counted (PLAYERS_COUNTED, the next key).
     counted = question.casefold().startswith("how many")
@@ -1039,11 +998,10 @@ def test_a_line_on_a_season_is_read_by_the_season_ranking(con: duckdb.DuckDBPyCo
     ],
 )
 def test_a_count_of_seasons_over_a_season_line_ranks_the_players_by_it(con: duckdb.DuckDBPyConnection, question: str, lines: list[tuple[str, str, float, str]]) -> None:
-    """ISSUES.md #391: "most seasons averaging 30 ppg" answered the 2026
-    points ranking; the ranking's point is ordered by the count of seasons
-    (``by="seasons"``, D4 lifted for the season ranking's shapes by Jeff on
-    2026-10-13) - asked as the ranking, as a count of games over a line
-    ranks by ``games``."""
+    """#391: "most seasons averaging 30 ppg" is no plain points ranking: the
+    ranking's point is ordered by the count of seasons (``by="seasons"``) -
+    asked as the ranking, as a count of games over a line ranks by
+    ``games``."""
     reading = _read(con, question)
     assert reading.asked == PLAYER_RANKING and reading.point is not None and reading.point.read_as == PointShape("player_seasons", "ranking", "seasons")
     assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
@@ -1058,9 +1016,9 @@ def test_a_count_of_seasons_over_a_season_line_ranks_the_players_by_it(con: duck
     ],
 )
 def test_a_count_of_seasons_or_a_season_line_the_ranking_cannot_hold_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, kind: str, words: str) -> None:
-    """ISSUES.md #390, #391: a count of a player's seasons over a figure no
-    season line holds, and a percentage beside a season line, answered the
-    unfiltered ranking; each is refused by a cause naming the words."""
+    """#390, #391: a count of a player's seasons over a figure no season
+    line holds, and a percentage beside a season line, are each refused by a
+    cause naming the words, never the unfiltered ranking."""
     reading = _read(con, question)
     assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts == {"words": words}
 
@@ -1073,9 +1031,9 @@ def test_an_average_with_no_line_is_not_refused_as_a_season_line(con: duckdb.Duc
 
 
 def test_how_many_players_a_season_line_holds_is_the_ranking_counted(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #390: "how many players averaged 30 ppg" names the 26th key
-    (``PLAYERS_COUNTED``, D4 lifted for it by Jeff on 2026-10-13) - "how
-    many" before players, beside a season line as the lines tagger typed it;
+    """#390: "how many players averaged 30 ppg" names ``PLAYERS_COUNTED`` -
+    "how many" before players, beside a season line as the lines tagger
+    typed it;
     "how many" with no season line, or a season line with no "how many", is
     the ranking."""
     for question in ("How many players averaged 30 ppg in 2026", "how many nba players average 25 points per game"):
@@ -1093,9 +1051,8 @@ def test_how_many_players_a_season_line_holds_is_the_ranking_counted(con: duckdb
     ],
 )
 def test_a_league_count_counts_the_games_past_every_bare_line(con: duckdb.DuckDBPyConnection, question: str, predicates: list[tuple[str, str, int]]) -> None:
-    """ISSUES.md #358: "most games with 20 pts, 10 reb, 5 ast" answered the
-    most 20+ point games, the second and third lines read and dropped; the
-    league's count takes every bare line as a predicate, counting its first
+    """#358: "most games with 20 pts, 10 reb, 5 ast": the league's count
+    takes every bare line as a predicate, none dropped, counting its first
     line's stat."""
     reading = _read(con, question)
     assert reading.point is not None and reading.point.predicates == predicates
@@ -1113,8 +1070,8 @@ def test_a_league_count_counts_the_games_past_every_bare_line(con: duckdb.DuckDB
     ],
 )
 def test_worst_ranks_from_the_worse_end_of_a_stat_the_words_name(con: duckdb.DuckDBPyConnection, question: str, direction: str) -> None:
-    """ISSUES.md #350: "worst" was no ranking word, so "who has the worst
-    fg% ..." answered the best; it ranks from the bottom of a stat a player
+    """#350: "worst" is a ranking word: "who has the worst fg% ..." ranks
+    from the bottom of a stat a player
     wants more of and from the top of one he wants less of (turnovers), and
     a ranking whose stat the words do not name keeps its order."""
     reading = _read(con, question)
@@ -1131,11 +1088,10 @@ def test_worst_ranks_from_the_worse_end_of_a_stat_the_words_name(con: duckdb.Duc
     ],
 )
 def test_a_teams_record_under_a_number_is_keyed_on_that_line(con: duckdb.DuckDBPyConnection, question: str, line: tuple[str, str, int]) -> None:
-    """ISSUES.md #325: "celtics' record when committing 10 or fewer
-    turnovers" answered the season's record, the line unread; "under 12
-    turnovers" read a narrowing beside a keyed 12+ and was refused. The
-    team's record is keyed on the line with its comparison, which the team's
-    record reader reads (lane T's ``compile_team_line(op=)``)."""
+    """#325: "celtics' record when committing 10 or fewer turnovers" and
+    "under 12 turnovers" are the team's record keyed on the line with its
+    comparison, which the team's record reader reads
+    (``compile_team_line(op=)``) - no narrowing beside a keyed line."""
     reading = _read(con, question, ["celtics"], "turnovers")
     assert reading.asked == LINE_RECORD and reading.point is not None and reading.point.read_as.relation == "team_games"
     keyed = [each for each in reading.point.lines if each.keyed]
@@ -1144,8 +1100,8 @@ def test_a_teams_record_under_a_number_is_keyed_on_that_line(con: duckdb.DuckDBP
 
 @pytest.mark.parametrize("question", ["Gabe Vincent 3\u2019s as a laker", "steph curry 3's per season", "jokic 3's this season"])
 def test_three_apostrophe_s_is_threes_made(con: duckdb.DuckDBPyConnection, question: str) -> None:
-    """ISSUES.md #270: "3's" (and its curly spelling) was read by no measure word, and the
-    player's points line answered where his threes were asked."""
+    """#270: "3's" (and its curly spelling) is threes made, never the
+    player's points line."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.key == "threePointFieldGoalsMade"
 
@@ -1161,9 +1117,9 @@ def test_three_apostrophe_s_is_threes_made(con: duckdb.DuckDBPyConnection, quest
     ],
 )
 def test_opp_before_a_stat_is_the_opponents_figure(con: duckdb.DuckDBPyConnection, question: str, whose: str) -> None:
-    """ISSUES.md #409: "opp" before a stat was read by nothing, and the team's
-    own figure answered; it is the opponent's (``whose="opponent"``) - not
-    where two figures are added or set side by side."""
+    """#409: "opp" before a stat is the opponent's figure
+    (``whose="opponent"``) - not where two figures are added or set side by
+    side."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.whose == whose
 
@@ -1186,10 +1142,10 @@ def test_opp_before_a_stat_is_the_opponents_figure(con: duckdb.DuckDBPyConnectio
     ],
 )
 def test_a_teams_points_given_up_by_the_verb_are_the_opponents(con: duckdb.DuckDBPyConnection, question: str, whose: str) -> None:
-    """ISSUES.md #348, #361: a team's points allowed asked with the verb
-    ("did the sixers allow", "which team gave up the most points") answered
-    its own scoring - and "which team allowed the most points per game" read
-    the longer alias "points per game" as the team's own."""
+    """#348, #361: a team's points allowed asked with the verb ("did the
+    sixers allow", "which team gave up the most points") are the
+    opponents' - "which team allowed the most points per game" too, past the
+    longer alias "points per game"."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.whose == whose
 
@@ -1207,9 +1163,9 @@ def test_a_teams_points_given_up_by_the_verb_are_the_opponents(con: duckdb.DuckD
     ],
 )
 def test_a_teams_count_asked_by_the_bare_verb_after_did_is_a_total(con: duckdb.DuckDBPyConnection, question: str, unit: str | None) -> None:
-    """ISSUES.md #347: "how many 3 pointers did the sixers make in the 2001
-    playoffs" answered 3.8 per game where the count was asked - the total's
-    verbs were the past forms alone, and "did ... make" holds none."""
+    """#347: "how many 3 pointers did the sixers make in the 2001 playoffs"
+    asks the total, not the per-game figure: "did ... make" is a total's
+    verb as the past forms are."""
     reading = _read(con, question)
     assert reading.measure is not None and reading.measure.unit == unit
 
@@ -1231,11 +1187,10 @@ def test_a_teams_count_asked_by_the_bare_verb_after_did_is_a_total(con: duckdb.D
     ],
 )
 def test_a_win_percentage_is_the_teams_standings_or_a_players_record(con: duckdb.DuckDBPyConnection, question: str, names: list[str], asked: PointShape) -> None:
-    """ISSUES.md #428: "worst win percentage" and "player with worst win
-    percentage" read no measure and ranked the league's scorers by points
-    per game. With no player in the words a win percentage is the teams'
-    standings, ranked by record; a named player's is his record, as "record"
-    is; a ranking of players by it is refused by name."""
+    """#428: with no player in the words a win percentage ("worst win
+    percentage") is the teams' standings, ranked by record; a named
+    player's is his record, as "record" is; a ranking of players by it
+    ("player with worst win percentage") is refused by name."""
     reading = _read(con, question, names)
     assert reading.asked == asked
     if asked == TEAM_RANKING:
@@ -1258,9 +1213,8 @@ def test_a_win_percentage_is_the_teams_standings_or_a_players_record(con: duckdb
     ],
 )
 def test_a_teams_line_over_more_than_one_season_is_its_history(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> None:
-    """ISSUES.md #372 (D4 lifted, Jeff 2026-10-14): a team's season line
-    reads one season, and refused a range; over more than one it is the
-    team's history season by season."""
+    """#372: a team's season line reads one season; over more than one it is
+    the team's history season by season."""
     reading = _read(con, question, names)
     assert reading.point is not None
     assert reading.point.read_as == PointShape("team_seasons", "split", "season")
@@ -1290,11 +1244,9 @@ def test_a_teams_line_ranked_or_of_one_season_is_not_its_history(con: duckdb.Duc
     ],
 )
 def test_a_teams_winning_percentage_is_its_record(con: duckdb.DuckDBPyConnection, question: str, names: list[str], since: int | None) -> None:
-    """ISSUES.md #372: "portland trailblazers winning percentage last 10
-    seasons" was read as the team's season line, which reads one season,
-    and refused the range; "win percentage" was the record by its "win"
-    and "winning percentage" by nothing. It is the record's, over the
-    seasons the words name."""
+    """#372: "portland trailblazers winning percentage last 10 seasons" is
+    the team's record over the seasons the words name, not its season line;
+    "winning percentage" reads as "win percentage" does."""
     reading = _read(con, question, names)
     assert reading.asked == TEAM_RECORD
     assert reading.span.since == since
@@ -1312,9 +1264,8 @@ def test_a_teams_winning_percentage_is_its_record(con: duckdb.DuckDBPyConnection
     ],
 )
 def test_a_ranking_by_games_played_is_read_as_games_played(con: duckdb.DuckDBPyConnection, question: str, names: list[str], asked: PointShape, key: str | None) -> None:
-    """ISSUES.md #408: "most games played by a player denver nuggets"
-    ranked the Nuggets by points per game - "games played" was read by
-    nothing. On a ranking of players, the league's or a team's, it is the
+    """#408: "games played" on a ranking of players, the league's or a
+    team's ("most games played by a player denver nuggets"), is the
     measure, and the point counts each player's games."""
     reading = _read(con, question, names)
     assert reading.asked == asked
@@ -1334,11 +1285,10 @@ def test_a_ranking_by_games_played_is_read_as_games_played(con: duckdb.DuckDBPyC
     ],
 )
 def test_a_line_reached_the_most_times_is_a_count_of_games_over_it(con: duckdb.DuckDBPyConnection, question: str, line: tuple[str, str, int]) -> None:
-    """ISSUES.md #370: "who scored 40 points the most times" ranked the
-    league's scorers by points per game, "40" unread - the count's child
-    grammar named a count for "most ... N+ stat" and "N stat games", and not
-    for a bare line followed by "the most times". It is the players' count
-    of games over the line."""
+    """#370: "who scored 40 points the most times" is the players' count of
+    games over the line - a bare line followed by "the most times" names the
+    count's child as "most ... N+ stat" and "N stat games" do - with "40"
+    read."""
     reading = _read(con, question)
     assert reading.asked == GAMES_COUNTED
     assert [(each.measure, each.op, each.value) for each in reading.lines] == [line]
@@ -1346,12 +1296,10 @@ def test_a_line_reached_the_most_times_is_a_count_of_games_over_it(con: duckdb.D
 
 
 def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #114: "game score nba leader" arrived with the model's
-    ``stat='points'`` (a required key over a closed enum that holds no game
-    score) and answered the points-per-game leaders. The words win over the
-    key: the measure is game score, ranked per game on the season line by
-    ``avg_game_score`` - "Nikola Jokic led the league in game score in the
-    2026 regular season (minimum 20 games), at 28.68" on the warehouse."""
+    """#114: "game score nba leader" handed the model's ``stat='points'`` (a
+    required key over a closed enum that holds no game score) is game
+    score: the words win over the key, and the measure is ranked per game
+    on the season line by ``avg_game_score``."""
     from association.query.compose.core import Query
     from association.query.compose.rankings import _leaderboard_metric
 
@@ -1369,19 +1317,18 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
         ("aaron gorodn lat 5 games", ["Aaron Gordon"], "points", "unread_number", ("5",)),
         ("Bam adeboyo 1st quater average", ["Bam Adebayo"], "points", "unread_number", ("1st",)),  # codespell:ignore quater - the feed's own spelling
         ("sga scored 20 points in the 2nd quarter", ["Shai Gilgeous-Alexander"], "points", "unread_number", ("20",)),
-        # "20+" is a number too (Phase 5, step 2): the league's rebounding leaders answered, the "20+" in no class.
+        # "20+" is a number too, not left in no class for the league's rebounding leaders to answer.
         ("murray games of 20+ rebounds", [], "rebounds", "unread_number", ("20+",)),
         ("anthony davis last 1st quarter stats vs pistons", ["Anthony Davis"], "points", "unread_window", ("last",)),
         ("curry stats november", ["Stephen Curry"], "points", "unread_date", ("november",)),
     ],
 )
 def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, kind: str, words: tuple[str, ...]) -> None:
-    """Phase 5, step 1: an unread number, window word or month the reading
-    took a default past is a ``defaulted`` cause naming the words, which the
-    planner says where it would otherwise answer - "aaron gorodn lat 5
-    games" answered his season averages with the 5 unread, "Bam adeboyo 1st
-    quater average" the season with the quarter unread. The cause claims  # codespell:ignore quater - the feed's own spelling
-    its words, so they leave ``Reading.unread``."""
+    """An unread number, window word or month the reading took a default past
+    is a ``defaulted`` cause naming the words, which the planner says where
+    it would otherwise answer past them ("aaron gorodn lat 5 games" with the
+    5 unread). The cause claims its words, so they leave
+    ``Reading.unread``."""
     reading = _read(con, question, names, stat)
     assert reading.defaulted is not None and reading.defaulted.kind == kind and reading.defaulted.facts["words"] == words
     assert not any(word in reading.unread for word in words)
@@ -1393,25 +1340,35 @@ def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: 
 @pytest.mark.parametrize(
     ("question", "names", "stat", "words"),
     [
-        # A token holding a digit that is no number as written is an unread number (the Phase 5 review: 15 held
-        # unread-number questions answered fluently past one).
+        # A token holding a digit that is no number as written is an unread number.
         ("most 3ot points in a game by a team nba", [], "points", ("3ot",)),
         ("lakers play in 20222-23", ["Los Angeles Lakers"], "points", ("20222-23",)),
     ],
 )
 def test_a_glued_digit_is_a_defaulted_word(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, words: tuple[str, ...]) -> None:
-    """The narrowed classes still catch what they are for (Phase 5 review, 2026-10-14)."""
+    """The classes of words of meaning catch a digit glued to a word."""
     reading = _read(con, question, names, stat)
     assert reading.defaulted is not None and reading.defaulted.facts["words"] == words, reading.defaulted
 
 
-def test_an_unread_stat_word_naming_another_measure_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection) -> None:
-    """Phase 5, step 1: a stat word the measure tagger reads to a key other
-    than the one the reading took is the ``unread_stat`` cause, naming both."""
+def test_a_number_beside_a_stat_word_it_does_not_count_is_an_unread_number(con: duckdb.DuckDBPyConnection) -> None:
+    """A number beside a stat word the reading did not read on is the
+    ``unread_number`` cause, naming the number."""
     reading = _read(con, "who lead the league in field goal percentage for 3 point shots", [], "fieldGoalPct")
     assert reading.defaulted is not None and reading.defaulted.kind == "unread_number" and reading.defaulted.facts["words"] == ("3",)
     reading = _read(con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", ["LeBron James"], "threePointFieldGoalsMade")
     assert reading.defaulted is not None and reading.defaulted.kind == "unread_number" and reading.defaulted.facts["words"] == ("2",)
+
+
+def test_a_stat_word_naming_another_measure_is_the_unread_stat_cause(con: duckdb.DuckDBPyConnection) -> None:
+    """A stat word the measure tagger reads to a key other than the one the
+    reading took is the ``unread_stat`` cause, naming both, which the
+    planner says rather than rank by the one measure."""
+    reading = _read(con, "who has the best field goal percentage and 3pm this season", [], "fieldGoalPct")
+    assert reading.defaulted is not None and reading.defaulted.kind == "unread_stat"
+    assert (reading.defaulted.facts["words"], reading.defaulted.facts["names"], reading.defaulted.facts["read"]) == (("3pm",), "3-pointers", "field-goal percentage")
+    planned = plan_point(reading)
+    assert isinstance(planned, Refusal) and planned.kind == "unread_stat"
 
 
 @pytest.mark.parametrize(
@@ -1425,13 +1382,13 @@ def test_an_unread_stat_word_naming_another_measure_is_a_refusal_by_name(con: du
         ("curry games where he went 7/14 from three", ["Stephen Curry"], "threePointFieldGoalsMade"),
         # A leftover word of the measure the model read whole names no other stat.
         ("KNICKS point differential over the last 7 games", ["New York Knicks"], "points_differential"),
-        # "points" of "three points made" is a leftover of the 3-pointers read (the yardstick's F062, a regression step 1 made and the live run caught).
+        # "points" of "three points made" is a leftover of the 3-pointers read (the yardstick's F062).
         ("vj edgecombe three points made per game after making one three in first quarter", ["VJ Edgecombe"], "threePointFieldGoalsMade"),
         # A word that restates the shape is in no class.
         ("Lakers vs Celtics record this season", ["Los Angeles Lakers", "Boston Celtics"], "points"),
         # A window the tagger read is no unread window word.
         ("curry last 5 games", ["Stephen Curry"], "points"),
-        # The Phase 5 review (2026-10-14): a window word beside no count or game word names no stretch; "may" the verb is no month;
+        # A window word beside no count or game word names no stretch; "may" the verb is no month;
         # a list of stats on a log asks for the log, which shows them all.
         ("who are the top scorers in the nba", [], "points"),
         ("top rebounders 2024", [], "rebounds"),
@@ -1440,7 +1397,7 @@ def test_an_unread_stat_word_naming_another_measure_is_a_refusal_by_name(con: du
     ],
 )
 def test_a_word_the_reading_read_or_that_restates_the_shape_is_no_defaulted_word(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str) -> None:
-    """Phase 5, step 1's guards: the classes are the taggers' own words, so a
+    """The classes are the taggers' own words, so a
     unit, a season, a read line's value, a figure written with a slash, a
     leftover of the read measure and a word that restates the shape carry
     no meaning the reading defaulted past."""
@@ -1453,10 +1410,9 @@ def test_a_word_the_reading_read_or_that_restates_the_shape_is_no_defaulted_word
 )
 def test_a_total_asked_on_the_game_level_ranking_is_the_measures_own(con: duckdb.DuckDBPyConnection, question: str, how: str | None) -> None:
     """ "total" on the league's game-level ranking is how the measure is
-    asked (``Measure.how``, Phase 5, step 4): the point reader writes it on
-    its point's measure, which the planner derives the ranking's sum from
-    (D5), where it stamped the aggregate alone - a measure of no key where
-    the words name none the catalog holds."""
+    asked (``Measure.how``): the point reader writes it on its point's
+    measure, which the planner derives the ranking's sum from (D5) - a
+    measure of no key where the words name none the catalog holds."""
     reading = _read(con, question)
     assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "player")
     assert reading.point.measure is not None and reading.point.measure.how == how
@@ -1472,11 +1428,10 @@ def test_a_total_asked_on_the_game_level_ranking_is_the_measures_own(con: duckdb
     ],
 )
 def test_the_best_single_season_across_years_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
-    """Phase 5, step 6 (lane L): the league's best single season across
-    years ranks player-seasons from every year, which no reader ranks - the
-    league's read answered the current season alone ("Highest single season
-    3pt percent": Luke Kennard's 2026) or the career list, fluently. It is
-    refused naming the words; a season named reads that season."""
+    """The league's best single season across years ranks player-seasons
+    from every year, which no reader ranks - never the current season alone
+    or the career list. It is refused naming the words; a season named
+    reads that season."""
     reading = _read(con, question)
     assert reading.point is None
     assert reading.point_refusal is not None and reading.point_refusal.kind == "single_season_ranking"
@@ -1501,11 +1456,9 @@ def test_the_best_single_season_of_a_named_season_reads_that_season(con: duckdb.
     ],
 )
 def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.DuckDBPyConnection, question: str, how: str | None) -> None:
-    """Phase 5, step 6 (lane L): "highest career ppg" answered "LeBron James
-    leads in career points in the regular season: 43,440" - a career's bare
-    name reads the career total, and nothing read "ppg", "per game" or
-    "averaged" on the ranking. Asked per game, the measure is the per-game
-    figure (the season line's career points per game); unasked, the total."""
+    """A career ranking reads "ppg", "per game" and "averaged": asked per
+    game ("highest career ppg"), the measure is the per-game figure (the
+    season line's career points per game); unasked, the career total."""
     reading = _read(con, question, [], "assists" if "assist" in question else "points")
     assert reading.point is not None and reading.point.read_as == PLAYER_RANKING
     assert reading.point.measure is not None and reading.point.measure.how == how
@@ -1516,11 +1469,10 @@ def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.D
     ["best shooting percentages 2023", "list nba players most wins in a career", "Cousins player efficiency rating by year", "most career wins"],
 )
 def test_a_players_ranking_with_no_measure_read_is_refused_naming_the_stat(con: duckdb.DuckDBPyConnection, question: str) -> None:
-    """ISSUES.md #421: the players' ranking answered "every player ... by
-    player (points per game ...)" where the words named a measure nothing
-    reads and the model none - "best shooting percentages", "most wins",
-    "efficiency rating". The ranking's points default is a cause the
-    planner says where the ranking would answer."""
+    """#421: where the words name a measure nothing reads and the model none
+    ("best shooting percentages", "most wins", "efficiency rating"), the
+    ranking's points default is a cause the planner says where the ranking
+    would answer."""
     reading = _read(con, question)
     assert reading.defaulted is not None and reading.defaulted.kind == "ranking_needs_stat"
 
@@ -1536,10 +1488,10 @@ def test_a_players_ranking_whose_words_name_its_stat_is_no_default(con: duckdb.D
 
 @pytest.mark.parametrize(("question", "stat"), [("most triple doubles since 2020", "triple_double"), ("most double doubles 2020-2023", "double_double")])
 def test_a_yes_no_measure_over_a_range_of_seasons_ranks_each_players_count(con: duckdb.DuckDBPyConnection, question: str, stat: str) -> None:
-    """ISSUES.md #421: "most triple doubles since 2020" ranked points per
-    game - the season line counts one season or a whole career, and the
-    planner's game-level re-plan dropped the predicate. It is each player's
-    count of the games that hold it."""
+    """#421: "most triple doubles since 2020" is each player's count of the
+    games that hold it over the range - the season line counts one season
+    or a whole career, so the point is the game-level ranking with the
+    predicate kept."""
     reading = _read(con, question)
     assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "count")
     assert reading.point.predicates == [(stat, "=", True)]
@@ -1556,11 +1508,10 @@ def test_a_yes_no_measure_over_a_range_of_seasons_ranks_each_players_count(con: 
     ],
 )
 def test_a_history_with_no_stat_named_is_the_whole_line_season_by_season(con: duckdb.DuckDBPyConnection, question: str, names: list[str], career: bool) -> None:
-    """ISSUES.md #387: "james wiseman stats by season" answered his 2026
-    line - a history with no stat named was turned into the line. Asked
-    season by season, it is the whole line's history (points, rebounds and
-    assists by season); "every season" and "each season" are every season
-    on record, where the history's default four answered."""
+    """#387: "james wiseman stats by season" is no single season's line:
+    asked season by season, it is the whole line's history (points, rebounds
+    and assists by season); "every season" and "each season" are every
+    season on record, not the history's default four."""
     reading = _read(con, question, names)
     assert reading.asked == SEASON_HISTORY
     assert reading.point is not None and [m.key for m in reading.point.measures] == ["points", "rebounds", "assists"]
@@ -1587,10 +1538,9 @@ def test_a_history_by_a_per_game_abbreviation_reads_its_stat(con: duckdb.DuckDBP
     ],
 )
 def test_a_per_game_word_beside_a_month_or_a_date_is_the_line_not_the_log(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str) -> None:
-    """ISSUES.md #412: "How many points did De'aaron fox average in November
-    2023" listed his November games - the log row read the month ahead of
-    every row that reads a line. With a per-game word beside it the month
-    or the date cuts the line."""
+    """#412: "How many points did De'aaron fox average in November 2023" is
+    his line, not a log of his November games: with a per-game word beside
+    it the month or the date cuts the line."""
     reading = _read(con, question, names, stat)
     assert reading.asked == PLAYER_LINE
 
@@ -1602,18 +1552,18 @@ def test_a_month_with_no_per_game_word_is_still_the_log(con: duckdb.DuckDBPyConn
 
 @pytest.mark.parametrize("question", ["warriors record in the first 15 games last 10 season", "lebron first 10 games last 2 seasons"])
 def test_a_seasons_first_games_beside_a_count_of_seasons_is_a_window_per_season(con: duckdb.DuckDBPyConnection, question: str) -> None:
-    """ISSUES.md #432: "warriors record in the first 15 games last 10 season"
-    listed the range's first 15 games, all of 2016-17's - a window per
-    season the reader refuses by name, as "every season" beside one is."""
+    """#432: "warriors record in the first 15 games last 10 season" is a
+    window per season, which the reader refuses by name as "every season"
+    beside one is - never the range's first 15 games."""
     reading = _read(con, question)
     assert reading.refused is not None and reading.refused.kind == "window_per_season"
 
 
 @pytest.mark.parametrize("question", ["threes allowed by the celtics this season", "celtics opp 3pm this season"])
 def test_a_teams_figure_given_up_is_the_team_compilers_total(con: duckdb.DuckDBPyConnection, question: str) -> None:
-    """ISSUES.md #425: the opponents' threes were planned as the team's
-    season line, which has no opponent metric, and refused; the team
-    compiler sums the opponents' box rows, so the point is its total."""
+    """#425: the opponents' threes are the team compiler's total, which sums
+    the opponents' box rows - not the team's season line, which has no
+    opponent metric."""
     reading = _read(con, question)
     assert reading.point is not None and reading.point.relation == "team"
     assert reading.measure is not None and reading.measure.whose == "opponent"
@@ -1628,10 +1578,9 @@ def test_a_teams_figure_given_up_is_the_team_compilers_total(con: duckdb.DuckDBP
     ],
 )
 def test_a_count_of_a_yes_no_measure_over_a_line_keeps_both(con: duckdb.DuckDBPyConnection, question: str, names: list[str], read_as: PointShape) -> None:
-    """ISSUES.md #437: "most 30+ point triple doubles" listed three single
-    games, and a count of a player's 30-point triple-doubles counted every
-    triple-double. The count's child grammar reads "N stat triple doubles"
-    as its games, and the line is a second predicate on the same game."""
+    """#437: "most 30+ point triple doubles" counts the games holding both:
+    the count's child grammar reads "N stat triple doubles" as its games,
+    and the line is a second predicate on the same game."""
     reading = _read(con, question, names)
     assert reading.point is not None and reading.point.read_as == read_as
     assert ("triple_double", "=", True) in reading.point.predicates and ("points", ">=", 30) in reading.point.predicates
@@ -1647,9 +1596,9 @@ def test_a_count_of_a_yes_no_measure_over_a_line_keeps_both(con: duckdb.DuckDBPy
     ],
 )
 def test_two_measures_combined_are_refused_naming_both(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
-    """ISSUES.md #424: "most fgm + opp fgm in a game by Knicks this season"
-    answered the Knicks' field goals made alone - the measure tagger read
-    the first. A figure combined from two measures is read by nothing."""
+    """#424: a figure combined from two measures ("most fgm + opp fgm in a
+    game by Knicks this season") is read by nothing, and refused naming
+    both - never the first measure alone."""
     reading = _read(con, question)
     assert reading.point_refusal is not None and reading.point_refusal.kind == "measures_combined"
     assert reading.point_refusal.facts["words"] == words

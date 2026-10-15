@@ -67,9 +67,8 @@ def _client(answerer: Any, tmp_path: Path) -> TestClient:
 
 
 def test_ask_returns_the_whole_answer_not_just_the_text(tmp_path: Path) -> None:
-    """The reason Phase 0 existed: a client needs the shape and the data, not
-    a sentence it would have to parse - and no label: the retired intent's
-    name went with Phase 4, step 2."""
+    """A client needs the shape and the data, not a sentence it would have
+    to parse - and gets no label of what the question is."""
     client = _client(StubAnswerer(), tmp_path)
     body = client.post("/api/ask", json={"question": "who leads the league in assists?"}).json()
 
@@ -81,8 +80,8 @@ def test_ask_returns_the_whole_answer_not_just_the_text(tmp_path: Path) -> None:
 
 
 def test_the_answer_carries_the_planned_shape_the_page_renders_by(tmp_path: Path) -> None:
-    """The page keys its renderers by the planned point's shape (Phase 4,
-    step 1), so the shape reaches the client as values beside the data - the
+    """The page keys its renderers by the planned point's shape, so the
+    shape reaches the client as values beside the data - the
     relation, the shape and what it is by - and as null where there is none."""
     from association.query.reading import PointShape
 
@@ -98,7 +97,7 @@ def test_the_answer_carries_the_planned_shape_the_page_renders_by(tmp_path: Path
 def test_the_answer_carries_its_decisions_as_values(tmp_path: Path) -> None:
     """What was decided on the way - the subject reading, an override of a
     routed field - reaches the client as values off the answer, never parsed
-    back out of the trace's prose (Jeff's ask, 2026-09-25). An answer with
+    back out of the trace's prose. An answer with
     none says so with an empty list, not a missing key."""
     from association.query.decisions import Decision
 
@@ -158,8 +157,8 @@ def test_a_missing_history_file_is_reported_as_null_not_omitted(tmp_path: Path) 
 
 
 def test_a_refused_answer_reports_no_shape_rather_than_an_empty_one(tmp_path: Path) -> None:
-    """A question nothing reads is an ordinary answer whose text names why
-    (5.0.0: what --disable-fallthrough made a 501 is the only answer now)."""
+    """A question nothing reads is an ordinary answer whose text names why,
+    never an HTTP error."""
     client = _client(StubAnswerer(_answer("Nothing here answers this question: what its words ask has no reader.", answered_by="refused", data=None)), tmp_path)
     body = client.post("/api/ask", json={"question": "something odd"}).json()
 
@@ -307,15 +306,14 @@ def test_health_reports_the_seasons_a_real_warehouse_holds(tmp_path: Path) -> No
 
 def test_health_counts_real_games_rather_than_every_row_in_games(tmp_path: Path) -> None:
     """`games` carries rows that are not games - 151 of 43,504 in the real
-    warehouse - so counting it said 43,504 where 43,353 were played. Every
-    team template already reads `real_games`; this was the last reader that
-    did not."""
+    warehouse - so the health check counts `real_games`, as every reader
+    does."""
     import duckdb
 
     con = duckdb.connect(str(tmp_path / "nba.duckdb"))
     con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER)")
     # The third row is the shape real_games drops: a placeholder that is not a
-    # game. Counting it is the bug.
+    # game, which the count leaves out.
     con.execute("INSERT INTO games VALUES ('1', 2024), ('2', 2026), ('3', 2026)")
     con.execute("CREATE VIEW real_games AS SELECT * FROM games WHERE event_id <> '3'")
     con.close()
@@ -620,7 +618,7 @@ def test_agent_runner_reports_no_history_file_when_the_answer_carries_none(tmp_p
 
 
 def test_two_questions_at_once_are_answered_one_at_a_time(tmp_path: Path) -> None:
-    """The measured reason for the lock: ollama keeps one KV cache slot per
+    """The reason for the lock: ollama keeps one KV cache slot per
     model, so two questions in flight evict each other's prefix and both come
     back slow. Same shape as the fetch path's concurrency tests."""
     from association.web.runner import AgentRunner

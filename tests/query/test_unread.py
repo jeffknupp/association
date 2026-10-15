@@ -1,4 +1,4 @@
-"""The words a reading did not read (``Reading.unread``, Phase 3, step 3): the
+"""The words a reading did not read (``Reading.unread``): the
 content words of the question no reader rule claimed, counted by the rule
 the claims ledger counts by (``lexicon.content_words``), so
 ``scripts/claims_ledger.py`` - which deletes each word in turn and asks
@@ -87,8 +87,7 @@ def test_the_reading_states_the_words_nothing_claimed(con: duckdb.DuckDBPyConnec
 
 def test_a_word_the_model_copied_is_read_though_no_claim_holds_it(con: duckdb.DuckDBPyConnection) -> None:
     """The model's names and stat ride into the parser's last step
-    (``parse._reading``'s ``model_names`` and ``model_stat``; the Route
-    carried them until Phase 3, step 4, slice (b)): a word of them is the
+    (``parse._reading``'s ``model_names`` and ``model_stat``): a word of them is the
     model's reading, as the ledger counts it, whatever a rule claimed."""
     reading = read_route(names_of(con), "how many points does embiid average", ["embiid"], "points")
     assert reading.unread == ("average",)
@@ -162,8 +161,8 @@ def test_a_grammar_over_the_whole_question_claims_the_words_its_decision_turned_
     assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: parent_asked(q, "player"))] == ["fingerprint"]
 
 
-def test_the_reading_claims_what_the_grammar_the_stages_and_the_point_read(con: duckdb.DuckDBPyConnection) -> None:
-    """The words that name the intent and the point's word tables' words
+def test_the_reading_claims_what_the_grammar_its_rules_and_the_point_read(con: duckdb.DuckDBPyConnection) -> None:
+    """The words that name the key the words ask and the point's word tables' words
     are claimed by the rule that reads them, so the Reading lists none of
     them unread: "fingerprint", "record", "log", "most"."""
     assert _read(con, "show me a fingerprint for Maxey for 2026", names=["Maxey"]).unread == ()

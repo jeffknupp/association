@@ -59,8 +59,8 @@ def test_a_wildcard_bind_prints_an_address_a_browser_can_open() -> None:
 
 
 def test_a_missing_page_stops_startup_rather_than_serving_404s(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """This project has shipped a wheel missing a file before. A server that
-    starts and then serves a blank page hides that; refusing to start does not."""
+    """A wheel can ship missing a file. A server that starts and then serves
+    a blank page hides that; refusing to start does not."""
     monkeypatch.setattr("association.web.serve.INDEX_HTML", tmp_path / "gone.html")
     with pytest.raises(SystemExit, match="missing from the installed package"):
         serve("127.0.0.1", 0, str(tmp_path / "nba.duckdb"), tmp_path, model="r")

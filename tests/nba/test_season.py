@@ -51,8 +51,8 @@ def test_the_sql_rule_and_the_python_rule_agree_on_every_day() -> None:
 
     Every day from 1976 to 2039, six clock times each: 140,256 stamps through
     DuckDB and through Python. They go in as one Arrow table - inserted a row
-    at a time with ``executemany`` they took 60s, the whole suite's critical
-    path, against half a second this way (measured 2026-09-28).
+    at a time with ``executemany`` they take 60s, the whole suite's critical
+    path, against half a second this way.
     """
     stamps = _stamps()
     con = duckdb.connect()
@@ -83,8 +83,8 @@ def test_the_hand_written_daylight_rules_match_the_tz_database() -> None:
 def test_the_default_season_is_the_latest_on_record_once_the_calendar_passes_it(monkeypatch: pytest.MonkeyPatch) -> None:
     """The calendar's season turns over on October 1; the first game is weeks
     later and a warehouse is loaded later still. Read from the calendar
-    alone, every question naming no season asked about 2027 from 2026-10-01
-    - a season with no games ("how many points does luka average": "no 2027
+    alone, every question naming no season would ask about 2027 from
+    2026-10-01 - a season with no games ("how many points does luka average": "no 2027
     regular season numbers"). Inside ``season_on_record`` the default is
     capped at the latest season the warehouse holds games for, and only
     capped: a warehouse AHEAD of the calendar (a fixture) leaves the

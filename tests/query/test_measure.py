@@ -1,14 +1,13 @@
-"""The measure, typed (Phase 3, step 2's sixth slice): the one catalog of
+"""The measure, typed: the one catalog of
 what a question can ask about (:data:`association.query.measure.CATALOG`,
 with every spelling the six vocabularies named a measure by resolving into
 it), the one tagger that reads the family from the lexicon's words
 (:func:`association.query.measure.read_measure`) and the characters it
-claims, the typed value's door and projection
-(:class:`association.query.reading.Measure`: the seven slots ``stat``,
-``fields``, ``per_game``, ``rate``, ``side``, ``shot_value`` and ``kind``
-given back exactly), the one cell the tables declare (``rate``), and the
-behavioral check contract 4 asks for: the cell changes what the season-line
-ranking reads, and the planner declines it where no reader states it.
+claims, the typed value (:class:`association.query.reading.Measure`) and
+the door the model's stat reaches it by (``Measure.from_slots``), the one
+cell the tables declare (``rate``), and the behavioral check that the cell
+changes what the season-line ranking reads, and the planner declines it
+where no reader states it.
 """
 
 from __future__ import annotations
@@ -20,10 +19,11 @@ from typing import Any, get_args
 
 import duckdb
 import pytest
+from routed import measure_of
 from routed import staged as settle
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
-from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
+from test_readers import pg_ctx, player_log, player_ranking  # noqa: F401 - the player relation's fixture, imported by name
 
 from association.query import lexicon
 from association.query.answer import AnswerContext
@@ -36,7 +36,6 @@ from association.query.measure import (
     MeasureKey,
     key_of,
     measure_name,
-    measure_of,
     measured,
     named,
     named_by_a_team_metric,
@@ -89,7 +88,7 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
         ("how many points does embiid average", PLAYER_LINE, "rebounds", measure_of("points")),
         ("jokic stats this season", PLAYER_LOG, "assists", measure_of("assists")),
         ("compare sga and embiid", PLAYER_COMPARISON, "points", None),
-        # The grammar's spellings, as the stages wrote them, and the catalog's key behind each.
+        # The grammar's spellings, as the tagger writes them, and the catalog's key behind each.
         ("who were the top 10 in defensive netpoints / 100 possessions", PLAYER_RANKING, None, Measure(key="netpoints", as_typed="netpoints_defense_per_100", how="per_100", side="defense")),
         ("who were the top 10 in defensive netpoints / 90", PLAYER_RANKING, "netpoints", Measure(key="netpoints", as_typed="netpoints_defense", how="per_90", unit="/ 90", side="defense")),
         ("centers by pf per 100", PLAYER_RANKING, "fouls", Measure(key="fouls", as_typed="fouls", how="per_100", unit="per 100")),
@@ -103,7 +102,7 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
         ("Lowest defensive rating by a team this season", TEAM_RANKING, "usage_pct_defense", measure_of("defensive rating")),
         ("rebounds allowed per team", TEAM_RANKING, "rebounds", Measure(key="rebounds", as_typed="rebounds allowed", whose="opponent")),
         # The LONGEST team alias the words hold names the key ("points per game" over the grammar's "points allowed"), and the
-        # verb "allowed" makes it the opponent's (ISSUES.md #361, where the alias read it as the team's own).
+        # verb "allowed" makes it the opponent's (#361).
         ("which team allowed the most points per game", TEAM_RANKING, "points", replace(measure_of("points per game"), whose="opponent")),
         ("which team has the most points allowed", TEAM_RANKING, "points", Measure(key="points", as_typed="points allowed", whose="opponent")),
         ("which team has the lowest scoring allowed", TEAM_RANKING, "points", Measure(key=None, as_typed="scoring allowed")),
@@ -121,7 +120,7 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
         ("what was steph curry's avg 3pt shot distance", SHOT_DISTANCE, None, Measure(shot_value=3)),
         ("Top 5 scorers with their rebounds and assists", PLAYER_RANKING, "points", Measure(key="points", as_typed="points", beside=("rebounds", "assists"))),
         # A measure the WORDS name stands on a whole-line reader whether or not the stat-word list knows its word (the drop is the model's key's alone):
-        # "3s", "3pm" and "rebs" are box-score words and no STAT_WORDS word, and each answered the default line until this slice (ISSUES.md, closed).
+        # "3s", "3pm" and "rebs" are box-score words and no STAT_WORDS word, and each names its measure.
         ("grayson allen 3s made last season", PLAYER_LINE, None, measure_of("threePointFieldGoalsMade")),
         ("klay 3pm each HOME game LAST season", PLAYER_LINE, None, measure_of("threePointFieldGoalsMade")),
         ("Michael porter Rebs 2h vs mavericks game log", PERIOD_LOG, None, Measure(key="rebounds", as_typed="rebounds", how="per_game")),
@@ -158,7 +157,7 @@ def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route()
     # The rate's stretch inside the grammar's is the one reading, folded into one claim of it on the route.
     assert [(c.what, question[c.start : c.end]) for c in route.claims if c.what != "window"] == [("measure", "defensive netpoints / 100")]
     # Two stretches of one reading that overlap without one holding the other are one claim of it,
-    # not a joined one - cut to the words the tagger needed (Phase 3, step 3, span.needed): "per"
+    # not a joined one - cut to the words the tagger needed (span.needed): "per"
     # reads the rate with either "100" or "possessions" gone, so neither is claimed, and both are
     # unread words, as the claims ledger counts them.
     question = "which players ranked in the top 10 for offensive netpoints per 100 possessions"
@@ -174,7 +173,7 @@ def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route()
     assert named("highest ft pct") == ("freeThrowPct", Claim(8, 14, "measure"))
 
 
-def test_the_two_readers_the_intent_stages_ask() -> None:
+def test_the_two_measure_readers_the_grammars_rules_ask() -> None:
     assert names_a_stat("compare sga and embiid on rebounding") and not names_a_stat("compare sga and embiid")
     assert team_metric_named("rebounds allowed per team") == ("rebounds allowed", Claim(0, 16, "measure"))
     assert team_metric_named("celtics rebounds against the knicks") == ("rebounds", Claim(8, 16, "measure"))
@@ -242,8 +241,7 @@ def test_the_catalog_is_one_closed_set_of_keys_the_six_vocabularies_resolve_into
 
 
 def test_every_compiler_name_reads_back_to_one_catalog_measure() -> None:
-    """The point states what it measures typed (``Reading.measures``,
-    Phase 4, step 3): each name its words and lines read a measure by is
+    """The point states what it measures typed (``Reading.measures``): each name its words and lines read a measure by is
     the catalog's Measure (``measure.measured``), which the compiler names
     back once (``measure_name``) - so the names are distinct across keys,
     every name the point reader reads by has a key, and a game's label
@@ -262,20 +260,19 @@ def test_every_compiler_name_reads_back_to_one_catalog_measure() -> None:
 
 
 #: A metric or a derived measure named outright, and the grammar's two
-#: spellings for keys the model spells otherwise: each reads as its key,
-#: where the slot-era tables gave it facets of its own. No reader reached
-#: them with the facets that moved (the four populations are identical).
+#: spellings for keys the model spells otherwise: each reads as its key, so
+#: its facets are the key's, not the ones recorded for its spelling.
 _UNIFIED = frozenset({"avg_game_score", "avg_points", "total_points", "plus_minus", "points_differential", "three_pct", "three_point_pct", "three_pt_pct", "two_pct", "true_shooting", "usage", "won"})
 
 
-def test_every_spelling_resolves_as_it_did_on_the_facets_its_vocabulary_reached() -> None:
+def test_every_spelling_resolves_as_recorded_on_the_facets_its_vocabulary_reaches() -> None:
     """``measure_spellings.json``: every spelling the six vocabularies could
     hand the answer side, with what ``stat_measure``, ``stat_column``,
     ``resolve_metric`` (a season and a career) and ``resolve_team_metric``
-    returned for it on the tree before this slice (``508d643``). A team
-    metric's alias text reached the team readers alone, a box-score
-    abbreviation the line readers alone; a key's own spelling reached every
-    facet. The unified spellings are the catalog's one deliberate change."""
+    return for it. A team metric's alias text reaches the team readers
+    alone, a box-score abbreviation the line readers alone; a key's own
+    spelling reaches every facet. The unified spellings (``_UNIFIED``) read
+    as their keys and are not checked against the record."""
     recorded = json.loads((Path(__file__).parent / "measure_spellings.json").read_text())
     team_alias = set(lexicon.STAT_ALIASES) | {f"{alias} allowed" for alias in lexicon.STAT_ALIASES}
     keys_own = set(NORMALIZER_STATS) | {spelling for _, spelling in lexicon.MEASURE_GRAMMAR} | set(lexicon.MEASURE_WORDS.values())
@@ -317,29 +314,25 @@ def test_a_metric_named_outright_keeps_its_form_and_a_total_asked_for_ranks_the_
 
 
 def test_a_plus_minus_log_shows_the_column_it_was_asked_for(pg_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
-    """A fix the catalog makes: the grammar's "plus_minus" matched no column
-    list on the slot-era tree (``log_extras("plus_minus")`` was ``()``, the
-    column list being keyed ``plusMinus``), so a plus-minus log listed the
-    four line columns and no +/-; through the key it adds the column. No
-    recorded answer moves (the two plus-minus logs on the 2,710 readings
-    are refused for a playoff round first); the wording is "<player> plus
-    minus game log" and "<player> +/- log"."""
+    """The grammar's "plus_minus" and the key ``plusMinus`` both read
+    through the catalog to the +/- column, so a plus-minus log ("<player>
+    plus minus game log", "<player> +/- log") shows it beside the line
+    columns."""
     assert log_extras(measure_of("plus_minus")) == ("+/-",) == log_extras(measure_of("plusMinus"))
-    answer = game_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="plusMinus", as_typed="plus_minus"))).text or ""
+    answer = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="plusMinus", as_typed="plus_minus"))).text or ""
     assert "+/-" in answer
 
 
-def test_a_fingerprint_metric_named_outright_is_refused_by_the_log_as_before() -> None:
+def test_a_fingerprint_metric_named_outright_is_refused_by_the_log() -> None:
     with pytest.raises(Exception, match="no per-game column for 'assist_o_net_pts'"):
         log_extras(measure_of("assist_o_net_pts"))
     assert log_extras(measure_of("games_played")) == () and log_extras(None) == ()
 
 
 def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None:
-    """ISSUES.md, "A team total named by a metric's alias": the stages'
-    alias text ("fgm") never matched a column, so the team compiler's total
-    never read it and the per-game line answered; the catalog keeps that
-    by the spelling's vocabulary, and the key's own spelling reads the total."""
+    """A team total named by a metric's alias ("fgm") reads no team figure,
+    so the per-game line answers; the catalog keeps that by the spelling's
+    vocabulary, and the key's own spelling reads the total."""
     assert named_by_a_team_metric(measure_of("fgm")) and not named_by_a_team_metric(measure_of("fieldGoalsMade"))
     assert (
         _team_measure(
@@ -352,19 +345,18 @@ def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None
     assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("points_allowed")), "magic total this season") == Measure(key="points", whose="opponent")
 
 
-# ---------------- contract 4: the cell changes what a relation reads, and the planner declines it elsewhere ----------------
+# ---------------- the cell changes what a relation reads, and the planner declines it elsewhere ----------------
 
 
 def test_the_rate_cell_changes_what_the_season_line_ranking_reads(season_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
-    assert leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
-    total = leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
+    assert player_ranking(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
+    total = player_ranking(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
     assert total.data["leaders"][0]["display_name"] == "Volume Scorer" and "in total points" in total.text
 
 
 def test_the_planner_declines_the_rate_cell_where_no_reader_states_it(con: Any) -> None:  # noqa: F811 - the fixture
     """The game-level ranking (a position group, no season-line metric)
-    cannot honor a unit, and says so in the sentence the relation check
-    always gave; the season line's ranking refuses a unit its metric has no
+    cannot honor a unit, and the planner says so; the season line's ranking refuses a unit its metric has no
     form of by name (the point's ``ranking_unit`` cause)."""
     route = read_route(names_of(con), "centers by pf per 100", [], "fouls")
     reading = route
@@ -381,10 +373,9 @@ def test_the_planner_declines_the_rate_cell_where_no_reader_states_it(con: Any) 
     [("jayson tatum per 36 minutes stats", "per 36 minutes"), ("jamal crawford lou williams career per36", "per36"), ("most free throw attempts per 36 minutes", "per 36 minutes")],
 )
 def test_a_rate_per_n_minutes_is_a_unit_on_every_key(con: duckdb.DuckDBPyConnection, question: str, unit: str) -> None:  # noqa: F811 - the fixture
-    """ISSUES.md #388: "per 36 minutes" was read as a floor of 36 minutes a
-    game ("jayson tatum per 36 minutes stats" answered his 4 games of 36+
-    minutes); it is the measure's unit, the ``rate`` cell every reader but
-    the season ranking declines and the ranking refuses by name."""
+    """#388: "per 36 minutes" is the measure's unit, not a floor of 36
+    minutes a game: the ``rate`` cell every reader but the season ranking
+    declines and the ranking refuses by name."""
     reading = read_route(names_of(con), question, [], "")
     assert reading.measure is not None and reading.measure.unit == unit and reading.measure.how is None
     assert not [line for line in reading.lines if line.measure == "minutes"]
@@ -400,9 +391,9 @@ def test_a_rate_per_n_minutes_is_a_unit_on_every_key(con: duckdb.DuckDBPyConnect
     ],
 )
 def test_a_teams_box_score_count_given_up_is_its_opponents(question: str, key: str) -> None:
-    """ISSUES.md #425: "how many assists on average do the mavericks give up"
-    answered the Mavericks' own 25.3 - the verb made only points the
-    opponents'. Every box-score count the team compiler sums from the
-    opponents' box rows is theirs, given up or "allowed"."""
+    """#425: a box-score count given up or "allowed" ("how many assists on
+    average do the mavericks give up") is the opponents' figure, for every
+    count the team compiler sums from the opponents' box rows, not points
+    alone."""
     measure = _read(question, TEAM_LINE)
     assert measure is not None and measure.key == key and measure.whose == "opponent"

@@ -1,4 +1,4 @@
-"""Regression + sanity tests for the fetch pipeline's resumability and the O(1)
+"""Tests for the fetch pipeline's resumability and the O(1)
 completion-marker optimization, using a fake client (no network)."""
 
 import threading
@@ -142,16 +142,11 @@ def _dated_summary(event_id: str, date: str) -> dict:
 
 
 def test_a_clean_pull_finds_playoff_games_no_team_schedule_lists(tmp_path: Path) -> None:
-    """The bug this design shipped with, and the test that would have caught it.
-
-    ESPN's team schedules end the 2000 postseason on 2000-06-01 and omit the
+    """ESPN's team schedules end the 2000 postseason on 2000-06-01 and omit the
     whole LAL-IND Final; the daily scoreboard has those games. Discovery has to
-    work on a tree with NOTHING on disk, because that is what a first pull is.
-
-    The original version ran the scan inside `event_ids_for`, before any game
-    was fetched - so it had no date to scan forward from, returned 70 ids for
-    2000 and none of the six Finals games, and passed its tests because every
-    one of them seeded a game on disk first.
+    work on a tree with NOTHING on disk, because that is what a first pull is:
+    a scan run before any game is fetched has no date to scan forward from,
+    and a test that seeds a game on disk first cannot see that.
     """
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
     responses[_schedule_url("1")] = _schedule_response(["100"])
@@ -188,7 +183,7 @@ def test_a_regular_season_never_touches_the_scoreboard(tmp_path: Path) -> None:
     dates per season for nothing is a cost every pull would pay forever.
 
     The 2024 POSTSEASON game written below is what makes this test
-    discriminate, and leaving it out has now broken this same assertion twice.
+    discriminate.
     The scan anchors on the latest stored postseason date; with no postseason
     game on disk that anchor is None and the scan exits before it requests
     anything - so removing the gate changes nothing and this test passes while
@@ -264,7 +259,7 @@ def test_run_season_type_marks_complete_when_all_games_resolved(tmp_path: Path) 
 
 
 def test_run_season_type_not_marked_complete_when_game_still_pending(tmp_path: Path) -> None:
-    """Regression companion: an in-progress season (a real future/unplayed
+    """An in-progress season (a real future/unplayed
     game, state='pre') must NOT be marked complete - new results still need
     picking up on the next run."""
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
@@ -280,9 +275,8 @@ def test_run_season_type_not_marked_complete_when_game_still_pending(tmp_path: P
 
 
 def test_postponed_game_not_refetched_every_run(tmp_path: Path) -> None:
-    """Regression: before the resolved-marker fix, a postponed game had no
-    checkpoint at all and got re-fetched (a wasted network call) on every
-    single pull run forever."""
+    """A postponed game is checkpointed by its resolved marker, so it is not
+    re-fetched (a wasted network call) on every pull run."""
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
     responses[_schedule_url("1")] = _schedule_response(["101"])
     responses[SUMMARY_URL] = lambda params: _game_summary("101", completed=False, state="post")
@@ -338,12 +332,11 @@ _PLAYER_CAREER_STATS_RESPONSE = {"categories": [{"names": ["avgPoints"], "statis
 
 
 def test_run_season_type_refreshes_team_and_player_stats_while_season_in_progress(tmp_path: Path) -> None:
-    """Regression: team/player season-stats aggregates shift every game of an
-    in-progress season, but player season stats used to never be fetched at
-    all until the WHOLE season was fully resolved (gated behind the same
-    check that decides when to mark the season complete) - so a season in
-    progress never got any player season stats locally, not even stale ones.
-    A still-pending game must not block either from being fetched."""
+    """Team/player season-stats aggregates shift every game of an
+    in-progress season, so neither is gated behind the check that decides
+    when to mark the season complete - a season in progress would get no
+    player season stats locally, not even stale ones. A still-pending game
+    must not block either from being fetched."""
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
     responses[_schedule_url("1")] = _schedule_response(["500", "501"])
     responses[SUMMARY_URL] = lambda params: _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
@@ -360,10 +353,10 @@ def test_run_season_type_refreshes_team_and_player_stats_while_season_in_progres
 
 
 def test_run_season_type_re_fetches_team_and_player_stats_on_second_pass_while_in_progress(tmp_path: Path) -> None:
-    """Regression: once written, team/player season stats used to be frozen by
-    their own resumability check (file exists -> skip) for the rest of the
-    season, even without --force. While the season type is still in progress,
-    a second pull must re-fetch both rather than silently keeping stale data."""
+    """Once written, team/player season stats are not frozen by their own
+    resumability check (file exists -> skip) for the rest of the season:
+    while the season type is still in progress, a second pull re-fetches
+    both rather than silently keeping stale data, even without --force."""
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
     responses[_schedule_url("1")] = _schedule_response(["500", "501"])
     responses[SUMMARY_URL] = lambda params: _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
@@ -386,9 +379,9 @@ def test_run_season_type_re_fetches_team_and_player_stats_on_second_pass_while_i
 
 
 def test_athlete_ids_for_scoped_to_season_and_type(tmp_path: Path) -> None:
-    """Regression: athlete discovery used to scan the whole season directory
-    across all season_types combined - scoping to one season_type is both
-    more correct (no cross-type leakage) and cheaper to scan."""
+    """Athlete discovery scans one season_type's directory, not the whole
+    season across all season_types combined - both more correct (no
+    cross-type leakage) and cheaper to scan."""
     from association.fetch import storage as storage_mod
 
     storage_mod.write_rows(
@@ -406,10 +399,10 @@ def test_athlete_ids_for_scoped_to_season_and_type(tmp_path: Path) -> None:
 
 
 def test_fetch_team_season_stats_skips_network_for_preseason(tmp_path: Path) -> None:
-    """Regression: ESPN has no team season stats for preseason (season_type=1)
-    - confirmed live, the endpoint returns no data for every team/season. With
-    no resulting file to ever skip against, every run used to re-hit the
-    network for nothing. Must short-circuit before the request, not after."""
+    """ESPN has no team season stats for preseason (season_type=1) - confirmed
+    live, the endpoint returns no data for every team/season. With no
+    resulting file to ever skip against, every run would re-hit the network
+    for nothing. Must short-circuit before the request, not after."""
     client = FakeClient({})  # any URL lookup would return None and fail loudly if hit unexpectedly
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_team_season_stats(2024, 1, "1")
@@ -507,10 +500,10 @@ def _written_season_rows(tmp_path: Path) -> list[dict]:
 
 
 def test_fetch_player_season_stats_repairs_a_line_served_without_totals(tmp_path: Path) -> None:
-    """Regression: ESPN's career endpoint sometimes answers with only its
-    averages category, and the pull wrote that as-is and checkpointed it - so
-    246 real season lines sat in the warehouse with `avgPoints` beside a NULL
-    `points`, and no later pull ever looked at them again."""
+    """ESPN's career endpoint sometimes answers with only its averages
+    category; written as-is and checkpointed, the line keeps `avgPoints`
+    beside a NULL `points` (246 real season lines), and no later pull looks
+    at it again."""
     client = FakeClient({PLAYER_CAREER_STATS_URL_10: _AVERAGES_ONLY_CAREER_RESPONSE, SEASON_TOTALS_URL_2025: _SEASON_TOTALS_RESPONSE})
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_player_season_stats("10", 2)
@@ -633,10 +626,10 @@ def test_fetch_net_points_force_overwrites(tmp_path: Path) -> None:
 
 
 def test_fetch_net_points_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:
-    """Regression: NetPoints values shift daily while a season is in progress,
-    but the season file, once written, used to be frozen for the rest of that
-    season without --force - same reasoning as fetch_standings/
-    fetch_power_index below."""
+    """NetPoints values shift daily while a season is in progress, so the
+    season file, once written, is not frozen for the rest of that season
+    without --force - same reasoning as fetch_standings/fetch_power_index
+    below."""
     monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2024)
     responses: dict[str, Any] = {
         TEAMS_URL: _teams_response(1),
@@ -955,10 +948,10 @@ def test_fetch_net_points_daily_writes_resolved_rows(tmp_path: Path) -> None:
 
 
 def test_fetch_net_points_daily_marks_done_even_with_zero_resolved_rows(tmp_path: Path) -> None:
-    """Regression-shaped: storage.write_rows([]) is a no-op, so a date whose
-    rows all fail to resolve must not look "incomplete" forever and get
-    re-fetched every run - the same class of bug already fixed for preseason
-    team-stats and postponed games elsewhere in this pipeline."""
+    """storage.write_rows([]) is a no-op, so a date whose rows all fail to
+    resolve must not look "incomplete" forever and get re-fetched every run -
+    the same rule as for preseason team-stats and postponed games elsewhere
+    in this pipeline."""
     _write_games_fixture(
         tmp_path,
         [{"event_id": "1", "season": 2026, "season_type": 2, "date": "2026-04-12T22:00Z", "home_team_id": "18", "away_team_id": "30"}],
@@ -979,8 +972,8 @@ def test_fetch_net_points_daily_marks_done_even_with_zero_resolved_rows(tmp_path
 
 
 def test_fetch_net_points_daily_runs_dates_through_the_pool(tmp_path: Path) -> None:
-    """The loop is S3 round trips and spent its time waiting - measured, 0.3
-    dates a second serially against 12 with a pool. Asserted as the threads
+    """The loop is S3 round trips and spends its time waiting - 0.3 dates a
+    second serially against 12 with a pool. Asserted as the threads
     actually used rather than as elapsed time, which would be a flake.
 
     Every date must still be fetched exactly once: the markers that make a
@@ -1006,11 +999,10 @@ def test_fetch_net_points_daily_runs_dates_through_the_pool(tmp_path: Path) -> N
 
 
 def test_net_points_dates_and_seasons_includes_day_before_each_local_date(tmp_path: Path) -> None:
-    """Regression, confirmed live: a Lakers game with no OTHER local game on
-    the literal calendar day before it was silently never fetched at all -
-    its true NetPoints label (ESPN date minus one) never appeared in the
-    fetch set, unlike the back-to-back bug which fetched the wrong game
-    rather than no game. Every local date's day-before must be included too."""
+    """Confirmed live: a Lakers game with no OTHER local game on the literal
+    calendar day before it would never be fetched at all - its true
+    NetPoints label (ESPN date minus one) is not in the fetch set unless
+    every local date's day-before is included too."""
     _write_games_fixture(tmp_path, [{"event_id": "1", "season": 2026, "season_type": 2, "date": "2025-11-29T03:00Z", "home_team_id": "13", "away_team_id": "6"}])
     pipeline = Pipeline(FakeClient({}), tmp_path)
     dates = pipeline._net_points_dates_and_seasons()
@@ -1049,9 +1041,9 @@ def _power_index_response(season: int) -> dict:
 
 
 def test_fetch_standings_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:
-    """Regression: standings shift every game of an in-progress season, but
-    used to be frozen after the first pull for the rest of that season
-    without --force."""
+    """Standings shift every game of an in-progress season, so they are not
+    frozen after the first pull for the rest of that season without
+    --force."""
     monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2024)
     responses: dict[str, Any] = {STANDINGS_URL: _standings_response()}
     client = FakeClient(responses)
@@ -1098,9 +1090,9 @@ def _paged_power_index(season: int, teams: int = 30, season_types: tuple[int, ..
 
 
 def test_fetch_power_index_stores_every_snapshot_not_the_first_page(tmp_path: Path) -> None:
-    """The bug this fixes. ESPN answers `count: 90` in pages of 25, so reading
-    one page stored 25 of 90 rows a season - 9 distinct teams in 2024 - and
-    `team_outlook` reported that as ESPN having no snapshot for most teams."""
+    """ESPN answers `count: 90` in pages of 25, so reading one page stores 25
+    of 90 rows a season - 9 distinct teams in 2024 - which reads as ESPN
+    having no snapshot for most teams."""
     client = FakeClient({POWER_INDEX_URL_2024: _paged_power_index(2024)})
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_power_index(2024)
@@ -1373,8 +1365,8 @@ def test_workers_below_one_is_treated_as_serial(tmp_path: Path) -> None:
 
 
 def test_name_to_athlete_id_adds_a_reduced_spelling_for_a_suffixed_name(tmp_path: Path) -> None:
-    """ISSUES.md #112: ESPN says `Jimmy Butler III`, NetPoints says
-    `Jimmy Butler`, and that cost him all 498 of his per-game rows. The map
+    """#112: ESPN says `Jimmy Butler III`, NetPoints says `Jimmy Butler`,
+    which without the alias costs him all 498 of his per-game rows. The map
     gains the reduced spelling so the incoming name reaches his id."""
     _write_players_fixture(
         tmp_path,
@@ -1437,8 +1429,8 @@ def test_match_key_aliases_adds_nothing_for_a_name_that_reduces_to_itself() -> N
     """Asserted on the helper directly, because it cannot be seen through the
     map: an alias for a name that reduces to itself carries the same id as the
     exact entry, so the map is identical either way. What it changes is size -
-    116 useful aliases against 3,038 - and measured over the live table, zero
-    of the dropped keys would have disagreed with the entry they duplicate."""
+    116 useful aliases against 3,038 - and over the live table, none of the
+    dropped keys disagrees with the entry it duplicates."""
     plain = {"Solo Player": {"1"}, "Another Name": {"2"}}
     assert pipeline_module._match_key_aliases(plain) == {}
     # A suffixed name reduces to something nobody is called, so it does add one.

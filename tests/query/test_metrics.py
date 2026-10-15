@@ -103,7 +103,7 @@ def test_team_games_for_season_ignores_the_cup_final_outlier(real_games_con: duc
 
 def test_team_games_for_season_without_real_games_returns_none() -> None:
     """No ``real_games`` table at all - true of most fixtures in this suite,
-    which predate this fix and are not this fix's to update (test_templates.py
+    which predate this fix and are not this fix's to update (test_readers.py
     in particular pins the flat 550/480 qualifier against a fixture with no
     such table). The function degrades to ``None`` rather than raising, so a
     caller can fall back to the flat floor."""

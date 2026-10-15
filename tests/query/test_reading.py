@@ -1,6 +1,6 @@
 """The Reading (query/reading.py) and the planner (compose/plan.py): one record
 of what a question asks, planned into the compiler's point without reading
-the question again - ROADMAP plan item 6, step (a)."""
+the question again."""
 
 from __future__ import annotations
 
@@ -18,9 +18,10 @@ from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts,
 from association.query.reading import Subject as Who
 
 
-def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was() -> None:
-    """The adapters build a Reading; ``to_query`` is that Reading planned, so
-    every caller of the old contract sees the same Query."""
+def test_the_default_point_is_a_reading_and_its_plan_is_the_planned_query() -> None:
+    """A key's default point (``point.default_point``) is a Reading, and the
+    planner plans it into the same Query the tests' ``planned_query`` builds
+    for that key and scope, the scope's filters unchanged."""
     scope = Reading(
         who=Who(kind="player", players=("Brandin Podziemski",)),
         lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
@@ -54,7 +55,7 @@ def test_the_planner_copies_and_never_decides() -> None:
         minimum_games=20,
         relation="everyone",
     )
-    # The position group a league-wide point honors is its subject's (Phase 3, step 2).
+    # The position group a league-wide point honors is its subject's.
     reading = replace(reading, **(replace(reading, who=replace(reading.who, position="C"))).filters())
     q = plan(reading)
     assert isinstance(q, Query)
@@ -64,17 +65,17 @@ def test_the_planner_copies_and_never_decides() -> None:
     assert q.available is None and q.subject_span is None
     # The two records mirror each other on purpose: a point field added to
     # one and not the other is a decision the planner would be making alone.
-    # What the point is read as (its shape, by and relation, one field
-    # since Phase 5, step 4) is the target's vocabulary, from which the
-    # planner derives the compiler's skeleton and source (plan.skeleton_of),
-    # and the aggregate with the measure (plan.aggregate_of, Phase 5, step 4).
+    # What the point is read as (its shape, by and relation, one field) is
+    # the target's vocabulary, from which the planner derives the compiler's
+    # skeleton and source (plan.skeleton_of), and the aggregate with the
+    # measure (plan.aggregate_of).
     assert "aggregate" not in {f.name for f in fields(Reading)}
     point = {"read_as", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span"}
     assert point <= {f.name for f in fields(Reading)}
     # The Query's ``position`` is the point's subject's position group
-    # (``Reading.who.position``, a field of the point until Phase 3, step 2).
+    # (``Reading.who.position``), no field of the point.
     assert "position" not in {f.name for f in fields(Reading)} and "position" in {f.name for f in fields(Who)}
-    # The Query's ``offset`` is the compiler's own (a pair's newest meetings): the point's was 0 on every reading and went with the window (Phase 3, step 2).
+    # The Query's ``offset`` is the compiler's own (a pair's newest meetings), no field of the point.
     assert {"skeleton", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "subject_span", "source", "position"} <= {
         f.name for f in fields(Query)
     }
@@ -93,7 +94,7 @@ def test_a_team_reading_plans_to_the_team_relation() -> None:
 
 
 def test_the_planner_names_the_points_typed_measures_once() -> None:
-    """The point states its measures typed (Phase 4, step 3) and the
+    """The point states its measures typed and the
     compilers' names are built where the planner hands it over, once:
     a rate by its derived name, a game won as the flag the player compiler
     reads, and the team compiler's own names for what a team gave up and its
@@ -151,10 +152,8 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
 def test_every_group_is_the_compilers_and_every_declared_cell_a_filters_cell() -> None:
     """Hand-kept lists against the ones they must agree with: the Group names
     against compose.core.GROUPS, and every cell the relation tables declare
-    against the filters' cells. Until Phase 4, step 0 it held the tests' slot
-    door to a check per field too (``tests/slots.py``'s ``_CHECKS``), with the
-    typed families and the stated minimum exempt - the door went, and every
-    family but the split checks its own values."""
+    against the filters' cells; every family but the split checks its own
+    values."""
     from typing import get_args
 
     from association.query.compose.core import GROUPS
@@ -175,7 +174,7 @@ def test_every_group_is_the_compilers_and_every_declared_cell_a_filters_cell() -
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
     assert set(get_args(Group)) == {"none", "presence", "period", "line", *GROUPS}
-    # Every cell is a typed value's, but the split's, whose value is a field of its own (Phase 3, step 2; the closing slice named it on Scope.CELLS).
+    # Every cell is a typed value's, but the split's, whose value is a field of its own.
     assert {
         "split"
     } == Filtered.CELLS - Span.CELLS - Window.CELLS - Cuts.CELLS - Period.CELLS - Line.CELLS - Line.SEASON_CELLS - Line.OPPONENT_CELLS - Companion.CELLS - Measure.CELLS and "split" in names
@@ -185,11 +184,9 @@ def test_every_group_is_the_compilers_and_every_declared_cell_a_filters_cell() -
 
 def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_asked() -> None:
     """``Filtered.cells`` is every cell a scope sets, each family's and the
-    split's (Phase 3, step 2's closing slice), and ``cell_facts`` what the
-    words asked under each, which a decline is said by
-    (``say.decline_body``): the slot names each cell was declared under
-    before Phase 3, step 2 ("cannot honor ['order']") until the Phase 3
-    review's cleanup (b)3 (ISSUES.md #281)."""
+    split's, and ``cell_facts`` what the words asked under each, which a
+    decline is said by (``say.decline_body``), never by a cell's name
+    (#281)."""
     from association.query.compose.say import decline_body
     from association.query.reading import CELL_ORDER, cell_facts, unhonored_cells
 
@@ -267,7 +264,7 @@ _POINTS_TOTAL = Measure(key="points", as_typed="points", how="total")
     ],
 )
 def test_the_planner_derives_the_aggregate_from_what_the_point_is_read_as_and_its_measure(read_as: PointShape, fields_: dict[str, Any], aggregate: Aggregate) -> None:
-    """The aggregate is the planner's (Phase 5, step 4, D5): derived from the
+    """The aggregate is the planner's (decision D5): derived from the
     point's declared shape and its measure - the catalog's yes-or-no facet,
     a yes or a no the point keeps its games by, how the measure is asked -
     one rule per row of ``compose.plan.aggregate_of``'s table."""

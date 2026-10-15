@@ -1465,7 +1465,7 @@ before that commit needs re-checking against the current warehouse.
   router's fabricated surname. Measured against the 261-question replay:
   this row moves from "did you mean Hunter Dickinson?" (wrong, confident) to
   the correct answer, and a dedicated regression test
-  (`test_a_fabricated_surname_extension_is_discarded_not_the_router_s_wrong_guess`)
+  (`test_a_fabricated_surname_extension_is_discarded_not_the_models_wrong_guess`)
   pins it.
 - **What remains open, narrower than before:** `suggest_players`' own
   surname-only pass (pass 1) is untouched and still ignores the given name
@@ -3359,7 +3359,7 @@ those were found.
   - genuinely no row, vs. a row with an empty box score - rather than
   collapsing both into "did not play". Add a test with an orphaned row (no
   `reconstructed` counterpart) as the fixture, the same shape `_all_box_scores_empty`
-  uses in `test_templates.py`.
+  uses in `test_readers.py`.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #109
 
@@ -3770,7 +3770,7 @@ those were found.
 - **Found:** 2026-10-12, Phase 4, step 0 (the test doors deleted, #385).
 - **Evidence:** `tests/slots.py` checked two values no typed value checks: the split against `reading.Split`'s closed set (`_one_of`) and a calendar day against `YYYY-MM-DD` (`_iso_day`). `Filtered` has no `__post_init__` and `Cuts` checks none of its fields, so a hand-built `Reading(split="by_weekday")` reaches the splits reader and raises `KeyError: 'by_weekday'` there, and `Cuts(date="April 12")` reaches the game log and raises `ValueError: Invalid isoformat string` - loud, not silent, and unreachable from the words (the split tagger and the cuts tagger write only valid values: 0 of the 2,710 readings hold another). The two door tests that held these (`test_an_unknown_split_is_refused`, `test_a_malformed_date_never_reaches_the_game_log`) went with the door. Beside them: `reading.Measure.from_slots` reads seven slots and its two callers (`parse.py:403`, `subject.py:1396`) pass `stat` alone, and `reading.Subject.from_slots` reads `teams`, which `parse.py` never passes - the rest were the door's; `measure.column_of`, which only the door called, was deleted with it.
 - **User sees:** nothing - a reader's error on a value no reading writes.
-- **Next step:** check `split` in a `Filtered.__post_init__` (the Reading's chains to it) and `date` in `Cuts.__post_init__`, raising `ScopeError` as every other typed value does; narrow the two `from_slots` doors to what their callers pass, or replace `Measure.from_slots({"stat": s})` with `measure.measure_of(s)`.
+- **Next step:** check `split` in a `Filtered.__post_init__` (the Reading's chains to it) and `date` in `Cuts.__post_init__`, raising `ScopeError` as every other typed value does; narrow the two `from_slots` doors to what their callers pass, or replace `Measure.from_slots({"stat": s})` with a `Measure` built from `measure.key_of(s)`.
 - **Priority:** P4 - no reachable answer moves.
 - **GitHub:** #395
 
@@ -3793,10 +3793,9 @@ those were found.
 
 ### Six comments cite AGENTS.md by a heading it no longer has
 - **Found:** 2026-10-14, Phase 5, step 7 (the AGENTS.md compaction), checking every quoted `AGENTS.md, "..."` citation in `src`, `tests`, `scripts` and `docs` against the compacted file. The compaction kept every heading a citation named (it restored three it had reworded: "The same bug has a mirror image", "Why "embiid" specifically", "Any edit to the model's prompt"); these six were already stale against the file as it stood at `3dc37821`.
-- **Evidence:** "the router invents names" - `query/player_relation.py:1712`, `query/subject.py:8` and `:2516`, `tests/query/test_subject.py:147`, `tests/query/test_entities.py:1235` (the heading is "A model invents names, and an invented name resolves"); "Refuse by name" - `query/reading.py:2373` (now "When it cannot be repaired, say so by name"); "a season range" - `query/span.py:251` (no such heading); "a warehouse built before ..." - `query/compose/core.py:291` (no such heading).
-Of the same class, a test's message: `tests/query/test_frozen_shapes.py` fails with "ROADMAP.md decision D4 freezes new shapes until the pipeline is rebuilt", where D11 (2026-10-14) replaced D4 with "what a new shape brings" (the Phase 5 review).
+- **Evidence:** "the router invents names" - `query/player_relation.py:1712`, `query/subject.py:8` and `:2516` (the heading is "A model invents names, and an invented name resolves"); "Refuse by name" - `query/reading.py:2373` (now "When it cannot be repaired, say so by name"); "a season range" - `query/span.py:251` (no such heading); "a warehouse built before ..." - `query/compose/core.py:291` (no such heading). The two test citations and the freeze test's message (which named D4) were rewritten with the tests' history sweep.
 - **User sees:** nothing; a reader following the pointer finds no section.
-- **Next step:** point each comment at the heading that holds its rule, and reword the freeze test's message to D11, ("A model invents names", "say so by name"; for `span.py` and `compose/core.py`, find what the comment meant - the span's both-season-type rule and the empty box scores' count are the likely ones), in one comment-only commit with its `CHANGES.md` line.
+- **Next step:** point each comment at the heading that holds its rule ("A model invents names", "say so by name"; for `span.py` and `compose/core.py`, find what the comment meant - the span's both-season-type rule and the empty box scores' count are the likely ones), in one comment-only commit with its `CHANGES.md` line.
 - **Source:** ours.
 - **Priority:** P4 - comments.
 - **GitHub:** #444

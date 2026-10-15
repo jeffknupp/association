@@ -190,8 +190,8 @@ def test_the_repair_writes_the_same_numbers_on_a_second_build(tmp_path: Path) ->
 def test_the_deduped_view_serves_the_repaired_row(tmp_path: Path) -> None:
     """The whole point of repairing in place rather than in a view: every
     reader sees it. player_season_stats_deduped prefers the combined row, so
-    before this it served the 9-game copy to player_stat, player_compare and
-    player_history alike."""
+    without the repair it serves the 9-game copy to a player's line, a
+    comparison of players and a player's history alike."""
     con = _build(
         tmp_path,
         _rows(

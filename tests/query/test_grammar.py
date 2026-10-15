@@ -1,7 +1,6 @@
-"""The grammar and the stages' rules, tested at the unit (Phase 3, step 4, slice (c)): what
-`tests/query/test_router.py` held that was not a question-to-Reading case -
-every reachable key, the sets and value tables held to the lexicon and the
-types, and the few rule-level checks over a tagger. The question cases are
+"""The grammar and its rules, tested at the unit: every reachable key, the
+sets and value tables held to the lexicon and the types, and the few
+rule-level checks over a tagger. The question cases are
 `tests/query/test_reader_cases.py`'s.
 """
 
@@ -22,21 +21,14 @@ def _scope_values(field: str, of: type = Filtered) -> set[object]:
     return set(get_args(literal))
 
 
-def test_every_intent_is_reachable_from_the_reader() -> None:
+def test_every_asked_key_is_reachable_from_the_reader() -> None:
     """Every shape the words can ask must be REACHABLE, by one of exactly
     three routes: the parser's grammar names it as a parent
-    (``parse.PARENT_GRAMMAR``), the stages assign it from the question text
-    (``CODE_ASSIGNED_ASKS``), or the subject reading assigns it from the
-    text gated on the subject's kind (``subject.KIND_ASSIGNED_ASKS``). A
-    key in none of the lists is dead code that no question can ever reach.
-    Until Phase 2, step 6 this read
-    ``test_every_template_is_reachable_from_the_reader``, over the
-    templates; until Phase 3, step 4 it held the intents' names
-    (``compose.COMPILED_INTENTS``) - the asked keys now, every one the
-    reading module names (:func:`_asked_keys`).
-
-    Until 5.0.0 the first route was the router's schema enum, and this read
-    ``test_every_ported_template_has_an_intent_in_the_schema``."""
+    (``parse.PARENT_GRAMMAR``), the grammar's rules assign it from the
+    question text (``CODE_ASSIGNED_ASKS``), or the subject reading assigns it
+    from the text gated on the subject's kind (``subject.KIND_ASSIGNED_ASKS``).
+    A key in none of the lists is dead code that no question can ever reach.
+    The keys are every one the reading module names (:func:`_asked_keys`)."""
     from association.query.parse import PARENT_GRAMMAR
     from association.query.subject import KIND_ASSIGNED_ASKS
 
@@ -46,24 +38,20 @@ def test_every_intent_is_reachable_from_the_reader() -> None:
 
 def _asked_keys() -> set[PointShape]:
     """Every key the words can ask, as the reading module names them
-    (``reading.PLAYER_LOG``, ...): the grammar's 26 (``test_frozen_shapes``
-    freezes them; the 26th, ``PLAYERS_COUNTED``, and the 27th, a team's best
-    single game, by Jeff's lifting of D4 on 2026-10-13; the 28th, a team's
-    history season by season, on 2026-10-14). Until Phase 4, step 0 the tests' label table
-    (``tests/shapes.ASKED``) listed them by the retired intents' names."""
+    (``reading.PLAYER_LOG``, ...): the grammar's 28, which
+    ``test_frozen_shapes`` freezes."""
     from association.query import reading
 
     keys = {value for name, value in vars(reading).items() if name.isupper() and isinstance(value, PointShape)}
-    assert len(keys) == 28, sorted(map(str, keys))  # 25 + the two keys D4 was lifted for on 2026-10-13 + a team's history, lifted 2026-10-14 (#372)
+    assert len(keys) == 28, sorted(map(str, keys))  # the frozen keys (test_frozen_shapes)
     return keys
 
 
 def test_the_side_values_match_the_scope() -> None:
-    """Two hand-maintained lists of the same names is the shape that produced
-    the player_compare bug - a side word the Measure refuses falls the question
-    through, and one the Measure holds that no word names gets dropped. The
-    other list was the router's schema enum until 5.0.0, then the router's
-    ``SIDE_WORDS``; the measure tagger reads the lexicon's since Phase 3, step 2."""
+    """The side words the measure tagger reads (the lexicon's ``SIDE_WORDS``)
+    and the sides a Measure holds are one set: a side word the Measure
+    refuses would leave the question unread, and one the Measure holds that
+    no word names could never be asked."""
     from association.query.lexicon import SIDE_WORDS
     from association.query.reading import MeasureSide
 
@@ -71,27 +59,23 @@ def test_the_side_values_match_the_scope() -> None:
 
 
 def test_the_order_values_match_the_scope() -> None:
-    """Same shape as the side check above: a value here the Scope refuses
-    falls the question through, and one it holds that is missing here gets
-    dropped."""
+    """Same shape as the side check above: the lexicon's order words and the
+    ends a Window holds are one set."""
     assert set(ORDER_WORDS) == _scope_values("order", Window)
 
 
-def test_the_order_intents_are_the_ones_that_honor_order() -> None:
-    """Two hand-maintained lists of the same intents, kept apart so the router
-    does not import the templates. An intent honoring `order` and missing here
-    keeps the bug this fixed; one listed here that does not honor it turns
-    into a fall-through."""
+def test_the_order_asks_are_the_keys_that_state_a_window() -> None:
+    """The keys the point reader reads an end of the window under
+    (``point.ORDER_ASKS``) are the keys whose cells state the window: a key
+    stating the window and missing there drops the end the words asked, and
+    one listed there whose cells do not state it is refused for the end."""
     from association.query.compose.plan import cells_stated
     from association.query.point import _WINDOW_ORDER_ON_A_SINGLE_GAME as _ORDER_ON_A_SINGLE_GAME
 
-    # player_stat honors an order only beside a limit of one (a single game
-    # handed to game_log), so the tagger sets the pair together for it rather
-    # than filling order alone - see _ORDER_ON_A_SINGLE_GAME. A retired
-    # template's list is what its reader's words state (STATED_SCOPING); the
-    # cell is the window's (Window.CELLS, "window") since Phase 3, step 2;
-    # the shapes are the keys the words ask since Phase 4, step 0, where the
-    # retired names stood.
+    # A player's line takes an end only beside a count of one (a single game,
+    # read as a log), so the window reader sets the pair together for it
+    # rather than the end alone - see _ORDER_ON_A_SINGLE_GAME. A key states
+    # the window where the window cell (Window.CELLS) is in its stated cells.
     assert {shape for shape in _asked_keys() if "window" in cells_stated(shape)} == ORDER_ASKS | _ORDER_ON_A_SINGLE_GAME
 
 
@@ -99,15 +83,15 @@ def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> N
     from association.query.point import span_under
     from association.query.span import SpanContext, read_span
 
-    # No `order` at all: an ordinary game_log question with a limit, not "last
-    # N games" - e.g. "top 5" is `order` absent, `limit` present.
+    # No `order` at all: an ordinary log with a count, not "last N games" -
+    # e.g. "top 5" is `order` absent, `limit` present.
     assert not span_under(PLAYER_LOG, read_span("Knicks top 5 wins this season", SpanContext(limit=5))).span.both
     # `order="first"` is "his first N games", the opposite end of the season -
     # a real question, but not the one this signal is for.
     assert not span_under(PLAYER_LOG, read_span("Knicks first 5 games", SpanContext(order="first", limit=5))).span.both
     # No real limit at all.
     assert not span_under(PLAYER_LOG, read_span("Knicks last games", SpanContext(order="recent"))).span.both
-    # A non-game_log intent never sees it, whatever else is set.
+    # A key other than a player's log never sees it, whatever else is set.
     assert not span_under(PLAYER_LINE, read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
     assert span_under(PLAYER_LOG, read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
 
@@ -121,7 +105,7 @@ def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> N
         ("Knicks last 5 games", {"date": "2026-04-12"}),  # one calendar day already finds its own game
     ],
 )
-def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(question: str, context: dict[str, Any]) -> None:
+def test_a_last_n_games_signal_defers_to_narrower_words_already_read(question: str, context: dict[str, Any]) -> None:
     """Each of these already fixes which games are meant more precisely than
     "last N" does, so none of them widen to both season types."""
     from association.query.point import span_under
@@ -133,7 +117,7 @@ def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(question: s
 def test_a_team_metric_given_up_is_named_as_asked() -> None:
     """yardstick-v2 F101, "rebounds allowed per team": the alias `rebounds`
     ranked the teams' own rebounds. Named as asked, no team metric holds it
-    and the template refuses by name; "points allowed" is an alias of its own,
+    and it is refused by name; "points allowed" is an alias of its own,
     and "against the knicks" is the team's own side."""
     from association.query.measure import team_metric_named
 
@@ -152,28 +136,25 @@ def test_a_player_whose_name_looks_like_a_team_is_still_a_player(name: str) -> N
     word: three players are surnamed Cleveland, Houston and Washington. The
     rest are why a near spelling is not matched at all - Burks/Bucks,
     Hawkins/Hawks, Thornton/Toronto and Wheat/Heat are all within one
-    `difflib` step, and the model puts bare surnames in that slot."""
+    edit, and the model hands bare surnames as names."""
     from association.query.subject import is_team_name as _is_team_name
 
     assert not _is_team_name(name)
 
 
-def test_the_router_and_the_templates_agree_on_what_a_stat_word_means() -> None:
-    """#164: the router kept its own copy of the vocabulary
-    `templates/common.py` reads, and nothing checked that they agreed - the
-    shape AGENTS.md calls "one concept, one definition", which
-    `check_duplicate_names.py` cannot see because the two names differ.
-
-    There is one definition now (`query/measures.py`), and the router derives
-    its map from it, so a spelling dropped there raises at import rather than
-    silently narrowing what the threshold grammar understands. This pins that
-    the derivation stays a derivation."""
+def test_the_threshold_words_are_read_from_the_one_measure_word_table() -> None:
+    """#164: what a stat word means has one definition, the lexicon's
+    ``MEASURE_WORDS``, which the answer side's ``measures`` module reads as
+    the same object; the threshold words are derived from it, so a spelling
+    dropped there raises at import rather than silently narrowing what the
+    threshold grammar understands ("one concept, one definition", which
+    ``check_duplicate_names.py`` cannot see under two names)."""
     from association.query.lexicon import MEASURE_WORDS as LINES_MEASURE_WORDS
     from association.query.lexicon import THRESHOLD_SPELLINGS as _THRESHOLD_SPELLINGS
     from association.query.lexicon import THRESHOLD_WORDS as _THRESHOLD_WORDS
     from association.query.measures import MEASURE_WORDS
 
-    # The one table, read by the stages and by the below/above phrase reader alike.
+    # The one table, read by the grammar's rules and by the below/above phrase reader alike.
     assert LINES_MEASURE_WORDS is MEASURE_WORDS
     assert set(_THRESHOLD_WORDS) == set(_THRESHOLD_SPELLINGS)
     for word, means in _THRESHOLD_WORDS.items():
@@ -183,8 +164,7 @@ def test_the_router_and_the_templates_agree_on_what_a_stat_word_means() -> None:
 def test_the_threshold_pair_words_and_their_pattern_cannot_drift() -> None:
     """The alternation is built from `_THRESHOLD_WORDS`, so every word the map
     knows is a word the pattern matches, and every word it matches has a
-    meaning. They were a hand-kept list and a map before, which could disagree
-    about a word with nothing to notice."""
+    meaning."""
     from association.query.lexicon import THRESHOLD_PAIR as _THRESHOLD_PAIR
     from association.query.lexicon import THRESHOLD_WORDS as _THRESHOLD_WORDS
 
@@ -198,13 +178,10 @@ def test_the_threshold_pair_words_and_their_pattern_cannot_drift() -> None:
 
 
 def test_a_subject_keeps_the_first_name_the_question_gave_it(subtests: Any) -> None:
-    """#165: `_SUBJECT_OF_HIGH` captured ONE word, so a possessive gave a bare
-    surname. Measured over the 261-question corpus, three questions wrote the
-    name out and got a clarification listing players they never mentioned -
-    "bryant" is Bryant Reeves, Bryant Stith, Carter Bryant and Elijah Bryant,
-    and not Kobe. The count grammars already captured a leading word; this one
-    does now, gated on the same richer stopword list so "most points curry
-    scored" still reads "curry" and never "points curry"."""
+    """#165: a possessive keeps the whole name before it, not a bare surname
+    ("bryant" alone is Bryant Reeves, Bryant Stith, Carter Bryant and Elijah
+    Bryant, and not Kobe), gated on the stopword list so "most points curry
+    scored" reads "curry" and never "points curry"."""
     from association.query.subject import subject_named_in as _subject_named_in
 
     for question, want in (
@@ -214,12 +191,11 @@ def test_a_subject_keeps_the_first_name_the_question_gave_it(subtests: Any) -> N
         ("most points curry scored in a game this season", "curry"),
         ("curry's highest scoring game this season", "curry"),
         # A bare "had"/"has" is a subject position only when a threshold
-        # follows: "sixers record when maxey had 10+ rebounds" named nobody,
-        # while the same question with "scored" answered.
+        # follows, as "scored" is.
         ("sixers record when maxey had 10+ rebounds", "maxey"),
         ("warriors record when curry has 30+ points", "curry"),
         # "when" is not part of the name, and a stat's own noun is not a
-        # person: these three returned "when maxey", "points" and "game".
+        # person ("when maxey", "points" and "game" are none).
         ("Total points scored by the toronto raptors in the last 10 games", None),
         ("least points scored by the wizards in the first half this season", None),
         ("game score nba leader", None),
@@ -230,8 +206,8 @@ def test_a_subject_keeps_the_first_name_the_question_gave_it(subtests: Any) -> N
 
 
 def test_the_coach_refusal_names_the_source_rather_than_blaming_it() -> None:
-    """The obvious sentence - "ESPN does not publish coaches" - was probed on
-    2026-09-17 and is false: it serves two coach collections, both unusable.
+    """The obvious sentence - "ESPN does not publish coaches" - is false:
+    ESPN serves two coach collections, both unusable.
     Saying the source has none would be the wrong-cause refusal this project
     keeps producing, so the sentence says what is actually wrong with them."""
     answer = refusal_result(Cause(kind="no_coach_table", facts={"unanswerable": "coach"})).text
@@ -240,11 +216,10 @@ def test_the_coach_refusal_names_the_source_rather_than_blaming_it() -> None:
     assert "Player and team questions are unaffected" in answer
 
 
-def test_the_kind_assigned_intents_all_have_readers() -> None:
+def test_the_kind_assigned_asks_all_have_readers() -> None:
     """A child the reading assigns is a shape a reader takes - a key of the
-    answer side's routes (``compose._ROUTES``; of the page's label table,
-    ``reading.SHAPE_NAMES``, until Phase 4, step 2) - and the stages assign
-    none of them."""
+    answer side's routes (``compose._ROUTES``) - and the grammar's rules
+    assign none of them."""
     from association.query import compose
     from association.query.subject import KIND_ASSIGNED_ASKS
 
@@ -253,8 +228,8 @@ def test_the_kind_assigned_intents_all_have_readers() -> None:
 
 
 def test_a_threshold_without_a_plus_reads_every_spelling_the_pair_grammar_does() -> None:
-    """`_THRESHOLD` used to be a second hand-kept alternation that lacked
-    "pt", "reb" and "ast", so "30 pt games" read no threshold and became a
+    """A bare "N stat" threshold reads the pair grammar's spellings, "pt",
+    "reb" and "ast" among them: "30 pt games" reads a threshold, not a
     ranking."""
     from association.query.line import threshold_named as _threshold_from_text
 

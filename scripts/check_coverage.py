@@ -45,7 +45,7 @@ def _season_type_column(con: duckdb.DuckDBPyConnection, table: str) -> bool:
 
 # `games` and `team_box_stats` label every season before 1993-94 by the year it
 # STARTED, so their postseasons are counted by the calendar year they were
-# played in - the same selection the templates make (templates._season_games).
+# played in - the same selection the team relation makes (team_relation.team_span_clause).
 # Counted by label, the first playoffs on record (1989's, stored as 1988) read
 # as a usable season below a correct floor.
 _CALENDAR_POSTSEASON_TABLES = frozenset({"games", "team_box_stats"})

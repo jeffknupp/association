@@ -1,8 +1,7 @@
 """The shot relation's reads (:mod:`association.query.shots`), each over a
 fixture warehouse: the games a narrowing sends a shot read to, a player's
-average shot distance, and the shots a chart draws. Phase 4, step 5 moved
-the statements here from ``compose.shots``; these hold what each returns,
-apart from the reader that says it.
+average shot distance, and the shots a chart draws. These hold what each
+returns, apart from the reader that says it.
 """
 
 from __future__ import annotations

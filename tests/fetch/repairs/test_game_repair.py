@@ -91,7 +91,7 @@ def test_a_partial_load_of_games_alone_does_not_fail(con: duckdb.DuckDBPyConnect
 
 def test_a_warehouse_build_repairs_the_game_before_real_games_copies_it(tmp_path: Path) -> None:
     """The repair is only worth anything if the build runs it, and runs it
-    ahead of real_games, which every template reads instead of games."""
+    ahead of real_games, which every reader reads instead of games."""
     data_dir = tmp_path / "parquet"
     games = [
         {"event_id": "100614008", "season": 1989, "season_type": 3, "date": "1990-06-14T04:00Z", "home_team_id": "8", "away_team_id": "22", "home_score": 90, "away_score": 92, "winner_team_id": "22"}

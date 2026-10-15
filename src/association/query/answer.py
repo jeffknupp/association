@@ -75,21 +75,6 @@ class Artifact:
 
 
 @dataclass(frozen=True)
-class RenderResult:
-    """What a chart renderer returns: what to say, and what was drawn.
-
-    ``artifact`` is None when nothing was drawn - no shots matched the filters,
-    say. That is a real answer, not an error, so the message still stands on
-    its own.
-
-    .. versionadded:: 2.0.0
-    """
-
-    message: str
-    artifact: Artifact | None
-
-
-@dataclass(frozen=True)
 class AnswerContext:
     """What a reader is given: the warehouse, and somewhere to write output.
 
