@@ -1984,6 +1984,39 @@ with nothing to read fills the silence from its own weights), and more data
     at the close; the review's next-phase list is recorded in the Phase 5
     section's status.
 
+48. **The comment sweep (2026-10-15, lane p6-comments): the source says
+    what the code does, with no history.** Jeff's rule for the sweep: a
+    comment, a docstring and a document describe the code that exists and
+    why it is as it is; history lives in the changelog, this file and
+    ISSUES.md. One agent, from `abdc6cba`: every comment and docstring
+    under `src/` that narrated the router, its slots and stages, the
+    templates, presenters and adapters, the `Scope`, the fall-through
+    agent, an intent's name, a phase, a step, a date or a commit was
+    rewritten as a present-tense reason or deleted (about 2,400 lines out,
+    1,900 in, over ~90 modules), each commit proved comment-only by
+    `~/association-research/stages/ast_equal.py` (the AST with docstrings
+    stripped) and every push by the feed against a fresh run. Moved here
+    rather than kept in the code: the 362 `versionadded` bodies that said
+    where a symbol lived before it was public (`git show abdc6cba` holds
+    them); the measurements the module docstrings carried of each family's
+    typing (`stages/span_family.py`, `window_family.py`, `cuts_family.py`,
+    `line_family.py`, `period_family.py`, `measure_family.py`,
+    `route_family.py` on the 2,710 readings), which keep their numbers
+    where they justify a design and lose their dates; the dated "Jeff's
+    finding" attributions in the web page. The public surface lost the
+    router's names in one breaking change (7.0.0: `--model`,
+    `DEFAULT_MODEL`, `Agent(model=)`, `ModelUnavailable`, the health
+    endpoint's `normalizer` key, the history file's `model:` line), and the
+    strings the source writes lost theirs in enumerated moves (the
+    subject's and the parser's decision reasons, 62 and 61 feed readings;
+    the bench-points refusal, 4 feed and 2 corpus answers; 33 reader
+    declines). AGENTS.md lost its dates and phases, keeping its "(history)"
+    pointers. What it found wrong rather than old: the answering loop's
+    docstring and AGENTS.md on `answered_by="refused"`, AGENTS.md's
+    "harnesses held at 0", a docstring naming a parse function that does
+    not exist, two comments naming helpers that do not exist, and the CLI
+    help naming a template.
+
 ## AGENTS.md's provenance, folded 2026-10-14
 
 Phase 5, step 7 (Jeff's call, 2026-10-14) compacted `AGENTS.md` to its rules: each rule a short
