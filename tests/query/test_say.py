@@ -1,7 +1,6 @@
 """The sayer takes a Result and nothing else (``compose.say``), and the game
-log's reader returns one (``compose.logs``): Phase 2's first slice. The
-sentences here are the retired template's, word for word - the sayer is
-held to them with no warehouse behind it."""
+log's reader returns one (``compose.logs``). Each sentence here is asserted
+word for word on a Result built by hand, with no warehouse behind it."""
 
 from __future__ import annotations
 
@@ -31,7 +30,7 @@ def _player_result(**changes: object) -> Result:
     return Result(**{**base.__dict__, **changes})
 
 
-def test_a_players_log_is_said_in_the_retired_templates_words() -> None:
+def test_a_players_log_is_said_with_its_cut_its_table_and_its_notes() -> None:
     """The heading names the cut ("last 2 of 7 games"), the table is aligned
     with the per-game row last, and each note follows in its one phrase."""
     said = as_said(say_player_log(_player_result()))
@@ -139,10 +138,10 @@ def test_a_teams_log_names_the_games_its_window_cut_from() -> None:
     assert as_said(say_team_log(three)).text.split("\n")[0] == "New York Knicks, first 3 of 82 games of the 2026 regular season (3-0):"
 
 
-def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:
-    """The three-row table under its heading, the pool and caveats glued in
-    the template's order (pool, floor, unseen, blank) while the notes are
-    recorded in the Result's (the template wrote its caveats first)."""
+def test_a_record_over_a_line_is_said_as_its_table_and_its_caveats() -> None:
+    """The three-row table under its heading, then the pool and the caveats
+    in one paragraph in the sayer's order (pool, floor, unseen, blank),
+    while the notes are recorded in the Result's order."""
     from association.query.result import Grouped
 
     result = Result(
@@ -186,7 +185,7 @@ def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:
     assert said.data["reached"] == {"games": 4, "wins": 3, "losses": 1, "avg_margin": 6.25} and said.data["notes"] == [lines[5]]
 
 
-def test_a_count_over_a_line_is_said_in_the_retired_templates_words() -> None:
+def test_a_named_players_count_over_a_line_says_his_careers_floor_first() -> None:
     """A named player's count: his career's floor said first, the count,
     then the leader's rebuilt games - every counted game rebuilt is said
     outright, not "2 of those 2"."""

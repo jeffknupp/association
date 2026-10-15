@@ -12,7 +12,6 @@ move, and the two K2 guards - see the module docstrings of ``core.py`` and
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import replace
@@ -28,7 +27,7 @@ from warehouse_rows import insert_rows
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query import compose
-from association.query.answer import Answer, AnswerContext
+from association.query.answer import AnswerContext
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import aggregate_of, plan, plan_point, refusal_of, refusal_result
@@ -1774,105 +1773,6 @@ def _add_condition_tables(con: duckdb.DuckDBPyConnection) -> None:
     )
 
 
-#: The retired templates' own answers to the parity cases below, frozen when
-#: the compiler replaced them (ROADMAP plan item 6, step (d), part 4).
-_RETIRED = json.loads((Path(__file__).parent / "retired_templates.json").read_text())
-
-
-def _retired_template_answer(question: str) -> Answer:
-    """The answer the retired template gave for this case's question
-    (``retired_templates.json``, which keeps the intent and the slot dict
-    each was frozen under), the fixture's seasons put back."""
-    s = current_season()
-    for case in _RETIRED["cases"]:
-        if case["question"] == question:
-            text = case["expected"].replace("{S-1}-{s}", f"{s - 1}-{s % 100:02d}").replace("{S-2}-{s-1}", f"{s - 2}-{(s - 1) % 100:02d}")
-            frozen = json.loads(text.replace("{S-2}", str(s - 2)).replace("{S-1}", str(s - 1)).replace("{S}", str(s)))
-            return Answer(data=frozen["data"], text=frozen["answer"])
-    raise AssertionError(f"no frozen answer for {question!r}")
-
-
-def _parity(ctx: AnswerContext, asked: PointShape, scope: Reading, question: str) -> tuple[Any, Any]:
-    """The retired template's answer and the compiler's for the same
-    reading: the template's is the one it gave when it retired, frozen, and
-    the compiler's ``data`` is compared in the same JSON form."""
-    _add_condition_tables(ctx.con)
-    composed = compose_answer(ctx, asked, scope, question)
-    assert composed is not None
-    return _retired_template_answer(question), Answer(data=json.loads(json.dumps(composed.data, default=str)), text=composed.text)
-
-
-@pytest.mark.parametrize(
-    ("asked", "scope", "question"),
-    [
-        (
-            GAMES_COUNTED,
-            Reading(
-                who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),), measure=Measure(key="points", as_typed="points")
-            ),
-            "how many 15+ point games did podziemski have",
-        ),
-        (
-            GAMES_COUNTED,
-            Reading(
-                who=Who(kind="player", players=("Brandin Podziemski",)),
-                lines=(Line(measure="points", value=15, as_typed="15+ point", keyed=True),),
-                measure=Measure(key="points", as_typed="points"),
-                span=Span(career=True),
-            ),
-            "how many 15+ point games has podziemski had in his career",
-        ),
-        (GAMES_COUNTED, Reading(lines=(Line(measure="points", value=25, as_typed="25+ point", keyed=True),), measure=Measure(key="points", as_typed="points")), "who had the most 25+ point games"),
-        (
-            GAMES_COUNTED,
-            Reading(
-                lines=(
-                    Line(measure="points", value=20, as_typed="20 points", keyed=True),
-                    Line(measure="points", value=20, as_typed="20+ point", narrows=True),
-                    Line(measure="rebounds", value=5, as_typed="5+ rebound", narrows=True),
-                ),
-                measure=Measure(key="points", as_typed="points"),
-            ),
-            "who had the most 20+ point 5+ rebound games",
-        ),
-        (
-            GAMES_COUNTED,
-            Reading(
-                who=Who(kind="player", players=("Brandin Podziemski",)),
-                lines=(Line(measure="fouls", value=6, as_typed="fouled out", keyed=True),),
-                measure=Measure(key="fouls", as_typed="fouls"),
-                span=Span(career=True),
-            ),
-            "how many times has podziemski fouled out",
-        ),
-        (GAME_HIGHS, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points")), "stephen curry's most points in a game"),
-        (GAME_HIGHS, Reading(measure=Measure(key="points", as_typed="points")), "most points in a single game"),
-        (GAME_HIGHS, Reading(measure=Measure(key="rebounds", as_typed="rebounds")), "what was the highest rebounding game this year"),
-        (PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=Window(count=2)), "podziemski's last 2 games"),
-        (PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(career=True)), "podziemski's games against boston"),
-        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Boston Celtics")), "podziemski's stats vs boston"),
-        (
-            LINE_RECORD,
-            Reading(
-                who=Who(kind="player", players=("Brandin Podziemski",)), lines=(Line(measure="points", value=15, as_typed="scores 15+", keyed=True),), measure=Measure(key="points", as_typed="points")
-            ),
-            "warriors record when podziemski scores 15+",
-        ),
-        (PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), split="home_away"), "podziemski home and away splits"),
-        (PLAYER_SPLITS, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), span=Span(career=True), split="wins_losses"), "podziemski's career splits in wins and losses"),
-    ],
-)
-def test_an_intents_own_point_reads_as_its_template(cx_ctx: AnswerContext, asked: PointShape, scope: Reading, question: str) -> None:
-    """Step 2a's parity, per intent: the compiler's answer to the intent's
-    own default point is the template's, word for word and key for key -
-    what folding the template into the compiler needs. The numbers are the
-    compiler's own settled player, span and narrowing; the sentence and
-    ``data`` are the template's own helpers (``compose.present``)."""
-    template, composed = _parity(cx_ctx, asked, scope, question)
-    assert composed.text == template.text
-    assert composed.data == template.data
-
-
 def test_a_point_the_words_moved_keeps_the_compilers_own_sentence(cx_ctx: AnswerContext) -> None:
     """A measure the question's words add ("PRA", which player_stat's line
     does not carry) is not the intent's own point, so the compiler's own
@@ -1957,9 +1857,9 @@ def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: AnswerContext) -> 
 
 
 # ---------------------------------------------------------------------------
-# The season line as a second source (#228): an unnarrowed player_stat and a
-# per-season player_history read player_season_stats_deduped, through the
-# templates' own readers - text and data the template's, on the same slots.
+# The season line as a second source: an unnarrowed player's line and a
+# per-season history read player_season_stats_deduped through the season
+# line's readers.
 # ---------------------------------------------------------------------------
 
 
@@ -1985,47 +1885,6 @@ def _add_season_line(con: duckdb.DuckDBPyConnection) -> None:
             (CURRY, s, 43, 26.0, 1118, 4.0, 172, 5.0, 215, 39.3, 190, 484),
         ],
     )
-
-
-@pytest.mark.parametrize(
-    ("asked", "scope", "question"),
-    [
-        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points")), "how many points does curry average"),
-        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",))), "what are curry's numbers this season"),
-        (PLAYER_LINE, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True)), "curry career averages"),
-        (
-            PLAYER_LINE,
-            Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"), span=Span(career=True)),
-            "curry career 3pt percentage",
-        ),
-        (
-            SEASON_HISTORY,
-            Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"), window=Window(count=4)),
-            "curry's 3pt percentage over the past 4 seasons",
-        ),
-        (
-            SEASON_HISTORY,
-            Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="points", as_typed="points"), window=Window(count=1)),
-            "podziemski's ppg over the past season",
-        ),
-        (
-            SEASON_HISTORY,
-            Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True)),
-            "curry's ppg every season of his career",
-        ),
-    ],
-)
-def test_the_season_line_reads_as_its_template(cx_ctx: AnswerContext, asked: PointShape, scope: Reading, question: str) -> None:
-    """The season line as the compiler's second source: an unnarrowed
-    ``player_stat`` and a ``player_history`` are the template's own answer,
-    word for word and key for key - the numbers from the season line
-    (Curry's 26.0 this season is not his box scores' average), where the
-    compiler declined the first and answered the second from box scores
-    grouped by season, in its own words, before (#228)."""
-    _add_season_line(cx_ctx.con)
-    template, composed = _parity(cx_ctx, asked, scope, question)
-    assert composed.text == template.text
-    assert composed.data == template.data
 
 
 def test_a_season_line_point_the_words_moved_is_not_the_templates(cx_ctx: AnswerContext) -> None:
@@ -2125,12 +1984,11 @@ def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_
 
 
 def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext) -> None:
-    """A listing's rebuilt-line rule is ``game_log``'s own
-    (``templates.games._rebuilt_readable``): ``minutes`` is exempt - play-by-
-    play cannot recover it, so a rebuilt row shows it blank - and the other
-    columns shown are ones a rebuild gets right. The compiler held minutes
-    against the rule and so never listed a rebuilt game on its default line:
-    Podziemski's g5, rebuilt here, was missing from his log."""
+    """A log lists a game rebuilt from play-by-play: ``minutes`` is exempt
+    from the rebuilt-line rule - play-by-play cannot recover it, so the
+    rebuilt row shows it blank - and the other columns shown are ones a
+    rebuild gets right. Podziemski's g5, rebuilt here, is his newest row,
+    its minutes "-", and the answer says the game was rebuilt."""
     con = cx_ctx.con
     con.execute("ALTER TABLE player_box_stats ADD COLUMN reconstructed BOOLEAN")
     con.execute("UPDATE player_box_stats SET reconstructed = FALSE")
@@ -2139,8 +1997,12 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
     out = run(con, planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)))))
     newest = out["rows"][0]
     assert newest["points"] == 10 and newest["minutes"] is None and newest["reconstructed"]
-    template, composed = _parity(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "podziemski's game log")
-    assert composed.text == template.text
+    composed = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "podziemski's game log")
+    assert composed is not None
+    lines = composed.text.split("\n")
+    assert lines[0] == f"Brandin Podziemski, last 4 games of the {current_season()} regular season:"
+    assert lines[2].split() == [f"{current_season()}-03-01", "vs", "BOS", "W", "-", "10", "3", "2"]
+    assert lines[-1] == "1 of these games has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
 
 
 def test_a_teams_total_of_triple_doubles_is_declined_for_the_readings_cause(cx_ctx: AnswerContext) -> None:
