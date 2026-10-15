@@ -3824,8 +3824,9 @@ those were found.
 ### Six comments cite AGENTS.md by a heading it no longer has
 - **Found:** 2026-10-14, Phase 5, step 7 (the AGENTS.md compaction), checking every quoted `AGENTS.md, "..."` citation in `src`, `tests`, `scripts` and `docs` against the compacted file. The compaction kept every heading a citation named (it restored three it had reworded: "The same bug has a mirror image", "Why "embiid" specifically", "Any edit to the model's prompt"); these six were already stale against the file as it stood at `3dc37821`.
 - **Evidence:** "the router invents names" - `query/player_relation.py:1712`, `query/subject.py:8` and `:2516`, `tests/query/test_subject.py:147`, `tests/query/test_entities.py:1235` (the heading is "A model invents names, and an invented name resolves"); "Refuse by name" - `query/reading.py:2373` (now "When it cannot be repaired, say so by name"); "a season range" - `query/span.py:251` (no such heading); "a warehouse built before ..." - `query/compose/core.py:291` (no such heading).
+Of the same class, a test's message: `tests/query/test_frozen_shapes.py` fails with "ROADMAP.md decision D4 freezes new shapes until the pipeline is rebuilt", where D11 (2026-10-14) replaced D4 with "what a new shape brings" (the Phase 5 review).
 - **User sees:** nothing; a reader following the pointer finds no section.
-- **Next step:** point each comment at the heading that holds its rule ("A model invents names", "say so by name"; for `span.py` and `compose/core.py`, find what the comment meant - the span's both-season-type rule and the empty box scores' count are the likely ones), in one comment-only commit with its `CHANGES.md` line.
+- **Next step:** point each comment at the heading that holds its rule, and reword the freeze test's message to D11, ("A model invents names", "say so by name"; for `span.py` and `compose/core.py`, find what the comment meant - the span's both-season-type rule and the empty box scores' count are the likely ones), in one comment-only commit with its `CHANGES.md` line.
 - **Source:** ours.
 - **Priority:** P4 - comments.
 - **GitHub:** #444

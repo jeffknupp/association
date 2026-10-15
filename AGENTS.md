@@ -59,9 +59,11 @@ instruction, 2026-10-04, to every agent and subagent):
 
 The rules:
 
-- **No new shape but by Jeff's lifting of D4, and a lifted shape brings
-  what D11 lists** ("what a new shape brings", `ROADMAP.md` under "D4
-  lifted for the season ranking's shapes"). `tests/query/test_frozen_shapes.py`
+- **New shapes are frozen: a new shape comes only by Jeff's lifting, and
+  brings what decision D11 lists.** D11 (2026-10-14) replaced D4's plain
+  freeze with "what a new shape brings" (`ROADMAP.md`, under "D4 lifted
+  for the season ranking's shapes"); the freeze test's failure message
+  still names D4. `tests/query/test_frozen_shapes.py`
   holds the 28 keys the grammar can name (`reading.PointShape`: relation,
   shape, `by`; the 26th to 28th by Jeff's liftings of 2026-10-13 and -14:
   `reading.PLAYERS_COUNTED`, a team's best single game
@@ -94,7 +96,11 @@ The rules:
     a function, is a door, counted at its callers, not itself (decision
     D6); and every `core.rows_of`/`core.values_of` call over a statement
     the compiler did not build, in the module making the call. The
-    argument's tracing is `_origin`'s docstring in the script.
+    argument's tracing is `_origin`'s docstring in the script. Three
+    counts were raised by hand during the P1 sweep, each with Jeff's
+    say-so recorded in `ROADMAP.md`'s Phase 5 step 0 row: `season_line`
+    12 -> 13 (`6634777`), `team_relation` 5 -> 6 (`eef7625`),
+    `team_seasons` 7 -> 8 (`5339bdf`).
   - `regex_outside_the_lexicon` - a module but the lexicon that calls `re`
     or imports it at run time (an import under `TYPE_CHECKING` is none),
     or a module outside the reader that takes a reader's private pattern:
@@ -125,9 +131,10 @@ The rules:
   lead's, at the merge, per batch of pushes; the unit-test calls only
   where a stage boundary moves; the readings at the agent's option for a
   reader-only change. At every commit: the claims ledger's `report`, the
-  ratchets, the three Phase 5 harnesses at 0
+  ratchets, the grammar-drops test, the three Phase 5 harnesses
   (`~/association-research/stages/unread_meaning.py`,
-  `grammar_rows_dropped.py`, `worded_declines.py`) and the gate chain.
+  `grammar_rows_dropped.py`, `worded_declines.py`; D12 holds them at 0)
+  and the gate chain.
   Non-negotiable: one broad measurement of what a user sees per push with
   every move named, and no refusal becoming a fluent wrong answer - and
   "fluent to refusal" is the allowed direction only where the fluent
@@ -188,7 +195,8 @@ The rules:
   from outside the reader, so the count means the same across a rewrite
   of it. Both populations are HELD in `scripts/ledger_held.json`, as the
   ratchets are; today the corpus holds 681 unread words and 5 questions
-  with an unread number, the feed 2,702 words, 24 numbers and 67
+  with an unread number (the five "100"s of "per 100 possessions", which
+  the rate reads without the number), the feed 2,702 words, 24 numbers and 67
   disagreements, and neither any joined claim. `report` exits 1 on a
   grown count or a question new to a list, and - on a run of the whole
   population - on one that fell or left it, until `report --shrink`
@@ -216,6 +224,18 @@ The rules:
   tagger read is a bug. The ledger is blind to a word only the model could
   have dropped, and a word a rule matched and did not need ("games" in
   "last 10 games") is unread in both measures.
+- **A typed value the grammar's text held is not dropped silently.** A
+  line, an opponent, a companion, a window or a date a tagger typed into
+  the grammar's text (`lexicon.GrammarText`) that leaves no trace on the
+  Reading was dropped by the key's reading (`point.*_under`) before the
+  planner could see it - the silent half of a fluent narrower answer.
+  `tests/grammar_drops.py` holds the rule and the held list, and
+  `tests/query/test_grammar_drops.py` checks every reader case against
+  them: a drop is held by rule (`held_by_rule`: a companion who is the
+  subject himself) or by question with its reason (`HELD`), and fails
+  otherwise; a held question that no longer drops leaves the list with
+  the change that cleared it. `~/association-research/stages/grammar_rows_dropped.py`
+  measures the same over the 2,710 readings.
 - **A caveat, a stated default or a definition is written through
   `query/notes.py`.** `note(kind, text, **facts)` for something about the
   data or a term the answer uses; `decided(kind, text, field=, chose=,
@@ -695,13 +715,14 @@ the prominence tiebreak above `PLAYER_NICKNAMES` was measured and rejected.
 The pipeline is parser -> planner -> a reader over a relation -> the sayer
 -> a deterministic answer, and a refusal naming why where nothing has a
 reading of the question. There are no templates and no fall-through agent
-(measured and retired at 5.0.0; history). `Agent.ask` (`agent.py`) answers
-`answered_by="refused"` with the reason the parser or the planner gave the
-question up with (`agent.refusal_text`; words that ask for no shape: "what
-its words ask has no reader"); a reader's own refusal (a clarification, a
-"no match", a cause) is `"fast"`, since looking at the question and having
-something to say is an answer. A question the yardstick grades as "fell
-through" is one of these refusals.
+(measured and retired at 5.0.0; history). Since Phase 5, step 5
+(`6a85bc5`) every refusal and decline is a cause the planner says, answered
+`answered_by="fast"` - since looking at the question and having something
+to say is an answer - including words that ask for no shape (`no_shape`,
+"what its words ask has no reader"). Only a question too short to be one
+is answered `"refused"` (`too_short`; 2 of the 628, 0 of the 2,082). A
+question the yardstick grades as "fell through" is one of these
+refusals.
 
 ### The reader
 
@@ -1033,16 +1054,19 @@ ollama, and it narrows a relation only through the shared steps.
   point reader refuses (a ranking by a stat nothing ranks, a shape over a
   line missing its stat, its number or its subject, a matchup without two
   players, ...), the Reading carries a `reading.Cause` - a kind from the
-  closed `CAUSES` and plain facts - and the planner says it
+  closed `CAUSES` (63 kinds) and plain facts - and the planner says it
   (`compose.plan.refusal_result`): the reader builds no sentence, and a new
   cause is an entry in `CAUSES` and a phrase in the sayer. It is raised as
   `reading.PointRefused`, a kind of `Unsupported`, so a shared helper the
   answer side also calls (`lines.measure_filters`,
-  `measures.streak_column`) stays a decline there. A plain `Unsupported`
-  out of the point reader is kept only where the reading hands the question
-  on or `read_point`'s order makes it unreachable; one the user would see as
-  "Nothing here answers this question" becomes a Cause (one enumerated
-  commit).
+  `measures.streak_column`) stays a decline there. Where the point reader
+  hands the question on (another relation's question, a team-only shape, no
+  reading of the subject) it is a cause too, said at a decline's place
+  rather than the point's (`compose.say.POINT_DECLINES`, read by the
+  planner: `period_relations_question`, `team_relations_question`,
+  `team_only_question`, `no_subject_reading`; Phase 5, step 5, `7ee992b`).
+  A decline the user would see as "Nothing here answers this question"
+  becomes a Cause in one enumerated commit.
 - **A shape's own decline is a cause too** (`reading.ShapeDeclined`, raised
   by `compose.plan.cells_declined` and `compose._read`; `cannot_honor`,
   `no_reading_of_point`), said by the planner word for word at the
@@ -1062,11 +1086,18 @@ ollama, and it narrows a relation only through the shared steps.
   the lexicon's `MEANING_*` classes, read in the parser's last step
   (`parse._reading_from_route_defaulted`), claiming its words - only where
   the planning produced a query, so a question that would be answered
-  fluently past the word is refused by name. A word that restates the shape
-  ("record", "stats", "most") is in no class. Its harness is
-  `~/association-research/stages/unread_meaning.py`, held at 0 (the done
-  table's coverage row). Nothing after the parser re-reads the question
-  for any of the three. (history)
+  fluently past the word is refused by name. The classes are the taggers'
+  own words, under guards the harness shares: a word that restates the
+  shape ("record", "stats") is in no class, a leftover of the read
+  measure's own words names no other stat (by stem since step 7: the
+  "point" of "three points made", `parse._leftover` over
+  `lexicon.letter_words`), and a slashed figure is no day. The window and
+  date classes still refuse some correct answers ("top scorers", "who may
+  lead"); the lead's narrowing of them is in flight. Its harness is
+  `~/association-research/stages/unread_meaning.py` (the done table's
+  coverage row; it read 2 on the corpus at `3dc37821`, lacking the stem
+  guard). Nothing after the parser re-reads the question for any of the
+  three. (history)
 - **An answer is `Answer`, stamped by the loop.** `answer.Answer` (the
   text, the data, the files), returned by the sayer and the compiler's own
   sentence, is stamped by the answering loop with the question, the path,
