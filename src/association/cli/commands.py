@@ -78,20 +78,21 @@ Setup for query (one-time):
 
 Pulling any other model: `ollama pull <name>:<tag>` (browse at https://ollama.com/library).
 
-A question the parser can read is answered by a deterministic SQL template or the
-compiler - one model call, which only copies the names out of the question and
-picks a stat, ~1s warm on an 8-core CPU box. A question nothing here reads is
-refused in the same second, and the refusal names why: nothing writes SQL from a
-question any more (a tool-calling agent used to, answering 1 question in 23 over
-minutes).
+A question is read by the parser into a typed reading of its own words. One
+model call, the normalizer, copies the names out of the question and picks a
+stat key - ~1s warm on an 8-core CPU box; everything else is read from the
+words in code. The planner turns the reading into a query on the warehouse, or
+into a refusal naming what is missing; a reader runs the compiled statement and
+the sayer words the result. A question nothing here reads is refused in the same
+second, and the refusal names why: no model writes SQL.
 
 One small model by design: the normalizer copies names and picks one stat key under
 a JSON schema, and measured over 277 real questions the 3B copies 299 of 302 names
 verbatim at 0.8s a question while a 7B adds nothing on names at 1.8s.
 
-Do NOT point --model at a thinking model: on the router's classification the
-normalizer replaced, qwen3:4b took ~20s per question against qwen2.5:3b's 1.1s,
-reasoning at length before emitting the same tiny JSON.
+Do NOT point --model at a thinking model: it reasons at length before emitting
+the same tiny JSON - measured on a structured call of the same size, qwen3:4b
+took ~20s per question against qwen2.5:3b's 1.1s.
 
 Shell completion (one-time):
 
@@ -127,11 +128,11 @@ def _query_engine_options[F: Callable[..., Any]](f: F) -> F:
         "--model",
         default=DEFAULT_MODEL,
         show_default=True,
-        help="Ollama model for the normalizer, which copies the names out of the question and picks a stat. Smaller on purpose - see the setup notes below.",
+        help="Ollama model for the normalizer, which copies the names out of the question and picks a stat. Smaller on purpose - see the setup notes in `association --help`.",
     )(f)
     f = click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")(f)
     f = click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered shot charts.")(f)
-    return click.option("--verbose", is_flag=True, help="Print the trace - the normalizer's reply, the parser's reading, the template or compiled point - as it happens.")(f)
+    return click.option("--verbose", is_flag=True, help="Print the trace - the normalizer's reply, the parser's reading, the planned query - as it happens.")(f)
 
 
 @click.group(epilog=CLI_EPILOG, context_settings={"help_option_names": ["-h", "--help"]})
