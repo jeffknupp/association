@@ -2026,7 +2026,7 @@ PERIOD_CONDITION = re.compile(
     re.IGNORECASE,
 )
 """A line on a stat in one quarter or half, conditioning which games count
-(``parse.read_period_condition``, the line slice's reader).
+(:func:`~association.query.line.read_period_line`, the line family's reader).
 
 .. versionadded:: 6.0.0
 """

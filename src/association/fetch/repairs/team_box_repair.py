@@ -79,7 +79,7 @@ project keeps producing, and "we do not know" is the honest column content.
 Measured, this costs no answer - nothing in ``src`` reads any of them off
 ``team_box_stats`` (:mod:`association.query.team_metrics` reads the
 same-named columns on ``team_season_stats``, a different table with its own
-history) - but the SQL agent can reach them through ``run_sql``, which is
+history) - but ad hoc SQL over the warehouse can reach them, which is
 precisely why a NULL is worth more there than 7.7 "flagrant fouls" a game.
 
 ``teamTurnovers`` is the one column in 2018's shifted block that nothing

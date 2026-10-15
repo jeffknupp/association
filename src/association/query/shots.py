@@ -119,7 +119,7 @@ def _chart_statement(athlete_id: str, season: int | None, season_type: int | Non
         params.append(season_type)
     # The games pinned, as an IN list even for one: these ids came FROM the
     # relation, and a bare equality on the game is the shape the readers'
-    # source check (tests/query/test_templates.py) forbids a reader to write.
+    # source check (tests/query/test_readers.py) forbids a reader to write.
     if pinned is not None:
         where.append(f"event_id IN ({', '.join('?' for _ in pinned)})")
         params.extend(pinned)

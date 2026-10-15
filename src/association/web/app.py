@@ -2,11 +2,8 @@
 
 Two endpoints do the work. ``POST /api/ask`` answers a question and returns the
 whole :class:`association.query.answer.Answer`; ``GET /api/ask/stream`` answers
-the same question and reports progress as it goes. The stream was built when
-the two query paths differed by two orders of magnitude - a template answered
-in 1-2 seconds, while a fall-through to the tool-calling agent was measured at
-113 seconds for its first inference alone; the agent is gone (5.0.0), and the
-stream stays because the trace it carries is how the page says what it read.
+the same question and reports progress as it goes: the trace it carries is
+how the page says what it read.
 
 .. versionadded:: 2.0.0
 """

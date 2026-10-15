@@ -476,7 +476,7 @@ def _shot_chart_drawn(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
         return Chart(kind="shot_chart", title=player.name), [], None, refused
     # The games pinned, as an IN list even for one: these ids came FROM the
     # relation, and a bare equality on the game is the shape the readers'
-    # source check (tests/query/test_templates.py) forbids a reader to write.
+    # source check (tests/query/test_readers.py) forbids a reader to write.
     pinned = (games.event_id,) if games.event_id is not None else games.event_ids
     rows = chart_shots(con, player.id, season, season_type, pinned, shot_value)
     kept = [r for r in rows if shot_value is None or r[8] == shot_value]

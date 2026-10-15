@@ -148,7 +148,7 @@ class BoxSource:
 #: Blanked on a rebuilt row rather than read, so an average is taken over the
 #: games that carry the figure and a wholly rebuilt season prints nothing
 #: instead of a wrong number. Kept in step with the two lists it derives from
-#: by test_the_ungated_rebuild_columns_are_the_ones_no_template_may_read.
+#: by test_the_ungated_rebuild_columns_are_the_ones_no_reader_may_read.
 #:
 #: .. versionadded:: 2.2.0
 UNGATED_ON_REBUILD: tuple[str, ...] = (

@@ -24,8 +24,8 @@ The compiler never narrows the relation by hand - every clause on
 lives in :func:`~association.query.player_relation.scoped_games` or
 :func:`~association.query.player_relation.league_games`, so a narrowing that
 reaches the relation reaches this compiler too, without being taught to it
-separately - see ``test_templates_on_the_relation_do_not_narrow_it_themselves``
-in ``tests/query/test_templates.py``, which walks this module's source for
+separately - see ``test_readers_on_the_relation_do_not_narrow_it_themselves``
+in ``tests/query/test_readers.py``, which walks this module's source for
 exactly those tokens.
 
 .. versionadded:: 4.4.0

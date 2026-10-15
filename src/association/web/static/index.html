@@ -184,8 +184,8 @@
     overflow-y: auto;
   }
   /* The answer's own sentence, first and at reading size: it IS the answer,
-     the table under it is the evidence. It used to be the muted 12.5px
-     caption, smaller than the table it headed (Jeff's note, 2026-09-24). */
+     the table under it is the evidence - never a muted caption smaller than
+     the table it heads. */
   .headline {
     font-size: 15px;
     line-height: 1.5;
@@ -205,7 +205,7 @@
   /* Typeset, not terminal: the page's own proportional font rather than
      monospace, with tabular-nums so digits still line up in a numeric column
      without the wide fixed-pitch letterforms a name or opponent column never
-     needed (Jeff's note, 2026-09-24). The CLI's own monospace text is still
+     needed. The CLI's own monospace text is still
      one click away, under the "text" disclosure. */
   table.answer {
     border-collapse: collapse;
@@ -707,7 +707,7 @@
   // no schema - so an answer that is a list or a set of side-by-side numbers
   // can be a real table instead of fixed-width text. Which one is chosen by
   // the planned point's shape (Answer.shape: the relation, the shape and what
-  // it is by), never by the retired label. Everything else falls back to the
+  // it is by). Everything else falls back to the
   // text, which is always in the payload and is what the CLI prints. That
   // fallback is the normal case, not a failure: a body no renderer draws
   // still answers correctly.
@@ -753,12 +753,12 @@
   }
 
   // A rate stored as a fraction (true shooting 0.724) prints as a percent -
-  // "0.724, 0.703, 0.687" rendered as "0.7, 0.7, 0.7", every row the same
-  // (2026-09-24). Decided by the column's label, never by the value: a
+  // never "0.724, 0.703, 0.687" rendered as "0.7, 0.7, 0.7", every row the
+  // same. Decided by the column's label, never by the value: a
   // margin of +0.4 is not 40%. "percentage"/"pct" catch a column whose label
   // spells the word out rather than abbreviating to "%" ("3-point
   // percentage", a leaderboard's own question_shape text) - without them,
-  // "47.8%" printed as "0.5" (Jeff's finding, 2026-09-24).
+  // "47.8%" printed as "0.5".
   function rateOrNum(v, label) {
     if (typeof v === "number" && /%|percentage|\bpct\b/i.test(label || "") && Math.abs(v) <= 1) return (v * 100).toFixed(1) + "%";
     return num(v);
@@ -767,15 +767,14 @@
   // conditions._PLAYER_LINE / _TEAM_LINE / _matchup_line compute `fg_pct` as
   // 100 * makes / attempts - already in 0-100 form, never the ≤1 fraction
   // `rateOrNum` scales, so it gets its own formatter rather than plain
-  // `num()`, which printed "47.8" with no percent sign (Jeff's finding,
-  // 2026-09-24). Read by player_splits, with_without and player_matchup.
+  // `num()`, which prints "47.8" with no percent sign. Read by the splits,
+  // the with/without split and the matchup.
   function pct100(v) {
     return v === null || v === undefined ? "" : Number(v).toFixed(1) + "%";
   }
 
   // A per-game average always keeps one decimal, even where it lands on a
-  // whole number ("4.0" turnovers beside "2.2", not "4" - Jeff's finding,
-  // 2026-09-24). Used where the KEY itself says "this is an average" -
+  // whole number ("4.0" turnovers beside "2.2", not "4"). Used where the KEY itself says "this is an average" -
   // PLAYER_STAT_COLUMNS' "avg"-prefixed columns, read by player_stat and
   // player_compare - rather than table()'s column-wide pass, which cannot
   // tell an average column from a count column on a transposed table (see
@@ -813,7 +812,7 @@
     // "20" beside "15.1" reads as a different precision, not a whole number,
     // and it was: `num()`'s integer/float split is per-cell, so a player
     // whose average landed on an exact whole number printed without the
-    // decimal his neighbors had (Jeff's finding, 2026-09-24). A column where
+    // decimal his neighbors had. A column where
     // nothing has a decimal (a games count, a rank) is untouched.
     //
     // `skipPaddingRows` (from the end) keeps a synthesized summary row - a
@@ -827,8 +826,7 @@
     // that is not true: player_compare's table is transposed (a ROW is one
     // stat, a COLUMN is one player), so a player's column mixes games played
     // with points per game and everything between - "64" games would gain a
-    // false ".0" from sharing a column with "33.5" points (Jeff's finding,
-    // 2026-09-24). That renderer forces its own per-row decimal instead
+    // false ".0" from sharing a column with "33.5" points. That renderer forces its own per-row decimal instead
     // (`avgFixed`), which is the one place `label()` already tells "a
     // per-game figure" apart from "a count" without guessing from the value.
     const skip = (opts && opts.skipPaddingRows) || 0;
@@ -888,16 +886,15 @@
     // default. `leaderboard` is the one exception (`allowSingle`): a
     // question that asks for exactly one leader ("who leads the league in
     // total netpoints", limit 1) still gets a "#1" table rather than losing
-    // its structure to the CLI text's monospace fallback (Jeff's finding,
-    // 2026-09-24).
+    // its structure to the CLI text's monospace fallback.
     const allowSingle = opts && opts.allowSingle;
     if (rows.length < 1 || (rows.length < 2 && !allowSingle)) return null;
     const headers = ["#", label(nameKey), valueLabel].concat((extras || []).map(label));
     const body = (slice, offset) => slice.map((r, i) => [offset + i + 1, r[nameKey], rateOrNum(r[valueKey], valueLabel)].concat((extras || []).map(k => num(r[k]))));
     // A ranking of 50 shows the top RANKING_SHOWN and folds the rest under
-    // their own count - a top-50 netpoints leaderboard used to list all 50
-    // rows whether the question asked "top 5" or "top 50" (Jeff's finding,
-    // 2026-09-24). The shown rows are never hidden; only the tail folds.
+    // their own count, so a top-50 netpoints ranking does not list all 50
+    // rows whether the question asked "top 5" or "top 50". The shown rows
+    // are never hidden; only the tail folds.
     if (rows.length <= RANKING_SHOWN) return table(headers, body(rows, 0));
     const wrap = el("div");
     wrap.appendChild(table(headers, body(rows.slice(0, RANKING_SHOWN), 0)));
@@ -905,17 +902,16 @@
     return wrap;
   }
 
-  // A player's game log: home or away as the sentence says it ("@ BOS" -
-  // every row used to read "vs"), the result, the columns the reader chose
+  // A player's game log: home or away as the sentence says it ("@ BOS",
+  // never "vs" on every row), the result, the columns the reader chose
   // (`columns`, when it names extra ones such as FGM/FGA), and the per-game
   // line beneath when the reader averaged the games.
   // Mirrors compose.logs.LOG_COLUMNS / LOG_PERCENTAGES (query/compose/logs.py):
   // a log header -> the key the game/averages dict stores it under. Player
   // logs always carry MIN/PTS/REB/AST (_LOG_BASE) and may name extra columns
   // in `d.columns` when the question asked for one (FGM/FGA, 3P%, +/-, ...) -
-  // read here rather than the fixed four this used to hard-code, which drew
-  // an FGM/FGA-less table for a question specifically about field-goal
-  // attempts (Jeff's finding, 2026-09-24).
+  // read here rather than a fixed four, which would draw an FGM/FGA-less
+  // table for a question specifically about field-goal attempts.
   const GAME_LOG_COLUMNS = {
     MIN: "minutes", PTS: "points", REB: "rebounds", AST: "assists", STL: "steals", BLK: "blocks", TO: "turnovers", PF: "fouls",
     "+/-": "plusMinus", OREB: "offensiveRebounds", DREB: "defensiveRebounds", FGM: "fieldGoalsMade", FGA: "fieldGoalsAttempted",
@@ -948,7 +944,7 @@
     if (hasAverages) rows.push(["per game", "", ""].concat(headers.map((h, i) => (d.averages[cols[i]] === undefined ? "" : gameLogCell(h, d.averages[cols[i]], true)))));
     // The "per game" row is its own kind of number - see table()'s own
     // comment - so it neither pads nor gets padded by the literal per-game
-    // rows above it (Jeff's finding, 2026-09-24: a whole-number "per game"
+    // rows above it (a whole-number "per game"
     // average turned every real game's own point total into "13.0").
     return table(tableHeaders, rows, { skipPaddingRows: hasAverages ? 1 : 0 });
   }
@@ -1070,7 +1066,7 @@
     // Unlike a ranking in general, a single-leader question ("who leads the
     // league in assists?", limit 1) still asks for a ranking - it is just a
     // ranking of one - so it keeps its "#1" table instead of falling to the
-    // CLI text's monospace block (Jeff's finding, 2026-09-24).
+    // CLI text's monospace block.
     const body = ranked(d.leaders, "display_name", "value", firstValueLabel(d, text), d.fields || [], { allowSingle: true });
     return body && { caption: d.question_shape, body };
   }
@@ -1118,7 +1114,7 @@
   // One figure per game - a player's quarter or half game by game, a team's
   // - with the trend drawn above and the games folded beneath: a season's 82
   // rows are not the answer to "1st quarter scoring this season", the total
-  // and the trend are (Jeff's finding, 2026-09-24: a 76-row table shown in
+  // and the trend are (a 76-row table shown in
   // full). A game whose side of the floor is on record says it.
   function figureGamesBody(d, text) {
     if (!d.games.length) return null;
@@ -1155,7 +1151,7 @@
     // Every stat here but `gamesPlayed` is a per-game average
     // (PLAYER_STAT_COLUMNS' "avg" columns) - `avgFixed` rather than
     // `num()` keeps a whole-number average ("4.0" turnovers) from losing
-    // its decimal beside a neighbor's "2.2" (Jeff's finding, 2026-09-24).
+    // its decimal beside a neighbor's "2.2".
     const rows = stats.map(s => [label(s)].concat(names.map(n => (s.startsWith("avg") ? avgFixed(d.players[n][s]) : num(d.players[n][s])))));
     // The NetPoints summary, per 100 possessions, under the box-score line.
     // Read off `netpoints` but NOT listed in `needs`: NetPoints starts in
@@ -1300,7 +1296,7 @@
     // PLAYER_STAT_COLUMNS (query/season_line.py) reports a per-game
     // average and its season total side by side under the SAME label
     // ("PTS" for both avgPoints and points) - shown plain that read as
-    // two tiles both saying "PTS" (Jeff's finding, 2026-09-24: "26.9 PTS"
+    // two tiles both saying "PTS" ("26.9 PTS"
     // beside "1,021 PTS"). Grouped per-game first (the more commonly
     // asked-for figure, and what a reader sees first), and a total whose
     // label collides with one already shown is marked so, from the keys
@@ -1338,7 +1334,7 @@
   function recordBody(d) {
     // Two forms: one record (wins/losses/win_pct), or a month-by-month
     // split (`months`, one row per month - per season when a range was
-    // asked for), which used to fall back to the terminal table.
+    // asked for), rather than the terminal table.
     if (Array.isArray(d.months)) {
       if (!d.months.length) return null;
       const bySeason = "season" in d.months[0];
@@ -1354,9 +1350,9 @@
     box.appendChild(card);
     // The seed/streak (already folded into `headline` when either is worth
     // naming - compose/standings.py) plus the home/road split, last ten and
-    // games back sat only in the sentence: the card used to hold the whole
-    // thing as its `caption`, which printed the SAME "50-32 (.610)" a second
-    // time under the headline. These keys exist only on a season's own
+    // games back sit only in the sentence: holding the whole thing as the
+    // card's `caption` would print the SAME "50-32 (.610)" a second time
+    // under the headline. These keys exist only on a season's own
     // standings row; a venue, career or opponent/postseason record carries
     // none of them, so the block is skipped rather than drawn empty.
     const lines = [];
@@ -1444,8 +1440,7 @@
 
   // shape -> {bodies, of}: the page's renderers, one per shape a planned
   // point is read and said as (`Answer.shape`, the `reading.PointShape` the
-  // answer side chose its reader by - Phase 4, step 1, where 22 renderers
-  // were keyed by the retired label). `of(d, shape)` names the body the
+  // answer side chose its reader by). `of(d, shape)` names the body the
   // answer's data carries, by what one row is (`shape.by`), the relation
   // where two readers of one `by` say different bodies, and the compiler's
   // own body (`skeleton`) where no reader took the point; `bodies` names
@@ -1605,8 +1600,7 @@
   // A caption that only restates the headline (leaderboard's `question_shape`
   // is sometimes a strict PREFIX of the sentence it captions, e.g. "Record,
   // seasons 2011-2019" under "Record, seasons 2011-2019 - best record first,
-  // of 30 teams") says nothing new underneath it (Jeff's finding,
-  // 2026-09-24).
+  // of 30 teams") says nothing new underneath it.
   function isRedundantCaption(caption, headline) {
     return !caption || !headline || caption === headline || headline.startsWith(caption);
   }
@@ -1619,11 +1613,10 @@
     if (!out) return null;
     const box = el("div");
     // The sentence first, at reading size, whether or not anything else
-    // rendered: a chart-only answer (fingerprint, shot_chart) used to show
-    // NO headline at all here - just the iframe, with which players and which
-    // season left in the collapsed text toggle (Jeff's finding, 2026-09-24:
-    // "generate fingerprints for embiid vs jolic" rendered what looked like a
-    // blank card, the substitution note nowhere on screen). `data.message` is
+    // rendered: a chart-only answer (fingerprint, shot_chart) with no
+    // headline is just the iframe, with which players and which season left
+    // in the collapsed text toggle and a substitution note nowhere on
+    // screen ("generate fingerprints for embiid vs jolic"). `data.message` is
     // the same sentence a table-shaped answer's `text` is, minus a "Next:
     // ..." tail; either way the artifact path in it is not a fact.
     const source = (a.data && typeof a.data.message === "string") ? a.data.message : a.text;
@@ -1634,11 +1627,11 @@
     if (out.body) box.appendChild(out.body);
     // Notes fall back to parsing the sentence's own lines only when nothing
     // rendered a structured body from `data` - a body built from `data` and a
-    // note re-derived from the SAME sentence say the same thing twice
-    // (Jeff's finding, 2026-09-24: team_outlook's stat card, with every line
-    // under it repeated below as a "note"). See ISSUES.md - "Template data
-    // the page cannot render from" - for the readers this costs until
-    // `data.notes` covers what the fallback used to catch.
+    // note re-derived from the SAME sentence say the same thing twice (a
+    // team's outlook card, with every line under it repeated below as a
+    // "note"). See ISSUES.md - "Template data the page cannot render from" -
+    // for the readers this costs until `data.notes` covers what the
+    // fallback catches.
     const notes = answerNotes(a, { fallback: !out.body });
     if (notes.length) {
       const list = el("div", "notes");
@@ -2003,8 +1996,7 @@
         ? "Answered deterministically" + (a.shape ? " (" + shapeWords(a.shape) + ")" : "")
         : "Refused: nothing here had a reading of the question - the text says why";
       meta.appendChild(badge);
-      // What the answer was read and said as - the planned shape, never the
-      // retired label.
+      // What the answer was read and said as - the planned shape.
       if (a.shape) meta.appendChild(el("span", null, shapeWords(a.shape)));
       meta.appendChild(el("span", null, a.timing.total_seconds.toFixed(2) + "s"));
 

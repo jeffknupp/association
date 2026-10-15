@@ -45,7 +45,7 @@ What was measured, against the built warehouse:
   ``team_season_stats.totalRebounds`` column is a different story - it carries
   the same fault as the per-game one (53.17/game in 2020, 49.00 in 2021,
   44.45 in 2022, read as ``totalRebounds / gamesPlayed``) - but nothing here
-  reads it; only ``run_sql`` can reach it.
+  reads it; only ad hoc SQL over the warehouse can reach it.
 
 .. versionadded:: 2.1.0
 """

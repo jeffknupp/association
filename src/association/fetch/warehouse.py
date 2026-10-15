@@ -224,9 +224,9 @@ def _tune(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def _build_macros(con: duckdb.DuckDBPyConnection) -> None:
-    """Schema-level helpers for ad hoc SQL (the query agent's run_sql escape
-    hatch, or a human at a duckdb prompt) - the same correctness rules
-    get_leaderboard applies in Python for its own fixed set of metrics, baked
+    """Schema-level helpers for ad hoc SQL (a human at a duckdb prompt) - the
+    same correctness rules the ranking applies in Python for its own fixed
+    set of metrics (:mod:`association.query.metrics`), baked
     in here instead so a query outside that fixed set doesn't have to
     re-derive them from prose. Depend on no table, so built unconditionally,
     before any table load - safe to call even against an empty database."""

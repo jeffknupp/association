@@ -1,8 +1,8 @@
 """Runs one question at a time against a shared Agent.
 
 The serialization is not caution, it is a measurement. ollama keeps a single KV
-cache slot per model: measured on the router's model (the normalizer's since
-5.0.0), three consecutive calls ran 11.6s / 1.3s / 1.7s, but slipping one call
+cache slot per model: measured on a 3B model, three consecutive calls ran
+11.6s / 1.3s / 1.7s, but slipping one call
 with a different system prompt in between put the next back to 11.2s. Two browser tabs asking questions at the same time would do
 exactly that to each other, and the second question would pay for the first.
 So the server answers one at a time and tells a waiting request it is waiting,
@@ -135,11 +135,9 @@ class AgentRunner:
         that has finished cannot keep writing into a closed stream.
 
         Every request is its own question, which is what the docs promise
-        ("each message is a new question"). Until 5.0.0 the Agent kept a
-        conversation that had to be reset here under the lock, because one
-        Agent reused across requests accumulated ONE history shared by every
-        browser that connected, and a follow-up was read against a stranger's
-        question; the Agent keeps no conversation now, so there is nothing to
+        ("each message is a new question"): one Agent reused across requests
+        must not read a follow-up against a stranger's question, and the
+        Agent keeps no conversation, so there is nothing to
         reset.
 
         ``Agent.ask`` (``query/agent.py``) never returns the history file it

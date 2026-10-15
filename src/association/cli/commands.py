@@ -290,8 +290,8 @@ def query(question: str, model: str, db_path: str, out_dir: str, verbose: bool) 
     from association.query.agent import Agent
 
     agent = Agent(db_path, Path(out_dir), verbose=verbose, model=model)
-    # Agent.ask no longer reads sys.argv - a caller says what the request was,
-    # and for this caller that really is the command line.
+    # Agent.ask reads no sys.argv - a caller says what the request was, and
+    # for this caller that really is the command line.
     click.echo(agent.ask(question, label=shlex.join(sys.argv)).text)
 
 
