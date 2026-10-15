@@ -1218,7 +1218,8 @@ relation's statements):
   the whole-line readers where the words name no stat
   (`measure.names_a_stat` over `lexicon.STAT_WORDS`; a loose list is safe
   there because a missed word widens a comparison to a line that still
-  holds the stat, and nowhere else). Of the two ways out, prefer reading the
+  holds the stat, and nowhere else; a comparison drops the words' key
+  too, since its reader refuses a named stat). Of the two ways out, prefer reading the
   value **from the question text** (costs nothing, moves no other slot) to
   making a slot required (which crowds out others). (history)
 - **Hash `NORMALIZER_PROMPT` and `NORMALIZER_SCHEMA` before and after a
