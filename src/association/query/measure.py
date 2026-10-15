@@ -589,10 +589,13 @@ def team_metric_named(question: str) -> tuple[str, Claim] | None:
 
 # --- The tagger ----------------------------------------------------------------------------------
 
-#: The readers that look an advanced metric up by its words.
 #: A made column to its attempted sibling ("who attempted the most three pointers" filed the made column).
+#:
+#: .. versionadded:: 6.0.0
 MADE_TO_ATTEMPTED: dict[str, str] = {"threePointFieldGoalsMade": "threePointFieldGoalsAttempted", "fieldGoalsMade": "fieldGoalsAttempted", "freeThrowsMade": "freeThrowsAttempted"}
 #: A NetPoints name to its per-100 form, for a rate word beside it.
+#:
+#: .. versionadded:: 6.0.0
 NETPOINTS_PER_100: dict[str, str] = {
     "netpoints": "netpoints_per_100",
     "netpoints_total": "netpoints_per_100",

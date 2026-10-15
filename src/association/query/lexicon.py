@@ -3185,18 +3185,24 @@ percent", "most ppg ... in a single season", "most assists in a season"),
 which a league-wide read refuses unless the words name the season
 (``point._everyone_single_season``). "on a season" alone is no such phrase:
 "nba players who averaged 20 ppg ... on a season" is a season line's
-question (ISSUES.md #390)."""
+question (ISSUES.md #390).
+
+.. versionadded:: 6.0.0"""
 
 SEASON_BY_SEASON = re.compile(r"\b(?:by|every|each|per)\s+(?:season|year)s?\b|\b(?:season|year)[- ]by[- ](?:season|year)\b", re.IGNORECASE)
 """A history asked season by season ("stats by season", "every season",
 "per season", "year by year") - kept the history where no stat is named,
-the whole line's (``grammar._line_and_record``, ISSUES.md #387)."""
+the whole line's (``grammar._line_and_record``, ISSUES.md #387).
+
+.. versionadded:: 6.0.0"""
 
 RANKED_PER_GAME = re.compile(r"\bper\s+game\b|\b(?:ppg|rpg|apg|spg|bpg)\b|\baverag\w*|\bavg\b", re.IGNORECASE)
 """A ranking of players asked per game - "per game", a per-game
 abbreviation, "average(d)", "avg" - which reads the measure's per-game
 figure over a career, where the bare name reads the career total
-(``point.measure_under``)."""
+(``point.measure_under``).
+
+.. versionadded:: 6.0.0"""
 
 PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages?\b|\bavg\b", re.IGNORECASE)
 """A per-game figure asked for outright.

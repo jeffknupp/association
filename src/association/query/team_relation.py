@@ -76,6 +76,8 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate
 #: The games' cuts a team's games carry (:attr:`~association.query.reading.Cuts.CELLS`
 #: less three): no game is labeled by its ``round``, and a ``tenure`` and
 #: an ordinal ``season_n`` are one player's.
+#:
+#: .. versionadded:: 6.0.0
 TEAM_CUTS: frozenset[str] = Cuts.CELLS - {"round", "tenure", "season_n"}
 TEAM_RELATION_SCOPING = frozenset({"window", *Period.CELLS, *TEAM_CUTS, *Span.CELLS})
 """The cells every reader on the team-games relation honors: the games'

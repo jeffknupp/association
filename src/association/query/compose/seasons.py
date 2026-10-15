@@ -265,6 +265,8 @@ def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
 
 
 #: The seasons whose box scores ESPN serves empty for two teams (DATA.md, "Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros").
+#:
+#: .. versionadded:: 6.0.0
 EMPTY_BOX_SEASONS: tuple[int, int] = (2013, 2018)
 
 

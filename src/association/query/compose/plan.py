@@ -580,6 +580,8 @@ says, ``cannot_honor``). The shape the point is read and said as is
 
 #: What a point nothing reads is declined with, where neither the reader nor
 #: the planner named a reason of its own.
+#:
+#: .. versionadded:: 6.0.0
 NO_READING = "the compiler has no reading of this point"
 
 
