@@ -162,6 +162,14 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #457
 
+### A question naming no season defaults to 2026 where its words read the career: "stephen curry 50 point games" answers "none in 2026"
+- **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1), the lead's hand pass; Jeff's ruling D13 the same day.
+- **Evidence:** 47 of the sample's 133 wrong or false-cause verdicts, the largest class: 17 fluent wrong answers ("stephen curry 50 point games" - none in 2026, 16 in his career; "lebron james Christmas Day game record" - 0-1 in 2026, 11-9 in 20 games; "most points in a single game on the magic" - Banchero 39, McGrady 62; "lebron james most threes in a game" - 4, career 9; "knicks record in playoff games when mitchell robinson has 4 fta" - 9-0 in 2026, 16-5 over 2023-2026; "ADs record with lebron" - none in 2026, 158-92 together), 30 refusals that said "no 2026 games" where the career holds them ("kobe bryant playoff stats", "kevin garnett vs tim duncan games", "dwayne wade stats vs nets", "tim duncan threes made", "michael jordan's best season"), 7 logs cut at 2026 ("mike conley game log vs the lakers": 2 of 62 games). Scaled to the feed's 2,082, about 230 questions.
+- **User sees:** a fluent answer about the wrong span, or a refusal naming a season the question never named.
+- **Next step:** the span tagger's default (`span.read_span`, `point.span_under`) reads the career where the words imply history - a record with or against, a count of events ("50 point games", "triple doubles"), a single-game record ("most ... in a game"), a series between two players or teams, "playoff stats" of a player not active - and the current season only where the words ask a current line; a test per wording class; the sample's 47 re-graded `correct` as the proof; the yardstick not lower.
+- **Priority:** P1 - the largest wrong-answer class the sample found.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A team's games or count over a line, given up or its own, are named from the words only after a window: "celtics games where they gave up 120 points" is refused for an unread number, and "celtics game log when they score 120+ points" answers its record over the line
@@ -1936,6 +1944,14 @@ those were found.
 - **Priority:** P2 - a fluent zero.
 - **Source:** ours (the build).
 - **GitHub:** #467
+
+### A season line shows three stats where the words asked the shooting or the blocks: "lebron james stats in the 2009 playoffs" shows no percentages
+- **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1).
+- **Evidence:** 14 of the sample's 65 partial verdicts: a line asked as "stats" or with a shooting word shows points, rebounds and assists only ("lebron 2011 playoff stats", "kawhi leonard 2012-2013", "dwayne wade stats in 2012 playoff", "wembanyama shooting percentages in his last 30 games", "melo stats 2004"); a center's or a wing's line without blocks ("zubac for 24-25 season", "Alex sarr per career", "wemby vs the clippers 23-24").
+- **User sees:** the right games and the right numbers, with the stat the words named missing.
+- **Next step:** the season line and the games line show the full box line (shooting splits, steals, blocks, turnovers) where the words say "stats" or name a shooting word, as the comparison does; the sample's 14 re-graded `correct` as the proof.
+- **Priority:** P2 - a correct but incomplete answer.
+- **Source:** ours.
 
 ## P3: refusal or gap
 
