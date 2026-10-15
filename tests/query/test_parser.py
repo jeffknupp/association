@@ -1320,6 +1320,12 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
         # "20+" is a number too, not left in no class for the league's rebounding leaders to answer.
         ("murray games of 20+ rebounds", [], "rebounds", "unread_number", ("20+",)),
         ("anthony davis last 1st quarter stats vs pistons", ["Anthony Davis"], "points", "unread_window", ("last",)),
+        # A window word before a time word, a yes/no measure or a period word is a stretch too: "last time X did Y" is
+        # the most recent game over a line, not the season high; "last triple double" is one game, not a count.
+        ("last time chris paul dropped 20 assists in a game", ["Chris Paul"], "assists", "unread_window", ("last",)),
+        ("scottie barnes last triple double", ["Scottie Barnes"], "points", "unread_window", ("last",)),
+        ("tyler herro last week", ["Tyler Herro"], "points", "unread_window", ("last",)),
+        ("Tyrese maxey last first quarter game stats", ["Tyrese Maxey"], "points", "unread_window", ("last",)),
         ("curry stats november", ["Stephen Curry"], "points", "unread_date", ("november",)),
     ],
 )

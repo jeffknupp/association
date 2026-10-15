@@ -71,8 +71,8 @@ def test_a_name_the_reading_settled_on_counts_as_read() -> None:
 
 def test_a_run_reports_the_words_the_reading_does_not_depend_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The whole instrument over an empty warehouse. "what did the lakers
-    coach say last night": deleting "coach" changes the reading (it is what
-    names the key the words ask), deleting "night" does not; the Reading's own unread
+    coach say about practice": deleting "coach" changes the reading (it is what
+    names the key the words ask), deleting "practice" does not; the Reading's own unread
     words are recorded beside the deletion's."""
     import duckdb
 
@@ -83,22 +83,22 @@ def test_a_run_reports_the_words_the_reading_does_not_depend_on(monkeypatch: pyt
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.close()
     recorded = tmp_path / "recorded.jsonl"
-    rows = [{"q": "what did the lakers coach say last night", "out": {"names": [], "stat": ""}}, {"q": "a reply that failed to decode", "out": {"error": "bad json"}}]
+    rows = [{"q": "what did the lakers coach say about practice", "out": {"names": [], "stat": ""}}, {"q": "a reply that failed to decode", "out": {"error": "bad json"}}]
     recorded.write_text("".join(json.dumps(row) + "\n" for row in rows))
     out = tmp_path / "ledger.jsonl"
     monkeypatch.setattr(sys, "argv", ["claims_ledger.py", "run", str(out), "--recorded", str(recorded), "--db-path", str(db_path)])
     assert ledger.main() == 0
     meta, row = [json.loads(line) for line in out.read_text().splitlines()]
     assert meta["meta"]["population"] == "other"
-    assert row["question"] == "what did the lakers coach say last night"
-    assert "coach" in row["content_words"] and "coach" not in row["unread"] and "night" in row["unread"]
-    assert "night" in row["reading_unread"]
+    assert row["question"] == "what did the lakers coach say about practice"
+    assert "coach" in row["content_words"] and "coach" not in row["unread"] and "practice" in row["unread"]
+    assert "practice" in row["reading_unread"]
     capsys.readouterr()
     monkeypatch.setattr(sys, "argv", ["claims_ledger.py", "report", str(out)])
     agrees = row["reading_unread"] == row["unread"]
     assert ledger.main() == (0 if agrees else 1)
     said = capsys.readouterr().out
-    assert said.startswith(f"1 questions, {len(row['content_words'])} content words: {len(row['unread'])} unread") and "night 1" in said
+    assert said.startswith(f"1 questions, {len(row['content_words'])} content words: {len(row['unread'])} unread") and "practice 1" in said
     assert f"{int(agrees)} of 1 questions agree with the deletion" in said
 
 

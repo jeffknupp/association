@@ -1445,8 +1445,11 @@ def _one_stat_shape(shape: PointShape | None) -> bool:
 
 def _beside_a_stretch(after: str) -> bool:
     """Whether the word after a window word makes it a stretch of games:
-    a count ("top 5", "last 10"), an ordinal ("last 1st quarter") or a
-    game word ("last game", "past seasons")."""
+    a count ("top 5", "last 10"), an ordinal ("last 1st quarter"), or a
+    word of :data:`lexicon.MEANING_WINDOW_NEXT` - a game word ("last game",
+    "past seasons"), a time word ("last time", "last week"), a yes/no
+    measure's word ("last triple double") or a period word ("last first
+    quarter")."""
     return bool(lexicon.MEANING_NUMBER.fullmatch(after)) or after in lexicon.MEANING_WINDOW_NEXT or after.rstrip("s") in lexicon.MEANING_WINDOW_NEXT
 
 

@@ -4205,9 +4205,51 @@ def letter_words(text: str) -> frozenset[str]:
     return frozenset(word for word in LETTER_RUNS.split(text.lower()) if word)
 
 
-MEANING_WINDOW_NEXT: frozenset[str] = frozenset({"game", "games", "match", "matches", "meeting", "meetings", "season", "seasons", "year", "years", "contest", "contests", "outing", "outings"})
+MEANING_WINDOW_NEXT: frozenset[str] = frozenset(
+    {
+        # a game word: "last game", "top 5 games", "past seasons"
+        "game",
+        "games",
+        "match",
+        "matches",
+        "meeting",
+        "meetings",
+        "season",
+        "seasons",
+        "year",
+        "years",
+        "contest",
+        "contests",
+        "outing",
+        "outings",
+        # a time word: "last time he dropped 20", "last week", "past month"
+        "time",
+        "times",
+        "week",
+        "weeks",
+        "month",
+        "months",
+        "night",
+        "nights",
+        "day",
+        "days",
+        # a yes/no measure's word: "last triple double" is one game, not the count of them
+        "triple",
+        "double",
+        "triple-double",
+        "double-double",
+        # a period word, or the ordinal that leads one: "last first quarter game", "last half"
+        "quarter",
+        "quarters",
+        "qtr",
+        "half",
+        "halves",
+        *ORDINAL_PERIODS,
+    }
+)
 """The words a window word counts beside ("last game", "top 5 games",
-"past seasons"): a window word standing alone ("top scorers", "past or
+"past seasons", "last time", "last week", "last triple double", "last
+first quarter"): a window word standing alone ("top scorers", "past or
 present") names no stretch of games.
 
 .. versionadded:: 6.0.0
