@@ -157,7 +157,8 @@ def test_an_end_the_grammar_missed_is_read_on_a_reader_that_honors_one() -> None
     # chart drew the season's home games, the log listed ten, with nothing saying "last" went unread).
     assert _read("curry's shot chart for his last home game", SHOT_CHART) == Window(order="recent", count=1)
     assert _read("jokic game log for his first road game", PLAYER_LOG) == Window(order="first", count=1)
-    assert _read("curry's shot chart for his last home game", TEAM_MEETINGS) == Window()
+    # Two teams' meetings honor a window since Phase 5, step 7 (the last N meetings), so an end alone is one meeting there too.
+    assert _read("curry's shot chart for his last home game", TEAM_MEETINGS) == Window(order="recent", count=1)
     # A quarter's ordinal sits where that rule allows two words: the period readers never take it.
     assert _read("harrison barnes's first quarter per game against the magic", PERIOD_LOG) == Window()
     assert _read("rudy gobert's first half game log", PERIOD_LOG) == Window()
@@ -259,7 +260,7 @@ def test_the_relation_tables_declare_the_window_cell_once() -> None:
     assert "window" not in cells_stated(TEAM_RECORD) and "window" in cells_stated(PointShape("team_games", "rows", "date"))
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
         assert all("order" not in row.unstated and "limit" not in row.unstated for row in table.values())
-    assert {NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL} >= ORDER_ASKS
+    assert {NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL, TEAM_MEETINGS} >= ORDER_ASKS
 
 
 # ---------------- the relation's one resolution ----------------

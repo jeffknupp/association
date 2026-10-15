@@ -1966,7 +1966,7 @@ _LINES_ONE_NARROWS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS
 #: before that.
 _LINES_ON_GAMES_NARROW: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS, PLAYER_LINE})
 
-ORDER_ASKS: frozenset[PointShape] = frozenset({NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL})
+ORDER_ASKS: frozenset[PointShape] = frozenset({NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL, TEAM_MEETINGS})
 """Keys whose reader honors ``order``, so filling it from the question can
 only make the answer match what was asked: on these the end of the span is
 read from :data:`~association.query.lexicon.ORDER_WORDS` where the grammar

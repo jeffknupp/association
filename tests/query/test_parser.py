@@ -1410,6 +1410,8 @@ def test_an_unread_stat_word_naming_another_measure_is_a_refusal_by_name(con: du
         ("curry games where he went 7/14 from three", ["Stephen Curry"], "threePointFieldGoalsMade"),
         # A leftover word of the measure the model read whole names no other stat.
         ("KNICKS point differential over the last 7 games", ["New York Knicks"], "points_differential"),
+        # "points" of "three points made" is a leftover of the 3-pointers read (the yardstick's F062, a regression step 1 made and the live run caught).
+        ("vj edgecombe three points made per game after making one three in first quarter", ["VJ Edgecombe"], "threePointFieldGoalsMade"),
         # A word that restates the shape is in no class.
         ("Lakers vs Celtics record this season", ["Los Angeles Lakers", "Boston Celtics"], "points"),
         # A window the tagger read is no unread window word.

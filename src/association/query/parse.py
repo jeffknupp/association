@@ -1399,7 +1399,10 @@ class _DefaultedContext:
         # read whole by the model) names no other stat.
         typed = (reading.measure.as_typed or "") if reading.measure is not None else ""
         label = measure.CATALOG[key].label if key in measure.CATALOG else ""
-        read_words = frozenset(word.rstrip("s") for word in f"{typed} {label}".lower().replace("_", " ").split())
+        # The words split at every non-letter ("3-pointers made" is "pointers"
+        # and "made"), so "point" of "three points made" is a leftover of
+        # the 3-pointers the tagger read, by its stem (:func:`_leftover`).
+        read_words = lexicon.letter_words(f"{typed} {label}")
         span = reading.span
         years = frozenset(str(year) for year in (span.season, span.since, span.until) if year is not None)
         values = {str(line.value).removesuffix(".0") for line in reading.lines}
@@ -1413,7 +1416,7 @@ def _defaulted_class(lower: str, before: str, context: _DefaultedContext, names_
     """Which class one unread word falls in (:func:`_reading_from_route_defaulted`),
     or None where it carries no meaning the reading defaulted past."""
     named = measure.named(lower)
-    if named is not None and named[0] != context.key and lower.rstrip("s") not in context.read_words:
+    if named is not None and named[0] != context.key and not _leftover(lower, context.read_words):
         names_read[lower] = measure.CATALOG[named[0]].label if named[0] in measure.CATALOG else named[0]
         return "stat"
     if lexicon.MEANING_NUMBER.fullmatch(lower):
@@ -1423,6 +1426,16 @@ def _defaulted_class(lower: str, before: str, context: _DefaultedContext, names_
     if _defaulted_date(lower, before, context):
         return "date"
     return None
+
+
+def _leftover(lower: str, read_words: frozenset[str]) -> bool:
+    """Whether an unread stat word is a leftover of the measure the reading
+    took: its stem is one of the measure's own words or a prefix of one
+    ("point" of "point differential"; "point" of "three points made", whose
+    label is "3-pointers made"), four letters or more so "ast" and "assists"
+    do not pair by accident."""
+    stem = lower.rstrip("s")
+    return any(stem == word.rstrip("s") or (len(stem) >= 4 and word.startswith(stem)) or (len(word) >= 4 and stem.startswith(word.rstrip("s"))) for word in read_words)
 
 
 def _defaulted_number(lower: str, before: str, context: _DefaultedContext) -> bool:

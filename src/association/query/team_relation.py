@@ -176,7 +176,8 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # both season types together).
     PointShape("team_games", "comparison", "opponent"): ShapeCells(
         unstated={
-            "window": DeclineReason.MEETINGS_TALLY_WINDOW,
+            # The window is read since Phase 5, step 7: the last or first N
+            # meetings, sliced from the one read (compose.meetings).
             "game_n": DeclineReason.MEETINGS_TALLY_GAME_N,
             # step 3, K1 wires the calendar narrowing into team_quarter_points
             # and team_record; head_to_head's own since/career span result
@@ -434,7 +435,8 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
     either way. ``venue``, ``game_n`` and the window are read from
     ``scope`` because no caller has a reason to resolve any of them first - a
     caller that must NOT honor one (``game_log``'s team half already lists its
-    own games with its own LIMIT; ``head_to_head`` counts every meeting rather
+    own games with its own LIMIT; ``head_to_head`` slices the window itself from
+    its one read rather
     than a window of them) passes a scope without it, the same way both
     already do for every cell but ``venue``.
 

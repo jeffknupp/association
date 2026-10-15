@@ -667,6 +667,11 @@ class MeetingsFacts:
     #: total over the meetings (``Grouped`` rows' ``figure``) - or None
     #: (ISSUES.md #326).
     figure: str | None = None
+    #: How many meetings the window was cut from, where the question asked
+    #: for the last or first N of them (``Result.window``; Phase 5, step 7:
+    #: "lakers vs mavs record last 10 home games played", the yardstick's
+    #: F108, declined by the cell since the sweep's #352) - or None.
+    of: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

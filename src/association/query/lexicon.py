@@ -4372,6 +4372,23 @@ def ordinal_forms(number: int) -> tuple[str, ...]:
     return (f"{number}{suffix}",)
 
 
+LETTER_RUNS = re.compile(r"[^a-z]+")
+"""What splits a measure's label and typed words into letter runs ("3-pointers
+made" is "pointers" and "made"), for the stat-leftover guard
+(:func:`letter_words`).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def letter_words(text: str) -> frozenset[str]:
+    """The lowercase letter runs of ``text``, as a set.
+
+    .. versionadded:: 6.0.0
+    """
+    return frozenset(word for word in LETTER_RUNS.split(text.lower()) if word)
+
+
 MEANING_DATE_LEADS: frozenset[str] = frozenset({"on", "since", "from", "after", "before", "until", "till", "through", "thru", "between", "and", "to", "in"})
 """The words a slashed day stands after to be one ("on 1/26", "since 7/14");
 after any other word it is a figure ("went 7/14 from three").

@@ -3472,6 +3472,25 @@ def _head_to_head_series(lead: str, a: str, b: str, a_wins: int, b_wins: int, *,
     return f"{lead}; the {leader} {won} {trailing}."
 
 
+def _head_to_head_windowed(result: Result, a: str, b: str, a_wins: int, b_wins: int) -> str:
+    """The meetings a window kept - the last (or first) N of all their
+    meetings in the span, said with how many that is of - and who won them
+    (Phase 5, step 7: "lakers vs mavs record last 10 home games played")."""
+    facts, window, span = _facts(result, MeetingsFacts), result.window, result.span
+    assert window is not None
+    end = "first" if window.ascending else "last"
+    asked = window.asked if window.asked is not None else window.limit
+    of = f" of {facts.of}" if facts.of is not None and facts.of > facts.games else ""
+    where = _head_to_head_where(result, a) if result.narrowing.venue or span.date else (span.phrase if span.career else f"in the {season_phrase(span.season or 0, span.season_type or 2)}")
+    lead = f"The {a} and the {b}, their {end} {asked}{of} meetings {where}"
+    if facts.games == 0:
+        return f"The warehouse has no games between the {a} and the {b} {where}."
+    if a_wins == b_wins:
+        return f"{lead}: split {a_wins}-{b_wins}."
+    leader, trailing = (a, f"{a_wins}-{b_wins}") if a_wins > b_wins else (b, f"{b_wins}-{a_wins}")
+    return f"{lead}: the {leader} won {trailing}."
+
+
 def _head_to_head_where(result: Result, a: str) -> str:
     """Where a venue or a date narrowed the meetings: "on 2026-01-05", or
     "in the Lakers' home games of the 2026 regular season" (since a season,
@@ -3500,6 +3519,8 @@ def _head_to_head_sentence(result: Result, a: str, b: str, a_wins: int, b_wins: 
     games = _facts(result, MeetingsFacts).games
     span = result.span
     times = "once" if games == 1 else f"{games} times"
+    if result.window is not None:
+        return _head_to_head_windowed(result, a, b, a_wins, b_wins)
     if result.narrowing.venue or span.date:
         where = _head_to_head_where(result, a)
         if games == 0:

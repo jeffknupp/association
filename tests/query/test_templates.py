@@ -2529,6 +2529,18 @@ def test_head_to_head_counts_games_in_both_directions(gl_con: AnswerContext) -> 
     assert result.data["games"] == 2  # one home, one away
 
 
+def test_head_to_head_keeps_the_window_of_newest_meetings(gl_con: AnswerContext) -> None:
+    """Phase 5, step 7 (the yardstick's F108, "lakers vs mavs record last 10
+    home games played"): a window on two teams' meetings is the last N of
+    them, sliced from the one read and said as such, where the planner had
+    declined the cell since the sweep's #352."""
+    from association.query.reading import Window as AskedWindow
+
+    result = head_to_head(gl_con, Reading(who=Who(kind="teams", teams=("Knicks", "Celtics")), span=Span(season=current_season()), window=AskedWindow(count=1, order="recent")))
+    assert result.data["games"] == 1
+    assert "their last 1 of 2 meetings" in result.text
+
+
 def test_head_to_head_counts_only_rows_that_are_games(gl_con: AnswerContext) -> None:
     """Regression: it counted every row of `games`, so "how many times did the
     Mavs play the 76ers in 2003" answered 3 for a season holding 2 - one game

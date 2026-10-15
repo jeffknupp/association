@@ -27,7 +27,7 @@ from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
 from association.query.reading import Cuts, Filtered, PointShape, Unsupported
-from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Refusal, Result, Span, Unanswered
+from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Refusal, Result, Span, Unanswered, Window
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import team_games
 
@@ -209,13 +209,21 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
     season_type = scope.span.season_type or 2
     date, venue = scope.cuts.date, scope.cuts.venue
     since, until, career = _head_to_head_span_slots(scope, date)
+    window = _head_to_head_window(scope)
+    if window is not None and date is None and scope.span.season is None and not career and since is None and until is None:
+        # "last 10 home games" with no season named: the newest N meetings on
+        # record, as the team log reads "last 10 games vs the Nets" (Phase 5,
+        # step 7, the yardstick's F108; the cell was declined since #352).
+        career = True
     if since is not None or career or until is not None:
-        return _head_to_head_over_span(con, replace(q, shape="rows"), a, b, venue, season_type, since=since, until=until, career=career)
+        return _head_to_head_over_span(con, replace(q, shape="rows"), a, b, venue, season_type, since=since, until=until, career=career, window=window)
     narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, scope.span.season, season_type)
     if isinstance(narrowed, Unanswered):
         return narrowed
     span = ResolvedSpan(season, season_type)
     rows = rows_of(con, compile_team_over(replace(q, shape="rows"), a, span, narrowed, ascending=True))
+    total = len(rows)
+    rows = _head_to_head_kept(rows, window)
     won = [row["won"] for row in rows]
     key, figures = _head_to_head_figures(con, q, a, span, narrowed, rows)
     return Result(
@@ -223,10 +231,40 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
         relation="team",
         span=Span(season=season, season_type=season_type, date=date),
         narrowing=Narrowing(opponent=b.name, venue=venue),
+        window=_head_to_head_result_window(window, len(rows)),
         parts=(Part(body=_head_to_head_wins(a, b, won, figures)),),
-        facts=MeetingsFacts(games=len(won), figure=key),
+        facts=MeetingsFacts(games=len(won), figure=key, of=total if window is not None else None),
         notes=_head_to_head_notes(key, figures, len(won)),
     )
+
+
+def _head_to_head_window(scope: Filtered) -> tuple[int, bool] | None:
+    """The window of meetings the words ask for - its count and whether it
+    is the newest (``"recent"``, or a bare count) rather than the oldest
+    (``"first"``) - or None where the typed window names no count of
+    games (a count of seasons is the span's)."""
+    window = scope.window
+    if window.count is None or window.of != "games":
+        return None
+    return window.count, window.order != "first"
+
+
+def _head_to_head_kept(rows: list[dict[str, Any]], window: tuple[int, bool] | None) -> list[dict[str, Any]]:
+    """The meetings the window keeps of ``rows`` (read oldest first): the
+    newest N or the oldest N, in the same order - a slice of the one read,
+    so the tally runs no second statement."""
+    if window is None:
+        return rows
+    count, newest = window
+    return rows[-count:] if newest else rows[:count]
+
+
+def _head_to_head_result_window(window: tuple[int, bool] | None, kept: int) -> Window | None:
+    """The window the read applied, for the sayer and the record."""
+    if window is None:
+        return None
+    count, newest = window
+    return Window(limit=kept, asked=count, ascending=not newest)
 
 
 def _head_to_head_notes(key: str | None, figures: tuple[dict[str, int], dict[str, int]], games: int) -> tuple[Note, ...]:
@@ -239,7 +277,17 @@ def _head_to_head_notes(key: str | None, figures: tuple[dict[str, int], dict[str
 
 
 def _head_to_head_over_span(
-    con: duckdb.DuckDBPyConnection, q: TeamQuery, a: Entity, b: Entity, venue: Literal["home", "away"] | None, season_type: int, *, since: int | None, until: int | None, career: bool
+    con: duckdb.DuckDBPyConnection,
+    q: TeamQuery,
+    a: Entity,
+    b: Entity,
+    venue: Literal["home", "away"] | None,
+    season_type: int,
+    *,
+    since: int | None,
+    until: int | None,
+    career: bool,
+    window: tuple[int, bool] | None = None,
 ) -> Result | Unanswered:
     """Every meeting in a since-bounded or whole-career span, tallied once,
     with the seasons the games actually came from (``tg.season``, or
@@ -253,6 +301,8 @@ def _head_to_head_over_span(
     # The team compiler's rows read: each meeting's result and the season it
     # was played in (a postseason's by its calendar year), oldest first.
     read = rows_of(con, compile_team_over(q, a, span, narrowed, ascending=True))
+    total = len(read)
+    read = _head_to_head_kept(read, window)
     rows = [(row["won"], row["season"]) for row in read]
     key, figures = _head_to_head_figures(con, q, a, span, narrowed, read)
     years = [int(yr) for _, yr in rows]
@@ -262,7 +312,8 @@ def _head_to_head_over_span(
         relation="team",
         span=Span(season_type=season_type, career=True, first=first, last=last, phrase=span.during(first, last, whose="the seasons on record"), since=since, until=until),
         narrowing=Narrowing(opponent=b.name, venue=venue),
+        window=_head_to_head_result_window(window, len(rows)),
         parts=(Part(body=_head_to_head_wins(a, b, [won for won, _ in rows], figures)),),
-        facts=MeetingsFacts(games=len(rows), span="career" if career else None, figure=key),
+        facts=MeetingsFacts(games=len(rows), span="career" if career else None, figure=key, of=total if window is not None else None),
         notes=_head_to_head_notes(key, figures, len(rows)),
     )
