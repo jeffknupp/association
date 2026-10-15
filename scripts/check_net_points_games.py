@@ -15,16 +15,15 @@ Two checks, in that order:
 
 1. **Offline, over the warehouse.** No player-game may appear twice. A
    duplicate `(event_id, athlete_id)` is the signature of two NetPoints dates
-   resolving to one ESPN game - 611 of them in season 2026 before the rule was
-   fixed, every pair disagreeing about how many possessions the player played.
+   resolving to one ESPN game, the pair disagreeing about how many possessions
+   the player played.
 2. **With --against-source, over the live daily files.** The daily file
    carries `pts` beside the NetPoints values and the parser deliberately drops
    it, which makes it a free, independent way to ask whether a row landed on
    the right game: resolve each row the way the pull does, then compare its
-   points against `player_box_stats` for the event that came back. This is
-   what caught the bug in the first place - NetPoints' 2025-10-25 file gives
-   Ryan Kalkbrenner 14 points and its 2025-10-26 file gives him 4, and the old
-   rule sent both rows to the game where he scored 4.
+   points against `player_box_stats` for the event that came back - NetPoints'
+   2025-10-25 file gives Ryan Kalkbrenner 14 points and its 2025-10-26 file
+   gives him 4, so a rule sending both rows to one game shows here.
 
 Needs a built warehouse; --against-source additionally needs network and
 boto3's Cognito exchange (see fetch/netpoints_client.py).

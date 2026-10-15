@@ -2,22 +2,21 @@
 """Watch a guard fail, without the harness lying to you about it.
 
     python scripts/perturb.py --test tests/query/test_readers.py \\
-        --edit src/association/query/templates/players.py \\
+        --edit src/association/query/player_games.py \\
         --replace 'REBUILT_STATS: frozenset[str] = frozenset({"points"' \\
         --with     'REBUILT_STATS: frozenset[str] = frozenset({"fouls", "points"'
 
-`AGENTS.md` has said "a guard is worth nothing until you have watched it fail"
-for a long time, and the discipline is easy to follow in letter while missing
-the thing that actually breaks: **the harness reporting CAUGHT for a reason
-unrelated to the perturbation.** Every one of these has happened here, and each
-looks exactly like a green run from the outside:
+`AGENTS.md`: "a guard is worth nothing until you have watched it fail". The
+discipline is easy to follow in letter while missing the thing that actually
+breaks: **the harness reporting CAUGHT for a reason unrelated to the
+perturbation.** Each of these looks exactly like a green run from the outside:
 
 - **A red baseline.** One unrelated failing test makes *every* perturbation
   exit non-zero, so all of them read CAUGHT whether the guard works or was
   deleted. This refuses to run until the baseline is green.
 - **A filtered run.** ``-k "rebuilt"`` does not match a test named
-  ``..._rebuild_counted``. Three guards sat out a whole sweep that was then
-  reported on. This runs the whole file, and takes no ``-k``.
+  ``..._rebuild_counted``, so a guard sits the run out unseen. This runs the
+  whole file, and takes no ``-k``.
 - **A retyped anchor.** Hand-escaping a string with apostrophes matches zero
   times; the edit silently does nothing and the suite stays green, which reads
   as MISSED - a *weak guard* - when the truth is that nothing was perturbed.

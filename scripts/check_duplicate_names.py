@@ -5,16 +5,14 @@
     python scripts/check_duplicate_names.py --list   # every collision, allowed or not
 
 Two module-level constants with the same name are either one fact written
-twice - which drifts - or two different facts wearing one name, which is worse.
-``MAX_LIMIT`` was the second kind: 100 in ``query/leaderboard.py`` and 50 in
-``query/templates/common.py``, so a reader who knew one was wrong about the
-other (one definition since 2026-10-05, ``query/reading.py``).
+twice - which drifts - or two different facts wearing one name, which is worse:
+a ``MAX_LIMIT`` of 100 in one module and 50 in another leaves a reader who knows
+one wrong about the other (``query/reading.py`` holds the one definition).
 
 This is the constants half of a shape `AGENTS.md` already records for
 functions ("Branches built in parallel collide on private helper names,
 silently"). Ruff's F811 and mypy's ``no-redef`` catch a collision **inside** one
-module; nothing catches the same name in two. Five separate definitions of the
-NBA's five-hour Eastern offset passed every gate this project had.
+module; nothing else catches the same name in two.
 
 Not a copy-paste detector. Duplicated blocks are pylint's ``--duplicate-code``
 and jscpd's job, and both would be a new dependency answering a different

@@ -1,7 +1,7 @@
 """Render recorded questions through the web page without a model, and screenshot each answer.
 
 The page's renderers (``web/static/index.html``, ``RENDERERS``) draw an answer from
-the ``data`` a template returns, so a rendering problem is only visible with real
+the ``data`` the answer side returns, so a rendering problem is only visible with real
 data on the real page - and asking the live model for every case costs ollama a
 minute each and moves its reply between runs. This script asks no model: it takes
 the normalizer's RECORDED reply (the ``-> (normalizer) names=[...] stat='...'`` line
