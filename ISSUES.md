@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** read "wins"/"losses" on a player's line, history and ranking as the count of his games won or lost (a yes/no predicate, the count's reading as "most triple doubles since 2020" now has), or refuse by `unread_stat` naming them; each wording enumerated.
 - **Source:** ours.
 - **Priority:** P1 - a different question answered fluently; 1 of the 2,082 (the 14 rankings are refused by name).
+- **GitHub:** #440
 
 ### A team ranking asked of the best single season across years answers the current season: "Which team has made the most three pointers in a season" ranks 2026's teams
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), refusing the players' half (`point._everyone_single_season`, the `single_season_ranking` cause).
@@ -61,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the team ranking refuses `lexicon.SINGLE_SEASON_RANKED` where the span is no season the words name, as `point._everyone_single_season` does - or reads the team-seasons table ranked across seasons (a new by, D11's) - each wording enumerated.
 - **Source:** ours.
 - **Priority:** P1 - a narrower question answered fluently; 3 of the 2,082.
+- **GitHub:** #441
 
 ### "total" on the season ranking is read by nothing: "total points leader in 1998 season" answers the points-per-game leader
 - **Found:** 2026-10-14, Phase 5, step 4 (D5), measuring which wordings the point reader's `lexicon.TOTAL_WORD` reaches
