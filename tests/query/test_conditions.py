@@ -24,8 +24,7 @@ from typing import Any, NamedTuple
 
 import duckdb
 import pytest
-from routed import Said
-from routed import planned_answer as compose_answer
+from routed import Said, planned_answer
 from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
 from warehouse_rows import insert_rows
 
@@ -80,7 +79,7 @@ def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Sa
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.who.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
+        result = planned_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
         return result

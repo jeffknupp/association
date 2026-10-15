@@ -9,9 +9,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import Said, planned_query
-from routed import planned_answer as compose_answer
-from routed import said as as_said
+from routed import Said, planned_answer, planned_query, said
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -101,7 +99,7 @@ def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Sa
             kind = "team_players"  # a ranking within a team: its players, never its own figure
         subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
+        result = planned_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
         return result
@@ -239,13 +237,13 @@ def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_gues
             ),
         )
     # A named player's point reads it first, and refuses by its cause (Phase 2, step 3).
-    said = player_stat(
+    spoken = player_stat(
         con,
         Reading(
             who=Who(kind="player", players=("Luka Doncic",)), lines=(Line(measure=None, op="<", value=30, as_typed="under 30 gizmos", narrows=True),), measure=Measure(key="points", as_typed="points")
         ),
     ).text
-    assert said == "'under 30 gizmos' names no box-score stat a game can be kept under."
+    assert spoken == "'under 30 gizmos' names no box-score stat a game can be kept under."
 
 
 def test_stats_against_one_opponent_end_with_the_meetings_behind_the_average(pg_ctx: AnswerContext) -> None:
@@ -4562,7 +4560,7 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
     body = read.rows
     assert body is not None and [g["opponent"] for g in body.rows] == ["DET", "DET"] and body.total_before_window == 2 and body.columns == ("MIN", "PTS", "REB", "AST")
     assert all(isinstance(each.kind, str) and isinstance(each.facts, dict) for each in read.notes)
-    answered = compose_answer(pg_ctx, reading)
+    answered = planned_answer(pg_ctx, reading)
     assert answered is not None and say(read).text == answered.text and say(read).data == answered.data
 
 
@@ -6536,7 +6534,7 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
         parts=(Part(body=line), Part(role="detail", body=Rows(rows=games))),
         facts=TeamPeriodFacts(measure="points", rank="most", dateless=""),
     )
-    result = as_said(say_team_quarter_points(read))
+    result = said(say_team_quarter_points(read))
     assert result.data["extreme"] == 60 and len(result.data["extreme_games"]) == 2
     assert "vs the Boston Celtics on 2026-01-02 and vs the Chicago Bulls on 2026-01-09" in (result.text or "")
 

@@ -29,8 +29,7 @@ from typing import Any, get_args
 
 import duckdb
 import pytest
-from routed import Said
-from routed import planned_answer as compose_answer
+from routed import Said, planned_answer
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext
@@ -384,7 +383,7 @@ def _read(ctx: AnswerContext, case: str) -> tuple[PointShape | None, Said]:
     plans a question's Reading."""
     asked, scope = CASES[case]
     reading = with_point("", replace(scope, asked=asked, subject=read_subject(names_of(ctx.con), "", asked, scope)))
-    result = compose_answer(ctx, reading)
+    result = planned_answer(ctx, reading)
     assert result is not None, f"the compiler has no reading of {case}'s case"
     return planned_shape(reading, plan_point(reading)), result
 
