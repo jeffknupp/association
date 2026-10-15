@@ -70,64 +70,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a wrong answer - the per-game leaders where the season's totals were asked.
 - **Next step:** read "total <stat>" as `Measure.how="total"` in the measure tagger (`measure.read_measure`, beside the unit's `how_of`) and have the season ranking rank by the catalog's `total_metric` where the measure is asked as a total; enumerate the moves on the four populations (every season ranking with "total" in its words).
 - **GitHub:** #435
-
-### The teams' ranking over every season is refused: "nba winningest percent franchises all-time"
-- **Found:** 2026-10-14, the P1 sweep's lane T3, measuring #372's "winning percentage" class.
-- **Evidence:** since Phase 5, step 6 (lane N) "winningest" and "franchises" name the teams' ranking (`lexicon.LEAGUE_TEAMS_RANKED_ROW`; it ranked the league's players by points per game), and the teams' ranking declines a career: "nba winningest percent franchises all-time" (1 of the 2,082 feed questions) answers "Nothing here answers this question as a ranking of teams: every season of a career cannot be read here - it would answer for a different span than was asked." It reads a range ("winningest teams since 2015", "most wins nba 2020s"). "losingest" is left unread by the row: nothing reads its end (the window tagger's `rank`), so read as the teams' ranking it would rank the best records.
-- **User sees:** an honest refusal where the franchises' all-time records were asked.
-- **Next step:** the teams' ranking over a career read as the range from the standings' first season (`team_seasons`, lane T's relation), with the franchises' former names folded in by team id; "losingest" read as the ranking's worst end by the window tagger.
-- **Source:** ours.
-- **Priority:** P3 - a refusal by name.
-- **GitHub:** #433
-
-### A team's opponents' percentage, and a ranking of teams by a figure given up, are refused: "celtics opponents fg% this season", "which team gave up the most rebounds"
-- **Found:** 2026-10-13, the P1 sweep's lane L, finishing #348; the answer side fixed by lane T2, the reader's remainder by Phase 5, step 6's lane L (a box-score count given up is the opponents', summed by the team compiler, `CHANGES.md`).
-- **Evidence:** on `p5s6-L`, "celtics opponents fg% this season" is refused "no team metric for stat 'fg%'" (a percentage is no total the compiler sums, and the team-season relation has no opponent percentage), and "which team gave up the most rebounds" is refused "no team metric for stat 'rebounds'" - the teams' ranking reads the team-season table's metrics, of which only points allowed is an opponent's figure. Neither answers a different question since the step (the ranking answered the teams' own rebounds before it).
-- **User sees:** a refusal - naming the stat, not that the opponents' figure is what is missing.
-- **Next step:** the opponents' percentage from the games' opponent box rows (made over attempted, summed), and a ranking of teams by the opponents' summed box rows (the team relation's, lane T's seam); and the refusal saying "the opponents'" where the measure's `whose` is theirs.
-- **Source:** ours.
-- **Priority:** P3 - a refusal (0 of the 2,710 readings).
-- **GitHub:** #425
-
-### "vs top N teams" and "against top N defenses" are read as a window of the subject's last N games: "luka stats vs top 3 teams this season" answers his last 3 games
-- **Found:** 2026-10-13, the Phase 4 review (`~/association-research/reviews/phase4-2026-10-13/REVIEW.md`, finding 1), probing #396's class beyond the seeding words its fix reads.
-- **Evidence:** `fe806a6` and `d4f04b9`, recorded-reply probes (the review's `data/adhoc.txt`): "luka stats vs top 3 teams this season" -> "Luka Doncic, last 3 of 64 games of the 2026 regular season: ...", `Reading.window.count` 3, unread `stats`, `teams`; "luka stats against top 5 defenses" -> his last 5 games, unread `stats`, `against`, `defenses`. #396's fix (`76c4e6a`, `lexicon.SITUATION`) reads only the seeding words ("seed", "seeds", "seeded"); "luka stats vs the top 4 seeds" is refused now but its Reading still carries `window.count` 4, its claim folded inside the situation's. No population question holds the class besides #396's own.
-- **User sees:** a fluent log of the last N games where games against the top N teams were asked.
-- **Next step:** read "vs|versus|against (the) top|best|bottom|worst N <teams|defenses|offenses|seeds>" whole as the situation refused by name, a test per wording, and drop a window whose characters lie inside a refused situation.
-### A team named beside a player in words no read places is refused by name: "Mikal bridges logs at philly", "kd stats in 4th quarter playoffs okc"
-- **Found:** 2026-10-14, Phase 5, step 2, reading the moves of the possessive-nickname fix ("Lebrons season outcome during lakers" became LeBron's 2026 line, "during lakers" applied by nothing).
-- **Evidence:** since Phase 5, step 6 (lane N) a team the words name on a player's question that no read places is refused by the `team_not_read` cause naming it (`subject.team_not_read`), and the tenure is read after "for", "with", "with the", "as (a)", "on", "during", "joined", "in <nickname>" and from a team word beside his name, the opponent's "t wolves" too. Still refused by the cause on the 2,082 feed questions (13): "Mikal bridges logs at philly" and "Scoot henderson at pelicans log" ("at <team>": the opponent with the venue away - the venue is the cuts tagger's, `cuts.py`, and the opponent the subject reading's; read as the opponent alone it would answer his home games too); "kd stats in 4th quarter playoffs okc" and "ochai agbaji shot chart 2023-24 utah" (a team trailing the question, no lead); "kd stats in 4th quarter playoffs without the warriors" (no team is absent); "jaylen brown stats vs last 10 games the knicks" (the versus span holds a window before the team); "OG vs celtics since playing on the knicks" ("OG" is two letters, too short for the tenure's player-before check, `subject._named_before`); "allen iverson vs michael jordan vs bulls" and its twin (a pair, no tenure is one player's); "anthony davis 2020 playoffs vs Portland, houston and nuggets" (three opponents); "Saddiq Bey stats with Detroit Pistons and Atlanta Hawks" (two tenures); "paul george and kawhi stats with the clippers" (a pair's tenure); "how old was shaq when he won in miami" (an age).
-- **User sees:** a refusal naming the team, where his games at a team, or two teams, were asked.
-- **Next step:** "at <team>" with lane L (the cuts tagger reads the venue "away" from "at" before the opponent the subject reading reads); several opponents or tenures as a list (a cell holding more than one team) is a relation change; each wording enumerated.
-- **Priority:** P3 - a refusal by name; 0 of the 628, 13 of the 2,082.
-- **Source:** ours.
-- **GitHub:** #436
-
-### A single bare "N stat" line on a reader whose shape is not a line is read by nothing: "2 threes in games Jamal Murray played including playoffs" answers his 3.2 threes per game
-- **Found:** 2026-10-09, Phase 3 step 2's line slice (`~/association-research/stages/line_family.py`); the stated forms fixed and the rest re-measured 2026-10-10, Phase 3, step 3, where the Reading's own unread words name each number.
-- **Evidence:** the lines tagger's rule (`line.read_lines`): every line on `threshold_count`, `record_when`, `streak` and `single_game_high` (`point.THRESHOLD_ASKS`, the four shapes' keys since Phase 3, step 4, the key's reading `point.lines_under` since its slice (b)); since Phase 3, step 3 one line stated outright ("N+ stat", "at least N stat") on a log or a player's splits (`point._LINES_ONE_NARROWS`: "anthony edwards log with at least 50 points" lists his one 50-point game, where it listed his last 10); elsewhere a floor of minutes, a line under a number, or two or more "N+ stat" pairs. A bare "N stat" with no "+" is read by nothing outside the line readers, nor one stated outright on a player's line (`player_stat`: "lebron 20+ points this season" can ask whether he averages it). On the 2,710 readings, with the number in `Reading.unread`: "2 threes in games Jamal Murray played including playoffs" (`player_stat`, one of the 628: his 3.2 threes per game over 81 games), "centers min 2 threes v bos gamelog 2024" (the centers' log vs Boston, every game), "harden 61 points" (the league's scoring leaders - "harden" unread too), "how many 30 point games did maxey have without embiid" (the with/without split, not a count), "most 40/50/60 point games in nba history" (refused "team_leaderboard cannot honor ['span']" - a count of a PLAYER's games read as a team's), "Lakers playoff games with exactly 99 points since 2000" (the Lakers' total points).
-- **Fixed since (2026-10-13, the P1 sweep's lane L):** a line stated over or at a number by its lead or a plus on any box-score stat ("15+ fga", "13+ free throw attempts", "15 or more field goal attempts", "more than 40 points", "exactly 25 fga") is read where a line under a number is (#371 and this entry's first class); "jalen suggs game log 15+ fga" lists his 13 such games. "how many 30 point games did maxey have without embiid" is a count beside the companion on this tree. Still open, below: the bare forms; "at least 15 fga" (the minimum reader takes "at least N <stat>" as a ranking's qualifier and the log drops it - lane S's `window.read_minimum`); "how many games did lebron have 15 or more field goal attempts" and "most games with 15+ fga" (a count over a line on a stat the threshold spellings do not hold: the first is answered as the narrowed log, "last 10 of 36 games", the second as the FGA-per-game ranking, since `line.threshold_named` reads the threshold spellings only and the rules read a count with none as a ranking).
-- **User sees:** a fluent answer to a broader question - every game, or a ranking - with the number the question gave set aside.
-- **Next step:** one at a time, each with the feed's moves enumerated: a bare "N stat" after "games with" on a log or a line ("2 threes in games ... played" as games with 2+ threes); "how many N point games ... without X" as a count beside the companion (the count's child grammar, not the with/without split); "most N point games in nba history" a count of players' games under the league subject, not the team ranking; "exactly N" as an equality line. The pair grammar's own false pairs stay out ("2pt percentage", "top 20 rebound leaders" read as lines by `lexicon.threshold_pairs`; a test per wording).
-- **Since Phase 5, step 1 (2026-10-14):** the entry's wordings with a bare "N stat" line on a non-line shape ("2 threes in games Jamal Murray played including playoffs", "harden 61 points" and 7 more of the 2,082) refuse by name now (`unread_number`); what remains is the READ of the line; a refusal by name is the standing floor, the fix is the read.
-- **Since Phase 5, step 2 (2026-10-14):** ONE line the words set on the games - "games with 2 threes", "2 threes in games he played", "30 point games" (`lexicon.LINE_ON_GAMES_BEFORE`/`_AFTER`, `LineCandidate.games`) - narrows a player's line, log or splits however it is stated (`point._LINES_ON_GAMES_NARROW`), and "min N stat" is at least N: "2 threes in games Jamal Murray played including playoffs" (the 628's one) answers his line over his 59 games with 2+ threes, "centers min 2 threes v bos gamelog 2024" the centers' games with 2+ threes. Still open: a bare "N stat" with no games word on a non-line shape ("harden 61 points": one game or a line - refused by name, the right floor), two or more bare lines on one game off a line shape ("lebron games with 30 points 10 rebounds"), a count's second line ("most 50 point games with only 1 fta", #358), a line on a stat the threshold spellings do not hold ("steph curry games with 15 field goals attempted", "lebron james points per game when taking 15 shots") and a line of 0 ("rodman games with 0 field goal attempts") - each refused by name since step 1.
-- **Priority:** P3 - was P1, a fluent wrong answer, until Phase 5, step 1; now a refusal by name - a broader question answered fluently; 1 of the 628, 9 of the 2,082.
-- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 16 questions hold the unread number of a single line on a game a non-line reader leaves unread - "jalen suggs game log 15+ fga" (2), "steph curry games with 15 field goals attempted" (2), "lebron james points per game when taking 15 shots" (2), "Towns over 9 rebound", "games with 13+ free throw attempts by the 76ers" (2, a team's), "rodman games with 0 field goal attempts", "knicks record in playoff games when Mitchell Robinson shoots 4 ft", "most 50 point games with only 1 fta" (a count's second line, #358), "warriors' record last season when committing 10 or fewer turnovers" (3 wordings, #325), "fewest field goal misses ... at least 92 fgm + opp fgm"; every one answered `fast` without the line.
-- **GitHub:** #357
-
-### A line on a percentage is refused rather than read, and a bare or glued percentage line is read by nothing: "kobe bryant career games with 40 field goal percentage" lists his last 10 of 1,331 games
-- **Found:** 2026-10-10, Phase 3, step 4, slice (b) - the joined claims (`intent+measure`, 11 on the 2,710) hid it.
-- **Evidence:** since the P1 sweep's lane L (2026-10-13) a line stated over or at a number by its lead is read (`lexicon.LINE_OVER_OR_AT`, `EQUALS_LINE`: "more than 40 points", "above 9 rebounds", "exactly 25 field goal attempts", "fga = 25"), and one on a percentage is refused by name (`line_on_a_percentage`): no column of `player_game_log` holds a game's percentage, so "kobe bryant career games with more than 40 field goal percentage" (and 5 more feed wordings) says so by that cause on every key. What is left: (1) the relation could derive a percentage line from the makes and the attempts (`player_games.Narrowed.narrow_measure` writes `pgl.<column>` only); (2) a percentage line stated bare or glued is read by nothing and the whole log answers - "kobe bryant career games with 40 field goal percentage" (last 10 of 1,331), "kobe bryant games with a field goal percentage under40.0%" (3 wordings, the number glued to "under", a decimal), "how many regular-season games did kobe bryant have with a field-goal percentage 40%" (2); (3) a season's line stated over or at a number on the league ("players who made exactly 129 three pointers in the NBA in 2025-26", "nba players with seasons with a 4% 3pt", 3 wordings) is #390's, left unread on the ranking of players' seasons on purpose.
-- **User sees:** a refusal naming the percentage for (1); the whole log for (2); the plain ranking for (3).
-- **Next step:** a percentage line on the player relation as `100.0 * made / NULLIF(attempted, 0)` beside `narrow_measure`'s column (the relation's file), each stated wording a test; then read a bare "N <percentage words>" after "with" and a decimal or glued number as a line.
-- **Since Phase 5, step 1 (2026-10-14):** 4 of its wordings ("kobe bryant career games with 40 field goal percentage", "players who made exactly 129 three pointers in the NBA in 2025-26", ...) refuse by name now (`unread_number`); a refusal by name is the standing floor, the fix is the read.
-- **Priority:** P2 - (2) answers a broader question on 6 of the 2,082; (1) and (3) are refusals or #390's.
-- **GitHub:** #371
-
-The 391 date-only games printed a day early (#76), 2008's team rebound columns
-(#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
-to this section, re-read the P2s against the P1 definition: that is how both of
-those were found.
+- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14).
 
 ### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
@@ -135,48 +78,18 @@ those were found.
 - **User sees:** a fluent table about a different question, with the right numbers for the narrower scope it states - which is why the blind grader passed all five wordings; re-graded wrong on Jeff's call (overrides run day10). Day10 is 160/175 and families 150/166 after the re-grade.
 - **Parser path (2026-09-27, plan item 6 steps b-d):** the SHAPE is fixed - the parser reads a player's record with no companion as `player_splits` ("Joel Embiid vs the Boston Celtics, splits, 2026 regular season (2 games he played) ... W-L 1-1"), graded correct in `live_parser1`-`3` under Jeff's 2026-09-27 instruction to score the season type as the regular-season default, and the router reader that still answered the with/without split is gone (step d). The SCOPE half (regular season only) is the deferred season-type decision, unchanged.
 - **Next step:** two decisions for the parser (ROADMAP: the consolidation). Shape: a player set against a team is his games narrowed by opponent - the player-games relation, rows with W/L and his line plus the tally - never the team's with/without split (the reroute rule goes; the compiler's rows shape with a record summary is the nearest thing today). Scope: "this year" / "this season" with no type named reads both types and says so, the way `season_type_unstated` already does for "last N games" - a policy for every question, to confirm with Jeff, since the regular-season default is what every per-game average answers under today.
+- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14: the review found it untagged in the P1 section).
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
-
-### A team's players' single-game high is answered for this season only: "most points in a game in cavs history"
-- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`); re-measured 2026-09-27 on the compiler; the sentence half fixed 2026-10-13 (the P1 sweep's lane T).
-- **Evidence:** "history" is not read as a career: on master `c04ac33` (the feed, recorded replies) "most points in a game in cavs history" and "... in pistons history" read the team's players' high (`team_players`, since lane N's #364) over the 2026 regular season and answer "every player with the Cleveland Cavaliers, 2026 regular season - top 3 by points: ... Donovan Mitchell ... 48" - the team said, the season not the franchise's history. The sentence half is done on both paths the high takes: the compiler's own sentence names the team ("every player with the ..."), and since lane T the high's reader does too where it answers ("Donovan Mitchell had the most points in a single game for the Cleveland Cavaliers in the 2026 regular season: 48 ..."; over a career, "... for the Cleveland Cavaliers in the regular season since 1993-94: 71, on 2023-01-02 vs CHI. Next: Kyrie Irving (57), LeBron James (57)." - `tests/query/test_team_players_high.py`). 65 of 1,972 reasonable large-set questions (3.3%) say history/all-time/franchise.
-- **User sees:** the right team's players over the wrong span - this season, where the question asks the franchise's history.
-- **Next step:** (the span tagger's, lane S) read "history"/"all-time"/"franchise" beside a team as a career (`Span(career=True)`); the answer side reads it (tested); a case per wording, the readings and the feed enumerated.
-- **GitHub:** #417
-### A team's single-game high is answered as the team's season line: "most points in a game in cavs history"
-- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/`; the span half fixed in the P1 sweep (lane S, 2026-10-13).
-- **Evidence:** "in <team> history", "in <team> franchise history", "of the <team>'s history" and "franchise leader/record" are read as every season on record since the sweep (`lexicon.CAREER_WORDS`): "most points in a game in pistons history power forward" answers the Pistons power forwards' best games since 1994, naming the team ("every power forward with the Detroit Pistons, regular season career (1994 on) - top 3 by points"). But "most points in a game in cavs history", "... in pistons history" and "most points in the history of the philadelphia 76ers" are read under the team's season line (`team_seasons`/`scalar`/`line`, #364's shape) and are refused now ("every season of a career cannot be read here"), where they answered the 2026 points per game.
-- **User sees:** an honest refusal where the franchise's (or its players') best single game was asked.
-- **Next step:** #364's - the team named beside "in a game" read as its players' single-game high (`team_players`), which the career span now reaches over every season.
-- **Priority:** P3 - a refusal.
-- **GitHub:** #167
 
 ### A word after a versus word near both a team and a player is read as neither: "Kmart vs houson" answers without the opponent
 - **Found:** 2026-09-27, plan item 6 step (d) part 3 (#131, "gui last 5 games vs sours"); rewritten 2026-10-13 twice by the P1 sweep's lane N, which read a near spelling of exactly one team after a versus word (`subject._read_opponent_near`, `entities.near_team`: "gui last 5 games vs sours" and 11 more) and refused a word after a versus word that names nothing on record (`subject.versus_word_unread`, the `opponent_not_read` cause: "steph curry vs phnx", "og annuby vs philidalephis stats", "Vucevic vs magocs", "suns v kingsrecord last 20 games" and 4 more, `CHANGES.md`).
 - **Evidence:** what is left, on the 2,082 feed questions (no model names): a word after "vs" near a team AND a player is read as neither and refused by nothing - "Kmart vs houson" (Houston, Allan Houston), "austin reaves 2nd half game log vs clevland" (the Cavaliers, Antonius Cleveland), "Bobby Portis vs magics Gamelog" (the Magic, Magic Johnson); a nickname split in two, "lebron record vs t wolves"; a typo'd TEAM subject ("nuggers record"), since only the word a versus word leads is tried. Each answers the subject's line or log over every opponent.
 - **User sees:** a fluent answer to the un-narrowed question, the opponent named nowhere in it.
 - **Next step:** a word near a team and a player asks which (a `Clarify` naming both); "t wolves" joins the nicknames; a typo'd team subject read through `near_team` where no other subject stands. A test per wording.
+- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14: the review found it untagged in the P1 section).
 - **Source:** ours.
 - **GitHub:** #247
-
-### "nba most fga with 0 fgm single game" ranks the league's FGA highs with "0 fgm" unread, and "without fgm" is read as a teammate
-- **Found:** 2026-09-27, checking the answers the #168 fix moved. Rewritten 2026-10-13 (lane N of the P1 sweep), which made "nba" alone no team word where a measure is named (`parse._parent_asked_nba_unmeasured`), so both wordings are the players' now and "single game" is the high (`CHANGES.md`).
-- **Evidence:** on sweep-N after that fix, "nba most fga with 0 fgm single game" answers "every player, 2026 regular season - top 3 by FGA: Cade Cunningham 45 ..." - the high over FGA, the "0 fgm" line unread (the lines tagger reads no line at 0, lane L's); "nba most fga without fgm single game" reads "fgm" as an absent teammate and answers "No player found matching 'fgm'.", and "Nba most fga without fgm" is refused "games without fgm cannot be read here".
-- **User sees:** the league's biggest FGA games where games with no made field goal were asked (a broader question, fluently); a refusal naming "fgm" as a player.
-- **Next step:** the lines tagger reads a line at 0 ("0 fgm", and "without fgm" as fgm at 0) - lane L's `line.py`; then the high over FGA keeps the line, or the point reader refuses the predicate by a cause naming it until the compiler has one.
-- **Source:** ours.
-- **Since Phase 5, step 1 (2026-10-14):** "nba most fga with 0 fgm single game" refuses by name now (`unread_number`: the 0); what remains is the line at 0; a refusal by name is the standing floor, the fix is the read.
-- **Priority:** P3 - was P1, a fluent wrong answer, until Phase 5, step 1; now a refusal by name - a broader question answered (1 of the 2,082), and a refusal by the wrong cause (2).
-- **GitHub:** #266
-
-### A ranking within the subject's own conference or division is refused: "top scorers in the western conference this season"
-- **Found:** 2026-10-09, Phase 3 step 0; refused by a cause in the P1 sweep (lane S, 2026-10-13).
-- **Evidence:** since the sweep a conference or division on a ranking that no "vs"/"versus"/"against" leads ("in the western conference", "who leads the east", "eastern conference players points leaders", "atlantic division standings": `cuts.own_alignment`, `lexicon.ALIGNMENT_AS_OPPONENT`) is refused before any reader runs (`own_alignment`): "A ranking within a conference or division ('in the western conference') is read by nothing here yet - ...", where "top scorers in the western conference this season" ranked every player's games against the West and "who leads the east in scoring" the league. Off a ranking the words keep the opponent's reading ("lebron points in the west": his games against the West). None of the 628 or the 2,082 holds the class (the wordings are probes).
-- **User sees:** an honest refusal where a conference's own leaders were asked.
-- **Next step:** a ranking pool narrowed by the player's or team's own alignment that season (`team_alignment` on the team's id and season, the standings' conference and division), then the cause goes. #25 is the same gap from the data side.
-- **Priority:** P3 - a refusal.
-- **GitHub:** #339
 
 ### A team's record when a companion "has N" with no stat word is answered as the with/without split
 - **Found:** 2026-10-09, Phase 3 step 0, while measuring whether `refusals._team_where_a_player_belongs` was reachable (it was not, and this is why). Rewritten 2026-10-13 (lane N of the P1 sweep), which read a companion's line after "has N" on any box-score word (`lexicon.CONDITION_HAS_LINE`: "when mitchell robinson has 4 fta" is the Knicks' record in his 4+ FTA games, `CHANGES.md`).
@@ -184,42 +97,34 @@ those were found.
 - **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
 - **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
 - **GitHub:** #340
+- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14).
 
-### A window with a misspelled "last", or with no "games" after its count, is no window: "jalen brunson lasst 5 games" answers his season line
-- **Found:** 2026-10-13, the P1 sweep (lane S), what #369's fix left: #369 read a misspelled "games" after "last N" (one edit from "game(s)", and "match(es)", `lexicon.WINDOW_GAMES`); the feed's other unread window numbers are a different shape.
-- **Evidence:** the 2,082 feed answers on the fix's tree (`stage_snapshots.py run --feed`): a misspelled "last" - "aaron gorodn lat 5 games" (the league's 2026 points ranking), "jalen brunson lasst 5 games" (his 2026 season line); a count with no "games" - "jalen brunson stats last 5 away" (his 38 road games), "Sengun last 5 stats vs knicks" (his 2 games against them this season), "bradley beal 15 games" (his 6 games of 2026); and four nothing here reads - "hield ast 5 games" ("ast" is "last" or assists), "How many threes did Pritchard make 2 games ago" (the league's ranking), "ja morant last 10 first quarters against nets" (a window of quarters), "warriors fir 10 game redorn evry season" (a window per season, misspelled). <!-- codespell:ignore evry - the feed's question as typed -->
-- **User sees:** a season line, a ranking or this season's meetings where the last N games were asked; nothing says the window was set aside.
-- **Next step:** a "last" one edit off ("lat", "lasst") read as the window's end beside a count and "games" - excluding the words one edit from "last" that are words of their own ("east", "least", "lost", "list", "fast"; "at least 5 games" is a line) - and "last N" before a venue or "stats" with nothing after it read as N games; each measured on both corpora first, a test per wording.
-- **Since Phase 5, step 1 (2026-10-14):** 9 of the 2,082 ("aaron gorodn lat 5 games", "bradley beal 15 games", "hield ast 5 games", ...) refuse by name now (`unread_number`, `unread_window`); what remains is reading the window; a refusal by name is the standing floor, the fix is the read.
-- **Priority:** P3 - was P1, a fluent wrong answer, until Phase 5, step 1; now a refusal by name - a different question answered fluently; 9 of the 2,082.
+### "top N games" and "best game(s)" are read as the newest games: "steph curry top 5 games this season" lists his last 5
+- **Found:** 2026-10-14, the Phase 5 review, probing step 1's refusals on both trees (`520a94b`, `3dc37821`).
+- **Evidence:** the window tagger reads "top 5 games" as a window of the newest 5 (`lexicon.ORDER_WORDS`' "top" beside a count), so "steph curry top 5 games this season" lists his last 5 games and "luka doncic best game this season" his last 10; the player's best games by points are the single-game high's shape (`player_games/rows/measure`, "most points in a game"), which these words never reach. Step 1's own refusal for "top" with no count suggests "top 5 games" as the rewording, which then answers wrong.
+- **User sees:** a different set of games than asked, fluently.
+- **Next step:** the window tagger reads "top/best N games" and "best game" as the high's shape ordered by the measure (the rows-by-measure key with a count), not a window; a test per wording; measure both populations ("top" beside a count on a player's games).
+- **Priority:** P1 - a different question answered fluently; 0 of the 2,082 (probed wordings).
 - **Source:** ours.
-- **GitHub:** #411
+- **GitHub:** #445
 
-### A player's first or last N seasons is read by nothing: "lebron james stats through their first 9 seasons" answers his 2026 line
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
-- **Evidence:** 3 of the 2,082 feed questions: "lebron james stats through their first 9 seasons" (his 2026 line), "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons" (their 2026 lines), "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?" (his line since 2018 - "last 9 seasons" read as the relative "past N seasons" of the league's calendar, `span._relative_since`, and "first 9" by nothing). The window tagger excludes a count of seasons from its own ends (`lexicon.COUNTED_END`'s `(?!\s+(?:seasons?|years?))`), and the span reads "last N seasons" as the calendar's, never the player's own.
-- **User sees:** a wrong answer: one season's line where the first nine of his career were asked.
-- **Next step:** an end of a player's OWN seasons ("his first/last N seasons", "through their first N") read as a span over the seasons on record for him (`season_line.seasons_on_record`), the comparison's per player; refused by a cause until then.
-- **Since Phase 5, step 1 (2026-10-14):** the quoted wordings refuse by name (`unread_number`: the N of "first N seasons"), the honest floor; the read needs a span relative to the player's own seasons on record - a typed field on the shared `reading.Span`, resolved in `player_relation.span_of` and the season line, per player for a comparison (lane L's measurement, step 6).
-- **Priority:** P3 - was P1 until step 1; now a refusal by name. Before: 3 of the 2,082.
-- **GitHub:** #418
-### A player's first or last N seasons is refused: "lebron james stats through their first 9 seasons"
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers); refused by a cause in the P1 sweep (lane S, 2026-10-13).
-- **Evidence:** a count of a career's own seasons by their place ("their first 9 seasons", "his last 9 seasons", "first 2 years": `lexicon.OWN_SEASONS`) is refused by the parser before any reader runs (`own_seasons_window`, `window.own_seasons_window`): "A career's own seasons by their place ('their first 9 seasons') are read by nothing here yet - name the seasons themselves ...". 3 of the 2,082 feed questions ("lebron james stats through their first 9 seasons", "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons", "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?"); until the sweep they answered his 2026 line, their 2026 lines and LeBron's line since 2018.
-- **User sees:** an honest refusal where the first nine seasons of a career were asked.
-- **Next step:** read it: the window tagger types it as a window of SEASONS with its end (`Window(order, count, of="seasons")`, beside a history's "past 5 years"), and the season line resolves it per player over the seasons he has on record (`season_line.seasons_on_record`, the relation's: the first or last N of his regular seasons) - a comparison per player, each over his own; then the cause goes.
-- **Priority:** P3 - a refusal.
+### "last N meetings" ignores N: "celtics vs heat last 4 meetings" answers the last 10
+- **Found:** 2026-10-14, the Phase 5 review, probing the meetings window landed in step 7 (`bd5a9aee`).
+- **Evidence:** "celtics vs heat last 4 meetings" answers their last 10 meetings, and "last 3 meetings between knicks and nets" the Knicks' last 10 games against everyone: "meetings" is no games word to the window tagger (`lexicon.MEANING_WINDOW_NEXT` has it for step 1's class, the tagger's own count rule does not), so the count is dropped and the log's default ten stands; the second wording loses the opponent too ("between X and Y").
+- **User sees:** ten meetings where four were asked; the wrong team's games on the "between" form.
+- **Next step:** the window tagger reads "last/past/first N meetings|matchups|games between" as the count on two teams' meetings, and "between X and Y" as the pair; the meetings read already takes the window (step 7); a test per wording.
+- **Priority:** P1 - a different set of games than asked, fluently.
 - **Source:** ours.
-- **GitHub:** #392
+- **GitHub:** #446
 
-### A count over a line at 0 is read by nothing: "most 0 point games in nba team history" is refused by its number
-- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers); narrowed by the P1 sweep's lane N (the league's "N point games" read as the players' count, a count beside a teammate's absence as his count) and by Phase 5, step 6's lane L (a count of triple-doubles over a line, #437, read with both predicates, `CHANGES.md`).
-- **Evidence:** on `p5s6-L`, "most 0 point games in nba team history" is refused "'0' is a number this reading did not use ..." (`unread_number`): the lines tagger reads no line at 0 ("a threshold of 0 counts every game", the count's own cause), and "0 point games" means the games at exactly 0 - a scoreless game - which no line reads (a line is at or over its number). "nba most fga with 0 fgm single game" is #266's. Neither answers a different question since Phase 5, step 1.
-- **User sees:** a refusal naming the number.
-- **Next step:** read "0 <stat> games" (and "scoreless games") as a line at exactly 0 (`op` "=", which the lines carry - `lexicon.EQUALS_LINE`), a count of those games; measure the feed first.
+### "may" is read as the player Sean May: "how many points may luka score tonight" answers a Sean May comparison
+- **Found:** 2026-10-14, the Phase 5 review, probing step 1's date class.
+- **Evidence:** the subject reading reads "may" as a whole word of Sean May's name (`players_named_in`'s rule, one whole word of exactly one player) and the question becomes a comparison of Luka Doncic and Sean May; the verb "may" before another verb names nobody. Step 1's date class read "may" as a month on the same wording until its narrowing (2026-10-14, the lead); the subject reading's half is this entry.
+- **User sees:** a comparison with a player the question never named, fluently.
+- **Next step:** "may" (and the other modal/month homographs: "will", "march", "august" are names too) names a player only where the reading holds no verb after it, or where it is capitalized or beside another name word; `lexicon.NEVER_A_NAME`/`NOT_A_SUBJECT` are the tables; measure on the 2,710 and the feed.
+- **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
-- **Priority:** P3 - a refusal by name; 1 of the 2,082.
-- **GitHub:** #394
+- **GitHub:** #447
 
 ## P2: misleading or incomplete
 
@@ -669,66 +574,6 @@ those were found.
   30 teams"
 - **GitHub:** #89
 
-### ESPN files one player under two athlete ids in the same box score
-- **Found:** 2026-09-15, issues audit - found independently by two auditors.
-  Re-measured, extended and partly fixed 2026-09-17.
-- **Evidence:** grouping `player_box_stats` by `(event_id, team_id,
-  display_name)` and counting distinct `athlete_id` finds **8 players, 69
-  team-games** - Isaiah Canaan, Corey Brewer, Daryl Macon, Ken Johnson (the
-  four originally found) plus four single-game 2019 cases new to this count:
-  Tahjere McCall, John Jenkins, Mitchell Creek, Henry Ellenson. Full counts and
-  the classification of every one of the 69 games (both sides real and
-  identical / one real beside a fabricated zero / both blank) are in
-  `DATA.md`.
-  - This explains most of #54's 2019 disagreement: the team box's derived
-    points equal the final score in every row of 2019, 2021 and 2026, while the
-    player sums overshoot in 23 team-games in 2019 - **re-measured 2026-09-16:
-    Phoenix 14, Philadelphia 7, Sacramento 1, Minnesota 1** (this read "almost
-    all Phoenix (15) and Philadelphia (7)" until then, which is 22 of the 23
-    and misses the two one-game teams).
-- **Fixed and backfilled 2026-09-17.**
-  `association.fetch.repairs.duplicate_athletes` merges each pair at load
-  time into `player_box_stats_deduped`: the id with more career games carrying
-  real minutes wins, the other id's rows for that game are dropped, and
-  `player_game_log` now reads the merged table. A pair is merged only where
-  every shared game is safe (one side has no minutes, or both sides agree
-  exactly) - measured true for all 69 - so a future pair that disagrees for
-  real is left unmerged rather than guessed at.
-
-  Backfilled with `association data load --tables player_box_stats` and
-  re-measured against the rebuilt table: **0 remaining duplicates** (the
-  query at the top of this entry returns nothing), 69 rows merged away,
-  1,100,341 rows against the raw table's 1,100,410. No real line was lost -
-  the deduped table agrees with `player_box_stats_filled` on every shared key,
-  and 70 filled keys disappear against a net 69 because Ken Johnson's ghost id
-  `1008` holds one game (`221129001`) that his real id `1972` does not, so
-  that row is relabelled rather than dropped: he ends with 34 rows, 32 points
-  and 16 games carrying minutes, exactly what the real id already had plus
-  that one blank. Corey Brewer's points rise from 7,224 under his canonical id
-  to 7,479 for an unrelated reason worth knowing - the deduped table is built
-  on `player_box_stats_filled`, so it carries the rebuilt lines for his 30
-  games against Chicago and New Orleans in 2013-2018.
-- **What this does NOT fix, and remains open:**
-  - **The team-total double-count** (#54's 23 team-games) is unresolved:
-    `query/team_metrics.py` and `query/conditions.py` sum `player_box_stats`
-    directly, not the new deduped table. Re-scope or hand off once #54's owner
-    is free to switch that source.
-  - **`player_advanced_stats` and `player_season_advanced_stats`**
-    (`fetch/advanced_stats.py`) also read raw `player_box_stats` and are built
-    before the merge runs, so the 8 players still show two athlete_ids' worth
-    of advanced stats for their affected seasons.
-  - **The NetPoints per-game tables lose these players' entire careers, not
-    just the affected season** - a bigger, separate consequence measured
-    2026-09-17 and filed as its own entry immediately below, since fixing it
-    needs a fetch-time change this load-time repair cannot reach.
-- **User sees:** a team total summed from player rows double-counts that
-  player (open); a per-game lookup through `player_game_log` (single-game
-  highs, streaks, career-from-box-scores) now sees one identity (fixed, once
-  loaded); an advanced-stats or NetPoints per-game question about one of these
-  8 players still does not (open, see above and the entry below).
-- **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:118`)
-- **GitHub:** #87
-
 ### Duplicate-athlete-id players are invisible to NetPoints' per-game tables, for their whole career
 - **Found:** 2026-09-17, while fixing #87
 - **Fixed in code, not yet backfilled**, 2026-09-18. `Pipeline._name_to_athlete_id()`
@@ -790,53 +635,6 @@ those were found.
   backfill runs.
 - **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:118`)
 - **GitHub:** #101
-
-### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
-- **Found:** 2026-09-11, template work (agent B); 2000 fixed and this rewritten 2026-09-15
-- **Fixed for 2000.** The games ESPN's team schedules drop ARE on its daily
-  scoreboard, which is a second, independent list of what was played.
-  A postseason pull now makes a second discovery pass over it once the
-  schedule's games are on disk, scanning forward from the latest date stored
-  (`POSTSEASON_SCAN_DAYS`, 28 days), and
-  `scripts/backfill_missing_playoffs.py` ran it over the two affected seasons.
-  The ordering is load-bearing: the first version scanned during discovery,
-  before anything was fetched, so it had no date to anchor on and a
-  from-scratch pull of 2000 found none of the six Finals games.
-  Nine games recovered, including the whole LAL-IND Final: the 2000 postseason
-  went 70 -> 79 games, and **every team in it now matches ESPN's own
-  `team_season_stats` exactly** (LAL 15 -> 23, IND 16 -> 23, POR 14 -> 16; zero
-  discrepancies league-wide, counted from `real_games`).
-- **What remains, and why it is not a P1.** 2001 recovered only its Finals Game
-  5 (60 -> 61 games). Probed live through the project's own client, 23 days
-  across that postseason's conference finals and Final return **no events at
-  all** - so Games 1-4 of LAL-PHI and the end of MIL-PHI are not in ESPN's
-  archive anywhere, and no pull will add them. Five teams are still short in
-  `real_games`: PHI -7, LAL -5, MIL -5, CHA (id 3) -2, SA -1.
-- **The answer now says so**, which is the difference from the original P1. The
-  2001 postseason is declared `postseason_partial` on both `games` and
-  `team_box_stats`, so a 2001 playoff question carries a note naming what is
-  missing instead of stating a short series as fact. A 2001 REGULAR-season
-  question carries nothing: that season is complete, and `postseason_partial`
-  is a separate field from `partial` precisely so one does not caveat the
-  other.
-- **The 2000 standings still share the old gap.** `standings` agrees with the
-  short game list rather than with reality - the Lakers are 67-13 there against
-  a real 67-15 - and that is a regular-season fault tracked separately under
-  "Smaller game and box-score gaps, 1994-2003" (#14).
-- **User sees:** a 2001 playoff answer that is short by up to seven games for
-  one team, with a caveat saying so. No wrong answer is stated as fact.
-- **Next step:** nothing actionable here - it is ESPN's gap and it is declared.
-  Re-check if ESPN ever backfills its own archive.
-- **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
-- **Re-checked 2026-09-17:** holds. Per-team game counts in `real_games`
-  against ESPN's own `team_season_stats` totals (points / avgPoints): PHI
-  16/23, LAL 11/16, MIL 13/18, CHA (id 3, the Charlotte Hornets in 2001) 8/10,
-  SA 12/13 - ten games in all: LAL-PHI Games 1-4, three of MIL-PHI, two of
-  MIL-CHA and one of LAL-SA. The caveat in `coverage.py` now names all four
-  series and says 16. 2000 is clean: 75 games in `real_games`, matching ESPN.
-  The "70 -> 79" figure above is the raw `games` count, which includes 4
-  placeholder rows.
-- **GitHub:** #6
 
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit
@@ -2018,6 +1816,46 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #413
 
+### A line on a percentage is refused rather than read, and a bare or glued percentage line is read by nothing: "kobe bryant career games with 40 field goal percentage" lists his last 10 of 1,331 games
+- **Found:** 2026-10-10, Phase 3, step 4, slice (b) - the joined claims (`intent+measure`, 11 on the 2,710) hid it.
+- **Evidence:** since the P1 sweep's lane L (2026-10-13) a line stated over or at a number by its lead is read (`lexicon.LINE_OVER_OR_AT`, `EQUALS_LINE`: "more than 40 points", "above 9 rebounds", "exactly 25 field goal attempts", "fga = 25"), and one on a percentage is refused by name (`line_on_a_percentage`): no column of `player_game_log` holds a game's percentage, so "kobe bryant career games with more than 40 field goal percentage" (and 5 more feed wordings) says so by that cause on every key. What is left: (1) the relation could derive a percentage line from the makes and the attempts (`player_games.Narrowed.narrow_measure` writes `pgl.<column>` only); (2) a percentage line stated bare or glued is read by nothing and the whole log answers - "kobe bryant career games with 40 field goal percentage" (last 10 of 1,331), "kobe bryant games with a field goal percentage under40.0%" (3 wordings, the number glued to "under", a decimal), "how many regular-season games did kobe bryant have with a field-goal percentage 40%" (2); (3) a season's line stated over or at a number on the league ("players who made exactly 129 three pointers in the NBA in 2025-26", "nba players with seasons with a 4% 3pt", 3 wordings) is #390's, left unread on the ranking of players' seasons on purpose.
+- **User sees:** a refusal naming the percentage for (1); the whole log for (2); the plain ranking for (3).
+- **Next step:** a percentage line on the player relation as `100.0 * made / NULLIF(attempted, 0)` beside `narrow_measure`'s column (the relation's file), each stated wording a test; then read a bare "N <percentage words>" after "with" and a decimal or glued number as a line.
+- **Since Phase 5, step 1 (2026-10-14):** 4 of its wordings ("kobe bryant career games with 40 field goal percentage", "players who made exactly 129 three pointers in the NBA in 2025-26", ...) refuse by name now (`unread_number`); a refusal by name is the standing floor, the fix is the read.
+- **Priority:** P2 - (2) answers a broader question on 6 of the 2,082; (1) and (3) are refusals or #390's.
+- **GitHub:** #371
+
+The 391 date-only games printed a day early (#76), 2008's team rebound columns
+(#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
+to this section, re-read the P2s against the P1 definition: that is how both of
+those were found.
+
+### `ranking_needs_stat` is said where the words ask no ranking: "What position did Larry Bird play?" is refused as a ranking without a stat
+- **Found:** 2026-10-14, the Phase 5 review, reading the feed's 100 `ranking_needs_stat` refusals at `3dc37821`.
+- **Evidence:** 64 of the 100 are questions that ask no ranking - a player's position, a fact, a name the no-names feed could not read - whose reading fell to the players' ranking with no measure, which step 6's cause (lane L, #421) then names; the cause is right that the ranking would answer wrong, and wrong about what the words asked. Part is the feed's lack of model names (production reads the player).
+- **User sees:** a refusal that says a ranking needs a stat on a question that asked for no ranking.
+- **Next step:** where the ranking key stands only as the parent grammar's fallback (no ranking word in the words: "most", "top", "leaders", "who has the most"), the refusal names what the words asked instead (`no_shape`'s "what its words ask has no reader", or the unread fact), never a ranking's stat; measure the 100 on both populations.
+- **Priority:** P2 - a refusal naming the wrong cause; 64 of the 2,082.
+- **Source:** ours.
+- **GitHub:** #448
+
+### "without threes" is read as the player Tree Rollins: "most ppg without threes" refuses as games without a teammate
+- **Found:** 2026-10-14, the Phase 5 review (the Phase 4 review's #404 class, "without free throws", seen on "threes").
+- **Evidence:** the absence reader ("without X") takes "threes" as a near spelling of Tree Rollins and the question asks for games without that teammate; "without threes"/"without free throws"/"excluding threes" name a stat the figure should leave out (points minus 3-pointers), which nothing reads.
+- **User sees:** a refusal about a teammate nobody named.
+- **Next step:** an absence whose words name a stat (`measure.named` over the span after "without") is no teammate - refuse by name as a figure nothing computes (`fact_not_read`), beside #404; the read (points less a component) is a later shape.
+- **Priority:** P2 - a refusal naming the wrong cause.
+- **Source:** ours.
+- **GitHub:** #449
+
+### A postseason NetPoints answer prints the whole season's play-type split under a postseason label
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** the season fingerprint table has no season type (`compose/netpoints.py`, `templates/netpoints.py:98-102` when found; `fingerprint.py:457,979-980`); its sayer (`compose.say`'s NetPoints phrases; `templates/netpoints.py:113,331` when found) labels the answer "{season} postseason" and `fingerprint.py:853` captions the plot "{season} season". Nothing says the split is the whole season's.
+- **User sees:** a play-type split labeled as the playoffs' that is not.
+- **Next step:** confirm against a playoff NetPoints question; say the split covers the whole season, or refuse the split for a postseason.
+- **GitHub:** #299
+- **Restored at Phase 5's close (2026-10-14):** the entry had been lost in a merge while GitHub #299 stayed open (the Phase 5 review).
+
 ## P3: refusal or gap
 
 ### A dated "since" beside a conference is read as a single season and a career at once: "celtics all-time record vs eastern conference including playoffs since september 11th 2001"
@@ -2657,6 +2495,156 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #414
 
+### The teams' ranking over every season is refused: "nba winningest percent franchises all-time"
+- **Found:** 2026-10-14, the P1 sweep's lane T3, measuring #372's "winning percentage" class.
+- **Evidence:** since Phase 5, step 6 (lane N) "winningest" and "franchises" name the teams' ranking (`lexicon.LEAGUE_TEAMS_RANKED_ROW`; it ranked the league's players by points per game), and the teams' ranking declines a career: "nba winningest percent franchises all-time" (1 of the 2,082 feed questions) answers "Nothing here answers this question as a ranking of teams: every season of a career cannot be read here - it would answer for a different span than was asked." It reads a range ("winningest teams since 2015", "most wins nba 2020s"). "losingest" is left unread by the row: nothing reads its end (the window tagger's `rank`), so read as the teams' ranking it would rank the best records.
+- **User sees:** an honest refusal where the franchises' all-time records were asked.
+- **Next step:** the teams' ranking over a career read as the range from the standings' first season (`team_seasons`, lane T's relation), with the franchises' former names folded in by team id; "losingest" read as the ranking's worst end by the window tagger.
+- **Source:** ours.
+- **Priority:** P3 - a refusal by name.
+- **GitHub:** #433
+
+### A team's opponents' percentage, and a ranking of teams by a figure given up, are refused: "celtics opponents fg% this season", "which team gave up the most rebounds"
+- **Found:** 2026-10-13, the P1 sweep's lane L, finishing #348; the answer side fixed by lane T2, the reader's remainder by Phase 5, step 6's lane L (a box-score count given up is the opponents', summed by the team compiler, `CHANGES.md`).
+- **Evidence:** on `p5s6-L`, "celtics opponents fg% this season" is refused "no team metric for stat 'fg%'" (a percentage is no total the compiler sums, and the team-season relation has no opponent percentage), and "which team gave up the most rebounds" is refused "no team metric for stat 'rebounds'" - the teams' ranking reads the team-season table's metrics, of which only points allowed is an opponent's figure. Neither answers a different question since the step (the ranking answered the teams' own rebounds before it).
+- **User sees:** a refusal - naming the stat, not that the opponents' figure is what is missing.
+- **Next step:** the opponents' percentage from the games' opponent box rows (made over attempted, summed), and a ranking of teams by the opponents' summed box rows (the team relation's, lane T's seam); and the refusal saying "the opponents'" where the measure's `whose` is theirs.
+- **Source:** ours.
+- **Priority:** P3 - a refusal (0 of the 2,710 readings).
+- **GitHub:** #425
+
+### A team named beside a player in words no read places is refused by name: "Mikal bridges logs at philly", "kd stats in 4th quarter playoffs okc"
+- **Found:** 2026-10-14, Phase 5, step 2, reading the moves of the possessive-nickname fix ("Lebrons season outcome during lakers" became LeBron's 2026 line, "during lakers" applied by nothing).
+- **Evidence:** since Phase 5, step 6 (lane N) a team the words name on a player's question that no read places is refused by the `team_not_read` cause naming it (`subject.team_not_read`), and the tenure is read after "for", "with", "with the", "as (a)", "on", "during", "joined", "in <nickname>" and from a team word beside his name, the opponent's "t wolves" too. Still refused by the cause on the 2,082 feed questions (13): "Mikal bridges logs at philly" and "Scoot henderson at pelicans log" ("at <team>": the opponent with the venue away - the venue is the cuts tagger's, `cuts.py`, and the opponent the subject reading's; read as the opponent alone it would answer his home games too); "kd stats in 4th quarter playoffs okc" and "ochai agbaji shot chart 2023-24 utah" (a team trailing the question, no lead); "kd stats in 4th quarter playoffs without the warriors" (no team is absent); "jaylen brown stats vs last 10 games the knicks" (the versus span holds a window before the team); "OG vs celtics since playing on the knicks" ("OG" is two letters, too short for the tenure's player-before check, `subject._named_before`); "allen iverson vs michael jordan vs bulls" and its twin (a pair, no tenure is one player's); "anthony davis 2020 playoffs vs Portland, houston and nuggets" (three opponents); "Saddiq Bey stats with Detroit Pistons and Atlanta Hawks" (two tenures); "paul george and kawhi stats with the clippers" (a pair's tenure); "how old was shaq when he won in miami" (an age).
+- **User sees:** a refusal naming the team, where his games at a team, or two teams, were asked.
+- **Next step:** "at <team>" with lane L (the cuts tagger reads the venue "away" from "at" before the opponent the subject reading reads); several opponents or tenures as a list (a cell holding more than one team) is a relation change; each wording enumerated.
+- **Priority:** P3 - a refusal by name; 0 of the 628, 13 of the 2,082.
+- **Source:** ours.
+- **GitHub:** #436
+
+### A single bare "N stat" line on a reader whose shape is not a line is read by nothing: "2 threes in games Jamal Murray played including playoffs" answers his 3.2 threes per game
+- **Found:** 2026-10-09, Phase 3 step 2's line slice (`~/association-research/stages/line_family.py`); the stated forms fixed and the rest re-measured 2026-10-10, Phase 3, step 3, where the Reading's own unread words name each number.
+- **Evidence:** the lines tagger's rule (`line.read_lines`): every line on `threshold_count`, `record_when`, `streak` and `single_game_high` (`point.THRESHOLD_ASKS`, the four shapes' keys since Phase 3, step 4, the key's reading `point.lines_under` since its slice (b)); since Phase 3, step 3 one line stated outright ("N+ stat", "at least N stat") on a log or a player's splits (`point._LINES_ONE_NARROWS`: "anthony edwards log with at least 50 points" lists his one 50-point game, where it listed his last 10); elsewhere a floor of minutes, a line under a number, or two or more "N+ stat" pairs. A bare "N stat" with no "+" is read by nothing outside the line readers, nor one stated outright on a player's line (`player_stat`: "lebron 20+ points this season" can ask whether he averages it). On the 2,710 readings, with the number in `Reading.unread`: "2 threes in games Jamal Murray played including playoffs" (`player_stat`, one of the 628: his 3.2 threes per game over 81 games), "centers min 2 threes v bos gamelog 2024" (the centers' log vs Boston, every game), "harden 61 points" (the league's scoring leaders - "harden" unread too), "how many 30 point games did maxey have without embiid" (the with/without split, not a count), "most 40/50/60 point games in nba history" (refused "team_leaderboard cannot honor ['span']" - a count of a PLAYER's games read as a team's), "Lakers playoff games with exactly 99 points since 2000" (the Lakers' total points).
+- **Fixed since (2026-10-13, the P1 sweep's lane L):** a line stated over or at a number by its lead or a plus on any box-score stat ("15+ fga", "13+ free throw attempts", "15 or more field goal attempts", "more than 40 points", "exactly 25 fga") is read where a line under a number is (#371 and this entry's first class); "jalen suggs game log 15+ fga" lists his 13 such games. "how many 30 point games did maxey have without embiid" is a count beside the companion on this tree. Still open, below: the bare forms; "at least 15 fga" (the minimum reader takes "at least N <stat>" as a ranking's qualifier and the log drops it - lane S's `window.read_minimum`); "how many games did lebron have 15 or more field goal attempts" and "most games with 15+ fga" (a count over a line on a stat the threshold spellings do not hold: the first is answered as the narrowed log, "last 10 of 36 games", the second as the FGA-per-game ranking, since `line.threshold_named` reads the threshold spellings only and the rules read a count with none as a ranking).
+- **User sees:** a fluent answer to a broader question - every game, or a ranking - with the number the question gave set aside.
+- **Next step:** one at a time, each with the feed's moves enumerated: a bare "N stat" after "games with" on a log or a line ("2 threes in games ... played" as games with 2+ threes); "how many N point games ... without X" as a count beside the companion (the count's child grammar, not the with/without split); "most N point games in nba history" a count of players' games under the league subject, not the team ranking; "exactly N" as an equality line. The pair grammar's own false pairs stay out ("2pt percentage", "top 20 rebound leaders" read as lines by `lexicon.threshold_pairs`; a test per wording).
+- **Since Phase 5, step 1 (2026-10-14):** the entry's wordings with a bare "N stat" line on a non-line shape ("2 threes in games Jamal Murray played including playoffs", "harden 61 points" and 7 more of the 2,082) refuse by name now (`unread_number`); what remains is the READ of the line; a refusal by name is the standing floor, the fix is the read.
+- **Since Phase 5, step 2 (2026-10-14):** ONE line the words set on the games - "games with 2 threes", "2 threes in games he played", "30 point games" (`lexicon.LINE_ON_GAMES_BEFORE`/`_AFTER`, `LineCandidate.games`) - narrows a player's line, log or splits however it is stated (`point._LINES_ON_GAMES_NARROW`), and "min N stat" is at least N: "2 threes in games Jamal Murray played including playoffs" (the 628's one) answers his line over his 59 games with 2+ threes, "centers min 2 threes v bos gamelog 2024" the centers' games with 2+ threes. Still open: a bare "N stat" with no games word on a non-line shape ("harden 61 points": one game or a line - refused by name, the right floor), two or more bare lines on one game off a line shape ("lebron games with 30 points 10 rebounds"), a count's second line ("most 50 point games with only 1 fta", #358), a line on a stat the threshold spellings do not hold ("steph curry games with 15 field goals attempted", "lebron james points per game when taking 15 shots") and a line of 0 ("rodman games with 0 field goal attempts") - each refused by name since step 1.
+- **Priority:** P3 - was P1, a fluent wrong answer, until Phase 5, step 1; now a refusal by name - a broader question answered fluently; 1 of the 628, 9 of the 2,082.
+- **Feed numbers:** the feed's unread numbers, read one by one in the Phase 3 review's cleanup (b)5 (2026-10-12, `claims_ledger.py run --feed` on `4c595b8`, answers from `stage_snapshots.py run --feed`): 16 questions hold the unread number of a single line on a game a non-line reader leaves unread - "jalen suggs game log 15+ fga" (2), "steph curry games with 15 field goals attempted" (2), "lebron james points per game when taking 15 shots" (2), "Towns over 9 rebound", "games with 13+ free throw attempts by the 76ers" (2, a team's), "rodman games with 0 field goal attempts", "knicks record in playoff games when Mitchell Robinson shoots 4 ft", "most 50 point games with only 1 fta" (a count's second line, #358), "warriors' record last season when committing 10 or fewer turnovers" (3 wordings, #325), "fewest field goal misses ... at least 92 fgm + opp fgm"; every one answered `fast` without the line.
+- **GitHub:** #357
+
+### A team's single-game high is answered as the team's season line: "most points in a game in cavs history"
+- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/`; the span half fixed in the P1 sweep (lane S, 2026-10-13).
+- **Evidence:** "in <team> history", "in <team> franchise history", "of the <team>'s history" and "franchise leader/record" are read as every season on record since the sweep (`lexicon.CAREER_WORDS`): "most points in a game in pistons history power forward" answers the Pistons power forwards' best games since 1994, naming the team ("every power forward with the Detroit Pistons, regular season career (1994 on) - top 3 by points"). But "most points in a game in cavs history", "... in pistons history" and "most points in the history of the philadelphia 76ers" are read under the team's season line (`team_seasons`/`scalar`/`line`, #364's shape) and are refused now ("every season of a career cannot be read here"), where they answered the 2026 points per game.
+- **User sees:** an honest refusal where the franchise's (or its players') best single game was asked.
+- **Next step:** #364's - the team named beside "in a game" read as its players' single-game high (`team_players`), which the career span now reaches over every season.
+- **Priority:** P3 - a refusal.
+- **GitHub:** #167
+
+### "nba most fga with 0 fgm single game" ranks the league's FGA highs with "0 fgm" unread, and "without fgm" is read as a teammate
+- **Found:** 2026-09-27, checking the answers the #168 fix moved. Rewritten 2026-10-13 (lane N of the P1 sweep), which made "nba" alone no team word where a measure is named (`parse._parent_asked_nba_unmeasured`), so both wordings are the players' now and "single game" is the high (`CHANGES.md`).
+- **Evidence:** on sweep-N after that fix, "nba most fga with 0 fgm single game" answers "every player, 2026 regular season - top 3 by FGA: Cade Cunningham 45 ..." - the high over FGA, the "0 fgm" line unread (the lines tagger reads no line at 0, lane L's); "nba most fga without fgm single game" reads "fgm" as an absent teammate and answers "No player found matching 'fgm'.", and "Nba most fga without fgm" is refused "games without fgm cannot be read here".
+- **User sees:** the league's biggest FGA games where games with no made field goal were asked (a broader question, fluently); a refusal naming "fgm" as a player.
+- **Next step:** the lines tagger reads a line at 0 ("0 fgm", and "without fgm" as fgm at 0) - lane L's `line.py`; then the high over FGA keeps the line, or the point reader refuses the predicate by a cause naming it until the compiler has one.
+- **Source:** ours.
+- **Since Phase 5, step 1 (2026-10-14):** "nba most fga with 0 fgm single game" refuses by name now (`unread_number`: the 0); what remains is the line at 0; a refusal by name is the standing floor, the fix is the read.
+- **Priority:** P3 - was P1, a fluent wrong answer, until Phase 5, step 1; now a refusal by name - a broader question answered (1 of the 2,082), and a refusal by the wrong cause (2).
+- **GitHub:** #266
+
+### A ranking within the subject's own conference or division is refused: "top scorers in the western conference this season"
+- **Found:** 2026-10-09, Phase 3 step 0; refused by a cause in the P1 sweep (lane S, 2026-10-13).
+- **Evidence:** since the sweep a conference or division on a ranking that no "vs"/"versus"/"against" leads ("in the western conference", "who leads the east", "eastern conference players points leaders", "atlantic division standings": `cuts.own_alignment`, `lexicon.ALIGNMENT_AS_OPPONENT`) is refused before any reader runs (`own_alignment`): "A ranking within a conference or division ('in the western conference') is read by nothing here yet - ...", where "top scorers in the western conference this season" ranked every player's games against the West and "who leads the east in scoring" the league. Off a ranking the words keep the opponent's reading ("lebron points in the west": his games against the West). None of the 628 or the 2,082 holds the class (the wordings are probes).
+- **User sees:** an honest refusal where a conference's own leaders were asked.
+- **Next step:** a ranking pool narrowed by the player's or team's own alignment that season (`team_alignment` on the team's id and season, the standings' conference and division), then the cause goes. #25 is the same gap from the data side.
+- **Priority:** P3 - a refusal.
+- **GitHub:** #339
+
+### A window with a misspelled "last", or with no "games" after its count, is no window: "jalen brunson lasst 5 games" answers his season line
+- **Found:** 2026-10-13, the P1 sweep (lane S), what #369's fix left: #369 read a misspelled "games" after "last N" (one edit from "game(s)", and "match(es)", `lexicon.WINDOW_GAMES`); the feed's other unread window numbers are a different shape.
+- **Evidence:** the 2,082 feed answers on the fix's tree (`stage_snapshots.py run --feed`): a misspelled "last" - "aaron gorodn lat 5 games" (the league's 2026 points ranking), "jalen brunson lasst 5 games" (his 2026 season line); a count with no "games" - "jalen brunson stats last 5 away" (his 38 road games), "Sengun last 5 stats vs knicks" (his 2 games against them this season), "bradley beal 15 games" (his 6 games of 2026); and four nothing here reads - "hield ast 5 games" ("ast" is "last" or assists), "How many threes did Pritchard make 2 games ago" (the league's ranking), "ja morant last 10 first quarters against nets" (a window of quarters), "warriors fir 10 game redorn evry season" (a window per season, misspelled). <!-- codespell:ignore evry - the feed's question as typed -->
+- **User sees:** a season line, a ranking or this season's meetings where the last N games were asked; nothing says the window was set aside.
+- **Next step:** a "last" one edit off ("lat", "lasst") read as the window's end beside a count and "games" - excluding the words one edit from "last" that are words of their own ("east", "least", "lost", "list", "fast"; "at least 5 games" is a line) - and "last N" before a venue or "stats" with nothing after it read as N games; each measured on both corpora first, a test per wording.
+- **Since Phase 5, step 1 (2026-10-14):** 9 of the 2,082 ("aaron gorodn lat 5 games", "bradley beal 15 games", "hield ast 5 games", ...) refuse by name now (`unread_number`, `unread_window`); what remains is reading the window; a refusal by name is the standing floor, the fix is the read.
+- **Priority:** P3 - was P1, a fluent wrong answer, until Phase 5, step 1; now a refusal by name - a different question answered fluently; 9 of the 2,082.
+- **Source:** ours.
+- **GitHub:** #411
+
+### A player's first or last N seasons is read by nothing: "lebron james stats through their first 9 seasons" answers his 2026 line
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers).
+- **Evidence:** 3 of the 2,082 feed questions: "lebron james stats through their first 9 seasons" (his 2026 line), "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons" (their 2026 lines), "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?" (his line since 2018 - "last 9 seasons" read as the relative "past N seasons" of the league's calendar, `span._relative_since`, and "first 9" by nothing). The window tagger excludes a count of seasons from its own ends (`lexicon.COUNTED_END`'s `(?!\s+(?:seasons?|years?))`), and the span reads "last N seasons" as the calendar's, never the player's own.
+- **User sees:** a wrong answer: one season's line where the first nine of his career were asked.
+- **Next step:** an end of a player's OWN seasons ("his first/last N seasons", "through their first N") read as a span over the seasons on record for him (`season_line.seasons_on_record`), the comparison's per player; refused by a cause until then.
+- **Since Phase 5, step 1 (2026-10-14):** the quoted wordings refuse by name (`unread_number`: the N of "first N seasons"), the honest floor; the read needs a span relative to the player's own seasons on record - a typed field on the shared `reading.Span`, resolved in `player_relation.span_of` and the season line, per player for a comparison (lane L's measurement, step 6).
+- **Priority:** P3 - was P1 until step 1; now a refusal by name. Before: 3 of the 2,082.
+- **GitHub:** #418
+### A player's first or last N seasons is refused: "lebron james stats through their first 9 seasons"
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers); refused by a cause in the P1 sweep (lane S, 2026-10-13).
+- **Evidence:** a count of a career's own seasons by their place ("their first 9 seasons", "his last 9 seasons", "first 2 years": `lexicon.OWN_SEASONS`) is refused by the parser before any reader runs (`own_seasons_window`, `window.own_seasons_window`): "A career's own seasons by their place ('their first 9 seasons') are read by nothing here yet - name the seasons themselves ...". 3 of the 2,082 feed questions ("lebron james stats through their first 9 seasons", "Compare Jayson Tatum stats to LeBron James stats through their first 9 seasons", "Any Player with better Stats in his first 9 seasons than LeBron in his last 9 seasons?"); until the sweep they answered his 2026 line, their 2026 lines and LeBron's line since 2018.
+- **User sees:** an honest refusal where the first nine seasons of a career were asked.
+- **Next step:** read it: the window tagger types it as a window of SEASONS with its end (`Window(order, count, of="seasons")`, beside a history's "past 5 years"), and the season line resolves it per player over the seasons he has on record (`season_line.seasons_on_record`, the relation's: the first or last N of his regular seasons) - a comparison per player, each over his own; then the cause goes.
+- **Priority:** P3 - a refusal.
+- **Source:** ours.
+- **GitHub:** #392
+
+### A count over a line at 0 is read by nothing: "most 0 point games in nba team history" is refused by its number
+- **Found:** 2026-10-12, the Phase 3 review's cleanup (b)5 (the feed's unread numbers); narrowed by the P1 sweep's lane N (the league's "N point games" read as the players' count, a count beside a teammate's absence as his count) and by Phase 5, step 6's lane L (a count of triple-doubles over a line, #437, read with both predicates, `CHANGES.md`).
+- **Evidence:** on `p5s6-L`, "most 0 point games in nba team history" is refused "'0' is a number this reading did not use ..." (`unread_number`): the lines tagger reads no line at 0 ("a threshold of 0 counts every game", the count's own cause), and "0 point games" means the games at exactly 0 - a scoreless game - which no line reads (a line is at or over its number). "nba most fga with 0 fgm single game" is #266's. Neither answers a different question since Phase 5, step 1.
+- **User sees:** a refusal naming the number.
+- **Next step:** read "0 <stat> games" (and "scoreless games") as a line at exactly 0 (`op` "=", which the lines carry - `lexicon.EQUALS_LINE`), a count of those games; measure the feed first.
+- **Source:** ours.
+- **Priority:** P3 - a refusal by name; 1 of the 2,082.
+- **GitHub:** #394
+
+### A token holding a digit that is no number as written is refused by name, never read: "most 3ot points in a game by a team nba", "lakers play in 20222-23"
+- **Found:** 2026-10-14, the Phase 5 review: 15 of the ledger's 24 held unread-number questions answered fluently past such a token (step 1's number class read whole numbers only).
+- **Evidence:** since step 7's narrowing (2026-10-14, the lead) a glued token with a digit that names no measure and is no season form (`lexicon.MEANING_GLUED_DIGITS`, `MEANING_SEASON_FORM`) is an unread number and refused by name: "3ot" (overtime points, five feed wordings), "20222-23" (a garbled season), "67-15" (a record asked as a condition). What remains is the read: overtime periods as a period (#355), a record as a line on the team's record, a garbled season corrected or asked back.
+- **User sees:** a refusal naming the token, where the plain answer past it stood.
+- **Next step:** one read at a time, by reach on the 24 held questions; a case per wording.
+- **Priority:** P3 - a refusal by name.
+- **Source:** ours.
+- **GitHub:** #450
+
+### A typo of a common surname suggests nobody: "crry" is "No player found"
+- **Found:** 2026-09-27, measuring the near-spelling default (ROADMAP plan
+  item 6, step (c))
+- **Evidence:** `/home/jeff/association-research/typo-default/measure.py`,
+  read-only on `nba.duckdb`, `entities.py` at the near-spelling-default
+  commit: of 10,602 one-letter drops, doubles and adjacent swaps of the 591
+  2026 players' surnames, **2,584** are near more than
+  `MAX_CLARIFY_CANDIDATES` players, so `suggest_players` drops the list and
+  `read_near_spelling` has nothing to take. "crry" (six Currys within one
+  edit) is `No player found matching 'crry'.`; "stephen crry" resolves.
+- **User sees:** a refusal that reads as "no such player" for a typo of a
+  real one. Once the normalizer copies names verbatim (step (c)), a bare typo'd
+  surname reaches this where the router used to correct it silently.
+- **Next step:** narrow an over-long near-spelling list the way
+  `resolve_player` narrows namesakes - to who played in the season asked about,
+  else the latest - before dropping it, and ask (or default visibly, one
+  survivor) over what is left. Measure how many of the 2,584 then land on
+  exactly the player misspelled.
+- **Source:** ours.
+- **Restored at Phase 5's close (2026-10-14):** the entry had been lost in a merge while GitHub #240 stayed open (the Phase 5 review).
+- **GitHub:** #240
+
+### A typo inside a hyphenated surname reaches nobody: "Gilgeous-Alexandr"
+- **Found:** 2026-09-27, measuring the near-spelling default
+- **Evidence:** `entities._NEAREST_WORD` splits the DISPLAY NAME on non-letters
+  but compares the typed token whole, so "Gilgeous-Alexandr" is measured
+  against "Gilgeous" and "Alexander" separately and is near neither;
+  "Gilgeous Alexandr" (a space) resolves to Shai Gilgeous-Alexander. Of the 98
+  one-letter drops of the nine punctuated 2026 surnames that no substring
+  matches, 97 have no near spelling at all
+  (`/home/jeff/association-research/typo-default/hyphen.py`).
+- **User sees:** "No player found matching 'Jackson-Davs'." for Trayce
+  Jackson-Davis.
+- **Next step:** split the typed tokens on the same non-letter class before
+  the near-spelling pass (every piece must be near some word, as now), and
+  re-run the measurement.
+- **Source:** ours.
+- **Restored at Phase 5's close (2026-10-14):** the entry had been lost in a merge while GitHub #241 stayed open (the Phase 5 review).
+- **GitHub:** #241
+
 ## P4: tooling, docs, low impact
 
 ### The sayer prints a range's start twice: "since December 11, 2023 since 2023"
@@ -3123,24 +3111,6 @@ those were found.
 - **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty
   player box"
 - **GitHub:** #102
-
-### Advanced-stat aggregates are not bit-reproducible between runs
-- **Found:** 2026-09-17, by the complexity refactor's golden comparison of
-  `run_leaderboard`; re-measured the same day
-- **Evidence:** the same query, `SELECT athlete_id, usage_pct, ts_pct FROM
-  player_season_advanced_stats WHERE season=2024 AND season_type=2`, run on four
-  fresh read-only connections to the main warehouse: 588 rows each, and against
-  the first run 143, 185 and 184 rows differ, by at most 1.07e-14 (e.g.
-  `10.60335677967314` vs `10.603356779673142`). The view is computed at query
-  time (`fetch/advanced_stats.py`), and DuckDB's parallel `SUM` combines partial
-  sums in a different order run to run.
-- **User sees:** nothing - every value is printed to one or two decimals. A
-  leaderboard ordering could in principle flip between two players tied to 14
-  digits.
-- **Next step:** none needed for answers. Anything comparing results across
-  runs (a golden test, a cache check) should round, or the view could round
-  `usage_pct`/`ts_pct`/`efg_pct` to a sane precision at build time.
-- **GitHub:** #100
 
 ### The 2026 regular-season power index snapshot carries no BPI rating for any team
 - **Found:** 2026-09-18, while fixing #88 below. **The caveat half was fixed
@@ -3830,3 +3800,21 @@ Of the same class, a test's message: `tests/query/test_frozen_shapes.py` fails w
 - **Source:** ours.
 - **Priority:** P4 - comments.
 - **GitHub:** #444
+### `CHANGES.md` gives two outcomes for the nine feed questions two step 6 lanes both moved
+- **Found:** 2026-10-14, the Phase 5 review, checking every merge composes its parents three-way.
+- **Evidence:** nine feed questions were moved by lane N's subject-reading commits and by lane L's ranking commits in the same step; each lane's `CHANGES.md` entry names the outcome on its own tree, and the merged tree's answer is the reading-side lane's (right), which neither entry nor the merges `0143de96` and `b9ac210b` record.
+- **User sees:** nothing; a reader of the changelog finds two outcomes for one question.
+- **Next step:** a note under the two entries naming the nine and the merged outcome (the lead, at the phase's close), and the merge rule that a both-moved question is named in the merge commit.
+- **Priority:** P4 - the changelog.
+- **Source:** ours.
+- **GitHub:** #451
+
+### Two commit messages' counts are off by one: `bd5a9ae` says "the same 6" readings (2 moved), `95cb7bf` "0 of the 628" (1 answer moved)
+- **Found:** 2026-10-14, the Phase 5 review, bisecting every move to its commit.
+- **Evidence:** both commits are pushed; the moves are in the review's data (`reviews/phase5-2026-10-14/data/`) and in `CHANGES.md` where the later commit named the earlier's move.
+- **User sees:** nothing.
+- **Next step:** recorded here and in ROADMAP-HISTORY entry 47; a pushed message is not rewritten.
+- **Priority:** P4 - the record.
+- **Source:** ours.
+- **GitHub:** #452
+

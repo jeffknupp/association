@@ -428,6 +428,19 @@ class Agent:
         answered: a refusal that names why is an answer (Phase 3, step 4)."""
         t0 = time.monotonic()
         scope = reading
+        if reading.defaulted is not None and isinstance(self.query, Refusal):
+            # Phase 5, step 7 (the review): a defaulted-word refusal is said
+            # after the coverage floor and the words nothing reads have had
+            # their look, as a decline is - a season under the floor and a
+            # playoff round are the truer causes, and both are checked
+            # below for a decline; this is the same order for a refusal.
+            refused = check_coverage(self._planned_shape(), reading.point if reading.point is not None else scope)
+            if refused is not None:
+                history.log(f"  -> (coverage) {refused}")
+                return Answer(data={"message": refused, "season": scope.span.season}, text=refused)
+            if reading.unsupported:
+                history.log(f"  -> (refusal) {reading.unsupported[0].kind} said before the defaulted word's")
+                return refusal_result(reading.unsupported[0])
         declined: list[str] = []
         causes: list[Cause] = []
         composed = self._try_compose(reading, history, declined=declined.append, declined_by=causes.append)

@@ -42,7 +42,7 @@ def test_a_players_log_is_said_in_the_retired_templates_words() -> None:
     assert lines[3].split() == ["2026-04-08", "@", "NYK", "L", "-", "22", "4", "9"]
     assert lines[4].split() == ["per", "game", "34.0", "26.0", "4.5", "8.0"]
     assert lines[5] == "Only 2 games vs the Boston Celtics in the 2026 regular season - ask about his career to reach earlier seasons."
-    assert lines[6] == "1 of these game has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
+    assert lines[6] == "1 of these games has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
     assert said.data["player"] == "Tyrese Maxey" and said.data["qualifying_games"] == 7 and said.data["headline"] == lines[0].rstrip(":")
     assert said.data["notes"] == lines[5:7] and said.data["columns"] == ["MIN", "PTS", "REB", "AST"]
 

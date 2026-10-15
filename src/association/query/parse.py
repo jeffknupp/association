@@ -1349,11 +1349,19 @@ def _reading_from_route_defaulted(question: str, reading: Reading, claimed: list
     for start, end, word in unread:
         lower = word.lower()
         before = question[:start].split()[-1].lower() if question[:start].split() else ""
-        which = _defaulted_class(lower, before, context, names_read)
+        rest = question[end:]
+        after = rest.split()[0].lower().strip("?,.!") if rest.split() else ""
+        which = _defaulted_class(lower, before, after, context, names_read)
         if which is None:
             continue
         classes.setdefault(which, []).append(word)
         claims.append(Claim(start, end, "defaulted"))
+        if which == "window" and after:
+            # The word that made it a stretch ("games" of "recent games") is
+            # read too: without it there is no refusal, and the ledger's
+            # deletion probe reads what the refusal depends on.
+            offset = end + len(rest) - len(rest.lstrip())
+            claims.append(Claim(offset, offset + len(rest.split()[0].rstrip("?,.!")), "defaulted"))
     cause = _defaulted_cause(reading, classes, names_read, context.key)
     if cause is None:
         return _defaulted_ranking(reading), []
@@ -1389,6 +1397,11 @@ class _DefaultedContext:
     values: frozenset[str]
     window: Window
     cuts: Cuts
+    #: What the point is read as: the stat class applies on a shape that
+    #: reads ONE stat (a ranking, a count, a single game's high), never on a
+    #: log or a line, which show the whole line (the Phase 5 review:
+    #: "luka doncic points rebounds assists last 5 games" was a correct log).
+    shape: PointShape | None
 
     @classmethod
     def of(cls, reading: Reading) -> _DefaultedContext:
@@ -1409,23 +1422,51 @@ class _DefaultedContext:
         if reading.period is not None and reading.period.number is not None:
             # "4th quarter stats 4th quarter": the second names the period read.
             values |= {str(reading.period.number), *lexicon.ordinal_forms(reading.period.number)}
-        return cls(key, read_words, years, frozenset(values), reading.window, reading.cuts)
+        shape = reading.point.read_as if reading.point is not None else reading.asked
+        return cls(key, read_words, years, frozenset(values), reading.window, reading.cuts, shape)
 
 
-def _defaulted_class(lower: str, before: str, context: _DefaultedContext, names_read: dict[str, str]) -> str | None:
+def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedContext, names_read: dict[str, str]) -> str | None:
     """Which class one unread word falls in (:func:`_reading_from_route_defaulted`),
-    or None where it carries no meaning the reading defaulted past."""
+    or None where it carries no meaning the reading defaulted past. Narrowed
+    by the Phase 5 review (2026-10-14), which found the first classes
+    refusing correct answers: a stat word counts only on a shape that reads
+    one stat (:func:`_one_stat_shape`); a window word only beside a count or
+    a game word ("top 5 games", "last game" - not "top scorers", "past or
+    present"); "may" only in a date ("in may", "may 10" - not "who may
+    lead"); and a token holding a digit that is no number as written
+    ("3ot", "20222-23") is an unread number too."""
     named = measure.named(lower)
     if named is not None and named[0] != context.key and not _leftover(lower, context.read_words):
+        if not _one_stat_shape(context.shape):
+            return None
         names_read[lower] = measure.CATALOG[named[0]].label if named[0] in measure.CATALOG else named[0]
         return "stat"
     if lexicon.MEANING_NUMBER.fullmatch(lower):
         return "number" if _defaulted_number(lower, before, context) else None
-    if lower in lexicon.MEANING_WINDOW_WORDS and context.window.count is None and context.window.order is None:
+    if named is None and lexicon.MEANING_GLUED_DIGITS.fullmatch(lower) and not lexicon.MEANING_SEASON_FORM.fullmatch(lower) and lower.strip("'") not in context.years:
+        return "number"
+    if lower in lexicon.MEANING_WINDOW_WORDS and context.window.count is None and context.window.order is None and _beside_a_stretch(after):
         return "window"
-    if _defaulted_date(lower, before, context):
+    if _defaulted_date(lower, before, after, context):
         return "date"
     return None
+
+
+def _one_stat_shape(shape: PointShape | None) -> bool:
+    """Whether the point reads one stat, so a second stat word asks for
+    another answer: a ranking, a count, a single game's high or a total; a
+    log, a line, a split, a history or a comparison show the whole line."""
+    if shape is None:
+        return False
+    return shape.shape == "ranking" or (shape.shape == "rows" and shape.by == "measure") or (shape.shape == "scalar" and shape.by in ("count", "total"))
+
+
+def _beside_a_stretch(after: str) -> bool:
+    """Whether the word after a window word makes it a stretch of games:
+    a count ("top 5", "last 10"), an ordinal ("last 1st quarter") or a
+    game word ("last game", "past seasons")."""
+    return bool(lexicon.MEANING_NUMBER.fullmatch(after)) or after in lexicon.MEANING_WINDOW_NEXT or after.rstrip("s") in lexicon.MEANING_WINDOW_NEXT
 
 
 def _leftover(lower: str, read_words: frozenset[str]) -> bool:
@@ -1450,12 +1491,16 @@ def _defaulted_number(lower: str, before: str, context: _DefaultedContext) -> bo
     return before not in lexicon.MEANING_MONTH_WORDS
 
 
-def _defaulted_date(lower: str, before: str, context: _DefaultedContext) -> bool:
+def _defaulted_date(lower: str, before: str, after: str, context: _DefaultedContext) -> bool:
     """Whether an unread word is a month or a day the cuts did not narrow
     by: a month's name, or a slashed pair after a word that leads a date
-    ("on 1/26", "since 7/14"; "went 7/14 from three" is a figure)."""
+    ("on 1/26", "since 7/14"; "went 7/14 from three" is a figure). "may" is
+    the month only in a date's place - after a date lead or before a day
+    ("in may", "may 10"); "who may lead the league" is the verb."""
     if context.cuts.situation is not None or context.cuts.date is not None:
         return False
+    if lower == "may":
+        return before in lexicon.MEANING_DATE_LEADS or bool(lexicon.MEANING_NUMBER.fullmatch(after))
     return lower in lexicon.MEANING_MONTH_WORDS or bool(lexicon.MEANING_SLASHED_DAY.fullmatch(lower) and before in lexicon.MEANING_DATE_LEADS)
 
 

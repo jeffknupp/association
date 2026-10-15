@@ -31043,9 +31043,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "67-15"
-   ],
+   "unread": [],
    "subject": {
     "kind": "team",
     "players": [],
@@ -31159,7 +31157,25 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "unread_number",
+    "facts": {
+     "shape": {
+      "relation": "team_games",
+      "shape": "scalar",
+      "by": "record"
+     },
+     "words": [
+      "67-15"
+     ],
+     "classes": {
+      "number": [
+       "67-15"
+      ]
+     }
+    }
+   }
   }
  },
  {

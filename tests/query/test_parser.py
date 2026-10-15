@@ -1390,6 +1390,21 @@ def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: 
     assert isinstance(planned, Refusal) and planned.kind == kind
 
 
+@pytest.mark.parametrize(
+    ("question", "names", "stat", "words"),
+    [
+        # A token holding a digit that is no number as written is an unread number (the Phase 5 review: 15 held
+        # unread-number questions answered fluently past one).
+        ("most 3ot points in a game by a team nba", [], "points", ("3ot",)),
+        ("lakers play in 20222-23", ["Los Angeles Lakers"], "points", ("20222-23",)),
+    ],
+)
+def test_a_glued_digit_is_a_defaulted_word(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, words: tuple[str, ...]) -> None:
+    """The narrowed classes still catch what they are for (Phase 5 review, 2026-10-14)."""
+    reading = _read(con, question, names, stat)
+    assert reading.defaulted is not None and reading.defaulted.facts["words"] == words, reading.defaulted
+
+
 def test_an_unread_stat_word_naming_another_measure_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection) -> None:
     """Phase 5, step 1: a stat word the measure tagger reads to a key other
     than the one the reading took is the ``unread_stat`` cause, naming both."""
@@ -1416,6 +1431,12 @@ def test_an_unread_stat_word_naming_another_measure_is_a_refusal_by_name(con: du
         ("Lakers vs Celtics record this season", ["Los Angeles Lakers", "Boston Celtics"], "points"),
         # A window the tagger read is no unread window word.
         ("curry last 5 games", ["Stephen Curry"], "points"),
+        # The Phase 5 review (2026-10-14): a window word beside no count or game word names no stretch; "may" the verb is no month;
+        # a list of stats on a log asks for the log, which shows them all.
+        ("who are the top scorers in the nba", [], "points"),
+        ("top rebounders 2024", [], "rebounds"),
+        ("who may lead the league in assists", [], "assists"),
+        ("luka doncic points rebounds assists last 5 games", ["Luka Doncic"], "points"),
     ],
 )
 def test_a_word_the_reading_read_or_that_restates_the_shape_is_no_defaulted_word(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str) -> None:

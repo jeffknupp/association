@@ -268,7 +268,7 @@ def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
         return " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
     shown = facts["games"]
     whose = "their" if shown != 1 else "its"
-    return f"{shown} of these game{'s have' if shown != 1 else ' has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
+    return f"{shown} of these games {'have' if shown != 1 else 'has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
 
 
 def _say_lines_rebuilt_counted(facts: dict[str, Any]) -> str:
@@ -4822,9 +4822,21 @@ def _say_unread_number(facts: Mapping[str, Any]) -> str:
         return (
             f'{words} names a place or a period this reading did not use, so the answer would have ignored it - say what it is ("{first} quarter", "{first} season", "{first} round") or leave it out.'
         )
-    return (
-        f'{words} is a number this reading did not use, so the answer would have ignored it - say what it counts ("last {first} games", "{first}+ points", "at least {first} games") or leave it out.'
-    )
+    return _unread_number_sentence(words, len(facts["words"]), first)
+
+
+def _unread_number_sentence(words: str, count: int, first: str) -> str:
+    """One number or several, with the examples where they help."""
+    plural = count > 1
+    they, each = ("them", "each") if plural else ("it", "it")
+    verb = "are numbers" if plural else "is a number"
+    return f"{words} {verb} this reading did not use, so the answer would have ignored {they} - say what {each} counts{_number_examples(first)} or leave {they} out."
+
+
+def _number_examples(first: str) -> str:
+    """The examples a refused number is said with, only where it is a plain
+    count: "last 40% games" and "at least 20222-23 games" are no help."""
+    return f' ("last {first} games", "{first}+ points", "at least {first} games")' if first.isdigit() else ""
 
 
 def _say_unread_stat(facts: Mapping[str, Any]) -> str:

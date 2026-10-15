@@ -4389,6 +4389,30 @@ def letter_words(text: str) -> frozenset[str]:
     return frozenset(word for word in LETTER_RUNS.split(text.lower()) if word)
 
 
+MEANING_WINDOW_NEXT: frozenset[str] = frozenset({"game", "games", "match", "matches", "meeting", "meetings", "season", "seasons", "year", "years", "contest", "contests", "outing", "outings"})
+"""The words a window word counts beside ("last game", "top 5 games",
+"past seasons"): a window word standing alone ("top scorers", "past or
+present") names no stretch of games (the Phase 5 review, 2026-10-14).
+
+.. versionadded:: 6.0.0
+"""
+
+MEANING_GLUED_DIGITS = re.compile(r"[a-z0-9'.,%-]*\d[a-z0-9'.,%-]*")
+"""A token holding a digit that is no number as a question writes one
+("3ot", "20222-23"): read by nothing, it is an unread number too (the
+Phase 5 review: 15 of the ledger's 24 held unread-number questions
+answered fluently past one).
+
+.. versionadded:: 6.0.0
+"""
+
+MEANING_SEASON_FORM = re.compile(r"(?:19|20)\d\d(?:[-/]\d{2,4})?|'\d\d")
+"""A season as a question writes one ("2024-25", "2025/26", "'24"), matched
+whole: a form the span tagger reads, never an unread number.
+
+.. versionadded:: 6.0.0
+"""
+
 MEANING_DATE_LEADS: frozenset[str] = frozenset({"on", "since", "from", "after", "before", "until", "till", "through", "thru", "between", "and", "to", "in"})
 """The words a slashed day stands after to be one ("on 1/26", "since 7/14");
 after any other word it is a figure ("went 7/14 from three").
