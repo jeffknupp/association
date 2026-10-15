@@ -46,6 +46,14 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
+- **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
+- **Evidence:** on `p5s6-L` (feed, no names), "Westbrook wins per season" answers "Russell Westbrook, points, rebounds and assists per game by regular season, 2023-2026 ..." (before the fix his 2026 line), "wins" unread: `measure.named("wins")` reads nothing outside a record's games won (`lexicon.GAMES_WON` under `LINE_RECORD`), so step 1's `unread_stat` cannot fire on it, and the players' ranking ("most wins by player nba 2010s", 14 of the 2,082) is refused by `ranking_needs_stat` since #421's fix. A player's wins are the games his team won with him playing (`won` is a yes/no measure of the player-games relation).
+- **User sees:** a line or a history of other stats, fluently, where his wins were asked.
+- **Next step:** read "wins"/"losses" on a player's line, history and ranking as the count of his games won or lost (a yes/no predicate, the count's reading as "most triple doubles since 2020" now has), or refuse by `unread_stat` naming them; each wording enumerated.
+- **Source:** ours.
+- **Priority:** P1 - a different question answered fluently; 1 of the 2,082 (the 14 rankings are refused by name).
+
 ### A team ranking asked of the best single season across years answers the current season: "Which team has made the most three pointers in a season" ranks 2026's teams
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), refusing the players' half (`point._everyone_single_season`, the `single_season_ranking` cause).
 - **Evidence:** on `98b22dd`'s feed run, "Which team has made the most three pointers in a season" answers "3-pointers made per game, 2026 regular season - highest first, of 30 teams: 1 Charlotte Hornets 16.4 ...", "which team has made the most three pointers in a season before 2015" the 2015 season's, and "highest ppg*ts% by a team in a season" 2026's points per game - each a per-game figure over one season where the most in any season was asked ("made", "season" unread). The players' ranking refuses the class by name since lane L's commit; the team ranking (`point.team_read_point`, the team-season relation) has no such check.
@@ -93,15 +101,14 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #424
 
-### A player's "stats by season" or "every season" with no stat named answers one season's line: "james wiseman stats by season" answers his 2026 averages
-- **Found:** 2026-10-11, fixing #379 (the per-season window), probing "lebron stats every season".
-- **Evidence:** on `0c597b2`, feed run (no names, no stat): "james wiseman stats by season" -> "James Wiseman averaged 3.3 points, 2 rebounds and 0.8 assists per game in 4 games in the 2026 regular season." (unread: stats), "kevin love nba stats by year" -> his 2026 line, "ant games play each season" / "Jokic games play each season" / "lamelo games play each season" -> each one's 2026 line ("games", "play" unread); with the model's name, "lebron stats every season" -> "LeBron James averaged 20.9 points ... in 60 games in the 2026 regular season." The history child grammar names `player_history` from "by season"/"every season" (`lexicon.CHILD_PLAYER_HISTORY`), and the grammar's rule `grammar._line_and_record` turns a history with no stat named into the player's line ("Jokic career averages" is the whole line, not points by season) - the decision says "the words 'every season' name player_history, and the stages declined it", and the words are claimed by the child, so `Reading.unread` does not show them. 5 of the 2,082 feed questions, none of the 628.
-- **User sees:** one season's line, fluently, where every season's was asked.
-- **Next step:** a history with no stat named is the whole line season by season (the history reader over each of the line's measures, `compose/seasons.py`'s `Grouped` by season), or - until a reader reads it - refused by a cause naming the stat it needs; "career averages" stays the line. Each wording a reader case; the 5 feed answers enumerated.
-- **Priority:** P1 - a narrower question answered fluently.
+### A coach named by "under <name>" is read by nothing: "Name the top 10 players by games played under Lon Kruger" ranks the whole league's 2026 season
+- **Found:** 2026-10-13, the P1 sweep's lane L2, fixing #408 (the ranking by games played).
+- **Evidence:** on sweep-L2 (feed, no model names), "Name the top 10 players by games played under Lon Kruger in NBa" reads `Reading.unread` `under`, `lon`, `kruger` and answers "every player, 2026 regular season, by player (games played): Julian Champagnie 83 G ..." (the points-per-game ranking before #408's fix). The coach cause (`no_coach_table`) is read from the word "coach" alone (`lexicon` coach words, `point._read_point`), and nothing reads "under <a name that is no player>" as a coach; Lon Kruger coached the Hawks 2000-03. 1 of the 2,082.
+- **User sees:** the league's ranking over this season, fluently, where the players under one coach were asked.
+- **Next step:** read "under <words that name no player>" before a ranking or a line as a coach's tenure and refuse it by the coach cause naming the words ("no coach records are on file ..."), a test per wording; measure "under" on both corpora first ("under 10 points" is a line, `lexicon.BELOW`).
 - **Source:** ours.
-- **GitHub:** #387
-
+- **Priority:** P1 - a different question answered fluently; 1 of the 2,082.
+- **GitHub:** #431
 ### A team named beside a player's name with no "for"/"vs" phrase the subject reading reads is read by nothing: "lebron record vs t wolves" answers his splits, "Mikal bridges logs at philly" his last 10 games
 - **Found:** 2026-10-14, Phase 5, step 2, reading the moves of the possessive-nickname fix ("Lebrons season outcome during lakers" became LeBron's 2026 line, "during lakers" applied by nothing).
 - **Evidence:** on `p5-step2` after its third commit, the 2,710 readings (`~/association-research/stages/reader_pop.py`): 30 readings of a player's question whose subject reading read a team (`Reading.subject.teams`) that the reading puts nowhere - not `who.teams`, not the tenure, not the opponent. The team's words count as read (the reading's names, `parse._reading_from_route_names`), so neither `Reading.unread` nor the ledger shows them and step 1's causes cannot fire. Answers (feed): "lebron record vs t wolves" -> LeBron's 2026 splits (the Wolves dropped; "t wolves" is no team word the opponent reader reads), "Mikal bridges logs at philly" and "Scoot henderson at pelicans log" -> his last 10 games ("at <team>" read as no venue and no opponent), "darius garland stats with clippers" and "lakers westbrook stats" -> the 2026 line (the tenure dropped), "kyrie irving in nets stats vs magic" and "westbrook playoff stats with okc" -> a 2026 refusal (his Nets / Thunder tenure unread). The rest of the 30: "carmelo anthoyn stats with lakers", "darius garland clippers stats", "how old was shaq when he won (a championship) in miami", "jalen brunson home stats with knicks vs hawks", "jaylen brown stats vs last 10 games the knicks", "jrue holiday 1st half with celtics vs knicks", "jrue holiday celtics vs knicks", "kd stats in 4th quarter playoffs okc", "kd stats in 4th quarter playoffs without the warriors", "lakers westbrook ppg, rpg apg", "lebron james laker vs randle home", "lebrons playoff outcome during lakers", "Lebrons season outcome during lakers", "ochai agbaji shot chart 2023-24 utah", "portis vs wizards as buck", "Saddiq Bey stats with Detroit Pistons and Atlanta Hawks", "sixers kelly oubre jr. vs clippers", "zach lavine kings averages without westbrook" (the split's team, kept as the split's - likely right), and four 2006-08 former-franchise wordings ("for the sonics in 2008", "for the hornets in 2008", "for the nets vs the bobcats in 2007", "for seattle vs the hornets 2006") whose tenure may be spelled differently rather than dropped.
@@ -205,15 +212,6 @@ those were found.
 - **Priority:** P3 - was P1, a fluent wrong answer, until Phase 5, step 1; now a refusal by name - a broader question answered (1 of the 2,082), and a refusal by the wrong cause (2).
 - **GitHub:** #266
 
-### "as a laker" with no opponent beside it, and "per season", are read by nothing: "Gabe Vincent 3’s as a laker" answers his 2026 line as a Heat player
-- **Found:** 2026-09-28, fixing #259; "3's" itself read since 2026-10-13 (the P1 sweep's lane L, #270).
-- **Evidence:** on sweep-L, "Gabe Vincent 3’s as a laker" answers "Gabe Vincent averaged 1.1 3-pointers per game in 53 games in the 2026 regular season" (`Cuts.tenure` None: "as a laker" unread; his 2026 season is not a Laker's), "Jarred 3’s as a laker" answers the Lakers' team line (no player read from "Jarred"), and "steph curry 3's per season" answers his 2026 line where a season-by-season history was asked ("per season" unread). The tenure is the subject reading's (`subject._apply_own_team`, lane N; #339 is its neighbor beside an opponent), "per season" the grammar's history row.
-- **User sees:** a fluent line for the wrong span or the wrong team.
-- **Next step:** read "as a <team singular>" as the tenure with no opponent beside it; "per season"/"by season" as the history (`SEASON_HISTORY`); a case per wording.
-- **Priority:** P1 - a narrower or different question answered; 3 of the 2,082.
-- **Source:** ours.
-- **GitHub:** #270
-
 ### A ranking within the subject's own conference or division is refused: "top scorers in the western conference this season"
 - **Found:** 2026-10-09, Phase 3 step 0; refused by a cause in the P1 sweep (lane S, 2026-10-13).
 - **Evidence:** since the sweep a conference or division on a ranking that no "vs"/"versus"/"against" leads ("in the western conference", "who leads the east", "eastern conference players points leaders", "atlantic division standings": `cuts.own_alignment`, `lexicon.ALIGNMENT_AS_OPPONENT`) is refused before any reader runs (`own_alignment`): "A ranking within a conference or division ('in the western conference') is read by nothing here yet - ...", where "top scorers in the western conference this season" ranked every player's games against the West and "who leads the east in scoring" the league. Off a ranking the words keep the opponent's reading ("lebron points in the west": his games against the West). None of the 628 or the 2,082 holds the class (the wordings are probes).
@@ -281,15 +279,6 @@ those were found.
 - **Priority:** P1 - 7 of the 2,082 answered or refused as a different question (an eighth, "harden 61 points", is the feed's input: with no model names "harden" alone is read as nobody).
 - **Source:** ours.
 - **GitHub:** #394
-
-### "average" beside a month or a date is read as a game log: "How many points did De'aaron fox average in November 2023" and "tatum averages since 12/11/2023" list the last 10 games
-- **Found:** 2026-10-13, the P1 sweep (lane S), proving #353 (a worded since-date with a year).
-- **Evidence:** the parent grammar's player log row (`lexicon.PLAYER_LOG_ROW`, `parse._PLAYER_LOG`) reads `\d+/\d+` and the month names `march|january|february|april|december|november|october` as a log, ahead of every row that reads a line, and nothing reads "average" against it. On the readings run of `21f12bd` plus #353's fix (`reader_pop.py`, the 2,710): "How many points did De'aaron fox average in November 2023" ("De'Aaron Fox in November, last 10 of 13 games ..."), "Scottie Barnes averages Feb 28th to April 14th 2026" and its "... ts%" twin (his last 10 games between the days) are `player_games`/`rows`/`date` - 3 of the 2,082 feed questions, "average" unread in each. Probed with the model's names and stat (`lebron`, `points`): "how many points did lebron average since 1/31/2020" and "... since january 31 2020" list his last 10 of 381 games, "average" unread; "tatum averages since 12/11/2023" lists his last 10 of 141, where "tatum averages since dec 11 2023" (a month the row does not hold) answers his line, 26.2 points per game in 141 games.
-- **User sees:** ten rows of a log where one average was asked - a different shape, fluently.
-- **Next step:** the log row reads a month or a slashed day only where no line word ("average(s)", "avg", "ppg", "per game") stands beside it, so the line's row takes the question with the cut on it; measure the 2,710 readings and both answer populations first, every moved answer enumerated. The row is the grammar family's (lane N's), not the cuts'.
-- **Priority:** P1 - a different shape answered fluently; 3 of the 2,082 (#267's own question among them: since #267 it lists the right November's 9 games, as a log).
-- **Source:** ours.
-- **GitHub:** #412
 
 ## P2: misleading or incomplete
 

@@ -208,7 +208,7 @@ def career_named(question: str) -> tuple[bool, Claim | None]:
     text = question
     if lexicon.CAREER_HIGH.search(text) and (lexicon.season_from_text(question) is not None or lexicon.SEASON_WORDS.search(text)):
         text = lexicon.CAREER_HIGH.sub(lambda m: " " * len(m.group(0)), text)
-    for pattern in (lexicon.CAREER_WORDS, lexicon.CAREER_ALL_GAMES_WORDS, lexicon.CAREER_JOINED_LEAGUE_WORDS):
+    for pattern in (lexicon.CAREER_WORDS, lexicon.CAREER_ALL_GAMES_WORDS, lexicon.CAREER_JOINED_LEAGUE_WORDS, lexicon.CAREER_EVERY_SEASON):
         match = pattern.search(text)
         if match is not None:
             return True, Claim(match.start(), match.end(), "career")

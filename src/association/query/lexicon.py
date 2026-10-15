@@ -634,6 +634,14 @@ and a franchise's ("in cavs history", "in knicks franchise history",
 
 .. versionadded:: 6.0.0
 """
+CAREER_EVERY_SEASON = re.compile(r"\b(?:every|each)\s+(?:(?:of\s+)?(?:his|her|their|the)\s+)?(?:season|year)s?\b|\ball\s+(?:(?:of\s+)?(?:his|her|their|the)\s+)?(?:seasons|years)\b", re.IGNORECASE)
+"""Every season on record asked one by one: "every season", "each year",
+"all his seasons" - a career, where a history's default window of four
+seasons answered "lebron stats every season" with 2023-2026 (ISSUES.md
+#387). "all season" (singular) is this season's, and is no such phrase.
+
+.. versionadded:: 6.0.0
+"""
 CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
 """A career high - the one "career" that names a single game's best, not a span.
 
@@ -3157,6 +3165,11 @@ which a league-wide read refuses unless the words name the season
 "nba players who averaged 20 ppg ... on a season" is a season line's
 question (ISSUES.md #390)."""
 
+SEASON_BY_SEASON = re.compile(r"\b(?:by|every|each|per)\s+(?:season|year)s?\b|\b(?:season|year)[- ]by[- ](?:season|year)\b", re.IGNORECASE)
+"""A history asked season by season ("stats by season", "every season",
+"per season", "year by year") - kept the history where no stat is named,
+the whole line's (``grammar._line_and_record``, ISSUES.md #387)."""
+
 RANKED_PER_GAME = re.compile(r"\bper\s+game\b|\b(?:ppg|rpg|apg|spg|bpg)\b|\baverag\w*|\bavg\b", re.IGNORECASE)
 """A ranking of players asked per game - "per game", a per-game
 abbreviation, "average(d)", "avg" - which reads the measure's per-game
@@ -3556,7 +3569,7 @@ CHILD_THRESHOLD_COUNT = ask(
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_PLAYER_HISTORY = ask(
-    rf"\b(?:over|for|in|during) the (?:past|last) {N_SEASONS}\b|\b(?:last|past) {N_SEASONS}\b|\bby (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
+    rf"\b(?:over|for|in|during) the (?:past|last) {N_SEASONS}\b|\b(?:last|past) {N_SEASONS}\b|\b(?:by|per) (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
     r"|\bseason[- ](?:by|over)[- ]season\b|\byear[- ](?:by|over)[- ]year\b|\bfrom (?:year|season) to (?:year|season)\b",
     re.IGNORECASE,
 )
@@ -4887,11 +4900,24 @@ LOG_ROW = row(r"\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b
 PLAYER_LOG_ROW = row(
     r"\b(game ?log|gamelog|logs?|last " + COUNT + r" games|each game|game by game|box scores?|(?<!per )games? (with|where|in which|against|vs)"
     r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
-    r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
+    r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d)\b"
 )
-"""A player's games rather than his line in words: a log word, one game,
-a month, a date. The window words stay for a form the window tagger does
-not type ("final games"); a typed one stands as the typed value.
+"""A player's games rather than his line in words: a log word, one game.
+The window words stay for a form the window tagger does not type ("final
+games"); a typed one stands as the typed value.
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_LOG_DATE_ROW = row(r"\b(month of|\d+/\d+|march|january|february|april|december|november|october)\b")
+"""A month or a slashed day, which reads a player's games - unless a
+per-game word stands beside it (:data:`PER_GAME_ROW`).
+
+.. versionadded:: 6.0.0
+"""
+PER_GAME_ROW = row(r"\b(averag\w*|avg|ppg|rpg|apg|per game)\b")
+"""A per-game word: beside a month or a date, the question is the line
+over those games, not their log ("how many points did fox average in
+November 2023", ISSUES.md #412).
 
 .. versionadded:: 6.0.0
 """

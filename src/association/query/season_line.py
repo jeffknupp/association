@@ -1446,6 +1446,12 @@ PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
 # column header with an empty column beneath it and a flat sparkline (seen
 # live on the rendered page, 2026-09-24, on "lebron's 2-pt percentage over
 # the last 10 years").
+HISTORY_LINE = "line"
+"""The history of the whole line (no stat named), by its ``HISTORY_COLUMNS`` key.
+
+.. versionadded:: 6.0.0
+"""
+
 HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
     "threePointFieldGoalPct": (
         "3PT%",
@@ -1484,6 +1490,10 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
     "blocks": ("blocks per game", [("avgBlocks", "BPG", "avgBlocks")]),
     "minutes": ("minutes per game", [("avgMinutes", "MPG", "avgMinutes")]),
     "threePointFieldGoalsMade": ("3-pointers per game", [("avgThreePointFieldGoalsMade", "3PM/G", "avgThreePointFieldGoalsMade")]),
+    # The whole line season by season, where the words name no stat ("james
+    # wiseman stats by season", ISSUES.md #387): the line's three per-game
+    # figures, the history's columns.
+    HISTORY_LINE: ("points, rebounds and assists per game", [("avgPoints", "PPG", "avgPoints"), ("avgRebounds", "RPG", "avgRebounds"), ("avgAssists", "APG", "avgAssists")]),
 }
 
 
