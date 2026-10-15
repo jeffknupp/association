@@ -126,6 +126,46 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #447
 
+### A window word before a time word, a yes/no measure or a period is read as nothing: "last time chris paul dropped 20 assists in a game" answers his season high
+- **Found:** 2026-10-15, the lead, re-running `~/association-research/stages/unread_meaning.py` on the Phase 5 close run (`f365d627`): the narrowing of step 1's window class (`lexicon.MEANING_WINDOW_NEXT`: a window word counts only beside a count or a game word) restored these from the `unread_window` refusal and the commit called them correct answers; they are not.
+- **Evidence:** ten feed questions (the harness's `LAST_TIME` class, held by text): "last time chris paul dropped 20|20|25|30 points/assists in a game" answers "Chris Paul's highest assist total in a single game in the 2026 regular season was 8"; "scottie barnes last triple double" (and "... on a wednesday") answers the count of his triple-doubles (9; 1); "lebron career last triple double vs wolves" answers 2 games with one; "tyler herro last week" answers his season averages over 33 games; "Tyrese maxey last first quarter game stats no" answers his 1st-quarter season total (555 points); "When was the last time the Knicks opened the nba season" answers the Knicks' season record. In each, "last" is followed by "time", "week", "triple", "first" - none in `MEANING_WINDOW_NEXT` - so `parse._beside_a_stretch` says no stretch and the word is left unread without the `unread_window` cause.
+- **User sees:** a fluent answer to a different question - the high, a count or the season line where the most recent game over a line was asked.
+- **Next step:** the window class counts a window word before a time word ("time", "week", "month", "night"), a yes/no measure's words ("triple", "double"), a period word ("first quarter") and a line's words, back to the refusal by name; then the read itself - the newest game over a line is a log over the line with a window of one (`player_games/rows/date` with `lines` and `window.count=1`), which the frozen keys already name - under Jeff's lifting if it is a new shape. The harness holds the ten by text until then; the record in `ROADMAP.md`'s done table and `CHANGES.md`'s `f365d627` entry is corrected in the same change.
+- **Priority:** P1 - a fluent wrong answer on ten recorded questions.
+- **Source:** ours.
+
+### Two stat words on a one-stat shape, one read: "James harden rebound and assist vs POR" answers his rebounds alone
+- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
+- **Evidence:** "James harden rebound and assist vs POR" answers "averaged 4 rebounds per game in 2 games vs Portland"; "Giannis first half points rebounds assists gamelog vs washington" answers "16 rebounds in the 1st half over 3 games" (a period total of one stat where a log of three was asked). The measure tagger reads one stat from the words, so the `unread_stat` class (which triggers only where the measure did NOT come from the words) does not fire, and the other stat words stay unread; `measures_combined` refuses two stats only where the point reads a combined measure.
+- **User sees:** one stat's figure where two or three were asked, fluently.
+- **Next step:** on a one-stat shape, a second stat word the tagger would read to another key is the `unread_stat` cause whether or not the first came from the words (the parser's last step, `parse._defaulted_class`); "gamelog" on the Giannis wording should also name the log, which shows the whole line.
+- **Priority:** P1 - a fluent wrong answer on two recorded questions.
+- **Source:** ours.
+
+### "nba final stats" is not read as the Finals: "jaylen brown 2022 nba final stats" answers his 2021-22 regular season
+- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627` (the Phase 5 review had called "final" a window word in its Finals sense and the narrowing dropped it from the class; the answer was wrong either way).
+- **Evidence:** "jaylen brown 2022 nba final stats" answers "23.6 points, 6.1 rebounds and 3.5 assists per game in 66 games" of the regular season; "jayson tatum 2024 nba final stats" likewise (74 games). The round reader matches "finals" and "the finals", not "nba final"; "final" is unread.
+- **User sees:** the regular season's line where the Finals' was asked, fluently.
+- **Next step:** "nba final(s)", "the final(s)", "finals" read as the Finals round, refused by the round's cause as every round is (`Reading.unsupported`, `round`).
+- **Priority:** P1 - a fluent wrong answer on two recorded questions.
+- **Source:** ours.
+
+### A compound stat nothing holds is read as its last word: "toronto raptors points off turnovers" answers the Raptors' turnovers
+- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
+- **Evidence:** "toronto raptors points off turnovers" answers "The Toronto Raptors' turnovers per game was 13.7 in the 2026 regular season"; "points off turnovers" is a team stat the warehouse does not carry, the measure tagger reads "turnovers", and "points" is unread (a leftover guard applies only to the read measure's own words).
+- **User sees:** turnovers where points off turnovers were asked, fluently.
+- **Next step:** the phrases "points off turnovers", "second chance points", "fast break points", "points in the paint" are one measure each in the catalog, refused as a stat no table holds (`unknown_stat` with the phrase as typed), before the tagger reads a word inside them.
+- **Priority:** P1 - a fluent wrong answer.
+- **Source:** ours.
+
+### A misspelled period word is dropped silently: "lebron james first quater log" answers his whole-game log <!-- codespell:ignore quater - the feed's question as typed -->
+- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
+- **Evidence:** "lebron james first quater log" answers "LeBron James, last 10 of 60 games of the 2026 regular season" - the whole game's line; `period.which_period` does not match "quater", so no period is read, "first" and "quater" are unread, and the log's default answers. <!-- codespell:ignore quater - the feed's question as typed -->
+- **User sees:** the game log where the first-quarter log was asked, fluently.
+- **Next step:** a near spelling of a period word ("quater", "qaurter", "quarer") within one edit is read as the word and said (as the entity index says a near-spelled name), or the ordinal before an unread word that is near a period word is the `unread_window` cause. <!-- codespell:ignore quater - the feed's question as typed -->
+- **Priority:** P1 - a fluent wrong answer on one recorded question, and a typo class nothing guards.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A team's games or count over a line, given up or its own, are named from the words only after a window: "celtics games where they gave up 120 points" is refused for an unread number, and "celtics game log when they score 120+ points" answers its record over the line
@@ -1855,6 +1895,14 @@ those were found.
 - **Next step:** confirm against a playoff NetPoints question; say the split covers the whole season, or refuse the split for a postseason.
 - **GitHub:** #299
 - **Restored at Phase 5's close (2026-10-14):** the entry had been lost in a merge while GitHub #299 stayed open (the Phase 5 review).
+
+### Reader cases that pin a reading no answer should rest on: contradicting lines, a dropped second line, a stat word read as another
+- **Found:** 2026-10-15, lane p6-tests, renaming every case in `tests/query/reader_cases.json` (the index is the case's position in the file).
+- **Evidence:** [180] and [181] "games with less than 20 points" / "fewer than 5 turnovers" carry contradicting lines, `points < 20` beside a keyed `points >= 20`; [345] "sixers record when maxey had 20+ points and 5+ assists" holds only the points line - "5+ assists" is neither a line nor unread and not held in `tests/grammar_drops.py`, a silent narrowing; [37] "compare sga and embiid on rebounding" reads points and "rebounding" is not unread; [536] "james harden stats with no paul george" reads George as having played and "no" is unread; [272] and [71] carry `who.kind=everyone` with players `['wemby']` and `['ever']`; [328] and [331] carry `who.teams=['Magic Johnson']`; [137] and [138] "curry playoff stats 2015-18" with no model names become a league ranking with no `defaulted` cause; [529] against [81]: "since he joined the Warriors" flips between the Warriors' line and Curry's tenure by whether the model gives a name; [439] against [440]: "games has embiid won" is a record, "... lost" is `unknown_stat`.
+- **User sees:** on [345], [37], [536] a fluent answer to a narrower or different question (a record on one of two lines; points where rebounding was asked; games George played where his absence was asked); on the rest a reading that would answer wrong if the shape were reached, or an inconsistent refusal.
+- **Next step:** reproduce each on the warehouse through `Agent.ask` and re-rank: [345], [37] and [536] are P1 if the answer is as the reading says; the contradicting lines on [180]/[181] need the keyed line and the narrowing line to be one; the everyone-with-players and teams-of-a-player cases are the subject reading's (Phase 6, step 4).
+- **Priority:** P2 until reproduced through the answering loop; three of them are likely P1.
+- **Source:** ours.
 
 ## P3: refusal or gap
 
