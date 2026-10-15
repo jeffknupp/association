@@ -1627,6 +1627,27 @@ agents' reports named here are in `~/association-research/stages/`.
     left in - now fixed. Open P1s 19 of 194 at the night's end; step 6 is
     the queue.
 
+45. **Phase 5, step 6 (2026-10-14 night): the P1 queue, three lanes
+    under D12.** The proof rule relaxed first (D12: one feed run per push,
+    sharded to 77 seconds; the ledger's pass sharded to 28), after four
+    agents' transcripts showed 55-70% of their wall clock in proof and
+    gate and 1-2 minutes of work per 8-10 minute commit. Three
+    `opus-medium` lanes on the sweep's seams (the subject reading; the
+    taggers and the count grammar; the team relation), 14 merges (runs
+    59-72), each verified by the lead on the merged tree: 12 of the 19 open
+    P1s closed, 5 narrowed to refusals by name, 4 unfiled P1s fixed on the
+    way, 2 filed at the end (#440, #441); 252 feed answers moved, 157 of
+    them fluent answers past a word becoming refusals that name it and 77
+    becoming reads; the feed's fluent answers 1,653 -> 1,506. The step's
+    cadence under D12: 6-8 minutes per commit, about 24 commits an hour
+    across the lanes. What it taught: a keep-both merge of ISSUES.md loses
+    a lane's rewrite of an entry when a later lane's branch still holds the
+    old text (two entries recovered at the close from the merged commits,
+    two closed ones resurrected and removed); and the agents kept more
+    proof than D12 asked, running the corpus and per-commit feed runs for
+    attribution, so the saving went to cleaner enumeration rather than
+    time. Open P1s 2 of 189 at the close.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
