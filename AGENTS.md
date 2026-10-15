@@ -548,7 +548,7 @@ taking a list of its own, or a reader writing `pgl.opponent_team_id = ?` or
   `query/entities.py` never guesses between candidate players; a ranking
   rejects a named player; a team's record rejects a limit.
 
-**The mirror image: a refusal that names the wrong cause.** It reads as
+**The same bug has a mirror image: a refusal that names the wrong cause.** It reads as
 honest, so nothing looks wrong ("No NetPoints fingerprint on record for
 season 2026" for Maxey, when "Maxey" had resolved to a namesake retired in
 1994). Before writing a "no data" message, check which fact is actually
@@ -621,7 +621,8 @@ did not find the one meant. The answer says a player is missing instead
 (`subject.compared_but_unmatched`, which takes "vs" and not "compare",
 since "compare Jokic's fingerprint to last season" compares seasons).
 
-**Which name a model substitutes moves between sessions** (lowercase
+**Why "embiid" specifically: which name a model substitutes moves between
+sessions** (lowercase
 "embiid" in a comparison frame came back as two different players on two
 days), so there is nothing to special-case - only a reason to check every
 name against the question. (history)
@@ -1224,8 +1225,8 @@ relation's statements):
   making a slot required (which crowds out others). (history)
 - **Hash `NORMALIZER_PROMPT` and `NORMALIZER_SCHEMA` before and after a
   change**: if both match, the recorded replies still stand and the stage
-  snapshots are the whole check. **Any edit to them moves what the 3B
-  returns on unrelated questions** (its length as much as its content), so
+  snapshots are the whole check. **Any edit to the model's prompt moves
+  what it returns on unrelated questions** (the 3B is that sensitive) (its length as much as its content), so
   after one the recorded replies no longer stand: re-record them and make a
   live run the record, and assert in a case only what changes the
   *answer*, never the encoding the model picked. (history)
