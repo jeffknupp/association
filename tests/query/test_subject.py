@@ -1010,7 +1010,7 @@ def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: 
         and [(c.player, c.predicate, c.line) for c in s.conditions] == [("maxey", "reached", Line(measure="points", value=20, as_typed="20+ points"))]
         and s.asked == LINE_RECORD
     )
-    assert "companions the router named nobody for ['maxey']" in s.evidence
+    assert "companions the model named nobody for ['maxey']" in s.evidence
     applied = apply_subject(s, scope, asked=PLAYER_LINE)
     assert applied.asked == LINE_RECORD and applied.dropped == [] and (applied.scope.who.player, applied.scope.who.team, threshold_of(applied.scope)) == ("maxey", "Philadelphia 76ers", 20)
     s = _read(con, "thunder record with jalen williams out", TEAM_RECORD, scope=Reading(who=Who(kind="team", teams=("Oklahoma City Thunder",))))
@@ -1291,7 +1291,7 @@ def test_a_misspelled_companion_is_read_as_typed_where_it_is_one_players_near_sp
     # And where he PLAYED, a role that takes only a name the reading found.
     s = _read(con, "de'aaron fox points with wembyanama playing", PLAYER_LINE, scope=Reading(who=Who(kind="player", players=("De'Aaron Fox",))))
     assert [(c.player, c.predicate) for c in s.conditions] == [("wembyanama", "played")]
-    assert "companions the router named nobody for ['wembyanama']" in s.evidence
+    assert "companions the model named nobody for ['wembyanama']" in s.evidence
     # Two near spellings name nobody: the question is asked, not guessed.
     # (A table is read once per block: the new row is seen in the next one.)
     con.execute("INSERT INTO players VALUES ('31', 'Vince Wembyanamo')")

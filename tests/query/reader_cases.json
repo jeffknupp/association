@@ -504,7 +504,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router players the question supports ['Maxey']; team word 'Philadelphia 76ers'"
+     "reason": "model players the question supports ['Maxey']; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -925,7 +925,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Jaylen Brown']; router players the question supports ['Maxey']"
+     "reason": "question names players ['Jaylen Brown']; model players the question supports ['Maxey']"
     },
     {
      "stage": "subject",
@@ -1105,7 +1105,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jamal Murray']; router players the question supports ['Jamal Murray']"
+     "reason": "question names players ['Jamal Murray']; model players the question supports ['Jamal Murray']"
     },
     {
      "stage": "subject",
@@ -1680,7 +1680,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']; the words 'how many 40+ points games' name player_games/scalar/count"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']; the words 'how many 40+ points games' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -2589,7 +2589,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Victor Wembanyama']; router players the question supports [\"Wembanyama's\"]"
+     "reason": "question names players ['Victor Wembanyama']; model players the question supports [\"Wembanyama's\"]"
     },
     {
      "stage": "subject",
@@ -3929,7 +3929,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router names the question never held ['Stephen Curry']"
+     "reason": "question names players ['Luka Doncic']; model names the question never held ['Stephen Curry']"
     },
     {
      "stage": "subject",
@@ -3945,7 +3945,7 @@
      "field": "player",
      "before": "Stephen Curry",
      "after": "Luka Doncic",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -4139,7 +4139,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router names the question never held ['Stephen Curry']"
+     "reason": "question names players ['Nikola Jokic']; model names the question never held ['Stephen Curry']"
     },
     {
      "stage": "subject",
@@ -4155,7 +4155,7 @@
      "field": "player",
      "before": "Stephen Curry",
      "after": "Nikola Jokic",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -4351,7 +4351,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router names the question never held ['Stephen Curry']"
+     "reason": "question names players ['Luka Doncic']; model names the question never held ['Stephen Curry']"
     },
     {
      "stage": "subject",
@@ -4367,7 +4367,7 @@
      "field": "player",
      "before": "Stephen Curry",
      "after": "Luka Doncic",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -4564,7 +4564,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router players the question supports ['Nikola Jokic']"
+     "reason": "question names players ['Nikola Jokic']; model players the question supports ['Nikola Jokic']"
     },
     {
      "stage": "subject",
@@ -4982,7 +4982,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['Joel Embiid']; team word 'Boston Celtics'; against 'Boston Celtics'"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['Joel Embiid']; team word 'Boston Celtics'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -5816,7 +5816,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -6871,7 +6871,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; router players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
+     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; model players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
     },
     {
      "stage": "subject",
@@ -7046,7 +7046,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; router players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
+     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; model players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
     },
     {
      "stage": "subject",
@@ -7232,7 +7232,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; router players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
+     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; model players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
     },
     {
      "stage": "subject",
@@ -7770,7 +7770,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -7940,7 +7940,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -8164,7 +8164,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Stephen Curry']; router players the question supports ['steph curry']"
+     "reason": "question names players ['Stephen Curry']; model players the question supports ['steph curry']"
     },
     {
      "stage": "subject",
@@ -8332,7 +8332,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -8545,7 +8545,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -8758,7 +8758,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']; the words 'in a game' name player_games/rows/measure"
+     "reason": "model players the question supports ['Curry']; the words 'in a game' name player_games/rows/measure"
     },
     {
      "stage": "subject",
@@ -8875,7 +8875,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -9032,7 +9032,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -9237,7 +9237,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -9474,7 +9474,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -9712,7 +9712,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -10545,7 +10545,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['Nikola Jokic']; team word 'New York Knicks'"
+     "reason": "model names the question never held ['Nikola Jokic']; team word 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -10720,7 +10720,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router players the question supports ['Nikola Jokic']"
+     "reason": "question names players ['Nikola Jokic']; model players the question supports ['Nikola Jokic']"
     },
     {
      "stage": "subject",
@@ -10942,7 +10942,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Rui Hachimura']; router names the question never held ['Nikola Jokic']"
+     "reason": "question names players ['Rui Hachimura']; model names the question never held ['Nikola Jokic']"
     },
     {
      "stage": "subject",
@@ -10958,7 +10958,7 @@
      "field": "player",
      "before": "Nikola Jokic",
      "after": "Rui Hachimura",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -11185,7 +11185,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['Nikola Jokic']; team word 'Toronto Raptors'"
+     "reason": "model names the question never held ['Nikola Jokic']; team word 'Toronto Raptors'"
     },
     {
      "stage": "subject",
@@ -14064,7 +14064,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Stephen Curry']; router players the question supports ['steph curry']"
+     "reason": "question names players ['Stephen Curry']; model players the question supports ['steph curry']"
     },
     {
      "stage": "subject",
@@ -14221,7 +14221,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Stephen Curry']; router players the question supports ['steph curry']"
+     "reason": "question names players ['Stephen Curry']; model players the question supports ['steph curry']"
     },
     {
      "stage": "subject",
@@ -14378,7 +14378,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Stephen Curry']; router players the question supports ['steph curry']"
+     "reason": "question names players ['Stephen Curry']; model players the question supports ['steph curry']"
     },
     {
      "stage": "subject",
@@ -14535,7 +14535,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Alperen Sengun']; router players the question supports ['Alperen Sengun']"
+     "reason": "question names players ['Alperen Sengun']; model players the question supports ['Alperen Sengun']"
     },
     {
      "stage": "subject",
@@ -14811,7 +14811,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Karl-Anthony Towns']; router players the question supports ['Karl-Anthony Towns']; team word 'San Antonio Spurs'; against 'San Antonio Spurs'"
+     "reason": "question names players ['Karl-Anthony Towns']; model players the question supports ['Karl-Anthony Towns']; team word 'San Antonio Spurs'; against 'San Antonio Spurs'"
     },
     {
      "stage": "subject",
@@ -15107,7 +15107,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['Joel Embiid']"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['Joel Embiid']"
     },
     {
      "stage": "subject",
@@ -15337,7 +15337,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -15563,7 +15563,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports [\"embiid's\"]"
+     "reason": "question names players ['Joel Embiid']; model players the question supports [\"embiid's\"]"
     },
     {
      "stage": "subject",
@@ -15757,7 +15757,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router players the question supports ['Luka Doncic']"
+     "reason": "question names players ['Luka Doncic']; model players the question supports ['Luka Doncic']"
     },
     {
      "stage": "subject",
@@ -15951,7 +15951,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']; team word 'Golden State Warriors'"
+     "reason": "model players the question supports ['Curry']; team word 'Golden State Warriors'"
     },
     {
      "stage": "subject",
@@ -15974,7 +15974,7 @@
      "field": "own_team",
      "before": null,
      "after": "Golden State Warriors",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -16162,7 +16162,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -16323,7 +16323,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+     "reason": "model players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
     },
     {
      "stage": "subject",
@@ -16516,7 +16516,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "question names players ['Jayson Tatum']; team word 'Boston Celtics'; companions the router named nobody for ['Brown']"
+     "reason": "question names players ['Jayson Tatum']; team word 'Boston Celtics'; companions the model named nobody for ['Brown']"
     },
     {
      "stage": "subject",
@@ -16725,7 +16725,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Brandin Podziemski']; companions the router named nobody for ['curry']"
+     "reason": "question names players ['Brandin Podziemski']; companions the model named nobody for ['curry']"
     },
     {
      "stage": "subject",
@@ -19912,7 +19912,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['X']"
+     "reason": "model names the question never held ['X']"
     },
     {
      "stage": "parser",
@@ -20119,7 +20119,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kevin Durant']; router names the question never held ['X']"
+     "reason": "question names players ['Kevin Durant']; model names the question never held ['X']"
     },
     {
      "stage": "subject",
@@ -20142,7 +20142,7 @@
      "field": "player",
      "before": "X",
      "after": "Kevin Durant",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -20333,7 +20333,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jayson Tatum']; router names the question never held ['X']"
+     "reason": "question names players ['Jayson Tatum']; model names the question never held ['X']"
     },
     {
      "stage": "subject",
@@ -20349,7 +20349,7 @@
      "field": "player",
      "before": "X",
      "after": "Jayson Tatum",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -20529,7 +20529,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Harrison Barnes']; router names the question never held ['X']"
+     "reason": "question names players ['Harrison Barnes']; model names the question never held ['X']"
     },
     {
      "stage": "subject",
@@ -20552,7 +20552,7 @@
      "field": "player",
      "before": "X",
      "after": "Harrison Barnes",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -23054,7 +23054,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joe Ingles']; router players the question supports ['Joe Ingles']"
+     "reason": "question names players ['Joe Ingles']; model players the question supports ['Joe Ingles']"
     },
     {
      "stage": "subject",
@@ -23259,7 +23259,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router players the question supports ['Luka Doncic']"
+     "reason": "question names players ['Luka Doncic']; model players the question supports ['Luka Doncic']"
     },
     {
      "stage": "subject",
@@ -24096,7 +24096,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Bam Adebayo']; router players the question supports ['Bam Adebayo']; the words '30 point games' name player_games/scalar/count"
+     "reason": "question names players ['Bam Adebayo']; model players the question supports ['Bam Adebayo']; the words '30 point games' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -31462,7 +31462,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Shai Gilgeous-Alexander']; router players the question supports ['Shai Gilgeous-Alexander']"
+     "reason": "question names players ['Shai Gilgeous-Alexander']; model players the question supports ['Shai Gilgeous-Alexander']"
     },
     {
      "stage": "subject",
@@ -31656,7 +31656,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jayson Tatum']; router players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
+     "reason": "question names players ['Jayson Tatum']; model players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -31883,7 +31883,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jayson Tatum']; router players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
+     "reason": "question names players ['Jayson Tatum']; model players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -32110,7 +32110,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jayson Tatum']; router players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
+     "reason": "question names players ['Jayson Tatum']; model players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -32337,7 +32337,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jayson Tatum']; router players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
+     "reason": "question names players ['Jayson Tatum']; model players the question supports ['Jayson Tatum']; team word 'New York Knicks'; against 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -33039,7 +33039,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -33210,7 +33210,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Victor Wembanyama']; router players the question supports ['Victor Wembanyama']"
+     "reason": "question names players ['Victor Wembanyama']; model players the question supports ['Victor Wembanyama']"
     },
     {
      "stage": "subject",
@@ -33594,7 +33594,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Moussa Diabate']; router players the question supports ['Moussa Diabate']; the words 'career high' name player_games/rows/measure"
+     "reason": "question names players ['Moussa Diabate']; model players the question supports ['Moussa Diabate']; the words 'career high' name player_games/rows/measure"
     },
     {
      "stage": "subject",
@@ -36263,7 +36263,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Mikal Bridges']; router players the question supports ['Mikal Bridges']"
+     "reason": "question names players ['Mikal Bridges']; model players the question supports ['Mikal Bridges']"
     },
     {
      "stage": "subject",
@@ -36533,7 +36533,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']; the words 'games with 30 minutes' name player_games/scalar/count"
+     "reason": "model players the question supports ['Curry']; the words 'games with 30 minutes' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -36758,7 +36758,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Paul Reed']; router players the question supports ['Paul Reed']"
+     "reason": "question names players ['Paul Reed']; model players the question supports ['Paul Reed']"
     },
     {
      "stage": "subject",
@@ -36994,7 +36994,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Paul Reed']; router players the question supports ['Paul Reed']"
+     "reason": "question names players ['Paul Reed']; model players the question supports ['Paul Reed']"
     },
     {
      "stage": "subject",
@@ -37211,7 +37211,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Paul Reed']; router players the question supports ['Paul Reed']"
+     "reason": "question names players ['Paul Reed']; model players the question supports ['Paul Reed']"
     },
     {
      "stage": "subject",
@@ -37447,7 +37447,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Paul Reed']; router players the question supports ['Paul Reed']"
+     "reason": "question names players ['Paul Reed']; model players the question supports ['Paul Reed']"
     },
     {
      "stage": "subject",
@@ -37706,7 +37706,7 @@
      "field": "kind",
      "before": null,
      "after": "position",
-     "reason": "router names the question never held ['Paul Reed']; against 'Golden State Warriors'"
+     "reason": "model names the question never held ['Paul Reed']; against 'Golden State Warriors'"
     },
     {
      "stage": "subject",
@@ -37966,7 +37966,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['Paul Reed']"
+     "reason": "model names the question never held ['Paul Reed']"
     },
     {
      "stage": "parser",
@@ -38071,7 +38071,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['X']; team word 'Boston Celtics'"
+     "reason": "model names the question never held ['X']; team word 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -38269,7 +38269,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['X']; team word 'Los Angeles Lakers'"
+     "reason": "model names the question never held ['X']; team word 'Los Angeles Lakers'"
     },
     {
      "stage": "subject",
@@ -38469,7 +38469,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['X']; team word 'Philadelphia 76ers'"
+     "reason": "model names the question never held ['X']; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -38659,7 +38659,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['X']; team word 'New York Knicks'"
+     "reason": "model names the question never held ['X']; team word 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -38854,7 +38854,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['X']"
+     "reason": "model names the question never held ['X']"
     }
    ],
    "point": {
@@ -39052,7 +39052,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Alperen Sengun']; router names the question never held ['X']"
+     "reason": "question names players ['Alperen Sengun']; model names the question never held ['X']"
     },
     {
      "stage": "subject",
@@ -39068,7 +39068,7 @@
      "field": "player",
      "before": "X",
      "after": "Alperen Sengun",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -39251,7 +39251,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router names the question never held ['X']"
+     "reason": "question names players ['LeBron James']; model names the question never held ['X']"
     },
     {
      "stage": "subject",
@@ -39267,7 +39267,7 @@
      "field": "player",
      "before": "X",
      "after": "LeBron James",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -39546,7 +39546,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['X']; team word 'New York Knicks'"
+     "reason": "model names the question never held ['X']; team word 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -39736,7 +39736,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router names the question never held ['X']"
+     "reason": "question names players ['Nikola Jokic']; model names the question never held ['X']"
     },
     {
      "stage": "subject",
@@ -39752,7 +39752,7 @@
      "field": "player",
      "before": "X",
      "after": "Nikola Jokic",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -39964,7 +39964,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['X']; team word 'Boston Celtics'"
+     "reason": "model names the question never held ['X']; team word 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -40150,7 +40150,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router names the question never held ['X']"
+     "reason": "question names players ['LeBron James']; model names the question never held ['X']"
     },
     {
      "stage": "subject",
@@ -40166,7 +40166,7 @@
      "field": "player",
      "before": "X",
      "after": "LeBron James",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -40395,7 +40395,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']; team word 'Utah Jazz'; against 'Utah Jazz'"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']; team word 'Utah Jazz'; against 'Utah Jazz'"
     },
     {
      "stage": "subject",
@@ -40628,7 +40628,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['LeBron James']"
+     "reason": "model names the question never held ['LeBron James']"
     }
    ],
    "point": {
@@ -41084,7 +41084,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Stephen Curry']; router names the question never held ['LeBron James']"
+     "reason": "question names players ['Stephen Curry']; model names the question never held ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -41100,7 +41100,7 @@
      "field": "player",
      "before": "LeBron James",
      "after": "Stephen Curry",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -41288,7 +41288,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Anthony Davis']; router names the question never held ['LeBron James']"
+     "reason": "question names players ['Anthony Davis']; model names the question never held ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -41304,7 +41304,7 @@
      "field": "player",
      "before": "LeBron James",
      "after": "Anthony Davis",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -41526,7 +41526,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['LeBron James']"
+     "reason": "model names the question never held ['LeBron James']"
     }
    ],
    "point": null,
@@ -41637,7 +41637,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -41864,7 +41864,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Paolo Banchero']; router names the question never held ['LeBron James']"
+     "reason": "question names players ['Paolo Banchero']; model names the question never held ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -41880,7 +41880,7 @@
      "field": "player",
      "before": "LeBron James",
      "after": "Paolo Banchero",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -42104,7 +42104,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -42331,7 +42331,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -42559,7 +42559,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -42785,7 +42785,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -43010,7 +43010,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -43235,7 +43235,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -43460,7 +43460,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -43685,7 +43685,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -43910,7 +43910,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -44137,7 +44137,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Anthony Davis']; router names the question never held ['LeBron James']"
+     "reason": "question names players ['Anthony Davis']; model names the question never held ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -44153,7 +44153,7 @@
      "field": "player",
      "before": "LeBron James",
      "after": "Anthony Davis",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -44369,7 +44369,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -44662,7 +44662,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -44888,7 +44888,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -45113,7 +45113,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -45338,7 +45338,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -45563,7 +45563,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -45788,7 +45788,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -46013,7 +46013,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -46238,7 +46238,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -46463,7 +46463,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -46688,7 +46688,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -46913,7 +46913,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -47138,7 +47138,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -47363,7 +47363,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -47588,7 +47588,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -47813,7 +47813,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -48039,7 +48039,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -48266,7 +48266,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -48493,7 +48493,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -48720,7 +48720,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -48947,7 +48947,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -49166,7 +49166,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -49608,7 +49608,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Maxey']; team word 'New York Knicks'; against 'New York Knicks'"
+     "reason": "model players the question supports ['Maxey']; team word 'New York Knicks'; against 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -50898,7 +50898,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -51055,7 +51055,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -51212,7 +51212,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -51427,7 +51427,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -56179,7 +56179,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']; the words 'how many 40+ points games' name player_games/scalar/count"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']; the words 'how many 40+ points games' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -56387,7 +56387,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -56597,7 +56597,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['LeBron James']"
+     "reason": "model names the question never held ['LeBron James']"
     }
    ],
    "point": null,
@@ -56689,7 +56689,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router names the question never held ['LeBron James']"
+     "reason": "question names players ['Nikola Jokic']; model names the question never held ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -56705,7 +56705,7 @@
      "field": "player",
      "before": "LeBron James",
      "after": "Nikola Jokic",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -56893,7 +56893,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Deandre Ayton']; router players the question supports ['Deandre Ayton']"
+     "reason": "question names players ['Deandre Ayton']; model players the question supports ['Deandre Ayton']"
     },
     {
      "stage": "subject",
@@ -57109,7 +57109,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Deandre Ayton']; router players the question supports ['Deandre Ayton']"
+     "reason": "question names players ['Deandre Ayton']; model players the question supports ['Deandre Ayton']"
     },
     {
      "stage": "subject",
@@ -57325,7 +57325,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['Deandre Ayton']; team word 'New York Knicks'; against 'New York Knicks'"
+     "reason": "model names the question never held ['Deandre Ayton']; team word 'New York Knicks'; against 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -57503,7 +57503,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router names the question never held ['Deandre Ayton']"
+     "reason": "question names players ['LeBron James']; model names the question never held ['Deandre Ayton']"
     },
     {
      "stage": "subject",
@@ -57519,7 +57519,7 @@
      "field": "player",
      "before": "Deandre Ayton",
      "after": "LeBron James",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -57711,7 +57711,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Desmond Bane']; router players the question supports ['Desmond Bane']"
+     "reason": "question names players ['Desmond Bane']; model players the question supports ['Desmond Bane']"
     },
     {
      "stage": "subject",
@@ -57926,7 +57926,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Bam adebeyo']; router names the question never held ['Desmond Bane']"
+     "reason": "question names players ['Bam adebeyo']; model names the question never held ['Desmond Bane']"
     },
     {
      "stage": "subject",
@@ -57942,7 +57942,7 @@
      "field": "player",
      "before": "Desmond Bane",
      "after": "Bam adebeyo",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -58141,7 +58141,7 @@
      "field": "kind",
      "before": null,
      "after": "teams",
-     "reason": "router names the question never held ['Desmond Bane']; team word 'Boston Celtics'; against 'Philadelphia 76ers'"
+     "reason": "model names the question never held ['Desmond Bane']; team word 'Boston Celtics'; against 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -58316,7 +58316,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['Desmond Bane']"
+     "reason": "model names the question never held ['Desmond Bane']"
     }
    ],
    "point": null,
@@ -58411,7 +58411,7 @@
      "field": "kind",
      "before": null,
      "after": "teams",
-     "reason": "router names the question never held ['Desmond Bane']; team word 'Boston Celtics'; against 'Philadelphia 76ers'"
+     "reason": "model names the question never held ['Desmond Bane']; team word 'Boston Celtics'; against 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -58606,7 +58606,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['LeBron James']"
+     "reason": "model names the question never held ['LeBron James']"
     }
    ],
    "point": {
@@ -58798,7 +58798,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -59037,7 +59037,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -59274,7 +59274,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -59508,7 +59508,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Keon Ellis']; router players the question supports ['Keon Ellis']; team word 'Portland Trail Blazers'; against 'Portland Trail Blazers'"
+     "reason": "question names players ['Keon Ellis']; model players the question supports ['Keon Ellis']; team word 'Portland Trail Blazers'; against 'Portland Trail Blazers'"
     },
     {
      "stage": "subject",
@@ -59926,7 +59926,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kevin Durant']; router players the question supports ['Kevin Durant']; team word 'Washington Wizards'; against 'Washington Wizards'"
+     "reason": "question names players ['Kevin Durant']; model players the question supports ['Kevin Durant']; team word 'Washington Wizards'; against 'Washington Wizards'"
     },
     {
      "stage": "subject",
@@ -60147,7 +60147,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['embid']; team word 'Milwaukee Bucks'; against 'Milwaukee Bucks'"
+     "reason": "model players the question supports ['embid']; team word 'Milwaukee Bucks'; against 'Milwaukee Bucks'"
     },
     {
      "stage": "subject",
@@ -60370,7 +60370,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['kon kneuppel']; router players the question supports ['kon kneuppel']; question spells 'kon kneuppel' as 'Kon Knueppel'; team word 'Oklahoma City Thunder'; against 'Oklahoma City Thunder'"
+     "reason": "question names players ['kon kneuppel']; model players the question supports ['kon kneuppel']; question spells 'kon kneuppel' as 'Kon Knueppel'; team word 'Oklahoma City Thunder'; against 'Oklahoma City Thunder'"
     },
     {
      "stage": "subject",
@@ -60609,7 +60609,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jay Huff', 'Joel Embiid']; router players the question supports ['Jay Huff', 'Embiid']; question spells 'Embiid' as 'Joel Embiid'"
+     "reason": "question names players ['Jay Huff', 'Joel Embiid']; model players the question supports ['Jay Huff', 'Embiid']; question spells 'Embiid' as 'Joel Embiid'"
     },
     {
      "stage": "subject",
@@ -60839,7 +60839,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Bennedict Mathurin']; router players the question supports ['Mathurin']; question spells 'Mathurin' as 'Bennedict Mathurin'; against 'Detroit Pistons'"
+     "reason": "question names players ['Bennedict Mathurin']; model players the question supports ['Mathurin']; question spells 'Mathurin' as 'Bennedict Mathurin'; against 'Detroit Pistons'"
     },
     {
      "stage": "subject",
@@ -61050,7 +61050,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Sam Hauser']; router players the question supports ['Sam Hauser']; against 'Milwaukee Bucks'"
+     "reason": "question names players ['Sam Hauser']; model players the question supports ['Sam Hauser']; against 'Milwaukee Bucks'"
     },
     {
      "stage": "subject",
@@ -61268,7 +61268,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Pascal Siakam']; router players the question supports ['Pascal Siakam']; team word 'Orlando Magic'; against 'Orlando Magic'"
+     "reason": "question names players ['Pascal Siakam']; model players the question supports ['Pascal Siakam']; team word 'Orlando Magic'; against 'Orlando Magic'"
     },
     {
      "stage": "subject",
@@ -61689,7 +61689,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['lauri markkan']; router players the question supports ['lauri markkan']; question spells 'lauri markkan' as 'Lauri Markkanen'; against 'Golden State Warriors'"
+     "reason": "question names players ['lauri markkan']; model players the question supports ['lauri markkan']; question spells 'lauri markkan' as 'Lauri Markkanen'; against 'Golden State Warriors'"
     },
     {
      "stage": "subject",
@@ -61920,7 +61920,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router players the question supports ['Luka Doncic']"
+     "reason": "question names players ['Luka Doncic']; model players the question supports ['Luka Doncic']"
     },
     {
      "stage": "subject",
@@ -62110,7 +62110,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Duncan Robison']; router names the question never held ['Devin Vassell']"
+     "reason": "question names players ['Duncan Robison']; model names the question never held ['Devin Vassell']"
     },
     {
      "stage": "subject",
@@ -62126,7 +62126,7 @@
      "field": "player",
      "before": "Devin Vassell",
      "after": "Duncan Robison",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -62318,7 +62318,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Devin Vassell']; router players the question supports ['Devin Vassell']"
+     "reason": "question names players ['Devin Vassell']; model players the question supports ['Devin Vassell']"
     },
     {
      "stage": "subject",
@@ -63364,7 +63364,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jaylen Brown']; router players the question supports ['Jaylen Brown']; team word 'Detroit Pistons'; against 'Detroit Pistons'"
+     "reason": "question names players ['Jaylen Brown']; model players the question supports ['Jaylen Brown']; team word 'Detroit Pistons'; against 'Detroit Pistons'"
     },
     {
      "stage": "subject",
@@ -63584,7 +63584,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jaylen Brown']; router players the question supports ['Jaylen Brown']; team word 'Detroit Pistons'; against 'Detroit Pistons'"
+     "reason": "question names players ['Jaylen Brown']; model players the question supports ['Jaylen Brown']; team word 'Detroit Pistons'; against 'Detroit Pistons'"
     },
     {
      "stage": "subject",
@@ -63815,7 +63815,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kevin Durant']; router players the question supports ['Kevin Durant']"
+     "reason": "question names players ['Kevin Durant']; model players the question supports ['Kevin Durant']"
     },
     {
      "stage": "subject",
@@ -64184,7 +64184,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kevin Durant']; router players the question supports ['Kevin Durant']"
+     "reason": "question names players ['Kevin Durant']; model players the question supports ['Kevin Durant']"
     },
     {
      "stage": "subject",
@@ -65495,7 +65495,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Kevin Durant', 'LeBron James']; router players the question supports ['Kevin Durant', 'LeBron James']"
+     "reason": "question names players ['Kevin Durant', 'LeBron James']; model players the question supports ['Kevin Durant', 'LeBron James']"
     },
     {
      "stage": "subject",
@@ -65676,7 +65676,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router players the question supports ['Luka Doncic']"
+     "reason": "question names players ['Luka Doncic']; model players the question supports ['Luka Doncic']"
     },
     {
      "stage": "subject",
@@ -65913,7 +65913,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Zach LaVine']; router players the question supports ['Zach LaVine']; team word 'Denver Nuggets'; against 'Denver Nuggets'"
+     "reason": "question names players ['Zach LaVine']; model players the question supports ['Zach LaVine']; team word 'Denver Nuggets'; against 'Denver Nuggets'"
     },
     {
      "stage": "subject",
@@ -66134,7 +66134,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']; team word 'Boston Celtics'; against 'Boston Celtics'"
+     "reason": "model players the question supports ['Curry']; team word 'Boston Celtics'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -66348,7 +66348,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['LeBron James', 'Kawhi Leonard']; router players the question supports ['LeBron James', 'Kawhi Leonard']"
+     "reason": "question names players ['LeBron James', 'Kawhi Leonard']; model players the question supports ['LeBron James', 'Kawhi Leonard']"
     },
     {
      "stage": "subject",
@@ -66526,7 +66526,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Jabari Bird']; router players the question supports ['Larry Bird', 'Magic Johnson']; team word 'Orlando Magic'"
+     "reason": "question names players ['Jabari Bird']; model players the question supports ['Larry Bird', 'Magic Johnson']; team word 'Orlando Magic'"
     },
     {
      "stage": "subject",
@@ -66708,7 +66708,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']; team word 'Boston Celtics'; against 'Boston Celtics'"
+     "reason": "model players the question supports ['Curry']; team word 'Boston Celtics'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -66920,7 +66920,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['LeBron James']; router players the question supports ['Curry', 'LeBron James']; team word 'Boston Celtics'; against 'Boston Celtics'"
+     "reason": "question names players ['LeBron James']; model players the question supports ['Curry', 'LeBron James']; team word 'Boston Celtics'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -67095,7 +67095,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Jabari Bird']; router players the question supports ['Larry Bird', 'Magic Johnson']; team word 'Orlando Magic'"
+     "reason": "question names players ['Jabari Bird']; model players the question supports ['Larry Bird', 'Magic Johnson']; team word 'Orlando Magic'"
     },
     {
      "stage": "subject",
@@ -67267,7 +67267,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router players the question supports ['Nikola Jokic']"
+     "reason": "question names players ['Nikola Jokic']; model players the question supports ['Nikola Jokic']"
     },
     {
      "stage": "subject",
@@ -67671,7 +67671,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['DeMar DeRozan']; router players the question supports ['DeMar DeRozan']; team word 'New York Knicks'; against 'New York Knicks'"
+     "reason": "question names players ['DeMar DeRozan']; model players the question supports ['DeMar DeRozan']; team word 'New York Knicks'; against 'New York Knicks'"
     },
     {
      "stage": "subject",
@@ -68210,7 +68210,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['LeBron James']"
     },
     {
      "stage": "subject",
@@ -69288,7 +69288,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'Philadelphia 76ers'; companions the router named nobody for ['maxey']"
+     "reason": "team word 'Philadelphia 76ers'; companions the model named nobody for ['maxey']"
     },
     {
      "stage": "subject",
@@ -69818,7 +69818,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'Philadelphia 76ers'; companions the router named nobody for ['maxey']"
+     "reason": "team word 'Philadelphia 76ers'; companions the model named nobody for ['maxey']"
     },
     {
      "stage": "subject",
@@ -70083,7 +70083,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'Philadelphia 76ers'; companions the router named nobody for ['maxey']"
+     "reason": "team word 'Philadelphia 76ers'; companions the model named nobody for ['maxey']"
     },
     {
      "stage": "subject",
@@ -70548,7 +70548,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['Joel Embiid']; the words 'how many times' name player_games/scalar/count"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['Joel Embiid']; the words 'how many times' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -73118,7 +73118,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Stephen Curry']; router players the question supports ['Stephen Curry']; the words 'in a game' name player_games/rows/measure"
+     "reason": "question names players ['Stephen Curry']; model players the question supports ['Stephen Curry']; the words 'in a game' name player_games/rows/measure"
     },
     {
      "stage": "subject",
@@ -73358,7 +73358,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Duncan Robison']; router players the question supports ['Duncan Robison']; question spells 'Duncan Robison' as 'Duncan Robinson'"
+     "reason": "question names players ['Duncan Robison']; model players the question supports ['Duncan Robison']; question spells 'Duncan Robison' as 'Duncan Robinson'"
     },
     {
      "stage": "subject",
@@ -73570,7 +73570,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['Duncan Robinson']"
+     "reason": "model names the question never held ['Duncan Robinson']"
     },
     {
      "stage": "parser",
@@ -73779,7 +73779,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Harrison Barnes']; router names the question never held ['Duncan Robinson']; team word 'Orlando Magic'; against 'Orlando Magic'"
+     "reason": "question names players ['Harrison Barnes']; model names the question never held ['Duncan Robinson']; team word 'Orlando Magic'; against 'Orlando Magic'"
     },
     {
      "stage": "subject",
@@ -73802,7 +73802,7 @@
      "field": "player",
      "before": "Duncan Robinson",
      "after": "Harrison Barnes",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -74002,7 +74002,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Victor Wembanyama']; router names the question never held ['Duncan Robinson']; team word 'Sacramento Kings'; against 'Sacramento Kings'"
+     "reason": "question names players ['Victor Wembanyama']; model names the question never held ['Duncan Robinson']; team word 'Sacramento Kings'; against 'Sacramento Kings'"
     },
     {
      "stage": "subject",
@@ -74025,7 +74025,7 @@
      "field": "player",
      "before": "Duncan Robinson",
      "after": "Victor Wembanyama",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -74225,7 +74225,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kevin Durant']; router names the question never held ['Duncan Robinson']; team word 'LA Clippers'; against 'LA Clippers'"
+     "reason": "question names players ['Kevin Durant']; model names the question never held ['Duncan Robinson']; team word 'LA Clippers'; against 'LA Clippers'"
     },
     {
      "stage": "subject",
@@ -74248,7 +74248,7 @@
      "field": "player",
      "before": "Duncan Robinson",
      "after": "Kevin Durant",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -74466,7 +74466,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Scottie Barnes']; router names the question never held ['Duncan Robinson']"
+     "reason": "question names players ['Scottie Barnes']; model names the question never held ['Duncan Robinson']"
     },
     {
      "stage": "subject",
@@ -74491,7 +74491,7 @@
      "field": "player",
      "before": "Duncan Robinson",
      "after": "Scottie Barnes",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -74687,7 +74687,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['Nikola Jokic']"
+     "reason": "model names the question never held ['Nikola Jokic']"
     },
     {
      "stage": "parser",
@@ -74879,7 +74879,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router names the question never held ['Nikola Jokic']"
+     "reason": "question names players ['Luka Doncic']; model names the question never held ['Nikola Jokic']"
     },
     {
      "stage": "subject",
@@ -74895,7 +74895,7 @@
      "field": "player",
      "before": "Nikola Jokic",
      "after": "Luka Doncic",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -75068,7 +75068,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router players the question supports ['Nikola Jokic']"
+     "reason": "question names players ['Nikola Jokic']; model players the question supports ['Nikola Jokic']"
     },
     {
      "stage": "subject",
@@ -76099,7 +76099,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Nikola Jokic', 'Joel Embiid']; router players the question supports ['Nikola Jokic']"
+     "reason": "question names players ['Nikola Jokic', 'Joel Embiid']; model players the question supports ['Nikola Jokic']"
     },
     {
      "stage": "subject",
@@ -76286,7 +76286,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jalen Duren']; router players the question supports ['Jalen Duren']; team word 'Brooklyn Nets'; against 'Brooklyn Nets'"
+     "reason": "question names players ['Jalen Duren']; model players the question supports ['Jalen Duren']; team word 'Brooklyn Nets'; against 'Brooklyn Nets'"
     },
     {
      "stage": "subject",
@@ -76491,7 +76491,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Scottie Barnes']; router players the question supports ['Scottie Barnes']"
+     "reason": "question names players ['Scottie Barnes']; model players the question supports ['Scottie Barnes']"
     },
     {
      "stage": "subject",
@@ -76698,7 +76698,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kevin Durant']; router players the question supports ['Kevin Durant']"
+     "reason": "question names players ['Kevin Durant']; model players the question supports ['Kevin Durant']"
     },
     {
      "stage": "subject",
@@ -76905,7 +76905,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['RJ Barrett']"
+     "reason": "model players the question supports ['RJ Barrett']"
     },
     {
      "stage": "subject",
@@ -77121,7 +77121,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['VJ Edgecombe']; router names the question never held ['RJ Barrett']"
+     "reason": "question names players ['VJ Edgecombe']; model names the question never held ['RJ Barrett']"
     },
     {
      "stage": "subject",
@@ -77137,7 +77137,7 @@
      "field": "player",
      "before": "RJ Barrett",
      "after": "VJ Edgecombe",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -77331,7 +77331,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Devin Vassell']; router names the question never held ['RJ Barrett']"
+     "reason": "question names players ['Devin Vassell']; model names the question never held ['RJ Barrett']"
     },
     {
      "stage": "subject",
@@ -77347,7 +77347,7 @@
      "field": "player",
      "before": "RJ Barrett",
      "after": "Devin Vassell",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -77956,7 +77956,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['Joel Embiid']"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['Joel Embiid']"
     },
     {
      "stage": "subject",
@@ -78152,7 +78152,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router names the question never held ['Joel Embiid']; team word 'Los Angeles Lakers'"
+     "reason": "model names the question never held ['Joel Embiid']; team word 'Los Angeles Lakers'"
     },
     {
      "stage": "subject",
@@ -78349,7 +78349,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['Joel Embiid']"
+     "reason": "model names the question never held ['Joel Embiid']"
     }
    ],
    "point": null,
@@ -78455,7 +78455,7 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": "router names the question never held ['Joel Embiid']"
+     "reason": "model names the question never held ['Joel Embiid']"
     }
    ],
    "point": null,
@@ -79996,7 +79996,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Shai Gilgeous-Alexander']; router players the question supports ['Shai Gilgeous-Alexander']"
+     "reason": "question names players ['Shai Gilgeous-Alexander']; model players the question supports ['Shai Gilgeous-Alexander']"
     },
     {
      "stage": "subject",
@@ -81241,7 +81241,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; router players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
+     "reason": "question names players ['Shai Gilgeous-Alexander', 'Joel Embiid']; model players the question supports ['Shai Gilgeous-Alexander', 'Joel Embiid']"
     },
     {
      "stage": "subject",
@@ -82381,7 +82381,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+     "reason": "model players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
     },
     {
      "stage": "subject",
@@ -82556,7 +82556,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Shai Gilgeous-Alexander']; router players the question supports ['Shai Gilgeous-Alexander']; the words 'for the past 5 years' name player_seasons/split/season"
+     "reason": "question names players ['Shai Gilgeous-Alexander']; model players the question supports ['Shai Gilgeous-Alexander']; the words 'for the past 5 years' name player_seasons/split/season"
     },
     {
      "stage": "subject",
@@ -82744,7 +82744,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['maxey']; team word 'Boston Celtics'; against 'Boston Celtics'"
+     "reason": "model players the question supports ['maxey']; team word 'Boston Celtics'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -84269,7 +84269,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "router players the question supports ['Maxey']; team word 'Philadelphia 76ers'"
+     "reason": "model players the question supports ['Maxey']; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -84513,7 +84513,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Maxey']"
+     "reason": "model players the question supports ['Maxey']"
     },
     {
      "stage": "subject",
@@ -84792,7 +84792,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Desmond Bane', 'Anthony Black', 'Franz Wagner']; router players the question supports ['Bane']; question spells 'Bane' as 'Desmond Bane'"
+     "reason": "question names players ['Desmond Bane', 'Anthony Black', 'Franz Wagner']; model players the question supports ['Bane']; question spells 'Bane' as 'Desmond Bane'"
     },
     {
      "stage": "subject",
@@ -85070,7 +85070,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Desmond Bane', 'Franz Wagner']; router players the question supports ['Bane']; question spells 'Bane' as 'Desmond Bane'; team word 'Boston Celtics'; against 'Boston Celtics'"
+     "reason": "question names players ['Desmond Bane', 'Franz Wagner']; model players the question supports ['Bane']; question spells 'Bane' as 'Desmond Bane'; team word 'Boston Celtics'; against 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -87269,7 +87269,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+     "reason": "model players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
     },
     {
      "stage": "subject",
@@ -87455,7 +87455,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']"
+     "reason": "model players the question supports ['curry']"
     },
     {
      "stage": "subject",
@@ -87838,7 +87838,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']; the words 'how far' name shots/scalar/distance"
+     "reason": "model players the question supports ['Curry']; the words 'how far' name shots/scalar/distance"
     },
     {
      "stage": "subject",
@@ -88026,7 +88026,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
+     "reason": "model players the question supports ['curry']; the words 'distance' name shots/scalar/distance"
     },
     {
      "stage": "subject",
@@ -88792,7 +88792,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['Joel Embiid']; the words 'how many playoff games has embiid won' name player_games/split/line"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['Joel Embiid']; the words 'how many playoff games has embiid won' name player_games/split/line"
     },
     {
      "stage": "subject",
@@ -88984,7 +88984,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['Joel Embiid']; the words 'how many games has embiid lost' name player_games/split/line"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['Joel Embiid']; the words 'how many games has embiid lost' name player_games/split/line"
     },
     {
      "stage": "subject",
@@ -89310,7 +89310,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Deandre Ayton']; router players the question supports ['Deandre Ayton']"
+     "reason": "question names players ['Deandre Ayton']; model players the question supports ['Deandre Ayton']"
     },
     {
      "stage": "subject",
@@ -89752,7 +89752,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Nikola Jokic', 'Cade Cunningham']; router players the question supports ['Nikola Jokic', 'Cade Cunningham']"
+     "reason": "question names players ['Nikola Jokic', 'Cade Cunningham']; model players the question supports ['Nikola Jokic', 'Cade Cunningham']"
     },
     {
      "stage": "subject",
@@ -89923,7 +89923,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Luka Doncic', 'Giannis Antetokounmpo']; router players the question supports ['Luka Doncic', 'Giannis Antetokounmpo']"
+     "reason": "question names players ['Luka Doncic', 'Giannis Antetokounmpo']; model players the question supports ['Luka Doncic', 'Giannis Antetokounmpo']"
     },
     {
      "stage": "subject",
@@ -90096,7 +90096,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Nikola Jokic', 'Cade Cunningham']; router players the question supports ['Nikola Jokic', 'Cade Cunningham']"
+     "reason": "question names players ['Nikola Jokic', 'Cade Cunningham']; model players the question supports ['Nikola Jokic', 'Cade Cunningham']"
     },
     {
      "stage": "subject",
@@ -90266,7 +90266,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Klay Thompson']; router players the question supports ['Klay Thompson']; the words 'over the past 4 seasons' name player_seasons/split/season"
+     "reason": "question names players ['Klay Thompson']; model players the question supports ['Klay Thompson']; the words 'over the past 4 seasons' name player_seasons/split/season"
     },
     {
      "stage": "subject",
@@ -90477,7 +90477,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router players the question supports ['Nikola Jokic']; the words 'How many 30+ point games' name player_games/scalar/count"
+     "reason": "question names players ['Nikola Jokic']; model players the question supports ['Nikola Jokic']; the words 'How many 30+ point games' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -90947,7 +90947,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Payton Prichard']; router players the question supports ['Payton Prichard']; question spells 'Payton Prichard' as 'Payton Pritchard'; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
+     "reason": "question names players ['Payton Prichard']; model players the question supports ['Payton Prichard']; question spells 'Payton Prichard' as 'Payton Pritchard'; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -91181,7 +91181,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Payton Pritchard']; router players the question supports ['Payton Pritchard']; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
+     "reason": "question names players ['Payton Pritchard']; model players the question supports ['Payton Pritchard']; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -91434,7 +91434,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['Stephen Curry', 'LeBron James', 'Kevin Durant']; router players the question supports ['steph curry', 'LeBron James']"
+     "reason": "question names players ['Stephen Curry', 'LeBron James', 'Kevin Durant']; model players the question supports ['steph curry', 'LeBron James']"
     },
     {
      "stage": "subject",
@@ -91634,7 +91634,7 @@
      "field": "kind",
      "before": null,
      "after": "pair",
-     "reason": "question names players ['LeBron James']; router players the question supports ['Curry', 'LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['Curry', 'LeBron James']"
     },
     {
      "stage": "subject",
@@ -91821,7 +91821,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['Curry', 'LeBron James']"
+     "reason": "question names players ['LeBron James']; model players the question supports ['Curry', 'LeBron James']"
     },
     {
      "stage": "subject",
@@ -92281,7 +92281,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Victor Wembanyama']; router players the question supports ['Victor wembanyama']; question spells 'Victor wembanyama' as 'Victor Wembanyama'"
+     "reason": "question names players ['Victor Wembanyama']; model players the question supports ['Victor wembanyama']; question spells 'Victor wembanyama' as 'Victor Wembanyama'"
     },
     {
      "stage": "subject",
@@ -93161,7 +93161,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kobe Bryant']; router players the question supports ['kobe']; the words '40 point playoff games' name player_games/scalar/count"
+     "reason": "question names players ['Kobe Bryant']; model players the question supports ['kobe']; the words '40 point playoff games' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -93392,7 +93392,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Kobe Bryant']; router players the question supports ['kobe']; the words '40 point home games' name player_games/scalar/count"
+     "reason": "question names players ['Kobe Bryant']; model players the question supports ['kobe']; the words '40 point home games' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -93602,7 +93602,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['lebron james']; question spells 'lebron james' as 'LeBron James'"
+     "reason": "question names players ['LeBron James']; model players the question supports ['lebron james']; question spells 'lebron james' as 'LeBron James'"
     },
     {
      "stage": "subject",
@@ -94034,7 +94034,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['lebron']; question spells 'lebron' as 'LeBron James'; the words 'each season' name player_seasons/split/season"
+     "reason": "question names players ['LeBron James']; model players the question supports ['lebron']; question spells 'lebron' as 'LeBron James'; the words 'each season' name player_seasons/split/season"
     },
     {
      "stage": "subject",
@@ -94252,7 +94252,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Victor Wembanyama']; router players the question supports ['victor wembanyama']; question spells 'victor wembanyama' as 'Victor Wembanyama'; the words 'record when playing 30 or more' name player_games/split/line"
+     "reason": "question names players ['Victor Wembanyama']; model players the question supports ['victor wembanyama']; question spells 'victor wembanyama' as 'Victor Wembanyama'; the words 'record when playing 30 or more' name player_games/split/line"
     },
     {
      "stage": "subject",
@@ -94461,7 +94461,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Gui Santos']; router players the question supports ['gui']; question spells 'gui' as 'Gui Santos'; against 'sours'"
+     "reason": "question names players ['Gui Santos']; model players the question supports ['gui']; question spells 'gui' as 'Gui Santos'; against 'sours'"
     },
     {
      "stage": "subject",
@@ -94693,7 +94693,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jalen Brunson']; router players the question supports ['jalen brunson']; question spells 'jalen brunson' as 'Jalen Brunson'; against 'celtcs'"
+     "reason": "question names players ['Jalen Brunson']; model players the question supports ['jalen brunson']; question spells 'jalen brunson' as 'Jalen Brunson'; against 'celtcs'"
     },
     {
      "stage": "subject",
@@ -97156,7 +97156,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'; the words '30 point games' name player_games/scalar/count"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'; the words '30 point games' name player_games/scalar/count"
     },
     {
      "stage": "subject",
@@ -97408,7 +97408,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
     },
     {
      "stage": "subject",
@@ -97607,7 +97607,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players [\"D'Angelo Russell\"]; router players the question supports [\"d'angelo russell\"]; question spells \"d'angelo russell\" as \"D'Angelo Russell\"; team word 'Los Angeles Lakers'; against 'Detroit Pistons'"
+     "reason": "question names players [\"D'Angelo Russell\"]; model players the question supports [\"d'angelo russell\"]; question spells \"d'angelo russell\" as \"D'Angelo Russell\"; team word 'Los Angeles Lakers'; against 'Detroit Pistons'"
     },
     {
      "stage": "subject",
@@ -97637,7 +97637,7 @@
      "field": "own_team",
      "before": null,
      "after": "Los Angeles Lakers",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -97847,7 +97847,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Gabe Vincent']; router players the question supports ['Gabe Vincent']; team word 'Los Angeles Lakers'"
+     "reason": "question names players ['Gabe Vincent']; model players the question supports ['Gabe Vincent']; team word 'Los Angeles Lakers'"
     },
     {
      "stage": "subject",
@@ -97870,7 +97870,7 @@
      "field": "own_team",
      "before": null,
      "after": "Los Angeles Lakers",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -98060,7 +98060,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Russell Westbrook']; router players the question supports ['westbrook']; question spells 'westbrook' as 'Russell Westbrook'; team word 'Sacramento Kings'"
+     "reason": "question names players ['Russell Westbrook']; model players the question supports ['westbrook']; question spells 'westbrook' as 'Russell Westbrook'; team word 'Sacramento Kings'"
     },
     {
      "stage": "subject",
@@ -98083,7 +98083,7 @@
      "field": "own_team",
      "before": null,
      "after": "Sacramento Kings",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -98284,7 +98284,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']; the words 'by month' name player_games/split/splits"
+     "reason": "model players the question supports ['Curry']; the words 'by month' name player_games/split/splits"
     },
     {
      "stage": "subject",
@@ -98570,7 +98570,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "router players the question supports ['Curry']"
+     "reason": "model players the question supports ['Curry']"
     },
     {
      "stage": "subject",
@@ -98949,7 +98949,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Luka Doncic']; router names the question never held ['Stephen Curry']"
+     "reason": "question names players ['Luka Doncic']; model names the question never held ['Stephen Curry']"
     },
     {
      "stage": "subject",
@@ -98965,7 +98965,7 @@
      "field": "player",
      "before": "Stephen Curry",
      "after": "Luka Doncic",
-     "reason": "the question never names the router's player; it names this one"
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -99164,7 +99164,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Nikola Jokic']; router players the question supports ['Nikola Jokic']; router names the question never held ['Stephen Curry']"
+     "reason": "question names players ['Nikola Jokic']; model players the question supports ['Nikola Jokic']; model names the question never held ['Stephen Curry']"
     },
     {
      "stage": "subject",
@@ -100190,7 +100190,7 @@
      "field": "own_team",
      "before": null,
      "after": "Chicago Bulls",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -100629,7 +100629,7 @@
      "field": "own_team",
      "before": null,
      "after": "Los Angeles Lakers",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -100826,7 +100826,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['lebron']; the words 'best scoring game' name player_games/rows/measure"
+     "reason": "question names players ['LeBron James']; model players the question supports ['lebron']; the words 'best scoring game' name player_games/rows/measure"
     },
     {
      "stage": "subject",
@@ -101301,7 +101301,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; router players the question supports ['lebron']; question spells 'lebron' as 'LeBron James'; team word 'Cleveland Cavaliers'; the words 'highest scoring game' name player_games/rows/measure"
+     "reason": "question names players ['LeBron James']; model players the question supports ['lebron']; question spells 'lebron' as 'LeBron James'; team word 'Cleveland Cavaliers'; the words 'highest scoring game' name player_games/rows/measure"
     },
     {
      "stage": "subject",
@@ -101331,7 +101331,7 @@
      "field": "own_team",
      "before": null,
      "after": "Cleveland Cavaliers",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -102695,7 +102695,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['Maxey', 'Joel Embiid']; the words 'record when embiid scores 20+' name player_games/split/line"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['Maxey', 'Joel Embiid']; the words 'record when embiid scores 20+' name player_games/split/line"
     },
     {
      "stage": "subject",
@@ -102856,7 +102856,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
     },
     {
      "stage": "subject",
@@ -103141,7 +103141,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
     },
     {
      "stage": "subject",
@@ -103370,7 +103370,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['maxey', 'embiid']; question spells 'embiid' as 'Joel Embiid'"
     },
     {
      "stage": "subject",
@@ -103654,7 +103654,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['embiid']; question spells 'embiid' as 'Joel Embiid'; team word 'Philadelphia 76ers'"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['embiid']; question spells 'embiid' as 'Joel Embiid'; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -103926,7 +103926,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "question names players ['Jayson Tatum']; router players the question supports ['tatum']; question spells 'tatum' as 'Jayson Tatum'; team word 'Boston Celtics'"
+     "reason": "question names players ['Jayson Tatum']; model players the question supports ['tatum']; question spells 'tatum' as 'Jayson Tatum'; team word 'Boston Celtics'"
     },
     {
      "stage": "subject",
@@ -104202,7 +104202,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "question names players ['Joel Embiid']; router players the question supports ['embiid']; question spells 'embiid' as 'Joel Embiid'; team word 'Philadelphia 76ers'"
+     "reason": "question names players ['Joel Embiid']; model players the question supports ['embiid']; question spells 'embiid' as 'Joel Embiid'; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -105500,7 +105500,7 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['Jamal Murray']; router players the question supports ['Jamal Murray']"
+     "reason": "question names players ['Jamal Murray']; model players the question supports ['Jamal Murray']"
     },
     {
      "stage": "subject",
@@ -108110,7 +108110,7 @@
      "field": "own_team",
      "before": null,
      "after": "Los Angeles Lakers",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -108332,7 +108332,7 @@
      "field": "own_team",
      "before": null,
      "after": "Oklahoma City Thunder",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -108559,7 +108559,7 @@
      "field": "own_team",
      "before": null,
      "after": "Milwaukee Bucks",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -108788,7 +108788,7 @@
      "field": "own_team",
      "before": null,
      "after": "Brooklyn Nets",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -109017,7 +109017,7 @@
      "field": "own_team",
      "before": null,
      "after": "New York Knicks",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",
@@ -109699,7 +109699,7 @@
      "field": "own_team",
      "before": null,
      "after": "Detroit Pistons",
-     "reason": "from the question; the router left it out"
+     "reason": "from the question; the model left it out"
     },
     {
      "stage": "subject",

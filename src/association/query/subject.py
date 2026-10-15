@@ -1295,8 +1295,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     teams = _team_names(index, question, scope, team_word, opponent, own_team)
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
-        # "the router" is the model here, kept as recorded (:func:`_evidence`).
-        evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
+        evidence = (*evidence, f"companions the model named nobody for {list(unrouted)}")
     decided = _decide_team_players(index.teams, _decide(players, teams, position, opponent, own_team, companions, evidence, asked, question), question)
     subject = replace(decided, conditions=conditions, companion_phrases=phrases, claims=(*claims, *_decide_claims(index.teams, decided, question)))
     # Read, not decided: what the subject's shape settles the words to ask
@@ -1489,9 +1488,9 @@ def _evidence(named: list[str], routed: list[str], spellings: dict[str, str], in
         line
         for line in (
             f"question names players {named}" if named else "",
-            f"router players the question supports {routed}" if routed else "",
+            f"model players the question supports {routed}" if routed else "",
             *(f"question spells {was!r} as {now!r}" for was, now in spellings.items()),
-            f"router names the question never held {invented}" if invented else "",
+            f"model names the question never held {invented}" if invented else "",
             f"team word {team_word!r}" if team_word else "",
             f"against {opponent!r}" if opponent else "",
         )
@@ -1722,7 +1721,7 @@ def _apply_restored_player(subject: Subject, scope: Filtered, asked: PointShape 
     named = list(dict.fromkeys((*subject.players, *(p for p in subject.companions if roles.get(p) not in ("started", "bench", "played")))))
     if len(named) != 1:
         return scope, []
-    return replace(scope, who=replace(scope.who, players=(named[0],))), [Decision("subject", "player", None, named[0], "from the question; the router left it out")]
+    return replace(scope, who=replace(scope.who, players=(named[0],))), [Decision("subject", "player", None, named[0], "from the question; the model left it out")]
 
 
 def _apply_own_team(subject: Subject, scope: Filtered, asked: PointShape | None) -> tuple[Filtered, list[Decision]]:
@@ -1751,7 +1750,7 @@ def _apply_own_team(subject: Subject, scope: Filtered, asked: PointShape | None)
     if scope.who.team or scope.cuts.tenure or scope.cuts.opponent == subject.own_team:
         return scope, []
     out = replace(scope, cuts=replace(scope.cuts, tenure=subject.own_team))
-    decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the router left it out")]
+    decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the model left it out")]
     if subject.named_season is None and not scope.span.career:
         out = replace(out, span=out.span.over_career())
         decisions.append(Decision("subject", "span", None, "career", 'a team named with no season is a tenure, not "now"'))
@@ -1827,7 +1826,7 @@ def _apply_players(subject: Subject, scope: Filtered, asked: PointShape | None =
         return scope, [], dropped
     field = _players_slot(scope)
     replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the model omitted: not put back here
-    decisions.extend(Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items())
+    decisions.extend(Decision("subject", field, was, now, "the question never names the model's player; it names this one") for was, now in replacement.items())
     if not routed:
         return scope, decisions, []
     respelled = _respellings(kept, subject.players)
