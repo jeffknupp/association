@@ -1041,6 +1041,13 @@ EACH_SEASON = re.compile(r"\b(?:each|every|per)\s+(?:season|year)\b|\b(?:season|
 
 .. versionadded:: 6.0.0
 """
+FIRST_GAMES_OF_SEASONS = re.compile(rf"\b(?:first|opening)\s+(?:{_SEASON_COUNT})\s+games?\b(?=.*\b(?:last|past|previous)\s+{N_SEASONS}\b)", re.IGNORECASE)
+"""A season's first games beside a count of seasons - "the first 15 games
+last 10 season" (ISSUES.md #432): a season's opening games over each of
+the seasons counted, never the range's first 15 (all of one season's).
+
+.. versionadded:: 6.0.0
+"""
 FIRST_END_WORDS: frozenset[str] = frozenset({"first", "opening", "earliest"})
 """The words of :data:`COUNTED_END` that name the oldest end; the rest name the newest.
 
@@ -2876,6 +2883,11 @@ MEASURE_GRAMMAR: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"\b(rebounds?|boards)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(rebounds?|boards)\b", "rebounds allowed"),
         (r"\bassists?\b.{0,12}\b(allowed|given up|conceded)\b", "assists allowed"),
         (r"\b(threes|3'?s|(3|three)[ -]?(pt|point|pointer)s?)\b.{0,12}\b(allowed|given up|conceded)\b", "threes allowed"),
+        (r"\bsteals?\b.{0,12}\b(allowed|given up|conceded)\b", "steals allowed"),
+        (r"\bblocks?\b.{0,12}\b(allowed|given up|conceded)\b", "blocks allowed"),
+        (r"\bturnovers?\b.{0,12}\b(forced|caused)\b|\bforced\b.{0,12}\bturnovers?\b", "turnovers forced"),
+        (r"\b(fgm|field goals?)\b.{0,12}\b(allowed|given up|conceded)\b", "field goals allowed"),
+        (r"\b(ftm|free throws?)\b.{0,12}\b(allowed|given up|conceded)\b", "free throws allowed"),
         # "3's" (and the curly apostrophe, folded before the grammar reads) is "3s": threes
         # made (ISSUES.md #270, where it was unread and the points line answered).
         (r"\b3's\b", "threePointFieldGoalsMade"),
@@ -3118,15 +3130,12 @@ GIVEN_UP_VERB = re.compile(r"\b(?:allow(?:ed|s|ing)?|gave\s+up|give[sn]?\s+up|gi
 
 .. versionadded:: 6.0.0
 """
-GIVEN_UP_KEYS: frozenset[str] = frozenset({"points"})
-"""The figures a team's readers read given up (the opponents' points, a
-team metric): the verb makes these the opponent's. Another stat given up
-("how many assists do the mavericks give up") is left the team's own, as
-it was: the team's season reader answers the opponent's figure of any
-stat but points from the team's own row, as its season total (ISSUES.md,
-"A team's figure given up on a stat other than points is answered as its
-own total ..."), so reading it the opponent's would move one wrong answer
-to another.
+GIVEN_UP_KEYS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls", "fieldGoalsMade", "freeThrowsMade", "threePointFieldGoalsMade"})
+"""The figures a team's readers read given up: the verb makes these the
+opponent's ("how many rebounds did the celtics give up" is their
+opponents' rebounds, ISSUES.md #425, where the team's own 46.4 per game
+answered) - the box-score counts the team compiler sums from the
+opponents' box rows, and points, a team metric.
 
 .. versionadded:: 6.0.0
 """

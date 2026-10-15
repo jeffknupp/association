@@ -388,3 +388,21 @@ def test_a_rate_per_n_minutes_is_a_unit_on_every_key(con: duckdb.DuckDBPyConnect
     reading = read_route(names_of(con), question, [], "")
     assert reading.measure is not None and reading.measure.unit == unit and reading.measure.how is None
     assert not [line for line in reading.lines if line.measure == "minutes"]
+
+
+@pytest.mark.parametrize(
+    ("question", "key"),
+    [
+        ("how many rebounds did the celtics give up this season", "rebounds"),
+        ("how many assists on average do the mavericks give up", "assists"),
+        ("steals allowed by the knicks this season", "steals"),
+        ("celtics opp 3pm this season", "threePointFieldGoalsMade"),
+    ],
+)
+def test_a_teams_box_score_count_given_up_is_its_opponents(question: str, key: str) -> None:
+    """ISSUES.md #425: "how many assists on average do the mavericks give up"
+    answered the Mavericks' own 25.3 - the verb made only points the
+    opponents'. Every box-score count the team compiler sums from the
+    opponents' box rows is theirs, given up or "allowed"."""
+    measure = _read(question, TEAM_LINE)
+    assert measure is not None and measure.key == key and measure.whose == "opponent"
