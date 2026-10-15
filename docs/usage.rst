@@ -454,11 +454,6 @@ Setting up the model
 
 One model, for the one job a model has here (:doc:`architecture`): copying the
 names out of the question and picking a stat. :doc:`installation` has the
-``ollama pull`` command. ``--router-model`` names it, for both ``query`` and
-``web``.
-
-Until 5.0.0 a second, larger model wrote SQL for questions the fast path did
-not answer, and ``--model``, ``--think``, ``--no-fast-path``,
-``--disable-fallthrough`` and ``--agent-budget`` configured it. They are gone
-with it; a question nothing reads is refused naming why, which is what
-``--disable-fallthrough`` used to make an error.
+``ollama pull`` command. ``--model`` names it, for both ``query`` and
+``web``. A question nothing reads is refused naming why; no model writes
+SQL.

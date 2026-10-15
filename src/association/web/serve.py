@@ -57,7 +57,7 @@ def serve(
     port: int,
     db_path: str,
     out_dir: Path,
-    router_model: str,
+    model: str,
     history_dir: Path = DEFAULT_HISTORY_DIR,
 ) -> None:
     """Run the web interface until interrupted.
@@ -75,6 +75,10 @@ def serve(
        Breaking: takes no ``model``, ``fallthrough`` or ``budget_seconds`` -
        the fall-through agent they configured is gone, and a question no
        template or compiled reading answers is refused naming why.
+
+    .. versionchanged:: 7.0.0
+       Breaking: takes ``model``, the normalizer's, renamed from
+       ``router_model``.
     """
     try:
         import uvicorn
@@ -91,9 +95,9 @@ def serve(
     # is where it goes. AgentRunner swaps in the requesting stream's sink for
     # the duration of each question, so the default here is only what happens
     # to lines nobody asked for.
-    agent = Agent(db_path, out_dir, verbose=True, history_dir=history_dir, router_model=router_model, trace=discard)
+    agent = Agent(db_path, out_dir, verbose=True, history_dir=history_dir, model=model, trace=discard)
     runner = AgentRunner(agent)
-    app = create_app(runner, db_path=db_path, out_dir=out_dir, router_model=router_model, history_dir=history_dir)
+    app = create_app(runner, db_path=db_path, out_dir=out_dir, model=model, history_dir=history_dir)
 
     sock = bind(host, port)
     # flush=True because the URL is the entire point of an ephemeral port, and

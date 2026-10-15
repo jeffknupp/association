@@ -120,7 +120,7 @@ def run(args: argparse.Namespace) -> int:
     import association
     import association.query.normalizer as normalizer
     from association.query.agent import Agent
-    from association.query.models import DEFAULT_ROUTER_MODEL
+    from association.query.models import DEFAULT_MODEL
     from association.query.stages import snapshot
 
     replies = _recorded_replies(args.recorded)
@@ -163,7 +163,7 @@ def run(args: argparse.Namespace) -> int:
             **({"shard": args.shard} if args.shard else {}),
             "python": sys.version.split()[0],
             "duckdb": duckdb.__version__,
-            "ollama": _ollama(DEFAULT_ROUTER_MODEL),
+            "ollama": _ollama(DEFAULT_MODEL),
         }
         print(json.dumps(meta), flush=True)
         started = time.monotonic()

@@ -11,7 +11,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.normalizer import NORMALIZER_NUM_CTX, NORMALIZER_PROMPT, NORMALIZER_SCHEMA, NORMALIZER_STATS, Normalized, RouterUnavailable, estimate_tokens, normalize
+from association.query.normalizer import NORMALIZER_NUM_CTX, NORMALIZER_PROMPT, NORMALIZER_SCHEMA, NORMALIZER_STATS, ModelUnavailable, Normalized, estimate_tokens, normalize
 
 
 def _normalize(payload: str) -> Normalized | None:
@@ -33,9 +33,9 @@ def test_a_stat_outside_the_list_and_blank_names_are_dropped() -> None:
 def test_an_unusable_reply_is_none_and_an_absent_server_says_so() -> None:
     assert _normalize("not json") is None
     assert _normalize('["embiid"]') is None
-    with patch("association.query.normalizer.ollama.chat", side_effect=ollama.ResponseError("down")), pytest.raises(RouterUnavailable, match="could not serve"):
+    with patch("association.query.normalizer.ollama.chat", side_effect=ollama.ResponseError("down")), pytest.raises(ModelUnavailable, match="could not serve"):
         normalize("m", "q")
-    with patch("association.query.normalizer.ollama.chat", side_effect=ConnectionError("refused")), pytest.raises(RouterUnavailable, match="not answering"):
+    with patch("association.query.normalizer.ollama.chat", side_effect=ConnectionError("refused")), pytest.raises(ModelUnavailable, match="not answering"):
         normalize("m", "q")
 
 

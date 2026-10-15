@@ -534,7 +534,7 @@ def _question_players_in_full(players: names.PlayerIndex, name: str, q_words: li
     return any(entity.name.casefold() == name.casefold() for entity in find_players(players, name))
 
 
-def _merge_names(router_named: list[str], question_named: list[str]) -> tuple[str, ...]:
+def _merge_names(model_named: list[str], question_named: list[str]) -> tuple[str, ...]:
     """The model's names the question supports (in the question's own
     spelling, and once each - a player filed as both a player and the
     ``opponent`` is one person), plus the names the question gives that are
@@ -545,7 +545,7 @@ def _merge_names(router_named: list[str], question_named: list[str]) -> tuple[st
     whole word and neither the one asked about (ISSUES.md #123), and the
     model's "Kareem Abdul-Jabbar" was the better reading of "kareem"."""
     out: list[str] = []
-    for name in (*router_named, *question_named):
+    for name in (*model_named, *question_named):
         if not _same_person(name, out):
             out.append(name)
     return tuple(out)

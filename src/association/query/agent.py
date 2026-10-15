@@ -34,7 +34,7 @@ from .compose.say import nothing_answers, say, say_left_out
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
-from .models import DEFAULT_ROUTER_MODEL
+from .models import DEFAULT_MODEL
 from .names import loaded as names_loaded
 from .notes import collect as collect_remarks
 from .notes import unsaid
@@ -107,6 +107,11 @@ class Agent:
        (``answered_by="refused"``, :func:`refusal_text`) rather than minutes
        of a model writing SQL. Conversation memory went with it: nothing
        read the previous question any more.
+
+    .. versionchanged:: 7.0.0
+       Breaking: takes ``model``, the normalizer's model, renamed from
+       ``router_model``, and holds it as :attr:`model` (renamed from
+       ``router_model``).
     """
 
     def __init__(
@@ -115,12 +120,12 @@ class Agent:
         out_dir: Path,
         verbose: bool = False,
         history_dir: Path = DEFAULT_HISTORY_DIR,
-        router_model: str = DEFAULT_ROUTER_MODEL,
+        model: str = DEFAULT_MODEL,
         trace: Callable[[str], None] = echo_to_stderr,
     ):
         #: The normalizer's model (:func:`~association.query.normalizer.normalize`),
         #: which copies the names out of the question and picks a stat.
-        self.router_model = router_model
+        self.model = model
         self.verbose = verbose
         self.history_dir = history_dir
         #: Why the last question was refused with no reading, or None where a
@@ -225,7 +230,7 @@ class Agent:
             recorded = "EXCEPTION:\n" + traceback.format_exc()
             raise
         finally:
-            path = history.write(command=label, question=question, answer=recorded, router_model=self.router_model)
+            path = history.write(command=label, question=question, answer=recorded, model=self.model)
             self.trace(f"[history] {path}  {history.summary_line()}")
         # The record's name rides on the Answer as a value, so a caller (the
         # web runner's note feature) never has to read it back out of the
@@ -313,12 +318,12 @@ class Agent:
         """The Reading the parser reads for ``question``, or None with the
         reason the question is being refused recorded. Split out of
         :meth:`_try_fast_path` for the complexity gate."""
-        from association.query.normalizer import RouterUnavailable
+        from association.query.normalizer import ModelUnavailable
 
         t0 = time.monotonic()
         try:
             read = self._read_question(question, history)
-        except RouterUnavailable as exc:
+        except ModelUnavailable as exc:
             # The reason has to name the server rather than the question: a
             # normalizer that could not be reached read nothing of it.
             history.record_model_call(time.monotonic() - t0)
@@ -351,7 +356,7 @@ class Agent:
         from association.query.normalizer import normalize
         from association.query.parse import read_route
 
-        normalized = normalize(self.router_model, question)
+        normalized = normalize(self.model, question)
         if normalized is None:
             return None
         history.log(f"  -> (normalizer) names={normalized.names} stat={normalized.stat!r}")

@@ -581,7 +581,7 @@ def _warehouse_coverage(db_path: str) -> list[TierResponse]:
         con.close()
 
 
-def create_app(answerer: Answerer, db_path: str, out_dir: Path, router_model: str, history_dir: Path = DEFAULT_HISTORY_DIR) -> FastAPI:
+def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, history_dir: Path = DEFAULT_HISTORY_DIR) -> FastAPI:
     """Build the app around an already-constructed engine.
 
     The engine is passed in rather than built here so the tests can supply a
@@ -600,6 +600,11 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, router_model: st
        Breaking: takes no ``model``; ``GET /api/health`` reports
        ``models={"router": ...}`` alone, the fall-through agent's model gone
        with it.
+
+    .. versionchanged:: 7.0.0
+       Breaking: takes ``model``, renamed from ``router_model``, and
+       ``GET /api/health`` reports it as ``models={"normalizer": ...}``,
+       renamed from ``"router"``.
     """
     app = FastAPI(title="association", description="Ask questions about the local NBA warehouse.", version="2.0.0")
     instance = secrets.token_hex(8)
@@ -617,7 +622,7 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, router_model: st
             warehouse_ready=Path(db_path).exists(),
             output_dir=str(out_dir),
             seasons=_warehouse_seasons(db_path),
-            models={"router": router_model},
+            models={"normalizer": model},
             ollama_ready=answerer.ready,
             busy=answerer.busy,
         )

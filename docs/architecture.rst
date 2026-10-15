@@ -522,13 +522,11 @@ decoding does the structural work: measured over the 277 day10 wordings,
 qwen2.5:3b copies 299 of 302 names verbatim at 0.82s a question median, and
 qwen2.5:7b adds nothing on names and 13 of 162 on the stat - almost all of it
 the 2-point/3-point confusion, which the measure tagger reads from the words
-instead - at 1.84s. So the normalizer runs a 3B (``--router-model``, named
-for the router it replaced), and it is the only model. The same held for the
-router's classification before it: over its routing cases, every model from
-1.5B to 8B landed within a case or two of the rest. Thinking models are
-disqualified on latency rather than accuracy: on that classification,
-qwen3:4b spent about 20 seconds per question reasoning before emitting the
-same small JSON object qwen2.5:3b produces in about one.
+instead - at 1.84s. So the normalizer runs a 3B (``--model``), and it is
+the only model. Thinking models are disqualified on latency rather than
+accuracy: measured on a structured call of the same size, qwen3:4b spends
+about 20 seconds per question reasoning before emitting the same small JSON
+object qwen2.5:3b produces in about one.
 
 How the design is held
 ----------------------

@@ -62,7 +62,7 @@ def _answer(text: str, **kwargs: Any) -> Answer:
 
 
 def _client(answerer: Any, tmp_path: Path) -> TestClient:
-    app = create_app(answerer, db_path=str(tmp_path / "nba.duckdb"), out_dir=tmp_path / "out", router_model="qwen2.5:3b")
+    app = create_app(answerer, db_path=str(tmp_path / "nba.duckdb"), out_dir=tmp_path / "out", model="qwen2.5:3b")
     return TestClient(app)
 
 
@@ -241,7 +241,7 @@ def test_health_reports_the_warehouse_it_is_actually_pointed_at(tmp_path: Path) 
     assert body["warehouse"] == str(tmp_path / "nba.duckdb")
     assert body["warehouse_ready"] is False  # nothing was created
     assert body["seasons"] is None
-    assert body["models"] == {"router": "qwen2.5:3b"}
+    assert body["models"] == {"normalizer": "qwen2.5:3b"}
     assert body["ollama_ready"] is True
 
 

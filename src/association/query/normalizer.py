@@ -29,7 +29,7 @@ import ollama
 from .keepalive import KEEP_ALIVE
 
 
-class RouterUnavailable(RuntimeError):
+class ModelUnavailable(RuntimeError):
     """The model could not be asked at all - ollama is down, or cannot serve
     that model. Raised by :func:`normalize`.
 
@@ -46,6 +46,9 @@ class RouterUnavailable(RuntimeError):
     .. versionchanged:: 6.0.0
        Lives here, beside the one call that raises it:
        ``association.query.router`` is gone (Phase 3, step 4, slice (b)).
+
+    .. versionchanged:: 7.0.0
+       Renamed from ``RouterUnavailable``.
     """
 
 
@@ -151,7 +154,7 @@ class Normalized:
 def normalize(model: str, question: str) -> Normalized | None:
     """The names and stat ``model`` reads in ``question``, or None when it
     replies with something that is not the schema's object. Raises
-    :class:`RouterUnavailable` when the model could
+    :class:`ModelUnavailable` when the model could
     not be asked at all - two different sentences, since the reader has to
     be sent to the server rather than to their question.
 
@@ -167,9 +170,9 @@ def normalize(model: str, question: str) -> Normalized | None:
         )
         raw = json.loads(response.message.content or "{}")
     except ConnectionError as exc:
-        raise RouterUnavailable(f"ollama is not answering, so the model {model!r} could not be asked") from exc
+        raise ModelUnavailable(f"ollama is not answering, so the model {model!r} could not be asked") from exc
     except ollama.ResponseError as exc:
-        raise RouterUnavailable(f"ollama could not serve the model {model!r}: {exc}") from exc
+        raise ModelUnavailable(f"ollama could not serve the model {model!r}: {exc}") from exc
     except json.JSONDecodeError:
         return None
     if not isinstance(raw, dict):

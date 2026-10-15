@@ -498,7 +498,7 @@
       else parts.push("no games loaded");
       if (!h.ollama_ready) parts.push("ollama unreachable");
       status.textContent = parts.join(" · ");
-      status.title = `${h.warehouse}\nnormalizer: ${h.models.router}`;
+      status.title = `${h.warehouse}\nnormalizer: ${h.models.normalizer}`;
     }).catch(() => { status.textContent = "server unreachable"; });
   }
   refreshHealth();

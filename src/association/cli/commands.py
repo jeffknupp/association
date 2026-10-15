@@ -1,6 +1,10 @@
 """The ``association`` commands: ``data pull``, ``data load``, ``data check``, ``query`` and ``web``.
 
 .. versionadded:: 3.0.0
+
+.. versionchanged:: 7.0.0
+   Breaking: ``query`` and ``web`` take ``--model``, the normalizer's
+   model, renamed from ``--router-model``.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from association.cli.paths import default_data_dir, default_db_path
 
 # query.models holds no heavy imports, so this does not pull ollama or duckdb
 # into CLI startup - unlike the Agent import, which stays lazy below.
-from association.query.models import DEFAULT_ROUTER_MODEL
+from association.query.models import DEFAULT_MODEL
 
 log: logging.Logger = logging.getLogger("association.cli")
 
@@ -70,7 +74,7 @@ Setup for query (one-time):
 \b
     brew install ollama
     ollama serve &                # or `brew services start ollama`; must be running before use
-    ollama pull {DEFAULT_ROUTER_MODEL}        # --router-model default, ~1.9GB - the only model
+    ollama pull {DEFAULT_MODEL}        # --model default, ~1.9GB - the only model
 
 Pulling any other model: `ollama pull <name>:<tag>` (browse at https://ollama.com/library).
 
@@ -85,7 +89,7 @@ One small model by design: the normalizer copies names and picks one stat key un
 a JSON schema, and measured over 277 real questions the 3B copies 299 of 302 names
 verbatim at 0.8s a question while a 7B adds nothing on names at 1.8s.
 
-Do NOT point --router-model at a thinking model: on the router's classification the
+Do NOT point --model at a thinking model: on the router's classification the
 normalizer replaced, qwen3:4b took ~20s per question against qwen2.5:3b's 1.1s,
 reasoning at length before emitting the same tiny JSON.
 
@@ -120,8 +124,8 @@ def _parse_season_types(spec: str) -> list[int]:
 
 def _query_engine_options[F: Callable[..., Any]](f: F) -> F:
     f = click.option(
-        "--router-model",
-        default=DEFAULT_ROUTER_MODEL,
+        "--model",
+        default=DEFAULT_MODEL,
         show_default=True,
         help="Ollama model for the normalizer, which copies the names out of the question and picks a stat. Smaller on purpose - see the setup notes below.",
     )(f)
@@ -277,14 +281,14 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-def query(question: str, router_model: str, db_path: str, out_dir: str, verbose: bool) -> None:
+def query(question: str, model: str, db_path: str, out_dir: str, verbose: bool) -> None:
     """Ask one natural-language question about the local data."""
     import shlex
     import sys
 
     from association.query.agent import Agent
 
-    agent = Agent(db_path, Path(out_dir), verbose=verbose, router_model=router_model)
+    agent = Agent(db_path, Path(out_dir), verbose=verbose, model=model)
     # Agent.ask no longer reads sys.argv - a caller says what the request was,
     # and for this caller that really is the command line.
     click.echo(agent.ask(question, label=shlex.join(sys.argv)).text)
@@ -293,17 +297,17 @@ def query(question: str, router_model: str, db_path: str, out_dir: str, verbose:
 @cli.command("web")
 @click.option("--port", type=int, default=0, help="Port to serve on. The default binds a free one and prints the URL.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Address to bind. Localhost on purpose: this has no authentication.")
-@click.option("--router-model", default=DEFAULT_ROUTER_MODEL, show_default=True, help="Ollama model for the normalizer, which copies the names out of the question and picks a stat.")
+@click.option("--model", default=DEFAULT_MODEL, show_default=True, help="Ollama model for the normalizer, which copies the names out of the question and picks a stat.")
 @click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")
 @click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered charts.")
-def web(port: int, host: str, router_model: str, db_path: str, out_dir: str) -> None:
+def web(port: int, host: str, model: str, db_path: str, out_dir: str) -> None:
     """Serve a local web interface for asking questions, until interrupted.
 
     Needs the `web` extra: pip install 'association-py[web]'
     """
     from association.web.serve import serve
 
-    serve(host, port, db_path, Path(out_dir), router_model=router_model)
+    serve(host, port, db_path, Path(out_dir), model=model)
 
 
 def main() -> None:

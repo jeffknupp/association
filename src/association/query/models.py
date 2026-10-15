@@ -21,11 +21,13 @@ without pulling in ollama and duckdb at startup.
 
 from __future__ import annotations
 
-# The normalizer's model (the name is the router's, which it served until
-# 5.0.0). Copying names and picking one stat key under a JSON schema is not a
-# 7B-sized job: measured over the 277 day10 wordings, the 3B copies 299 of 302
-# names verbatim at 0.82s a question median, and the 7B adds nothing on names
-# and 13 of 162 on the stat at 1.84s
-# (~/association-research/parser-greenfield/RESULT.md) - so the 3B keeps it,
-# for the speed and the RAM.
-DEFAULT_ROUTER_MODEL = "qwen2.5:3b"
+#: The normalizer's model. Copying names and picking one stat key under a
+#: JSON schema is not a 7B-sized job: measured over the 277 day10 wordings,
+#: the 3B copies 299 of 302 names verbatim at 0.82s a question median, and
+#: the 7B adds nothing on names and 13 of 162 on the stat at 1.84s
+#: (~/association-research/parser-greenfield/RESULT.md) - so the 3B keeps
+#: it, for the speed and the RAM.
+#:
+#: .. versionchanged:: 7.0.0
+#:    Renamed from ``DEFAULT_ROUTER_MODEL``.
+DEFAULT_MODEL = "qwen2.5:3b"

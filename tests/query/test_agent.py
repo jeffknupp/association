@@ -57,7 +57,7 @@ def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.Monkey
     content = files[0].read_text()
     assert "question: how many points does embiid average" in content
     assert "model inference #1" in content
-    assert "router: qwen2.5:3b" in content
+    assert "model: qwen2.5:3b" in content
     assert "answer:\nFinal answer." in content
 
 
@@ -213,12 +213,12 @@ def test_a_model_that_could_not_be_asked_is_refused_saying_why(monkeypatch: pyte
     "the router returned no usable classification" and nothing pointed at
     ollama. The normalizer raises the same error the router did."""
     from association.query.history import RunHistory
-    from association.query.normalizer import RouterUnavailable
+    from association.query.normalizer import ModelUnavailable
 
     agent = _agent(tmp_path)
 
     def unavailable(*a: Any, **k: Any) -> None:
-        raise RouterUnavailable("ollama could not serve the model 'qwen2.5:3b': not found")
+        raise ModelUnavailable("ollama could not serve the model 'qwen2.5:3b': not found")
 
     monkeypatch.setattr("association.query.normalizer.normalize", unavailable)
     assert agent._try_fast_path("who leads the league in assists?", RunHistory(False, tmp_path / ".history")) is None

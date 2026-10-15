@@ -153,7 +153,7 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(self, db_path: str, out_dir: object, verbose: bool, router_model: str) -> None:
+        def __init__(self, db_path: str, out_dir: object, verbose: bool, model: str) -> None:
             captured["db_path"] = db_path
 
         def ask(self, question: str, label: str = "") -> Answer:
@@ -182,9 +182,9 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(self, db_path: str, out_dir: object, verbose: bool, router_model: str) -> None:
+        def __init__(self, db_path: str, out_dir: object, verbose: bool, model: str) -> None:
             captured["verbose"] = verbose
-            captured["router_model"] = router_model
+            captured["model"] = model
             captured["out_dir"] = out_dir
 
         def ask(self, question: str, label: str = "") -> Answer:
@@ -192,19 +192,20 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
     runner = CliRunner()
-    result = runner.invoke(query, ["--verbose", "--router-model", "qwen2.5:1.5b", "--out-dir", "charts", "who led the league in blocks"])
+    result = runner.invoke(query, ["--verbose", "--model", "qwen2.5:1.5b", "--out-dir", "charts", "who led the league in blocks"])
     assert result.exit_code == 0, result.output
     assert captured["verbose"] is True
-    assert captured["router_model"] == "qwen2.5:1.5b"
+    assert captured["model"] == "qwen2.5:1.5b"
     assert str(captured["out_dir"]) == "charts"
 
 
 def test_the_agents_options_are_gone_with_it() -> None:
-    """--model, --think, --no-fast-path, --disable-fallthrough and
-    --agent-budget configured the tool-calling fall-through (5.0.0 removed
-    it); a stale script passing one fails loudly rather than silently doing
-    something else."""
-    for flag in ("--model", "--think", "--no-fast-path", "--disable-fallthrough", "--agent-budget"):
+    """--think, --no-fast-path, --disable-fallthrough and --agent-budget
+    configured the tool-calling fall-through (5.0.0 removed it); a stale
+    script passing one fails loudly rather than silently doing something
+    else. (--model configured it too, and names the normalizer's model since
+    7.0.0: a script passing it now picks the one model there is.)"""
+    for flag in ("--think", "--no-fast-path", "--disable-fallthrough", "--agent-budget"):
         result = CliRunner().invoke(query, [flag, "x", "q"])
         assert result.exit_code == 2 and "No such option" in result.output, flag
 

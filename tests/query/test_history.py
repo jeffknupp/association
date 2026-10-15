@@ -51,7 +51,7 @@ def test_write_creates_file_named_with_a_hash_containing_everything(tmp_path: Pa
     history.record_model_call(1.0)
     history.record_tool_call("run_sql", 0.1)
 
-    path = history.write(command="association query 'x'", question="x", answer="the answer", router_model="qwen2.5:3b")
+    path = history.write(command="association query 'x'", question="x", answer="the answer", model="qwen2.5:3b")
 
     assert path.parent == history_dir
     assert path.suffix == ".log"
