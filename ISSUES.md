@@ -1901,6 +1901,14 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #458
 
+### A plus-minus read before 2008-09 reads ESPN's zeros as figures
+- **Found:** 2026-10-15, the feed sample's keyer (shard B), re-measured by the lead.
+- **Evidence:** `player_box_stats.plusMinus` is 0, never NULL, on every played row before 2009 (DATA.md, "`player_box_stats.plusMinus` is 0, never NULL, on every played row before 2008-09": 26,502 played rows in 2008, none non-zero; 24,544 of 26,235 in 2009). A career plus-minus, a per-game plus-minus over a span reaching before 2009, or a ranking by plus-minus in a season before 2009 sums or ranks zeros.
+- **User sees:** a fluent figure that is partly or wholly zeros ("LeBron's career plus-minus" short by his first six seasons; a 2008 plus-minus ranking of all zeros) with no caveat.
+- **Next step:** a coverage floor for plus-minus at 2009 (`nba/coverage.py`, the measure's table resolved per question) so a read reaching below it is refused or caveated as the empty box scores are (`_empty_box_scores`); a test per reader that reads the column.
+- **Priority:** P2 - a figure quietly wrong where the span reaches before 2009.
+- **Source:** ESPN.
+
 ## P3: refusal or gap
 
 ### A dated "since" beside a conference is read as a single season and a career at once: "celtics all-time record vs eastern conference including playoffs since september 11th 2001"
@@ -2698,6 +2706,22 @@ those were found.
 - **Priority:** P3 - a refusal by name where an answer exists.
 - **Source:** ours.
 - **GitHub:** #453
+
+### A team's points before 1994 may reach the standings' zeros
+- **Found:** 2026-10-15, the feed sample's keyer (shard B), re-measured by the lead.
+- **Evidence:** `standings.pointsFor` and `avgPointsFor` are 0 for every team from 1988 to 1993 (DATA.md). Which reads reach those columns is not checked: a team's season points come from `team_season_stats` on the unnarrowed read, and the standings relation serves records; if any read takes points from `standings` for those seasons it answers 0.
+- **User sees:** a 0 or a 0.0 per game for a team season before 1994, if such a read exists; otherwise nothing.
+- **Next step:** grep the standings relation and `team_seasons` for the two columns; where one is read, floor it at 1994 or read `team_season_stats` instead.
+- **Priority:** P3 - unverified reach.
+- **Source:** ESPN.
+
+### A pre-1994 season named in a question reaches two different seasons by table
+- **Found:** 2026-10-15, the feed sample's keyer (shard B), re-measured by the lead.
+- **Evidence:** `player_season_stats` and `standings` label 1988-89 as 1989; `games` and everything derived from it label it 1988 (DATA.md, "`player_season_stats` labels a pre-1993-94 season by the year it ENDS"). "Ewing 1989 stats" answers 1988-89 from the season line; "Ewing's games in 1989" answers 1989-90 from the games; a read joining the two tables by `season` before 1994 is off by one year.
+- **User sees:** two answers naming "1989" about different seasons, depending on the shape; a joined read (a season line qualified by games played) misaligned.
+- **Next step:** one reading of a pre-1994 year for every table - the postseason rule (select by the calendar year played) extended to the regular season on `games`, or the season-line and standings labels shifted at load - decided with the coverage floors in view (`player_season_stats` reaches 1977 as a survivor sample).
+- **Priority:** P3 - the era is under most floors; the inconsistency is real.
+- **Source:** ESPN.
 
 ## P4: tooling, docs, low impact
 

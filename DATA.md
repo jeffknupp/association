@@ -60,7 +60,12 @@ likewise.
   324 (13.17%), 322 (13.09%), 326 (13.25%) and 326 (13.25%) for 2013-2018, and
   exactly 0 in 2011, 2012, 2019 and 2020. New Orleans owns 492 of the empty
   team-games (82 of 82 in each of the six seasons) and Chicago 491 (81 in
-  2016); every other team's 35-37 are its games against those two. All 978 are
+  2016); every other team's 35-37 are its games against those two, but for seven
+  games involving neither (re-measured 2026-10-15 from the feed sample's key:
+  400278127 MIA-OKC 2012-12-25, 400278386/387/388 on 2013-01-29 and -30,
+  400489088 CHA-IND 2013-11-27, 400900132 ATL-NY 2017-01-29, 400975285
+  BOS-BKN 2017-12-31; every player row NULL minutes and 0 points, rebuilt
+  from the plays like the rest). All 978 are
   empty on *both* sides — there are no half-empty games in this range.
   Box-score points come to 86.5-87.3% of ESPN's own season totals across the
   six seasons (86.95, 87.31, 86.94, 86.81, 86.92, 86.45). The plays and shots
@@ -1310,6 +1315,49 @@ measured. Count foul-outs from the box score.
   cross-check that a row landed on the right game;
   `scripts/check_net_points_games.py` runs that over a whole season.
 - **Tracked in:** no action needed — fixed in `f152b5e`.
+
+### `player_box_stats.plusMinus` is 0, never NULL, on every played row before 2008-09
+
+- **What ESPN does:** serves a plus-minus of 0 for every player who played,
+  in every box score before the 2008-09 season; real values start in 2009.
+- **Evidence:** measured 2026-10-15 (the feed sample's keyer, re-run by the
+  lead): of the rows with real minutes, 26,424 in 2006, 26,436 in 2007 and
+  26,502 in 2008 have a non-zero plus-minus in none; 24,544 of 26,235 in
+  2009 and 25,105 of 26,312 in 2010 do. No row holds NULL. The first season
+  with a non-zero value is 2009.
+- **Does a refetch fix it?** Not tested; the value is what the endpoint
+  serves for those seasons, as the team placeholder below is.
+- **How we handle it:** nothing yet - a read of plus-minus before 2009 sums
+  or ranks zeros as if they were figures. Tracked in ISSUES.md ("A plus-minus
+  read before 2008-09 reads ESPN's zeros as figures").
+
+### `standings.pointsFor` and `avgPointsFor` are 0 for every team from 1988 to 1993
+
+- **What ESPN does:** fills wins and losses but no points in the standings
+  of 1987-88 through 1992-93.
+- **Evidence:** measured 2026-10-15: every team's `pointsFor` is 0 in each of
+  the six seasons (23, 25, 27, 27, 27, 27 teams), with the wins real (62, 63,
+  63, 63, 67, 62 the maxima); 0 of 27 teams in 1994 and 1995.
+- **Does a refetch fix it?** Not tested.
+- **How we handle it:** nothing reads a team's points from `standings` on
+  purpose; tracked in ISSUES.md ("A team's points before 1994 may reach
+  the standings' zeros") until the reads are checked.
+
+### `player_season_stats` labels a pre-1993-94 season by the year it ENDS, unlike `games`
+
+- **What ESPN does:** the career endpoint names 1988-89 "1989" (Patrick
+  Ewing's 22.7 points per game sits under 1989), where the schedule
+  endpoint names the same season 1988 ("Before 1993-94, ESPN labels a season
+  by the year it STARTED", above). `standings` uses the ending year too.
+- **Evidence:** measured 2026-10-15: `player_season_stats` holds 240 rows
+  under 1988, 293 under 1989, 344 under 1990, 409, 464, 527 and 668 under
+  1994 - a continuous survivor sample with no phantom year, so its labels
+  are the ending-year convention throughout.
+- **Does a refetch fix it?** Not applicable - a convention.
+- **How we handle it:** a season line asked by year answers the right
+  season; a read joining `player_season_stats` to `games` before 1994 by
+  `season` is off by one year. Tracked in ISSUES.md ("A pre-1994 season
+  named in a question reaches two different seasons by table").
 
 ### `team_season_stats.plusMinus` is a placeholder
 
