@@ -1,7 +1,7 @@
 """One question's four records - reading, query, result, answer - as plain
 values, and the comparison of two such records.
 
-``ROADMAP.md``, Phase 0: a change to the pipeline is proven by writing each
+A change to the pipeline is proven by writing each
 stage's output per question on both trees and comparing them stage by
 stage, so a difference names the stage it first appears in instead of only
 the sentence it ends as. :func:`snapshot` is the record; :func:`differences`
@@ -12,12 +12,10 @@ The record is what the stages hold today:
 
 ``reading``
     What the parser settled (:func:`~association.query.parse.read_route`):
-    the key the words asked and its label, the nine typed filters, who the
-    question is about, the names it could not place, each decision it
-    made, and the point it read
-    (:attr:`Reading.point <association.query.reading.Reading.point>`) -
-    the typed Reading, since Phase 3, step 4, slice (c) deleted the
-    slot-era projection it was recorded through.
+    the key the words asked, the typed filters, who the question is about,
+    the names it could not place, each decision it made, and the point it
+    read (:attr:`Reading.point <association.query.reading.Reading.point>`)
+    - the typed Reading.
 ``query``
     What the planner built from that point
     (:func:`~association.query.compose.plan.plan_point`, the Query-or-Cause):
@@ -78,40 +76,37 @@ WORDING: dict[str, frozenset[str]] = {
 """Per stage, the top-level keys that hold sentences rather than values -
 what :func:`differences` leaves out when ``wording`` is False, for a change
 that is allowed to reword an answer but not to move a number (ROADMAP,
-decision D1). A caveat is in this list only until it is carried as a typed
-note: until then a rewording check cannot see a caveat that vanished, and
-says so by listing ``notes`` here.
+decision D1). ``notes`` is listed here because a rewording check cannot
+see a caveat that vanished from the sentence; a caveat carried as a typed
+note is compared by its kind instead.
 
 .. versionadded:: 5.0.0
 """
 
 # What a Reading's subject carries that is about HOW it was read rather
-# than what was read: the evidence prose (the question's text itself left
-# the Subject on 2026-10-03: nothing read it) and the claims, positions in
-# the text, which the Reading's own ``unread`` stands for.
-# The companions' phrases are positions too (slice (c)); the model's names
+# than what was read: the evidence prose and the claims, positions in the
+# text, which the Reading's own ``unread`` stands for.
+# The companions' phrases are positions too; the model's names
 # the question supports (``supported``) restate the names the record's
 # input already holds (#373).
 _SUBJECT_LEFT_OUT = frozenset({"evidence", "claims", "companion_phrases", "supported"})
 
 # The point's own fields - the algebra as the reader read it - in the order
-# the trace prints them, after the key the words asked (and its label until
-# Phase 4, step 2 deleted ``Reading.intent``); the
+# the trace prints them, after the key the words asked; the
 # point's typed filters follow them (``_filters_record``), since the point
 # reader may move one (a team read as the opponent, a position group the
 # move does not honor).
-# ``shape``, ``by`` and ``on`` are the point reader's declaration (Phase 3,
-# step 1; ``shape`` was the compiler's skeleton and ``source`` the season
-# line's flag until then - both derived by the planner now, and on the
-# query record still), one field since Phase 5, step 4 (D9,
-# ``Reading.read_as``), recorded by its three parts under the names they
-# had (``_DECLARED``), so a record reads as it did. ``subject_span`` is the
+# ``shape``, ``by`` and ``on`` are the point reader's declaration, one
+# field (``Reading.read_as``, D9) recorded by its three parts under the
+# names they are compared by (``_DECLARED``), so records compare across
+# trees; the compiler's skeleton and source are derived by the planner and
+# recorded on the query record. ``subject_span`` is the
 # one typed override of the span the subject is settled in.
 _POINT_FIELDS = ("asked", "relation", "on", "shape", "by", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
 
 
-#: The point's declaration (``Reading.read_as``, one ``PointShape`` since
-#: Phase 5, step 4, D9) by the record names its three parts had as fields.
+#: The point's declaration (``Reading.read_as``, one ``PointShape``, D9) by
+#: the record names of its three parts.
 _DECLARED = {"on": "relation", "shape": "shape", "by": "by"}
 
 
@@ -166,14 +161,11 @@ def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
 
 
 def _plain_record(value: Any, mask: Mapping[str, str] | None) -> dict[str, Any]:
-    """A dataclass as a dict of its fields. Until Phase 3, step 4, slice (c)
-    a value with a ``projected()`` was recorded as the slot-era fields it
-    had before a part was typed, so a record made before the part was typed
-    compared identical to one made after; the projection went with that
-    slice, and every typed value is recorded as its own fields."""
+    """A dataclass as a dict of its fields: every typed value is recorded
+    as its own fields."""
     if isinstance(value, Reading):
-        # A Reading's declaration by its three parts, where its fields stood
-        # until Phase 5, step 4 (D9): a recorded Reading reads as it did.
+        # A Reading's declaration by its three parts, so records compare
+        # across trees.
         record: dict[str, Any] = {}
         for f in fields(value):
             if f.name == "read_as":
@@ -215,18 +207,15 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         point = {name: plain(_point_field(reading.point, name), mask=mask) for name in _POINT_FIELDS}
         point.update(_filters_record(reading.point, mask))
     return {
-        # The key the words asked (``Reading.asked``, Phase 3, step 4); its
-        # label, the page's (``Reading.intent``), beside it until Phase 4,
-        # step 2.
+        # The key the words asked (``Reading.asked``).
         "asked": plain(reading.asked, mask=mask),
         # Who the read is about, the games' cuts, the companions, the lines,
         # the measure, the span, the split, the period and the window as the
-        # reader typed them (Phase 3, step 2) - the typed Reading, since
-        # slice (c) deleted the slot-era projection they were recorded
-        # beside. The typed subject (``Reading.who``) is ``who``: ``subject``
+        # reader typed them - the typed Reading. The typed subject
+        # (``Reading.who``) is ``who``: ``subject``
         # is the subject reading's own record of it, the parser's fields beside.
         **_filters_record(reading, mask),
-        # The content words no claim covers (Phase 3, step 3): what the
+        # The content words no claim covers: what the
         # claims ledger checks from outside, word for word.
         "unread": list(reading.unread),
         "subject": subject,
@@ -234,15 +223,13 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],
         "point": point,
         # The reader's own verdict where it read no point: why it declined,
-        # or the cause it refuses by - recorded since 2026-10-03, so a
+        # or the cause it refuses by - recorded so a
         # decline that moves between the reader and the planner with the
         # same sentence is a difference in this stage, not only in the next.
         "point_declined": reading.point_declined,
         "point_refusal": plain(reading.point_refusal, mask=mask),
         # What the words come to before any point, and what they name that
-        # nothing reads (Phase 3, step 0): recorded where the Reading holds
-        # one, so the step that moved them off the answering loop moved the
-        # records of exactly those questions.
+        # nothing reads: recorded where the Reading holds one.
         **({"refused": plain(reading.refused, mask=mask)} if reading.refused is not None else {}),
         **({"unsupported": plain(reading.unsupported, mask=mask)} if reading.unsupported else {}),
         **({"left_out": plain(reading.left_out, mask=mask)} if reading.left_out is not None else {}),
@@ -256,17 +243,11 @@ def _query_record(reading: Reading, planned: Verdict, mask: Mapping[str, str] | 
     values and its sentence - or the reason one of them declined.
     ``planned`` is the caller's planning of the question, the Query-or-Cause
     (:func:`~association.query.compose.plan.plan_point`); nothing here
-    plans. Until 5.0.0's last change this was the Reading's point again,
-    so a planner that built something else from it went unseen; the point
-    is the reading's record now. The planned query is the one the compiler
-    runs: since Phase 2, step 3 the planner plans a season-line point its
-    reader does not read as the game-level one, where ``games_reading``
-    re-planned it in ``compose.answer`` (3 of the 628 recorded questions),
-    and the record took the re-planned query from the answering loop
-    (``Agent.ran``) from 2026-10-03 until step 4 retired it. Until Phase 4,
-    step 4 the planning was a ``Planned`` record holding the refusal worded;
-    it is worded here now, by the sayer that words it in the answer, and
-    the record is the same."""
+    plans, and the point is the reading's record, so a planner that builds
+    something else from it is seen here. The planned query is the one the
+    compiler runs (a season-line point its reader does not read is planned
+    as the game-level one), and a refusal is worded here by the sayer that
+    words it in the answer."""
     if isinstance(planned, (Refusal, Clarify)):
         # Worded at call time: the sayer is the answer side's, which this
         # module otherwise stays clear of.
@@ -341,7 +322,7 @@ def snapshot(
         "answer": {
             "text": _masked(answer.text, mask),
             "answered_by": answer.answered_by,
-            # The planned point's shape, which the page renders by (Phase 4, step 1).
+            # The planned point's shape, which the page renders by.
             "shape": plain(answer.shape, mask=mask),
             "artifacts": [artifact.kind for artifact in answer.artifacts],
             "unanswered": unanswered,

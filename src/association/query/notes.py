@@ -1,11 +1,8 @@
 """What an answer says beside its numbers, as values: a kind and its facts.
 
-Until 5.0.0 a caveat, a stated default or a definition was a sentence glued
-onto the answer, and some of them a second time into ``data["notes"]``: 69
-distinct remarks written by about 75 functions, the same fact in up to
-eleven wordings (``ROADMAP-TYPES.md``, "Notes - the kinds"). A sentence
-cannot be compared, so a reworded answer could lose a caveat with every
-number still matching. Here each remark is recorded as it is written:
+A sentence cannot be compared, so a reworded answer could lose a caveat
+with every number still matching. Here each remark is recorded as it is
+written:
 
 - a :class:`Note` is about the data or about a term the answer uses - a
   game with no box score, a table's floor, what "played" means;
@@ -14,11 +11,9 @@ number still matching. Here each remark is recorded as it is written:
   name read as one player, a season redirected, a ranking's minimum.
 
 The dividing question is "could the question have said it differently?"
-(Jeff, 2026-10-01). The kinds are closed (:data:`NOTE_KINDS`,
-:data:`DECISION_KINDS`); the sentence stays exactly where it is written
-today, and :func:`note` and :func:`decided` hand it back unchanged, so
-wrapping a writer moves no answer. One phrase per kind, written from the
-facts, is ``ROADMAP.md``'s Phase 2.
+(Jeff's). The kinds are closed (:data:`NOTE_KINDS`,
+:data:`DECISION_KINDS`); :func:`note` and :func:`decided` hand the sentence
+back unchanged, so wrapping a writer moves no answer.
 
 Recorded only inside :func:`collect` - the answering loop's, around one
 question. A writer called directly (a test, a reader on its own) records

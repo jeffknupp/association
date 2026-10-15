@@ -6,28 +6,12 @@ yes/no stat is ordered by - from the lexicon's words
 (:mod:`association.query.lexicon`) and the one fact of the question read
 before it: whether the stat read is a yes/no one (:class:`WindowContext`);
 what the words ask is the key's reading
-(:func:`~association.query.point.window_under`, since Phase 3, step 4, slice
-(b)). It claims the characters it read
-(:class:`~association.query.reading.Claim`), each once.
+(:func:`~association.query.point.window_under`). It claims the characters
+it read (:class:`~association.query.reading.Claim`), each once.
 
-Phase 3, step 2's second slice: until it, the parser read the window's
-grammar before the stages (``parse.window``) and again after them
-(``parse.window_scope``), and five stages of ``router.py``
-wrote or dropped the four slots this replaces with their own regexes
-(``_route_relative_window``, the window half of ``_route_side_and_order``
-with ``_drop_filler_limit`` and ``_drop_filler_order_on_a_series_game``,
-``_route_period_window``, the rank writer in ``_route_intent_slots``,
-``_route_ranked_boolean_games``, and the limit pops in
-``_route_relation_intent_slots``, ``_route_line_stat`` and
-``_route_one_player_intents``). Measured first
-(``~/association-research/stages/window_family.py``, the four slots as each
-stage set them on all 2,710 readings): the parser's grammar read the window
-on 314 of them and the stages moved it on 59 - a history's seasons (38) and
-an end dropped on a reader with no window of its own (21) - while every
-drop of the COUNT (the model-era filler rules: ``_names_a_count`` and the
-five sites that asked it) was put back by the parser's second read, since
-the grammar was the count's one source; those rules were dead, and are
-gone rather than ported.
+The grammar is the count's one source: a model's count beside the words is
+filler, never read (``~/association-research/stages/window_family.py``
+measures the family on the 2,710 readings: 314 carry a window).
 
 .. versionadded:: 6.0.0
 """
@@ -152,8 +136,7 @@ def read_window(question: str, context: WindowContext) -> WindowCandidates:
 
 def window_end(order: str | None) -> Literal["recent", "first"] | None:
     """A grammar row's end as the Window's own literal - the rows write one
-    of the two, and a row that wrote anything else is a bug said out loud,
-    as the tests' slot door said it for a slot dict until Phase 4, step 0.
+    of the two, and a row that wrote anything else is a bug said out loud.
 
     .. versionadded:: 6.0.0
     """
@@ -259,7 +242,7 @@ def read_minimum(question: str) -> MinimumRead:
     points", "minimum of 20 points per game", "at least 30 minutes") is
     theirs, and not read here: a qualifier keeps a ranking's players, a
     line keeps a player's games. Read with the window, the family that
-    says which rows a read keeps (ISSUES.md #377, 2026-10-11).
+    says which rows a read keeps (ISSUES.md #377).
 
     .. versionadded:: 6.0.0
     """

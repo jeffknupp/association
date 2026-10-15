@@ -1,12 +1,10 @@
 """The words a season and its type are said with - a season's name, the
 season types' names, the months - the sayer's and the relations' vocabulary.
 
-Until Phase 3, step 2 this module also read the season a question names
-("last season" is arithmetic on a calendar, not language understanding, and
-it was the slot the router most reliably dropped); that reading is the
-lexicon's now (:func:`~association.query.lexicon.season_from_text`,
+Reading the season a question names is the lexicon's
+(:func:`~association.query.lexicon.season_from_text`,
 :func:`~association.query.lexicon.season_spans`), beside every other word of
-the span family.
+the span family; this module only says one.
 
 .. versionchanged:: 6.0.0
    ``MIN_SEASON``, ``SeasonSpan``, ``season_spans`` and ``season_from_text``
@@ -18,9 +16,8 @@ from __future__ import annotations
 MONTH_NAMES: tuple[str, ...] = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
 """The months by name, January first - the words a question narrows a
 season to a month by (``calendar``), and the label a monthly split prints.
-On the reader's side since 2026-10-03: ``calendar`` took it from
-``conditions``, which loads the team-games relation, so every reader module
-loaded the answer side through one tuple of names.
+On the reader's side, so ``calendar`` takes it without loading the
+team-games relation through ``conditions``.
 
 .. versionadded:: 5.0.0
 """

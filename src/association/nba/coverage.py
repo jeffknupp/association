@@ -295,8 +295,7 @@ COVERAGE: dict[str, Coverage] = {
             "it returns for 1994, so 1993 is a duplicate label rather than the 1992-93 season"
         ),
         # The postseason is selected by the calendar year it was played in
-        # (``query.team_relation.team_span_clause``; ``templates._season_games``
-        # until Phase 2), which is why its floor reads 1989 where the
+        # (``query.team_relation.team_span_clause``), which is why its floor reads 1989 where the
         # first stored label is 1988.
         postseason_first_season=1989,
         postseason_subject="Playoff games",

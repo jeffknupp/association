@@ -4,42 +4,24 @@ points", "20+ point 5+ assist games", "scores 30", "fouled out", "under 14
 fta", "with 25 minutes", "after making one three in the first quarter" -
 from the lexicon's words (:mod:`association.query.lexicon`) alone: which of
 the lines it reads are the subject's under the key the words ask is the
-point reader's (:func:`~association.query.point.lines_under`, since Phase 3,
-step 4, slice (b)). It claims the characters it read (:class:`~association.query.reading.Claim`), each
-once. A line inside a companion's phrase ("sixers record when maxey scores
-20+ points") is read here as the subject's too, as the router's stages read it -
-measured, leaving it to the companion moved one recorded reading ("In his
-18th season, how many games with 40+ points did Lebron James have?": "with
-40+ points did Lebron James have" reads as a companion phrase, the subject
-is LeBron himself, restored by the grammar's rules, and the count with no line
-turned into a ranking) - and the two claims fold into one (the companion's
-holds the line's); where the companion is a real one, the subject's own
-line reads the same number (ISSUES.md, "A companion's line is read as the
-subject's too").
+point reader's (:func:`~association.query.point.lines_under`). It claims the
+characters it read (:class:`~association.query.reading.Claim`), each once.
+A line inside a companion's phrase ("sixers record when maxey scores 20+
+points") is read here as the subject's too - measured, leaving it to the
+companion moves one recorded reading ("In his 18th season, how many games
+with 40+ points did Lebron James have?": "with 40+ points did Lebron James
+have" reads as a companion phrase, the subject is LeBron himself, restored
+by the grammar's rules, and the count with no line would turn into a
+ranking) - and the two claims fold into one (the companion's holds the
+line's); where the companion is a real one, the subject's own line reads
+the same number (ISSUES.md, "A companion's line is read as the subject's
+too").
 
-Phase 3, step 2's fifth slice: until it, a line on a stat had FIVE
-carriers, each read by different code - the ``threshold`` slot beside the
-model's ``stat``, written by ``router._route_threshold`` (the first "N
-stat" of the words, or "scores N"), the fouled-out branch of
-``_route_period_intents`` (fouls at six), and ``_route_record_when_threshold``
-(exactly one "N+ stat" pair, which also rewrote the stat); the ``above``
-and ``below`` phrases kept whole by ``_route_filter_slots`` (a floor of
-minutes, a line under a number, and two or more "N+ stat" pairs); the
-point's own re-reading of the number's words into a predicate
-(``point._everyone_threshold_predicates``, ``_numbered_stat_lines``); a
-companion's ``reached`` entry; and the ``period_condition`` the parser read
-before the stages. Measured first
-(``~/association-research/stages/line_family.py``, the five carriers and
-the three companion slots as each stage set them on all 2,710 readings): a
-threshold on 120, a floor or a line under a number on 39, two or more
-pairs on 11 - where the slot pair contradicted the words every time
-("20+ point 5+ assist" read ``stat: assists, threshold: 20``, the relation
-narrowing by the words and the pair unread) - a line in a quarter on 2, a
-companion's line on 23 (every one a team's record, the companion's line
-becoming the record's own); the point's re-read differed from the words
-on 1 ("most games with 20 pt,s 10 reb, 5 ast": the re-read's pattern could
-not pass the comma and fell back to the model's "rebounds", so the point
-counted games with 20+ rebounds).
+One reader of every line, built from the words and never from the model's
+stat beside a number: on the 2,710 readings
+(``~/association-research/stages/line_family.py``) the model's pair
+contradicts the words on every reading holding two or more pairs ("20+
+point 5+ assist" as ``stat: assists, threshold: 20``).
 
 .. versionadded:: 6.0.0
 """
@@ -91,8 +73,7 @@ class LineCandidate:
     lead: tuple[int, int] | None = None
     #: Whether the words set the line on the games themselves - "games with
     #: 2 threes", "2 threes in games", "30 point games" - which a reader of
-    #: a player's games narrows by however the line is stated (Phase 5,
-    #: step 2, ISSUES.md #357).
+    #: a player's games narrows by however the line is stated (ISSUES.md #357).
     games: bool = False
 
 

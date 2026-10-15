@@ -129,9 +129,8 @@ class RunHistory:
 
     def record_tool_call(self, name: str, elapsed: float) -> None:
         """Count one compiled read - the answer side's, timed by the answering
-        loop (a tool or template call before 5.0.0, typically sub-millisecond,
-        which was the point: the timing split shows where the time is not
-        going)."""
+        loop (typically sub-millisecond, which is the point: the timing split
+        shows where the time is not going)."""
         self.tool_calls += 1
         self.tool_seconds += elapsed
         self.log(f"  [timing] {name}: {elapsed:.2f}s")
@@ -204,8 +203,8 @@ def append_note(path: Path, note: str, replacing: str | None = None) -> str:
     is rewritten in place (new timestamp, new text) rather than joined by a
     second one. That is what a page's single text box means by saving again -
     editing the note, not adding another - and without it the first draft of
-    every corrected note stayed on record beside its correction (Jeff's two
-    notes of 2026-09-24 each had that). A ``replacing`` line no longer in the
+    every corrected note would stay on record beside its correction. A
+    ``replacing`` line no longer in the
     file (edited by hand since) falls back to appending, so a correction is
     never lost for want of its earlier draft.
 

@@ -1,12 +1,8 @@
 """What the model does once the parser reads the question: copy the names out
-of it verbatim and pick one stat key - nothing else (ROADMAP plan item 6,
-step c).
+of it verbatim and pick one stat key - nothing else.
 
-The router's prompt asked a 3B model for an intent and every slot, and a
-growing chain of code corrected what it returned (its model call went in
-5.0.0, and its stages went in Phase 3, step 4: the grammar's rules and the
-taggers read the words now). Measured
-with the router withheld, what that chain could not replace is two things: the stat
+Everything else is read from the words by the parser, the grammar's rules
+and the taggers. What code cannot replace is two things: the stat
 vocabulary ("fta" is ``freeThrowsAttempted``) and the spans that are names. So
 this is the whole job left to the model, and :func:`association.query.parse.read_route`
 checks both - every span against the entity index, the stat against the
@@ -14,8 +10,8 @@ question's own words - before anything reads them.
 
 Names are copied exactly as typed, never expanded or corrected. A typo is the
 entity index's to read (a single near spelling is that player, said in the
-answer), never the model's: the router's silent corrections were how "embiid"
-became Ben Simmons (AGENTS.md, "Why embiid specifically"). Measured over the
+answer), never the model's: a model's silent correction is how "embiid"
+becomes Ben Simmons (AGENTS.md, "Why embiid specifically"). Measured over the
 277 day10 wordings: 299 of 302 names copied verbatim, 0.8s a question on
 qwen2.5:3b (``~/association-research/parser-greenfield/RESULT.md``).
 
@@ -130,8 +126,8 @@ NORMALIZER_NUM_CTX = 2048
 
 
 def estimate_tokens(text: str) -> int:
-    """Deliberately a slight over-estimate (measured ~4.08 chars/token on the
-    retired agent's preamble), so a budget check errs toward failing loudly
+    """Deliberately a slight over-estimate (measured ~4.08 chars/token on a
+    prompt of this project's), so a budget check errs toward failing loudly
     rather than silently truncating: ollama truncates an over-length prompt
     head-first and in silence.
 
@@ -157,8 +153,8 @@ def normalize(model: str, question: str) -> Normalized | None:
     """The names and stat ``model`` reads in ``question``, or None when it
     replies with something that is not the schema's object. Raises
     :class:`RouterUnavailable` when the model could
-    not be asked at all - the same two sentences the router gave, since the
-    reader has to be sent to the server rather than to their question.
+    not be asked at all - two different sentences, since the reader has to
+    be sent to the server rather than to their question.
 
     .. versionadded:: 5.0.0
     """

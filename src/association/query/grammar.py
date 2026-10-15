@@ -5,12 +5,9 @@ named it - a coach, a quarter or a half, a team where a player ranking was
 named, a record, a fingerprint named or not, a line with no number, a
 career high - and the names the rules read under the key they settle.
 
-Phase 3, step 4, slice (b): these were the stages of ``router.py``, run by
-``router.settle`` over a raw slot dict before the taggers and carried to
-the parser's last step on a ``router.Route``. The router is gone. The rules
-read the typed subject the subject reading hands them, the companions it
-read and the model's stat as context, and return what they settle
-(:class:`Asked`); the taggers read the words after them
+The rules read the typed subject the subject reading hands them, the
+companions it read and the model's stat as context, and return what they
+settle (:class:`Asked`); the taggers read the words after them
 (``parse._tagged``), and the parser writes the Reading. Each rule reads the
 words alone; a name it settles - the subject a count's, a high's or a
 record's grammar names (:func:`~association.query.subject.subject_named_in`),
@@ -18,12 +15,12 @@ a team's quarter from its one nickname, a quarter's player read back - is
 one the subject reading read from the words, written on the typed subject
 under the key the rules settle (``ROADMAP-TYPES.md``, Still open 15).
 
-Measured before the move (``~/association-research/stages/route_family.py``,
-the 2,710 readings): the rules move the key on 115 readings (the period
-rules 22, a team or a fingerprint where a player was named 26, a line or a
-record 34, a count with no line 28, one player's line 6; 63 children moved
-back to the parent), write a name on 84 (the grammar's subject 30, a team's
-nickname 24, ...) and run twice on 63 readings, a child they declined.
+Measured on the 2,710 readings (``~/association-research/stages/route_family.py``):
+the rules move the key on 115 readings (the period rules 22, a team or a
+fingerprint where a player was named 26, a line or a record 34, a count
+with no line 28, one player's line 6; 63 children moved back to the
+parent), write a name on 84 (the grammar's subject 30, a team's nickname
+24, ...) and run twice on 63 readings, a child they declined.
 
 .. versionadded:: 6.0.0
 """
@@ -182,7 +179,7 @@ def settle(
     # What the rules read: the words whose deletion changes the key they
     # settle or a name they write (span.read_by) - the rules are over the
     # whole question ("which team", "as a starter", "log"), so what they
-    # read is what their decision turned on (Phase 3, step 3).
+    # read is what their decision turned on.
     claims = read_by(text, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed, team_words, reached_when))
     return Asked(
         asked=working.asked, coach=coach, subject=working.subject, opponent=working.opponent, stat=working.stat, claims=(*claims, *_team_word_claims(text.text, who, working.subject, team_words))

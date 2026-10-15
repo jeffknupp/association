@@ -1,12 +1,9 @@
 """What a question produces, as values rather than as printed text.
 
-`Agent.ask` used to return a string and print everything else - the trace to
-stderr, the chart's file path formatted into the middle of a sentence. That is
-enough for a terminal and nothing else. These are the shapes any other caller
-(the web API in 2.0, a notebook, a test) needs: the text that was already
-being returned, plus the shape it was read as and the structured data the
-fast path had already computed and thrown away, plus the files that were
-written.
+A string and a printed trace are enough for a terminal and nothing else.
+These are the shapes any other caller (the web API, a notebook, a test)
+needs: the text, the shape it was read as, the structured data the fast
+path computed, and the files that were written.
 
 Nothing here imports the rest of the query package but the planned shape's
 type (:class:`~association.query.reading.PointShape`, from a module that
@@ -63,8 +60,7 @@ class Artifact:
     """A file an answer wrote - today always a self-contained HTML plot.
 
     The path is carried as a value because the alternative is parsing it back
-    out of the message it was formatted into, which is what the shot chart
-    renderer used to force.
+    out of the message it was formatted into.
 
     .. versionadded:: 2.0.0
     """
@@ -144,8 +140,8 @@ class Answer:
     ``text`` is exactly what the CLI prints, unchanged - the final prose, so
     the fast path makes NO model call after the normalizer. ollama keeps one
     KV cache slot per model, so a second call with a different system prompt
-    evicts the reader's prefix (measured on the router's model, the normalizer's
-    since 5.0.0: three consecutive calls ran 11.6s / 1.3s / 1.7s, but
+    evicts the reader's prefix (measured on the normalizer's model: three
+    consecutive calls ran 11.6s / 1.3s / 1.7s, but
     interleaving one narration call put the next back to 11.2s). Phrasing every answer on the answer side also removes the
     last place on this path where a number could be invented. Everything
     else is what the CLI never had a way to show: which path answered, and -
@@ -213,8 +209,7 @@ class Answer:
     #: ``comparison``, ``split``, ``runs`` or ``chart`` - and what it is
     #: ``by``), the one the answer side chose its reader by
     #: (:func:`~association.query.compose.plan.planned_shape`). What
-    #: the page renders the answer's ``data`` by (where it read the label,
-    #: ``intent``, until Phase 4, step 1).
+    #: the page renders the answer's ``data`` by.
     #:
     #: .. versionadded:: 6.0.0
     shape: PointShape | None = None

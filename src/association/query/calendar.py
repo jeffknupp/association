@@ -7,9 +7,9 @@ january 31st" - alongside things no game table can filter on ("18 year old",
 "western conference", "since returning"). Only the calendar ones are a
 narrowing of a relation's games: a weekday, a month, a holiday, or every
 game from a day of the season on. Everything else parses to ``None`` and the
-caller refuses it by name, the way it always did - a value that is not read
-is not dropped. The words are the lexicon's (:mod:`association.query.lexicon`,
-Phase 3, step 2): this module reads them and builds the clauses, and holds
+caller refuses it by name - a value that is not read
+is not dropped. The words are the lexicon's (:mod:`association.query.lexicon`):
+this module reads them and builds the clauses, and holds
 no pattern of its own.
 
 .. versionadded:: 4.4.0
@@ -42,9 +42,8 @@ WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "frid
 
 # A holiday spelled with the apostrophe a phone keyboard types ("new year\u2019s
 # eve") is the same holiday, and reaches this module as a straight one: the
-# parser folds it where a question enters (parse.read_route, which
-# parse.reading_from_route was folded into in Phase 3, step 4, slice (b);
-# ISSUES.md #259), so no reader here keeps a
+# parser folds it where a question enters (parse.read_route; ISSUES.md
+# #259), so no reader here keeps a
 # second, local fold.
 
 
@@ -112,14 +111,9 @@ class AlignmentNarrowing:
     Division".
 
     A sibling of :class:`CalendarNarrowing`, read by :func:`parse_alignment`
-    rather than :func:`parse_situation` - kept as a second function rather
-    than folded into the first because ``TEAM_RECORD``'s own ``situation``
-    reading (the retired ``templates/teams.py``, over the standings table
-    rather than either relation) called :func:`parse_situation` directly and
-    typed its result as :class:`CalendarNarrowing` alone; widening that
-    return type would have handed it a narrowing standings carries no column
-    for. :func:`parse_situation`'s one caller since is the typed situation
-    (:func:`association.query.reading.situation_of`), which tries both. The shared
+    rather than :func:`parse_situation`, so each returns one type; the
+    typed situation (:func:`association.query.reading.situation_of`), the
+    one caller of either, tries both. The shared
     relation steps that DO carry a conference or division
     (:func:`association.query.player_relation.scoped_games`,
     :func:`~association.query.player_relation.league_games`,

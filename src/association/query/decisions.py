@@ -1,20 +1,19 @@
 """What was decided on the way to an answer, as data.
 
 Every override of a field the model came back with, every default, every
-reading of the question that the answer rests on, was until 4.4.0 a trace
-line - ``-> (scope) 'Boston Celtics' moved from team to opponent`` - which is
-prose, read by a person, and the reason the subject measurement of the time
-had to wrap every template (retired in Phase 2) just to learn what slots one
-received. A :class:`Decision` is the same fact as a value: the stage that made
-it, the field it moved, what it was before and after, and why. It is kept on
-the run's history record and on the ``answer`` event, never parsed back out of
-the trace (AGENTS.md, "Events carry trace lines verbatim").
+reading of the question that the answer rests on, is a :class:`Decision`:
+the stage that made it, the field it moved, what it was before and after,
+and why - a value, because a trace line (``-> (scope) 'Boston Celtics'
+moved from team to opponent``) is prose read by a person, and a measurement
+cannot read it. It is kept on the run's history record and on the
+``answer`` event, never parsed back out of the trace (AGENTS.md, "Events
+carry trace lines verbatim").
 
-Jeff's ask, 2026-09-25: "decision points, every override of a field the model
-comes back with, inferences and defaults, all the way to presentation". The
-subject reading (:mod:`association.query.subject`) was the first producer;
-the parser's choice of what the words ask (``"parser"``) and the defaults an
-answer states (:func:`association.query.notes.decided`, ``"answer"``) followed.
+Jeff's ask: "decision points, every override of a field the model comes
+back with, inferences and defaults, all the way to presentation". The
+subject reading (:mod:`association.query.subject`), the parser's choice of
+what the words ask (``"parser"``) and the defaults an answer states
+(:func:`association.query.notes.decided`, ``"answer"``) produce them.
 
 .. versionadded:: 4.4.0
 """

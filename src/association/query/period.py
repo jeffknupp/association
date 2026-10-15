@@ -5,33 +5,25 @@
 the key's reading (:func:`~association.query.point.period_under`). It claims the characters it read
 (:class:`~association.query.reading.Claim`), once.
 
-Phase 3, step 2's fourth slice: until it, ``router._period_asked`` read
-which period the words name, the intent stage wrote it as the slots
-``period`` and ``half`` under the two player-side period intents and a
-team's half (``_route_period_intents_choose``, ``raw |= asked``), and the
-parser wrote a team's quarter after the stages where they had left none
-(``parse._read_route_period``) - three writers of one value. Measured
-first (``~/association-research/stages/period_family.py``, the two slots
-as each stage set them on all 2,710 readings): 120 readings carry one (79
-quarters, 41 halves: 82 ``PERIOD_LOG``, 23 ``PERIOD_RANKING``, 15
-``TEAM_PERIOD_TOTAL``), no stage moved one between the route and the
-reading, no period word fell inside another tagger's claim, and the value
-is written ONLY under the three period intents - six readings name a
-quarter and carry none, their subject unread and the point reader
-declining them for it ("a quarter or half is the period relation's
-question"). The tagger keeps that: it reads which period the words name
-wherever they name one (:func:`which_period`, which the grammar's rules
-(``grammar._period``) and the line slice's condition reader call too, so no second copy of "first |
-second | 1st | 2nd" is written), and keeps the value under a reader that
-takes one (:data:`~association.query.point.PERIOD_ASKS`, the key's reading,
-:func:`~association.query.point.period_under`).
+One writer of one value: it reads which period the words name wherever
+they name one (:func:`which_period`, which the grammar's rules
+(``grammar._period``) and the line family's condition reader call too, so
+no second copy of "first | second | 1st | 2nd" is written), and keeps the
+value under a reader that takes one
+(:data:`~association.query.point.PERIOD_ASKS`, the key's reading,
+:func:`~association.query.point.period_under`). Measured on the 2,710
+readings (``~/association-research/stages/period_family.py``): 120 carry
+one (79 quarters, 41 halves: 82 ``PERIOD_LOG``, 23 ``PERIOD_RANKING``, 15
+``TEAM_PERIOD_TOTAL``); six name a quarter on a shape that takes none,
+their subject unread, and the point reader declines them ("a quarter or
+half is the period relation's question").
 
 A "by quarter" question reads NO period: the breakdown across all four is
 the point's shape (``point._default_period_split``, ``by`` ``"period"`` in ``Reading.read_as``),
 not a filter. A period as a CONDITION on which games count ("after making
-one three in the first quarter") is the line slice's value
-(``parse.read_period_condition``), whose words the parser takes out of
-the question before the stages see it.
+one three in the first quarter") is the line family's value
+(:func:`~association.query.line.read_period_line`), whose words the parser
+blanks before the grammar reads the question.
 
 .. versionadded:: 6.0.0
 """

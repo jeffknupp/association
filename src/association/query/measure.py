@@ -1,51 +1,31 @@
 """The measure: the one catalog of what a question can ask about
 (:data:`CATALOG`, keyed by :data:`MeasureKey`), the spellings each key is
-named by across the six vocabularies the slot was read against
-(:data:`ALIASES`: the normalizer's keys, the measure grammar's, the
-compiler's measure names, the leaderboard metrics', the team metrics'
-alias texts, the box-score words), and the one tagger that reads the
-family (:func:`read_measure`) from the lexicon's words
-(:mod:`association.query.lexicon`) alone, and the key's reading of them
-(:func:`~association.query.point.measure_under`, since Phase 3, step 4,
-slice (b)) over what the words ask, the model's key as context and the
-lines read (:class:`MeasureContext`) - into
-:class:`~association.query.reading.Measure`, claiming the characters it
-read.
+named by across every vocabulary that names one (:data:`ALIASES`: the
+normalizer's keys, the measure grammar's, the compiler's measure names, the
+ranking metrics', the team metrics' alias texts, the box-score words), and
+the one tagger that reads the family (:func:`read_measure`) from the
+lexicon's words (:mod:`association.query.lexicon`) alone, and the key's
+reading of them (:func:`~association.query.point.measure_under`) over what
+the words ask, the model's key as context and the lines read
+(:class:`MeasureContext`) - into :class:`~association.query.reading.Measure`,
+claiming the characters it read.
 
-Phase 3, step 2's sixth slice. Until it, the measure had SEVEN slots -
-``stat``, ``rate``, ``per_game``, ``side``, ``shot_value``, ``fields``,
-``kind`` - written by the parser's grammar over the normalizer's key and
-by sixteen stages after it (the advanced metrics' words, game score, a
-2-point percentage, a ranking by shot distance, the attempts beside a
-make, a team metric's alias, a NetPoints rate folded into its key, a team's
-total, the side, the shots, a run's kind, the stat the words named beside a
-line, and the model's required key dropped where the words named none), and
-read on the answer side against six tables that spelled one measure four
-ways (``threePointFieldGoalPct``, ``three_pct``, ``three_pt_pct``,
-``three_point_pct``). Measured first
-(``~/association-research/stages/measure_family.py``, the seven slots as
-each stage set them on all 2,710 readings): a stat on 1,004 readings in 69
-spellings, 23 the model's and 37 the words', the rest the team metrics'
-alias texts; the words and the model's key disagreeing on 58, the words
-winning every one; no stage moving a slot between the route and the
-reading; a key no answer-side vocabulary held on 24 (``shot_distance`` on
-15 - the ranking's refusal, by name - ``games_played`` on 6, which nothing
-reads, "rebounds allowed" and "assists allowed", refused by name, and the
-grammar's ``points_differential``, which the team reader reads from the
-words instead); the family's refusals ``needs_stat`` 7, ``shot_distance_ranking``
-6, ``unknown_stat`` 6, ``line_names_no_stat`` 4, ``ranking_unit`` 2,
-``no_ranking_measure`` 2, and the planner's "cannot honor ['rate']" on 4.
+One catalog, because one measure spelled four ways across four tables
+(``threePointFieldGoalPct``, ``three_pct``, ``three_pt_pct``,
+``three_point_pct``) is four chances to disagree. Measured on the 2,710
+readings (``~/association-research/stages/measure_family.py``): a stat on
+1,004 readings in 69 spellings, 23 the model's and 37 the words', the rest
+the team metrics' alias texts; the words and the model's key disagree on
+58, the words winning every one.
 
-The catalog's facets are the answer side's vocabularies as they stood:
-for each key's own spelling, what ``stat_measure``, ``stat_column``,
-``resolve_metric`` and ``resolve_team_metric`` returned
-(``tests/query/measure_spellings.json`` holds every reachable spelling's
-resolution on the tree before this slice, and a test holds the catalog to
-it on the facets each vocabulary reached). Where those four disagreed
-between two spellings of one key - a team metric's alias text had no game
-column, a MEASURE_WORDS abbreviation no ranking metric - the key's own
-spelling decides, since the alias texts reached only the team readers and
-the abbreviations only the line readers.
+The catalog's facets are the answer side's lookups (``stat_measure``,
+``stat_column``, ``resolve_metric``, ``resolve_team_metric``) for each
+key's own spelling; ``tests/query/measure_spellings.json`` holds every
+reachable spelling's resolution, and a test holds the catalog to it. Where
+two spellings of one key resolve differently - a team metric's alias text
+has no game column, a MEASURE_WORDS abbreviation no ranking metric - the
+key's own spelling decides, since the alias texts reach only the team
+readers and the abbreviations only the line readers.
 
 .. versionadded:: 6.0.0
 """
@@ -76,8 +56,7 @@ class MeasureSpec:
     """One measure: what it is called and how each relation reads it.
 
     ``measure`` is the compiler's name for it over the games relation (a
-    game-log column or a derived measure; ``stat_measure`` until Phase 3,
-    step 2), ``column`` the stored game-log column alone (``stat_column``:
+    game-log column or a derived measure), ``column`` the stored game-log column alone (``stat_column``:
     a percentage has none, it is made over attempted). ``metric`` is the
     ranking's metric for a bare name (the record books' reading: a scoring
     title is per game, a make is a season count), ``career_metric`` the
@@ -89,7 +68,7 @@ class MeasureSpec:
     of each game (a double-double, a triple-double, a foul-out, a win, a
     game played), so its figure over the games is how many hold it: the one
     facet the planner derives a point's aggregate from beside its shape
-    (``compose.plan.aggregate_of``, Phase 5, step 4, D5).
+    (``compose.plan.aggregate_of``, decision D5).
 
     .. versionadded:: 6.0.0
 
@@ -396,8 +375,7 @@ def spec_of(measure: Measure | None) -> MeasureSpec | None:
 
 def measure_name(measure: Measure | None) -> str | None:
     """The compiler's name for ``measure`` over the games relation - a
-    game-log column or a derived measure - or None (``stat_measure`` until
-    Phase 3, step 2).
+    game-log column or a derived measure - or None.
 
     .. versionadded:: 6.0.0
     """
@@ -438,7 +416,7 @@ def measured(name: str) -> Measure:
     inverse: ``"fg_pct"`` is ``fieldGoalPct``, ``"won"`` is ``wins``, a
     box-score column its own key) - how the point reader states the measures
     its point reads, typed, from the words and lines it reads them by
-    (``Reading.measures``, Phase 4, step 3). A name no key reads by
+    (``Reading.measures``). A name no key reads by
     (``"margin"``, a label of a game) raises: a point reads only what a
     question can ask about.
 
@@ -451,8 +429,7 @@ def measured(name: str) -> Measure:
 
 
 def column_name(measure: Measure | None) -> str | None:
-    """The stored game-log column ``measure`` is read from, or None
-    (``stat_column`` until Phase 3, step 2).
+    """The stored game-log column ``measure`` is read from, or None.
 
     .. versionadded:: 6.0.0
     """
@@ -461,8 +438,7 @@ def column_name(measure: Measure | None) -> str | None:
 
 
 def metric_name(measure: Measure | None, *, career: bool = False) -> str | None:
-    """The ranking metric ``measure`` names (``resolve_metric`` until Phase
-    3, step 2): a NetPoints measure by its side and rate
+    """The ranking metric ``measure`` names: a NetPoints measure by its side and rate
     (:data:`NETPOINTS_METRICS`); a figure asked per game or as a total by
     that form; a bare name by the record books' reading - per game for a
     scoring, rebounding, assist, steal or block title, a season count for a
@@ -492,8 +468,7 @@ def metric_name(measure: Measure | None, *, career: bool = False) -> str | None:
 
 
 def team_metric_name(measure: Measure | None) -> str | None:
-    """The team metric ``measure`` names (``resolve_team_metric`` until
-    Phase 3, step 2): the measure's own, or the given-up form for the
+    """The team metric ``measure`` names: the measure's own, or the given-up form for the
     opponent's figure - None for no measure and for one the team-season
     relation has no metric for alike.
 
@@ -509,8 +484,8 @@ def named_by_a_team_metric(measure: Measure | None) -> bool:
     """Whether ``measure`` was written as a team metric's alias text (the
     reading of "fgm", "ppg", "defensive rating" under a team's keys) rather
     than by its own key: the team compiler's total reads a measure by its
-    key alone, as the router stages' alias text never matched a
-    column name (ISSUES.md, "A team total named by a metric's alias").
+    key alone, since an alias text matches no column name (ISSUES.md, "A
+    team total named by a metric's alias").
 
     .. versionadded:: 6.0.0
     """
@@ -623,7 +598,7 @@ BOOLEAN_KEYS: frozenset[str] = frozenset({"triple_double", "double_double", "fou
 class MeasureContext:
     """What the key's reading of the measure reads beside the words
     (:func:`~association.query.point.measure_under`; the key itself is its
-    argument since Phase 3, step 4, slice (b)): the model's
+    argument): the model's
     key (``key``), CONTEXT the words may confirm and never the value's
     source where the words name one - and where they name none, the key
     stands as it did, so no answer moves; the model's ``side`` and

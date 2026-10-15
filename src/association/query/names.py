@@ -1,9 +1,9 @@
 """The players' and teams' names, held in memory for name recognition.
 
-Recognizing a name used to cost a SQL statement per word of the question:
-over the 277 yardstick questions the reader issued about 100 statements a
-question, and 97% of them asked ``players`` or ``teams`` - 3,101 rows and 30 -
-whether some word was somebody's name. :class:`PlayerIndex` and
+Recognizing a name by a SQL statement per word of the question costs about
+100 statements a question over the 277 yardstick questions, 97% of them
+asking ``players`` or ``teams`` - 3,101 rows and 30 - whether some word is
+somebody's name. :class:`PlayerIndex` and
 :class:`TeamIndex` read each table once and answer those questions from
 dictionaries (ROADMAP.md, contract 3: "names are recognized from an in-memory
 index, not by query").
@@ -26,7 +26,7 @@ need, in the form the SQL they replace read it, because no answer may move:
 - which ``teams`` columns exist, and the error reading either table raised -
   several partial warehouses (and many tests) have no ``teams``, or a
   ``teams`` without ``name`` and ``location``, and the callers' answers there
-  depend on which error the SQL used to raise where.
+  depend on which error reading each table raises.
 
 This module reads no warehouse itself and never sees a question: the caller
 runs the one statement each table takes (``read``) and the matchers hand it

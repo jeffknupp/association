@@ -7,22 +7,18 @@ else, so everything the result carries is said or is visibly dropped
 comparison of values with the sentence left out (``ROADMAP-TYPES.md``,
 "Outcome - what RUN produces").
 
-Declared here by Phase 2's first slice (``ROADMAP.md``, "Phase 2, the
-expected steps", step 0: a player's or a team's game log), as the target
-types draft says a type is - by the phase that first uses it. What this
-first version carries beyond the draft, on purpose and to be cut as the
-sayers take it over: the narrowing's phrase and the span's words
+What it carries beyond the target types' draft, on purpose and to be cut
+as the sayers take it over: the narrowing's phrase and the span's words
 (``Narrowing.phrase``, ``Span.years``), which the reader still takes from
 the relation's own ``filters()`` and ``years()`` rather than the sayer
 building them from cells.
 
-Typed since the Phase 2 review's cleanup ("the Result is typed",
-2026-10-05): what a read finds instead of an answer is a :class:`Refusal`
-(a cause from :data:`RUN_CAUSES` and its facts) or a :class:`Clarify`,
-never a sentence - ``empty`` too, the reason a read with no rows gives;
-the cells the read applied are :data:`Cell` values on :class:`Narrowing`
-and :class:`Span`; what a shape's sayer needs beside its body is one typed
-record per shape (:data:`Facts`), where an untyped mapping was.
+It is typed throughout: what a read finds instead of an answer is a
+:class:`Refusal` (a cause from :data:`RUN_CAUSES` and its facts) or a
+:class:`Clarify`, never a sentence - ``empty`` too, the reason a read with
+no rows gives; the cells the read applied are :data:`Cell` values on
+:class:`Narrowing` and :class:`Span`; what a shape's sayer needs beside its
+body is one typed record per shape (:data:`Facts`).
 
 .. versionadded:: 5.0.0
 """
@@ -199,9 +195,8 @@ class ShotValue:
 Cell = Period | OnDate | Line | Role | GameOfSeries | Calendar | Companions | Met | ShotValue
 """The closed set of cells a read applies beyond the span, typed
 (``ROADMAP-TYPES.md``, "Filter - one closed union in place of 39 slots" -
-the minimal set the Result needed, declared by the step that moved them
-off ``Result.facts``, 2026-10-05). An opponent, a venue and the teammates
-absent are :class:`Narrowing`'s own fields, as they were.
+the minimal set the Result needs). An opponent, a venue and the teammates
+absent are :class:`Narrowing`'s own fields.
 
 .. versionadded:: 5.0.0
 """
@@ -303,9 +298,7 @@ class Scalar:
     figure over them (``values``, by measure name - a per-game average, or a
     rate as the ratio of its sums), and the sums the line is said from
     (``sums``: a stat's total by its name, a percentage's ``made`` and
-    ``attempted``, a made count's attempts by their column). Declared by the
-    first scalar shape to retire its template (``PLAYER_LINE``'s narrowed
-    line), as the draft says a type is.
+    ``attempted``, a made count's attempts by their column).
 
     ``how`` is how the set was reduced, the draft's ``Measure.how``: each
     measure per game beside its sums (``"per_game"``, a line), or the games
@@ -314,8 +307,8 @@ class Scalar:
     games are rebuilt from play-by-play, ``rebuilt``), or a team's games
     won and lost (``"record"``, ``TEAM_RECORD``'s: ``values`` holds
     ``wins`` and ``losses`` and what the record's source says beside them),
-    or - since the sayer is chosen by the body's type and this field
-    (2026-10-05) - a season line read as the season stores it
+    or - since the sayer is chosen by the body's type and this field - a
+    season line read as the season stores it
     (``"season"``), an average over shots (``"per_shot"``), NetPoints
     ratings per 100 possessions (``"per_100"``) or one game's own
     (``"total"``), ESPN's projection of a team's season
@@ -376,8 +369,7 @@ def run_of(row: Mapping[str, Any], owner: str | None = None) -> Run:
 class Runs:
     """The longest runs a read found, longest first (``ROADMAP-TYPES.md``,
     "The shapes": ``runs``) - a named subject's longest and any that tie
-    it, or one per owner over the league. Declared by the first runs shape
-    to retire its template (``LINE_RUNS``).
+    it, or one per owner over the league.
 
     .. versionadded:: 5.0.0
     """
@@ -399,8 +391,7 @@ class Chart:
     and ``path``, where it was written, which the RUN stage's draw step
     sets after the read (a reader reads; nothing it returns names a file
     that does not exist yet). No marks is a chart with nothing to draw.
-    Declared by the first chart to retire its template (``shot_chart``,
-    Phase 2, step 5): the draft's body, rather than a ``Rows`` of shots,
+    The draft's body, rather than a ``Rows`` of shots,
     because what the answer states is the counts and the file, never the
     rows, and the marks are the renderer's input, not a table anybody
     reads.
@@ -668,9 +659,8 @@ class MeetingsFacts:
     #: (ISSUES.md #326).
     figure: str | None = None
     #: How many meetings the window was cut from, where the question asked
-    #: for the last or first N of them (``Result.window``; Phase 5, step 7:
-    #: "lakers vs mavs record last 10 home games played", the yardstick's
-    #: F108, declined by the cell since the sweep's #352) - or None.
+    #: for the last or first N of them (``Result.window``: "lakers vs mavs
+    #: record last 10 home games played", the yardstick's F108) - or None.
     of: int | None = None
 
 

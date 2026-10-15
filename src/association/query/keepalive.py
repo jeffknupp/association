@@ -2,9 +2,8 @@
 
 Not OLLAMA_MAX_LOADED_MODELS: that is read by the ollama SERVER (a systemd unit
 here), so setting it from this process would be a no-op, and it is unnecessary
-anyway - confirmed live while there were two, ollama held both the router's and
-the fall-through agent's models at once (`/api/ps` reported qwen2.5:7b and
-qwen2.5:3b resident together); since 5.0.0 the normalizer's is the only one.
+anyway - ollama holds two models resident at once when asked (`/api/ps`
+reports both), and the normalizer's is the only one this package asks.
 
 What does bite is the idle unload. ollama drops a model after ~5 minutes, and
 reloading the model costs ~15s on this box - paid by whoever asks the first

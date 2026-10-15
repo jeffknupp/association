@@ -62,12 +62,12 @@ def current_season() -> int:
 
     The calendar turns over on October 1 and the first game is played weeks
     later, and a warehouse is loaded later still. Read from the calendar
-    alone, every unstated season from 2026-10-01 was 2027, a season with no
-    games: "how many points does luka average" answered "no 2027 regular
-    season numbers", a comparison printed a table of dashes, and the
-    bare-name recency rule had nobody who "played this season" to prefer
-    (ISSUES.md, 2026-09-30). The answer names the season it read, as it
-    always has, and naming a season in the question reaches any other.
+    alone, every unstated season from October 1 would be a season with no
+    games: "how many points does luka average" would answer "no 2027
+    regular season numbers", a comparison would print a table of dashes,
+    and the bare-name recency rule would have nobody who "played this
+    season" to prefer. The answer names the season it read, and naming a
+    season in the question reaches any other.
 
     .. versionchanged:: 5.0.0
        Capped at the latest season on record inside :func:`season_on_record`.
@@ -97,14 +97,14 @@ def season_on_record(season: int | None) -> Iterator[None]:
 # The day a game was played is its US Eastern date. ESPN stores a tip as UTC, a
 # day ahead for any evening game, so a naive date is wrong for most of them.
 #
-# This used to be a fixed five-hour shift, on the reasoning that EST and EDT
-# disagree about a date only between midnight and 1am Eastern and no game tips
-# then. True of tips, and false of the stamps that are not tips: when ESPN has a
-# game's date but no tip time it stores MIDNIGHT EASTERN - 05:00Z in winter and
-# 04:00Z in summer - and the fixed shift moved every summer one to the day
-# before. 379 games in 1988-1992 (the whole 1989-1992 postseason among them)
-# and 12 in the 2000-2001 postseason printed a day early; the Pistons' 1990
-# title clincher on 14 June read 13 June. 2026 has ten 04:00Z stamps too, and
+# Not a fixed five-hour shift, on the reasoning that EST and EDT disagree
+# about a date only between midnight and 1am Eastern and no game tips then.
+# True of tips, and false of the stamps that are not tips: when ESPN has a
+# game's date but no tip time it stores MIDNIGHT EASTERN - 05:00Z in winter
+# and 04:00Z in summer - and a fixed shift moves every summer one to the day
+# before: 379 games in 1988-1992 (the whole 1989-1992 postseason among them)
+# and 12 in the 2000-2001 postseason a day early, the Pistons' 1990 title
+# clincher on 14 June read as 13 June. 2026 has ten 04:00Z stamps too, and
 # those are real 11pm tips - in November-March, under EST, where 04:00Z is
 # 11pm. So the rule is the real Eastern clock, not an era cutoff.
 #

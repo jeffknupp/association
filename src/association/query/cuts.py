@@ -6,26 +6,17 @@ game of a series, an ordinal season - from the lexicon's words
 (:mod:`association.query.lexicon`) and the facts of the question read
 before it: the opponent the subject reading read and the teammates it read
 as absent (:class:`CutsContext`; what the words ask is the key's reading,
-:func:`~association.query.point.cuts_under`, since Phase 3, step 4, slice
-(b)). The opponent is the subject reading's word (``subject.read_subject``,
-the one reader of who stands against the subject) and the tenure is written
-by it after the taggers (``subject._apply_own_team``): the tagger takes the first and claims
+:func:`~association.query.point.cuts_under`). The opponent is the subject
+reading's word (``subject.read_subject``, the one reader of who stands
+against the subject) and the tenure is written by it after the taggers
+(``subject._apply_own_team``): the tagger takes the first and claims
 nothing for either. It claims the characters it read
 (:class:`~association.query.reading.Claim`), each once.
 
-Phase 3, step 2's third slice: until it, the filter stage of
-``router.py`` wrote the venue and the situation
-(``_route_filter_slots``), the calendar stage the date, the round, the
-series game and the ordinal season (``_route_calendar_slots``, with
-``_validate_date``), the intent stage dropped a venue beside a venue split,
-and the last stage dropped an opponent that was the ``without`` list again
-(``_route_opponent_named_as_teammates``), each with its own regexes.
-Measured first (``~/association-research/stages/cuts_family.py``, the eight
-slots as each stage set them on all 2,710 readings): the stages moved none
-of them between the route and the reading but the tenure (14), which the
-subject reading writes; a date and its own month stand together on 4,
-read by two rules off one word ("in march 24 2018"), two claims
-:func:`~association.query.span.claimed` joins into one.
+A date and its own month can stand together ("in march 24 2018": 4 of the
+2,710 readings, ``~/association-research/stages/cuts_family.py``), read by
+two rules off one word - two claims :func:`~association.query.span.claimed`
+joins into one.
 
 .. versionadded:: 6.0.0
 """
@@ -48,8 +39,8 @@ class CutsContext:
     """What was read before the cuts are, and the tagger's rules read
     beside the words: the opponent as the subject reading read
     it, and the teammates it read as absent (an "opponent" that is the
-    ``without`` list again is no team). What the words ask is no context
-    since Phase 3, step 4, slice (b): a venue beside the splits reader's
+    ``without`` list again is no team). What the words ask is no context:
+    a venue beside the splits reader's
     venue split is dropped by the key's reading
     (:func:`~association.query.point.cuts_under`).
 
@@ -208,10 +199,10 @@ def _venue(question: str) -> tuple[Literal["home", "away"] | None, Claim | None]
     with the characters that said so. Both at once is a SPLIT ("home and
     away splits"), not a cut, so it sets nothing; and beside a venue split
     on the splits reader the one side is the split's half, not a cut, which
-    the key's reading drops (:func:`~association.query.point.cuts_under`;
-    ``router._route_intent_slots`` until Phase 3, step 2). A reader that cannot restrict to a venue refuses one rather than
-    answering the whole season: "Knicks home record this season" was
-    answered 53-29, their overall record."""
+    the key's reading drops (:func:`~association.query.point.cuts_under`).
+    A reader that cannot restrict to a venue refuses one rather than
+    answering the whole season: "Knicks home record this season" answered
+    53-29 would be their overall record."""
     home, away = lexicon.VENUE_HOME.search(question), lexicon.VENUE_AWAY.search(question)
     if (home is None) == (away is None):
         return None, None
@@ -423,8 +414,7 @@ def _opponent(context: CutsContext) -> str | None:
     ``opponent: 'Anthony Black, Franz Wagner'``; the second is no team, so
     the log fell through to the agent where the first alone answers it.
     Dropped only when EVERY name in the opponent is one of the teammates -
-    a real team beside a without list is kept
-    (``router._route_opponent_named_as_teammates`` until Phase 3, step 2)."""
+    a real team beside a without list is kept."""
     opponent = context.opponent
     if opponent is None or not opponent.strip():
         return None

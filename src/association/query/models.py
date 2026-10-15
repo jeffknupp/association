@@ -1,13 +1,9 @@
 """Which ollama model the normalizer uses by default.
 
-One definition, imported by both the CLI and the answering loop. These were duplicated
-for a while, and the copies could drift apart silently: the routing check read
-the router default to decide what to validate, so a divergence would have meant
-the check passing against a model the CLI does not ship. The same holds for the
-normalizer that replaced the router's classification (5.0.0): its prompt and its
-model are one unit, measured together - swapping either invalidates the
-measurement - which makes a second copy of the name a real hazard rather than
-untidiness.
+One definition, imported by both the CLI and the answering loop: copies can
+drift apart silently, and the normalizer's prompt and its model are one
+unit, measured together - swapping either invalidates the measurement -
+which makes a second copy of the name a real hazard rather than untidiness.
 
 Deliberately free of heavy imports so ``cli/commands.py`` can read it at module level
 without pulling in ollama and duckdb at startup.

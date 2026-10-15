@@ -495,8 +495,8 @@ def load_fingerprints(
     fingerprints = _load_fingerprints_players(players, scaled, skills, by_axis, headline_pool, season, min_minutes)
     if not fingerprints:
         # Names the PLAYERS, because the season is known to have rows by the
-        # time control reaches here. This branch used to report the season as
-        # empty, which is a false coverage claim whenever the real cause is a
+        # time control reaches here. Reporting the season as empty would be a
+        # false coverage claim whenever the real cause is a
         # name that resolved to somebody with no fingerprint: "Maxey" matched
         # Marlon Maxey (retired 1994) ahead of Tyrese, and season 2026 - which
         # holds 566 players, Tyrese among them - was reported as having no

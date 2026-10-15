@@ -462,10 +462,9 @@ def parse_team_alignment(data: JSON | None, season: int) -> list[Row]:
     ``gamesBehind`` is the team's games behind its DIVISION leader where the
     default response's is behind its CONFERENCE leader, and the field ESPN
     names the aggregate "record" stat changes from ``overall`` to ``Division
-    Standings``. `team_record` already reads ``gamesBehind`` off the default
+    Standings``. A team's record already reads ``gamesBehind`` off the default
     request as "games back" in a conference sense
-    (``query/standings.py``; ``query/templates/teams.py`` when this was
-    written), so folding the two reads into one would
+    (``query/standings.py``), so folding the two reads into one would
     silently change what an existing answer's "games back" means. Kept apart,
     ``standings`` and its callers see nothing new at all.
 

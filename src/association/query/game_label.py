@@ -9,8 +9,8 @@ into two descriptions of the same game (see `ISSUES.md` #155 and the "One
 concept, one definition" rule in `AGENTS.md`).
 
 The words alone: the row is the player-games relation's read
-(:func:`association.query.player_games.game_label_row`, since Phase 4,
-step 5's close), and this module runs no statement.
+(:func:`association.query.player_games.game_label_row`), and this module
+runs no statement.
 
 .. versionadded:: 4.4.0
 """

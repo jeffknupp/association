@@ -40,7 +40,7 @@ def latest_season_on_record(con: duckdb.DuckDBPyConnection) -> int | None:
     The warehouse's own fact, read once a question by the answering loop
     (and once more where a typo is narrowed to the active players), so it
     stays here rather than under a relation: what "this season" means is
-    every relation's (``ROADMAP.md``, Phase 4, step 5).
+    every relation's.
 
     .. versionadded:: 5.0.0
     """

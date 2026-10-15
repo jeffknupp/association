@@ -3,20 +3,14 @@ season type it reads (:class:`~association.query.reading.Span`), from the
 lexicon's words (:mod:`association.query.lexicon`) and the few facts of the
 question read before it - whether a player and a window were named, a date,
 a game of a series, an ordinal season, a range opened on a dated day; what
-the words ask is the key's reading (:func:`~association.query.point.span_under`,
-since Phase 3, step 4, slice (b)). It claims the characters it read
+the words ask is the key's reading (:func:`~association.query.point.span_under`).
+It claims the characters it read
 (:class:`~association.query.reading.Claim`), each once.
 
-Phase 3, step 2's first slice: until it, six stages of
-``router.py`` wrote the six slots this replaces, each
-with its own regexes (``_route_season_slots``, the span half of
-``_route_filter_slots``, ``_route_season_range`` and ``_route_since_dated``
-inside the calendar stage, a pair's career in ``_route_relation_intent_slots``,
-a log's and a count's career in ``_route_subject_slots``,
-``_route_game_log_recent_span``), in an order the measurement held to
-(``~/association-research/stages/span_family.py``): the words first, then
-a range opened on a date, then the range's own forms (which win), then the
-intent's implied careers, then both types for a bare "last N games".
+Its rules run in a fixed order (``~/association-research/stages/span_family.py``
+measures it): the words first, then a range opened on a date, then the
+range's own forms (which win), then the careers a shape implies, then both
+types for a bare "last N games".
 
 .. versionadded:: 6.0.0
 """
@@ -36,9 +30,8 @@ from association.query.reading import Claim, SeasonType, Span
 @dataclass(frozen=True, kw_only=True)
 class SpanContext:
     """What was settled before the span is read, and the tagger's rules
-    read beside the words (the key the words ask is no context since Phase
-    3, step 4, slice (b): :func:`~association.query.point.span_under` reads
-    the span under it):
+    read beside the words (the key the words ask is no context:
+    :func:`~association.query.point.span_under` reads the span under it):
     whether the words name a player (a count of his games with no season is his career),
     a window (a log's "last N vs the Pistons" with no season is every
     meeting), "vs", "how many" and "record"; the window as settled
@@ -340,9 +333,9 @@ def _validate_range_to_year(question: str, spans: list[lexicon.SeasonSpan]) -> t
     """A season written as a span, then "to" or "through" and a bare year -
     "2014-15 to 2017", "2008-09 to 2025", "1999-00 to 2002": the range from
     the span's season to the season the year names (a bare year is a season
-    number, as "since 2020" and "from 2002 to 2004" read it). Until the
-    Phase 3 review's cleanup the bare year was read by nothing, and the span
-    alone answered one season (ISSUES.md #382, the feed's unread numbers).
+    number, as "since 2020" and "from 2002 to 2004" read it) - read by
+    nothing, the span alone would answer one season (ISSUES.md #382, the
+    feed's unread numbers).
     A bare year BEFORE a span ("tmac 2001 to 2001-02") is not read so: the
     span is the season the words settle on."""
     for span in spans:
@@ -370,8 +363,7 @@ def _relative_since(question: str) -> tuple[int, Claim] | None:
 
 def relative_seasons(question: str) -> int | None:
     """How many seasons "past/last N seasons" names, or None - what a
-    history's window counts (``router._route_relative_window`` read it
-    until Phase 3, step 2).
+    history's window counts.
 
     .. versionadded:: 6.0.0
     """
@@ -389,8 +381,8 @@ def _implied_career(question: str, context: SpanContext, career: bool) -> frozen
     vs pistons" answered from the current season found four and said so);
     and a count asked of one player with no season in sight is his career
     ("how many times has embiid fouled out?" is 0 this season and 9 in his
-    career, and only the second is the question - product decision,
-    2026-09-19). A season the question names, this one included, still wins.
+    career, and only the second is the question - a product decision). A
+    season the question names, this one included, still wins.
     Returns the rules whose words hold, by the key each reads under; which
     stands is the key's (:func:`~association.query.point.span_under`)."""
     if lexicon.season_from_text(question) is not None or lexicon.SEASON_WORDS.search(question):
@@ -408,8 +400,9 @@ def _implied_career(question: str, context: SpanContext, career: bool) -> frozen
 def _reads_both_types(question: str, context: SpanContext) -> bool:
     """A "last N games" log naming no season type reads both and takes the
     newest N by date, rather than silently defaulting to the regular season
-    ("Show me the Knicks last 5 games" used to list games through
-    2026-04-12 while their real last five were the 2026 Finals). Only for
+    ("Show me the Knicks last 5 games" in the regular season alone would
+    list games through 2026-04-12 while their real last five were the 2026
+    Finals). Only for
     the shape: a newest-first window with a real count, and nothing already
     fixing which games are meant - a game of a KNOWN playoff series, a
     career (no single year to mix two types within), a range of seasons,
@@ -427,7 +420,7 @@ def _reads_both_types(question: str, context: SpanContext) -> bool:
 
 def needed[P: (str, lexicon.GrammarText)](question: P, claims: Iterable[Claim], reads: Callable[[P], object], *, outside: str | None = None, gives_up: bool = False) -> tuple[Claim, ...]:
     """``claims`` cut to the words the rule that made them could not do
-    without (Phase 3, step 3): each content word a claim touches is deleted
+    without: each content word a claim touches is deleted
     from the question in turn (:func:`~association.query.lexicon.without_word`,
     the claims ledger's own probe) and the rule asked again - ``reads``, its
     reading of a question, everything it writes into the reading - and a
@@ -581,10 +574,9 @@ def claimed(claims: list[Claim]) -> tuple[Claim, ...]:
     other share a word two readings both need, and become one claim over
     both stretches, named for both (``"window+season_type"``): "his last
     game 7" is one game at the end of his span AND the seventh game of a
-    series, and "in march 24 2018" the month and the day in it. Until
-    2026-10-09 such an overlap raised, as two rules reading one word - and
-    "lebron's last game 7" raised out of the reader to the user, since the
-    window's "last game" and the postseason's "game 7" are both right.
+    series, and "in march 24 2018" the month and the day in it - both
+    readings right, so an overlap is joined, never raised as two rules
+    reading one word.
 
     .. versionadded:: 6.0.0
 

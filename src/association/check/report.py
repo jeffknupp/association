@@ -44,12 +44,12 @@ def discover_seasons(data_dir: Path) -> list[int]:
 
 
 def discover_season_types(data_dir: Path) -> list[int]:
-    """Same reasoning as discover_seasons - a hardcoded "1,2,3" default used to
-    disagree with `data pull`'s own default of "2,3" (preseason skipped),
-    making a plain `data check` report preseason as entirely missing for data
-    nobody ever asked to fetch. Discovering from what's actually on disk
-    (across every season, not per-season) fixes that structurally instead of
-    just picking a new hardcoded string that could drift out of sync again."""
+    """Same reasoning as discover_seasons - a hardcoded "1,2,3" default
+    disagrees with `data pull`'s own default of "2,3" (preseason skipped),
+    and a plain `data check` would report preseason as entirely missing for
+    data nobody asked to fetch. Discovering from what's actually on disk
+    (across every season, not per-season) cannot drift out of sync the way
+    a hardcoded string can."""
     games_dir = data_dir / "games"
     if not games_dir.exists():
         return []

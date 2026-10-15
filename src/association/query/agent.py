@@ -3,20 +3,13 @@ and the sayer, and a refusal naming why where nothing has a reading of the
 question. One model call, the normalizer's, is the whole cost; nothing after
 it reaches a model.
 
-Until 5.0.0 a question no template or compiled reading answered fell through
-to a tool-calling agent that wrote SQL by hand. Measured (ISSUES.md #129,
-2026-09-18: 24 questions at production defaults), it answered one question in
-23 and did not finish 61% of the time, and where it finished it was wrong five
-times in six - an agent with nothing to read fills the silence from its own
-weights, which is exactly what ``check_coverage``'s reasoning had said all
-along. So it is gone, with its prompt, its tools and its budget. Where it
-would have been asked, :meth:`Agent.ask` answers a refusal that names what the
-fast path could not read (``answered_by="refused"``), in seconds. That is the
-same answer ``--disable-fallthrough`` gave as an error, now the only answer,
-and every recorded reason stands: words that ask for nothing a reader reads, a narrowing the
-relation cannot honor, a reply the normalizer could not use. The templates
-went in Phase 2 (``ROADMAP.md``): every shape the words ask is the compiler's, read by a
-reader into a Result and worded by the sayer (``compose``).
+Every shape the words ask is the compiler's, read by a reader into a Result
+and worded by the sayer (``compose``), and every refusal and decline a
+reading comes to is a cause the planner says - answered ``"fast"``, since
+having something to say about the question is an answer. Only a question
+too short to be one, a reply the normalizer could not give, or a value the
+Reading cannot hold is answered ``"refused"``, with a sentence naming why
+(#129 records why nothing hands such a question to a model).
 """
 
 from __future__ import annotations
@@ -60,8 +53,7 @@ def _noted(said: Answer, note: str) -> Answer:
     """``said`` with a sentence appended to its text, and recorded on its
     ``data`` too, so a caller rendering from ``data`` (the web page) does not
     lose what the text-only reader is told: which name a default chose, how
-    much of a season the source holds. A new Answer: the said one is frozen
-    (it was the sayer's mutable ``Reply`` until Phase 4, step 4)."""
+    much of a season the source holds. A new Answer: the said one is frozen."""
     data = dict(said.data or {})
     notes = data.setdefault("notes", [])
     if isinstance(notes, list):
@@ -185,9 +177,9 @@ class Agent:
         Args:
             question: The natural-language question.
             label: What to record as the run's ``command`` in the history file.
-                A caller says what the request was; this used to be
-                ``shlex.join(sys.argv)``, which is only true of a CLI and says
-                nothing useful about a server handling many questions.
+                A caller says what the request was: ``sys.argv`` is only
+                true of a CLI and says nothing useful about a server
+                handling many questions.
 
         Returns:
             An :class:`association.query.answer.Answer`. ``answer.text`` is
@@ -223,7 +215,7 @@ class Agent:
         try:
             # Every remark written on the way - a caveat, a stated default, a
             # definition - recorded as a kind and its facts beside the
-            # sentence it stays in (query/notes.py; ROADMAP.md, Phase 0).
+            # sentence it stays in (query/notes.py).
             # One read of the players' and teams' names for the whole
             # question (query/names.py), not a statement per word.
             with season_on_record(on_record), names_loaded(), collect_remarks() as remarks:
@@ -272,15 +264,13 @@ class Agent:
         sayer said, whole (:class:`~association.query.answer.Answer`, which
         :meth:`_answer` stamps). Returns None, with :attr:`unanswered`
         naming why, where nothing here reads the question: words that ask
-        for nothing a reader reads, slots that fail validation, or a point
+        for nothing a reader reads, a value the Reading cannot hold, or a point
         the compiler and the named refusals could not take.
 
         The said Answer is returned, rather than just its text, because
         that text is only one of the things the reader produced - see
-        :attr:`Answer.data <association.query.answer.Answer.data>`, which
-        nothing could reach before 2.0. (The label, the retired intent's
-        name, was returned beside it until Phase 4, step 2; the sayer's
-        ``Reply``, until Phase 4, step 4.)"""
+        :attr:`Answer.data <association.query.answer.Answer.data>`, the
+        answer's structured values."""
         self.unanswered = None
         self.unanswered_as = None
         read = self._read_or_refuse(question, history)
@@ -289,13 +279,10 @@ class Agent:
         reading = self._reading(read, history)
         # A name the model supplied that the question never held, and that
         # nothing in the question can replace, is refused by name rather than
-        # answered: the router invented whole names, not only nicknames -
-        # "compare sga and embiid" came back with Jusuf Nurkic in the second
-        # slot, and every stage after this one would have answered about him
-        # perfectly. Passing it on was tried and is worse: the agent this
-        # replaced answered one of these with a 55-second fingerprint for
-        # "Ronaldo Lopes", a player who does not exist, percentages included.
-        # Only where the answer would actually be about that player - a
+        # answered: a model invents whole names, not only nicknames -
+        # "compare sga and embiid" came back with Jusuf Nurkic as the second
+        # name, and every stage after this one would answer about him
+        # perfectly. Only where the answer would actually be about that player - a
         # stray name on a team question changes no answer.
         if reading.misread and reading.asked in PLAYER_ASKS:
             misread = misread_players(list(reading.misread))
@@ -311,18 +298,14 @@ class Agent:
     def _reading(self, reading: Reading, history: RunHistory) -> Reading:
         """``reading`` kept, planned and its decisions recorded. Split out of
         :meth:`_try_fast_path` for the complexity gate."""
-        # What the words ask and what will answer, said beside the reading:
-        # until 5.0.0 every intent outside TEMPLATES printed "not ported yet"
-        # here - on 206 of 277 yardstick answers, all of them the compiler's
-        # (ISSUES.md #284). One line since Phase 3, step 4, slice (b), where
-        # the router's line, the parser's parent and the subject's settled
-        # intent stood: the key the words ask is the Reading's own.
+        # What the words ask and what will answer, said beside the reading in
+        # one line: the key the words ask is the Reading's own.
         path = "the compiler" if reading.asked is not None else "no reader: refused unless a named refusal has its cause"
         kind = reading.subject.kind if reading.subject is not None else None
         history.log(f"  -> (parser) asked={key_path(reading.asked)} kind={kind!r} filters={reading.stated()} - {path}")
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
-        # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
+        # parser read the point; it does not plan it.
         self.query = plan_point(reading)
         for decision in reading.decisions:
             history.record_decision(decision)
@@ -360,7 +343,7 @@ class Agent:
         return read
 
     def _read_question(self, question: str, history: RunHistory) -> Reading | None:
-        """The Reading the parser reads (ROADMAP plan item 6, step c): the
+        """The Reading the parser reads: the
         model copies the names out of the question and picks a stat key
         (:func:`~association.query.normalizer.normalize`), and
         :func:`~association.query.parse.read_route` checks both and reads
@@ -388,12 +371,8 @@ class Agent:
         nothing reads (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`
         - "most opponent bench points allowed ..."), said by the planner.
         With no reader and no named refusal, the ``no_shape`` cause, said by
-        the planner ("what its words ask has no reader"; recorded as why the
-        question was refused until Phase 5, step 5).
-
-        Until Phase 3, step 0 this re-read the question
-        (``refusals.by_question``, ``refusals.unanswerable``) and the team-only
-        player was the fast path's own check, after this one."""
+        the planner ("what its words ask has no reader"). Nothing here reads
+        the question again."""
         if reading.refused is not None:
             # The planner's refusal (plan_point), worded here.
             assert isinstance(self.query, Refusal)
@@ -411,8 +390,7 @@ class Agent:
 
     def _run_compiled(self, reading: Reading, history: RunHistory) -> Answer | None:
         """A shape the words ask, which the compiler alone answers (every
-        one since Phase 2 retired the templates; ``compose.COMPILED_INTENTS``
-        listed their names until Phase 3, step 4). Where the
+        one). Where the
         compiler has no reading of the point, in this order: the
         compiler's own reason - the planner refusing a narrowing the relation
         cannot honor (the decline :func:`~association.query.compose.plan.plan_point`
@@ -425,11 +403,11 @@ class Agent:
         honor, a point its only reader reads nothing of - is a cause the
         planner says in the decline's own sentence (``cannot_honor``,
         ``no_reading_of_point``), at the decline's place in this order,
-        answered: a refusal that names why is an answer (Phase 3, step 4)."""
+        answered: a refusal that names why is an answer."""
         t0 = time.monotonic()
         scope = reading
         if reading.defaulted is not None and isinstance(self.query, Refusal):
-            # Phase 5, step 7 (the review): a defaulted-word refusal is said
+            # A defaulted-word refusal is said
             # after the coverage floor and the words nothing reads have had
             # their look, as a decline is - a season under the floor and a
             # playoff round are the truer causes, and both are checked
@@ -518,8 +496,7 @@ class Agent:
         and the sayer says it (:func:`~association.query.compose.say.say_left_out`)
         - after the coverage caveat, and only where the reader answered:
         never beside the coverage floor's refusal, which read no name (the
-        retired template's order: the floor, then the answer and this note).
-        Until Phase 3, step 0 this re-read the question."""
+        floor, then the answer and this note)."""
         if reading.left_out is None or check_coverage(self._planned_shape(), reading.point if reading.point is not None else reading) is not None:
             return composed
         return _noted(composed, say_left_out(reading.left_out))
@@ -543,12 +520,11 @@ class Agent:
             return self._answer(question, history, Answer(text=refusal_result(short).text), "refused")
         fast = self._try_fast_path(question, history)
         if fast is not None:
-            # The planned point's shape, which the page renders the data by
-            # (Phase 4, step 1): the one the answer side chose its reader by.
+            # The planned point's shape, which the page renders the data by:
+            # the one the answer side chose its reader by.
             return self._answer(question, history, fast, "fast", shape=self._planned_shape())
         # Nothing read the question: the refusal names why, in the words the
-        # parser or the compiler gave it up with (#129 - the
-        # agent this replaced answered one such question in 23).
+        # parser or the compiler gave it up with (#129).
         why = self.unanswered or "no reading of the question"
         history.log(f"  -> (refused) {why}")
         return self._answer(question, history, Answer(text=refusal_text(why, self.unanswered_as)), "refused")

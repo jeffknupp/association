@@ -5,12 +5,8 @@ it), wins and losses, by month - from the lexicon's words
 bench phrase of a teammate the subject reading read blanked out: "maxey
 points when embiid starts" is Embiid's start, not Maxey's own starter split.
 
-Phase 3, step 4, slice (b): until it the split had two readers - a stage of
-``router.py`` (``_route_split_slot``, which wrote the ``split`` slot every
-tagger after it read) and the parser's re-read of it with the teammates'
-phrases blanked (``parse._read_route_split``), which replaced the first
-where a phrase stood. One reading now, before the cuts tagger that reads it
-(a venue beside a venue split is the split's).
+One reading, before the cuts tagger that reads it (a venue beside a venue
+split is the split's).
 
 .. versionadded:: 6.0.0
 """
@@ -122,8 +118,7 @@ def _split_side(split: str, question: str) -> tuple[str, re.Match[str] | None]:
 def _as_split(split: str | None) -> Split | None:
     """A split read off the words as the filters' own literal - the reader
     writes one of the set, and one that wrote anything else is a bug said
-    out loud, as the tests' slot door said it for a slot dict until Phase 4,
-    step 0."""
+    out loud."""
     if split is None:
         return None
     if split not in get_args(Split):

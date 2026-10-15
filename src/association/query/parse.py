@@ -1,7 +1,6 @@
-"""The parser: a question, read into one :class:`~association.query.reading.Reading`
-with no router.
+"""The parser: a question, read into one :class:`~association.query.reading.Reading`.
 
-ROADMAP plan item 6, step (b). What the model contributes arrives as data -
+What the model contributes arrives as data -
 the names it copied out of the question and the stat key it chose
 (:func:`read_route` takes them as arguments, from
 :func:`~association.query.normalizer.normalize`) - and everything else is
@@ -11,10 +10,9 @@ grammar's rules (:func:`~association.query.grammar.settle`), the taggers,
 one per family (:func:`_tagged`) and the point
 (:func:`~association.query.point.read_point`), with who the question is
 about read once (:func:`~association.query.subject.read_subject`) -
-into the Reading :func:`read_route` returns. Since Phase 3, step 4,
-slice (b) there is no router: its stages are the grammar's rules and the
-split's tagger, and nothing carries a route between the words and the
-Reading.
+into the Reading :func:`read_route` returns. Nothing carries a route
+between the words and the Reading: what the words ask is the grammars'
+and the grammar's rules', and the filters are the taggers'.
 
 Nothing here reaches a model, and nothing here trusts a name it was given:
 a span that is no player's and no team's is dropped, never made a subject
@@ -124,8 +122,8 @@ _PLAYER_LOG: lexicon.GrammarRow = lexicon.AnyOf(
         lexicon.stands("window"),
         # A month or a date - unless a per-game word stands beside it, where
         # the line over those games is asked ("how many points did fox
-        # average in November 2023", "tatum averages since 12/11/2023": the
-        # last 10 games were listed until ISSUES.md #412).
+        # average in November 2023", "tatum averages since 12/11/2023" - never
+        # the last 10 games listed, ISSUES.md #412).
         lexicon.AllOf((lexicon.AnyOf((lexicon.PLAYER_LOG_DATE_ROW, lexicon.stands("date"))), lexicon.NoneOf((lexicon.PER_GAME_ROW,)))),
     )
 )
@@ -188,7 +186,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     (frozenset({"player"}), _PLAYER_LOG, PLAYER_LOG),
     # A player's split by a companion - unless a versus word sets him against
     # a team, where "maxey points vs boston without embiid" is his own games
-    # narrowed (ROADMAP step 3: the absence a condition, on whichever side the
+    # narrowed (the absence a condition, on whichever side the
     # name resolves to), not a two-sided split.
     (
         frozenset({"player+companions"}),
@@ -211,8 +209,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], lexicon.GrammarRow, PointShape], ...
     (frozenset({"everyone"}), lexicon.STREAK_ROW, TEAM_RECORD),
     # "game log", or a log after a window of games as the window tagger typed it ("last game log").
     (frozenset({"everyone"}), lexicon.AnyOf((lexicon.LEAGUE_LOG_ROW, lexicon.StandsBefore(frozenset({"window"}), lexicon.LOG_AFTER_A_VALUE))), PLAYER_LOG),
-    # How many players a season line holds (ISSUES.md #390; D4 lifted for it
-    # by Jeff, 2026-10-13): the ranking, counted.
+    # How many players a season line holds (ISSUES.md #390): the ranking, counted.
     (frozenset({"everyone"}), lexicon.PLAYERS_COUNTED_ROW, PLAYERS_COUNTED),
     (frozenset({"everyone"}), lexicon.ANY_WORDS_ROW, PLAYER_RANKING),
 )
@@ -226,7 +223,7 @@ and the values the taggers typed where they stand
 opponent with its versus word, a companion's phrase, a line - asked by
 value, never by a character written into the question. The children
 (:data:`~association.query.subject.KIND_ASSIGNED_ASKS`) are assigned under
-it by the subject reading, as they were on the router's parent until 5.0.0.
+it by the subject reading.
 
 .. versionadded:: 5.0.0
 
@@ -242,8 +239,8 @@ it by the subject reading, as they were on the router's parent until 5.0.0.
 
 # The measure grammar - the stat a question names in its own words, read
 # before the normalizer's key - is the lexicon's (lexicon.MEASURE_GRAMMAR)
-# and the measure tagger's one reading (measure.named) since Phase 3, step
-# 2; the grammar's rules take it as their context (grammar.settle).
+# and the measure tagger's one reading (measure.named); the grammar's rules
+# take it as their context (grammar.settle).
 
 
 def parent_asked(question: str | lexicon.GrammarText, kind: str, companions: bool = False) -> PointShape | None:
@@ -293,9 +290,9 @@ def classify_span(index: names.NameIndex, text: str) -> str | None:
         return "team"
     if players:
         return "player"
-    # A single near spelling is that player - the typo policy Jeff settled
-    # (2026-09-26): the index defaults, visibly, where exactly one player is
-    # within the edit budget; two or more ask, as they always did. "Embid"
+    # A single near spelling is that player - the typo policy Jeff settled:
+    # the index defaults, visibly, where exactly one player is within the
+    # edit budget; two or more ask. "Embid"
     # is Joel Embiid; "jolic" (Jokic or Jovic) is nobody's here.
     for spelling in dict.fromkeys((text, text.removesuffix("s"), text.removesuffix("'s"))):
         if spelling and len(suggest_players(index, spelling)) == 1:
@@ -355,9 +352,8 @@ def _as_typed_part(players: names.PlayerIndex, question: str, name: str) -> str:
     harper" typos the given name, and the corrected "Dylan" is not a word
     the question lacks). A completion that resolves to nobody is cut back
     whatever the part reaches ("derozan" came back "Derozan Valenčić", a
-    surname no player has). The router-era repair
-    ``entities.undo_name_completion`` made this cut after every stage; it is
-    the parser's now, on the model's own names, before the reading respells
+    surname no player has). The cut is the parser's, made once, on the
+    model's own names, before the reading respells
     them - which is what keeps a typo'd surname ("Bam Adeyebu", read as Bam
     Adebayo) from being cut back to the ambiguous "Bam"."""
     words = _words(name)
@@ -516,8 +512,8 @@ def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
 
 
 # The columns asked for beside a ranking ("top 5 scorers with their rebounds
-# and assists", F017) are the measure tagger's reading since Phase 3, step 2
-# (``Measure.beside``, over lexicon.FIELDS_AFTER and TEAM_FIELD_WORDS).
+# and assists", F017) are the measure tagger's reading (``Measure.beside``,
+# over lexicon.FIELDS_AFTER and TEAM_FIELD_WORDS).
 
 # A quarter or half used as a CONDITION on which games count is the lines
 # tagger's reading (``line.read_period_line``), made here before the
@@ -568,7 +564,7 @@ def _read_route_beside(subject: Subject, question: str) -> bool:
 MIN_QUESTION_WORDS = 3
 """A question with fewer words than this is refused unread.
 
-Jeff, 2026-09-29: short or nonsensical questions are refused with a generic
+Jeff's rule: short or nonsensical questions are refused with a generic
 sentence, and no effort is spent on them - most of the StatMuse feed's
 two-word rows ("Tatum rec", "bam stats", "jaylen brown") are a user hitting
 enter before the question was typed, and a system that guesses at them
@@ -610,9 +606,7 @@ _READ_ROUTE_APOSTROPHES = str.maketrans({"\u2019": "'", "\u2018": "'"})
 def _read_route_folded(text: str) -> str:
     """``text`` with each typographic apostrophe (U+2019, U+2018) read as a
     straight one - the fold at the parser's door, for :func:`read_route`,
-    over the question and the names the model copied out of it
-    (``reading_from_route``, folded into :func:`read_route` in Phase 3,
-    step 4, slice (b), read through it too)."""
+    over the question and the names the model copied out of it."""
     return text.translate(_READ_ROUTE_APOSTROPHES)
 
 
@@ -688,8 +682,7 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # range opened on a dated day held apart from the words as the value
     # typed there (lexicon.GrammarText) - so a row reads "a window of games
     # stands here" by value and claims only its own words around it; the
-    # values' words are their readers' to claim (Phase 3, step 4, slices
-    # (b) and (c), as marks written into the question until Phase 4, step 6).
+    # values' words are their readers' to claim.
     named_lines = lines_named(question)
     prepared = grammar_text(
         question,
@@ -788,9 +781,8 @@ def _read_route_staged(
     threshold in the text is a ranking), and then run again under the
     parent - the one case of a second run, measured at 4 of 628 recorded
     questions, every one a history the rules read as a line (and 59 of
-    2,082 wordings outside the corpus). Until 5.0.0's last change they ran
-    under the parent first and again under each child to see whether it
-    held, and once more under the one that did: 1.7 runs a question on
+    2,082 wordings outside the corpus), where running them under the
+    parent and again under each child would be 1.7 runs a question on
     average, up to four.
 
     Returns what the rules settled, the decisions made getting to it (the
@@ -818,8 +810,7 @@ def _read_route_staged(
         # A team's record under a companion's line names no words, and the
         # rules' own settling of it stands. The decisions record the moves
         # by their keys, as the trace prints them (``asked``,
-        # ``relation/shape/by``; by the page's labels, as ``intent``, until
-        # Phase 4, step 2).
+        # ``relation/shape/by``).
         if staged.asked == child or words is None:
             decisions.append(Decision("parser", "asked", key_path(parent), key_path(child), _why_named(child, words)))
             if staged.asked != child:
@@ -1045,7 +1036,7 @@ def _reading(
     # What the words name that nothing reads, read once, here: a refusal
     # said before any reader runs, and the shapes recognized and read by
     # nothing, said where the answer side declines (the question as it was
-    # asked, unfolded, as the answering loop read it until Phase 3, step 0).
+    # asked, unfolded).
     players, teams = index.players, index.teams
     refused = _reading_from_route_refused(players, teams, asked, pointed)
     unsupported = _reading_from_route_unsupported(asked, pointed)
@@ -1061,7 +1052,7 @@ def _reading(
         lambda probed: (_reading_from_route_refused(players, teams, probed, pointed), _reading_from_route_unsupported(probed, pointed), _reading_from_route_left_out(players, probed, pointed)),
     )
     found = list(claimed_once(found))
-    # Phase 5, step 1: an unread word that carries a meaning the reading
+    # An unread word that carries a meaning the reading
     # defaulted past is a refusal by name, and the refusal claims its words
     # (so the ledger reads them, and the deletion probe agrees: without the
     # word there is no refusal).
@@ -1101,8 +1092,7 @@ def _reading_from_route_names(scope: Filtered, subject: Subject, asked: PointSha
     companions the slot era carried by name (the absent ones; the teammates
     who played, on the with/without split alone and only where none is
     absent) and the subject reading's own players, teams, opponent and
-    tenure - what the slot-era projection listed until Phase 3, step 4,
-    slice (c), read off the typed values."""
+    tenure, read off the typed values."""
     found: list[str] = [*scope.who.players, *scope.who.teams, *(name for name in (scope.cuts.opponent, scope.cuts.tenure) if name is not None)]
     absent = [c.player for c in scope.companions if c.absent]
     if asked == PRESENCE_SPLIT and not absent:
@@ -1147,13 +1137,11 @@ def with_point(question: str, reading: Reading) -> Reading:
 
 # --- What the words name that nothing reads ------------------------------------
 #
-# Phase 3, step 0: the answering loop re-read the question after the parser
-# had settled it, in three places - refusals.by_question (a championship),
-# entities.player_named_on_a_team_only_question (a player named on a team's
-# question) and refusals.unanswerable (eight shapes nothing reads). Each was a
-# reading of the words the reader should make; it is made here, once, and
-# carried on the Reading as reading.Cause values the planner says through the
-# one phrase table (compose.plan.refusal_result, say.refusal_phrase).
+# A championship, a player named on a team's question, and the shapes
+# nothing reads are readings of the words, made here, once, and carried on
+# the Reading as reading.Cause values the planner says through the one
+# phrase table (compose.plan.refusal_result, say.refusal_phrase) - nothing
+# after the parser reads the question for them.
 
 
 def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamIndex, question: str, reading: Reading) -> Cause | None:
@@ -1162,8 +1150,8 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     :attr:`~association.query.reading.Reading.refused`:
 
     - a championship (``championship``): "Show which team won the nba
-      championship for the past 10 years" (Jeff's session, 2026-09-24) was
-      read as a team ranking and ranked regular-season records since 2017.
+      championship for the past 10 years" read as a team ranking would rank
+      regular-season records since 2017.
       The warehouse holds every playoff game and no table of titles; a
       champion is derivable (the winner of a postseason's last game) and
       nothing derives it yet. "Title odds" is ``TEAM_OUTLOOK``'s projection
@@ -1246,7 +1234,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         return Cause(kind="opponent_not_read", facts={"words": unread_versus, "shape": reading.asked})
     unplaced = team_not_read(teams, question, reading)
     if unplaced is not None:
-        # Phase 5, step 6 (ISSUES.md #436): a team named beside a player that
+        # ISSUES.md #436: a team named beside a player that
         # no read placed - his tenure, the opponent - is refused by name,
         # never answered over every game.
         return Cause(kind="team_not_read", facts={"words": unplaced[0], "team": unplaced[1], "shape": reading.asked})
@@ -1320,12 +1308,12 @@ _DEFAULTED_ORDER: tuple[str, ...] = ("number", "stat", "window", "date")
 """The classes of a word the reading defaulted past, in the order one is
 said where a question holds more than one: a number first (the sharpest
 loss - "last 5 games" read as the season), then a stat, a window word, a
-date (Phase 5, step 1)."""
+date."""
 
 
 def _reading_from_route_defaulted(question: str, reading: Reading, claimed: list[tuple[int, int]], names: tuple[str, ...], stat: str) -> tuple[Cause | None, list[Claim]]:
     """A word of ``question`` that carries a meaning the reading defaulted
-    past (Phase 5, step 1; :attr:`~association.query.reading.Reading.defaulted`):
+    past (:attr:`~association.query.reading.Reading.defaulted`):
     among the content words nothing ``claimed`` (the ledger's own rule,
     :func:`~association.query.lexicon.content_words`), a number that is no
     rate's unit, no season the span read and no read line's or period's
@@ -1337,10 +1325,9 @@ def _reading_from_route_defaulted(question: str, reading: Reading, claimed: list
     class by :data:`_DEFAULTED_ORDER`, its facts the words of every class
     found, and a claim over each such word, since the refusal reads them.
     A word that restates the shape ("record", "stats", "most") is in no
-    class and stays unread. Measured before the step on the four
-    populations (``~/association-research/stages/unread_meaning.py``, on
-    ``520a94b``): 86 of the 1,807 feed questions answered through a reader
-    and 8 of the 628's 603 carried one; 0 and 0 after."""
+    class and stays unread. Measured on the populations
+    (``~/association-research/stages/unread_meaning.py``): no question
+    answered through a reader carries one."""
     unread = [(start, end, word) for start, end, word in lexicon.content_words(question, names, stat) if not any(first < end and last > start for first, last in claimed)]
     context = _DefaultedContext.of(reading)
     classes: dict[str, list[str]] = {}
@@ -1399,8 +1386,8 @@ class _DefaultedContext:
     cuts: Cuts
     #: What the point is read as: the stat class applies on a shape that
     #: reads ONE stat (a ranking, a count, a single game's high), never on a
-    #: log or a line, which show the whole line (the Phase 5 review:
-    #: "luka doncic points rebounds assists last 5 games" was a correct log).
+    #: log or a line, which show the whole line ("luka doncic points rebounds
+    #: assists last 5 games" is a correct log).
     shape: PointShape | None
 
     @classmethod
@@ -1428,9 +1415,8 @@ class _DefaultedContext:
 
 def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedContext, names_read: dict[str, str]) -> str | None:
     """Which class one unread word falls in (:func:`_reading_from_route_defaulted`),
-    or None where it carries no meaning the reading defaulted past. Narrowed
-    by the Phase 5 review (2026-10-14), which found the first classes
-    refusing correct answers: a stat word counts only on a shape that reads
+    or None where it carries no meaning the reading defaulted past. Narrow,
+    so a class refuses no correct answer: a stat word counts only on a shape that reads
     one stat (:func:`_one_stat_shape`); a window word only beside a count or
     a game word ("top 5 games", "last game" - not "top scorers", "past or
     present"); "may" only in a date ("in may", "may 10" - not "who may
@@ -1532,10 +1518,9 @@ def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Ca
     the first only where the answer side declined and the coverage floor
     did not refuse - a question the compiler answers is answered (the
     Reading's :attr:`~association.query.reading.Reading.unsupported`).
-    Measured before the move (``~/association-research/stages/refusal_sites.py``,
-    on ``87cc782``): every question one of these recognizes was refused by
-    it - 6 of the 628 recorded and 157 of the 2,082 feed questions - and no
-    question was recognized by two."""
+    Measured (``~/association-research/stages/refusal_sites.py``): 6 of the
+    628 recorded and 157 of the 2,082 feed questions are recognized by one
+    of these, and no question by two."""
     found = (
         _unsupported_playoff_round(reading),
         _unsupported_situation(reading),
@@ -1661,8 +1646,7 @@ def _reading_from_route_left_out(players: names.PlayerIndex, question: str, read
     words name beyond the players it holds (``Reading.left_out``), which the
     answer says beside the one polygon it draws
     (:func:`~association.query.subject.compared_but_unmatched`). Read for a
-    fingerprint alone, the one shape that says it; until Phase 3, step 0
-    the answering loop re-read the question for it."""
+    fingerprint alone, the one shape that says it."""
     if reading.asked != NETPOINTS_FINGERPRINT:
         return None
     scope = reading
