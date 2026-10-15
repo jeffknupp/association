@@ -339,6 +339,14 @@ def per_season_window(question: str) -> tuple[Claim, ...]:
 
     .. versionadded:: 6.0.0
     """
+    first = lexicon.FIRST_GAMES_OF_SEASONS.search(question)
+    if first is not None:
+        # The first games of each of the seasons counted (ISSUES.md #432).
+        counted = lexicon.PAST_N_SEASONS.search(question, first.end())
+        claims = [Claim(first.start(), first.end(), "window")]
+        if counted is not None:
+            claims.append(Claim(counted.start(), counted.end(), "window"))
+        return tuple(claims)
     each = lexicon.EACH_SEASON.search(question)
     if each is None:
         return ()

@@ -1573,3 +1573,12 @@ def test_a_per_game_word_beside_a_month_or_a_date_is_the_line_not_the_log(con: d
 def test_a_month_with_no_per_game_word_is_still_the_log(con: duckdb.DuckDBPyConnection) -> None:
     """ "jokic games in november 2023" lists the games."""
     assert _read(con, "jokic game log november 2023", ["Jokic"]).asked == PLAYER_LOG
+
+
+@pytest.mark.parametrize("question", ["warriors record in the first 15 games last 10 season", "lebron first 10 games last 2 seasons"])
+def test_a_seasons_first_games_beside_a_count_of_seasons_is_a_window_per_season(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ISSUES.md #432: "warriors record in the first 15 games last 10 season"
+    listed the range's first 15 games, all of 2016-17's - a window per
+    season the reader refuses by name, as "every season" beside one is."""
+    reading = _read(con, question)
+    assert reading.refused is not None and reading.refused.kind == "window_per_season"

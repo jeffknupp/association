@@ -1041,6 +1041,13 @@ EACH_SEASON = re.compile(r"\b(?:each|every|per)\s+(?:season|year)\b|\b(?:season|
 
 .. versionadded:: 6.0.0
 """
+FIRST_GAMES_OF_SEASONS = re.compile(rf"\b(?:first|opening)\s+(?:{_SEASON_COUNT})\s+games?\b(?=.*\b(?:last|past|previous)\s+{N_SEASONS}\b)", re.IGNORECASE)
+"""A season's first games beside a count of seasons - "the first 15 games
+last 10 season" (ISSUES.md #432): a season's opening games over each of
+the seasons counted, never the range's first 15 (all of one season's).
+
+.. versionadded:: 6.0.0
+"""
 FIRST_END_WORDS: frozenset[str] = frozenset({"first", "opening", "earliest"})
 """The words of :data:`COUNTED_END` that name the oldest end; the rest name the newest.
 
