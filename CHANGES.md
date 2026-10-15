@@ -15,6 +15,7 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`answer.RenderResult` is removed (breaking)**: no renderer has returned it since a chart became a reader's `Chart` drawn before the sayer, and nothing in the package named it - only `tests/query/test_fingerprint.py`, which keeps its own two-field record (`Drawn`: the message and the artifact). Proven on the feed: 2,082 of 2,082 identical against a fresh run of `30a5de56`.
 - **`measure.measure_of` is removed (breaking)**: nothing in the package called it - only the tests, which build a `Measure` from a key or an alias through `tests/routed.py`'s `measure_of` (the same function, over `measure.key_of`). The package's way to the catalog is unchanged (`measure.key_of`, `measure.measured`). Proven on the feed: 2,082 of 2,082 identical against a fresh run of `30a5de56`.
 
 ## 6.0.0 - 2026-10-15

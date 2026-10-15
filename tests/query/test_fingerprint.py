@@ -13,13 +13,14 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
 import pytest
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
-from association.query.answer import RenderResult
+from association.query.answer import Artifact
 from association.query.compose.netpoints import NetPointsQuery, draw_fingerprint, fingerprint_result, read_fingerprint
 from association.query.compose.say import refusal_phrase, say
 from association.query.entities import Entity, collect_name_readings
@@ -38,15 +39,24 @@ from association.query.reading import Subject as Who
 from association.query.result import Result, Unanswered
 
 
-def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | Unanswered | None) -> RenderResult:
+@dataclass(frozen=True)
+class Drawn:
+    """A fingerprint said and drawn: the message, and the file written -
+    ``None`` where nothing was drawn, which is still an answer."""
+
+    message: str
+    artifact: Artifact | None
+
+
+def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | Unanswered | None) -> Drawn:
     """A fingerprint read, drawn and said, as ``compose.answer`` does it: the
     message and the file, or the reader's refusal said, with nothing drawn."""
     if read is None:
-        return RenderResult("", None)
+        return Drawn("", None)
     if isinstance(read, Unanswered):
-        return RenderResult(say(read).text or "", None)
+        return Drawn(say(read).text or "", None)
     said = say(draw_fingerprint(read, out_dir))
-    return RenderResult(said.text, said.artifacts[0] if said.artifacts else None)
+    return Drawn(said.text, said.artifacts[0] if said.artifacts else None)
 
 
 def _unavailable(load: Callable[[], object]) -> str:
@@ -59,14 +69,14 @@ def _unavailable(load: Callable[[], object]) -> str:
 
 def _render(
     con: duckdb.DuckDBPyConnection, out_dir: Path, players: list[Entity], ambiguous: list[str], season: int, *, view: str = "total", scale: str = "percentile", order: str | None = None
-) -> RenderResult:
+) -> Drawn:
     """Already-resolved players' fingerprints read, drawn and said, through
     the NetPoints relation's reader (``compose.netpoints.fingerprint_result``),
     its draw step and the sayer."""
     return _said(con, out_dir, fingerprint_result(con, players, ambiguous, season, view=view, scale=scale, order=order))
 
 
-def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season: int) -> RenderResult:
+def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season: int) -> Drawn:
     """A fingerprint asked for by name - one, or several split on " vs " -
     through the reader's resolution (``compose.netpoints.read_fingerprint``)."""
     split = [name.strip() for name in names.split(" vs ")]
@@ -74,7 +84,7 @@ def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season:
     return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(**scope.filters(), shape="chart")))
 
 
-def _drawn(result: RenderResult) -> Path:
+def _drawn(result: Drawn) -> Path:
     """The file a render wrote. Asserting it is not None here rather than in
     every caller keeps the "nothing was drawn" case from silently becoming an
     AttributeError three lines later."""
@@ -457,7 +467,7 @@ def test_render_fingerprint_says_how_it_read_a_near_spelling(con: duckdb.DuckDBP
 
 
 def test_render_fingerprint_reports_an_unknown_name_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert _asked(con, tmp_path, "Nobody At All", season=2026) == RenderResult(
+    assert _asked(con, tmp_path, "Nobody At All", season=2026) == Drawn(
         "No player found matching 'Nobody At All'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record.",
         None,
     )
