@@ -197,7 +197,7 @@ not yet typed, and guessing at "Tatum rec" answered something else.
    quarter or a half, a team where a player ranking was named, a line with
    no number. What the words ask is a
    :class:`~association.query.reading.PointShape` - a relation, a shape and
-   a ``by``, one of the 25 the grammar can name (``Reading.asked``) - or no
+   a ``by``, one of the 28 the grammar can name (``Reading.asked``) - or no
    shape at all.
 4. **Each filter family is read by one tagger, in the order each reads what
    the ones before it settled**: the split (:mod:`~association.query.split`),
@@ -217,7 +217,7 @@ not yet typed, and guessing at "Tatum rec" answered something else.
    no other module of the query package calls ``re``.
 5. **The point reader** (:func:`association.query.point.read_point`) reads
    the point the answer is computed from: the key's default point, moved by
-   what the words say (a measure, a skeleton, an aggregate), declaring the
+   what the words say (a measure, a skeleton), declaring the
    shape it is read and said as, one field, ``Reading.read_as`` (a
    :class:`~association.query.reading.PointShape`: its relation, one of
    nine, its shape, one of seven - ``scalar``, ``rows``, ``ranking``,
@@ -256,8 +256,8 @@ holding the other are joined into one named for both
 claims ledger names (there are none on either population). The content
 words no claim covers are ``Reading.unread``, counted by the rule the claims
 ledger measures with from outside the reader
-(:func:`association.query.lexicon.content_words`): 702 of the 2,411 content
-words of the 628 recorded questions, most of them words that restate the
+(:func:`association.query.lexicon.content_words`): 681 unread content
+words over the 628 recorded questions (``scripts/ledger_held.json``), most of them words that restate the
 shape ("average", "record", "stats").
 
 PLAN: one check, one value
@@ -276,7 +276,10 @@ returns the Query-or-Cause, one value
   :class:`~association.query.compose.shots.ShotQuery`) - each holding the
   Reading's ten filters as its own, with the compiler's measure names built
   once from the point's typed measures where it is handed over
-  (:func:`~association.query.compose.core.measure_names`);
+  (:func:`~association.query.compose.core.measure_names`), and the
+  aggregate the planner's own since decision D5, derived from what the
+  point is read as and its measure
+  (:func:`~association.query.compose.plan.aggregate_of`);
 * a **refusal**, unworded (a :class:`~association.query.result.Refusal`:
   the words' own cause, the point reader's, a floor no ranking applies);
 * or a **decline**, with its reason (an
@@ -287,14 +290,14 @@ returns the Query-or-Cause, one value
 The shape the answer is read and said as is the planned
 :class:`~association.query.reading.PointShape`
 (:func:`~association.query.compose.plan.planned_shape`): the point's own
-``on``, ``shape`` and ``by``, with the planner's one move - a season-line
+``Reading.read_as``, with the planner's one move - a season-line
 point its reader does not read is planned at the game level, on
 ``player_games``. The answer side chooses a reader, the coverage floor and
 the cells a shape honors by this key and by nothing else.
 
 **One table of cells per relation is the planner's allow list.** A cell is
 one narrowing a relation can apply - an opponent, a venue, a date, a window,
-a period, a line, a companion, a span cut: the 19 of
+a period, a line, a companion, a span cut: the 21 of
 :attr:`Filtered.CELLS <association.query.reading.Filtered.CELLS>`. Each
 relation declares the cells it narrows by once
 (:data:`association.query.player_relation.RELATION_SCOPING`,
@@ -332,9 +335,9 @@ RUN: the relations, and the compiler's one door
 -----------------------------------------------
 
 :func:`association.query.compose.answer` takes the Reading and the Verdict,
-and never reads the question. A refusal is said; a decline is handed back
-with its reason, and the question is refused. A planned query is read by its
-shape's reader, chosen from one table keyed by the ``PointShape`` (32 keys):
+and never reads the question. A refusal is said; a decline is a cause the
+planner says in the decline's own sentence. A planned query is read by its
+shape's reader, chosen from one table keyed by the ``PointShape`` (36 keys):
 ``compose.logs``, ``compose.stats``, ``compose.counts``, ``compose.highs``,
 ``compose.runs``, ``compose.pairs``, ``compose.seasons``,
 ``compose.rankings``, ``compose.presence`` and the rest. A reader returns a
@@ -384,7 +387,7 @@ a table and the rules of reading it:
 * and the name index's two loads (:mod:`association.query.entities`) and the
   warehouse's latest season (:mod:`association.query.connection`).
 
-Those twelve modules hold every statement the package runs - 74 by
+Those twelve modules hold every statement the package runs - 77 by
 ``scripts/check_ratchets.py``'s count. ``compose/`` executes only what the
 compiler compiles or a relation hands it, through one door
 (``compose.core.rows_of`` and ``values_of``). The compiler's skeletons are
@@ -446,8 +449,9 @@ what the CLI prints; everything beside it is what the pipeline computed:
 
 * ``answered_by`` - ``"fast"`` where something here read the question and
   had something to say (an answer, a clarification, a "no match", a refusal
-  a reader or the planner came to by its cause), ``"refused"`` where nothing
-  had a reading of the question and ``text`` names why. Until 5.0.0 the
+  a reader or the planner came to by its cause - since Phase 5, step 5 every
+  decline too, and words that ask for no shape), ``"refused"`` only for a
+  question too short to be one (fewer than three words), refused unread. Until 5.0.0 the
   second value was ``"agent"``, a 7B model writing the SQL.
 * ``shape`` - the planned ``PointShape`` the answer was read and said as,
   or ``None`` where the words came to no point. The web page renders by it:
