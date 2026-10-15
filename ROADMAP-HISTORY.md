@@ -1649,6 +1649,26 @@ agents' reports named here are in `~/association-research/stages/`.
     attribution, so the saving went to cleaner enumeration rather than
     time. Open P1s 2 of 189 at the close.
 
+46. **Phase 5, step 7 (2026-10-14 night): the live run.** `live_parser31`
+    on master after step 6 (the lead, ollama's one caller): 167/175 and
+    156/166, parser30's score to the question, with 7 answers moved
+    against parser30 and each graded. It earned its place: two of the
+    seven were regressions no offline proof had flagged, because both
+    moved in the allowed direction on paper - a correct answer refused by
+    name ("three points made" read as an unread stat beside the
+    3-pointers the tagger took, step 1's guard) and a correct answer
+    declined by a cell (the sweep's #352 stopped dropping a window on two
+    teams' meetings, and the meetings read had no window to honor). Both
+    fixed on the same tree (the guard by stem; the meetings read slicing
+    the last N from its one read, "their last 10 of 60 meetings ... the
+    Lakers won 6-4", the key's own reading), 3 corpus and 3 feed answers
+    moved, the score taken again. What it taught: "fluent to refusal" is
+    the allowed direction only where the fluent answer was wrong, and the
+    offline compare cannot tell a correct answer from a wrong one - the
+    yardstick's key can, which is why the live run closes a phase.
+    Remaining in the step: the independent review and the AGENTS.md
+    compaction.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
