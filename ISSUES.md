@@ -1908,6 +1908,7 @@ those were found.
 - **Next step:** a coverage floor for plus-minus at 2009 (`nba/coverage.py`, the measure's table resolved per question) so a read reaching below it is refused or caveated as the empty box scores are (`_empty_box_scores`); a test per reader that reads the column.
 - **Priority:** P2 - a figure quietly wrong where the span reaches before 2009.
 - **Source:** ESPN.
+- **GitHub:** #462
 
 ## P3: refusal or gap
 
@@ -2714,6 +2715,7 @@ those were found.
 - **Next step:** grep the standings relation and `team_seasons` for the two columns; where one is read, floor it at 1994 or read `team_season_stats` instead.
 - **Priority:** P3 - unverified reach.
 - **Source:** ESPN.
+- **GitHub:** #463
 
 ### A pre-1994 season named in a question reaches two different seasons by table
 - **Found:** 2026-10-15, the feed sample's keyer (shard B), re-measured by the lead.
@@ -2722,6 +2724,7 @@ those were found.
 - **Next step:** one reading of a pre-1994 year for every table - the postseason rule (select by the calendar year played) extended to the regular season on `games`, or the season-line and standings labels shifted at load - decided with the coverage floors in view (`player_season_stats` reaches 1977 as a survivor sample).
 - **Priority:** P3 - the era is under most floors; the inconsistency is real.
 - **Source:** ESPN.
+- **GitHub:** #464
 
 ## P4: tooling, docs, low impact
 
