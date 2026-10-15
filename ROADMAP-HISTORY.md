@@ -1945,3 +1945,559 @@ with nothing to read fills the silence from its own weights), and more data
    take `scope.to_slots()`, and the check functions still accept a dict
    from the tests - each is a consumer to move onto the Scope, not a
    second writer.
+
+## AGENTS.md's provenance, folded 2026-10-14
+
+Phase 5, step 7 (Jeff's call, 2026-10-14) compacted `AGENTS.md` to its rules: each rule a short
+paragraph with its one-line reason. The dated stories the rules carried until then - what was
+measured, when, in which commit, the counts at the time - are kept here VERBATIM, as they stood in
+`AGENTS.md` at master `3dc37821` (3,067 lines), under that file's section names, each paragraph
+with its old line number and where its rule stands now. A rule in `AGENTS.md` that ends
+"(history)" points here. The figures are as of the dates they give, not today's: today's counts
+are in `AGENTS.md` and the files it names (`scripts/ratchets.json`, `scripts/ledger_held.json`).
+The whole old file is `git show 3dc37821:AGENTS.md`; the mapping of its 474 rule-like sentences
+to the compacted text is `~/association-research/reviews/phase5-2026-10-14/agents-rules-after.md`.
+
+### While the pipeline is rebuilt
+
+*Lines 39-43; the rule now: the section's opening (standing rules since D10).*
+
+`ROADMAP.md` replaces the query path's half-ported middle (templates,
+presenters, adapters, six scoping declarations) with four stages. Until its
+Phase 4 these rules apply to every change under `src/association/query/`,
+whoever makes it. Each is a gate or a test, so a change that breaks one
+fails rather than drifts.
+
+*Lines 74-123; the rule now: "No new shape but by Jeff's lifting of D4".*
+
+- **New shapes are frozen** (decision D4). No new shape the words can ask,
+  template, presenter, scoping table or renderer.
+  `tests/query/test_frozen_shapes.py` holds the 28 shapes the grammar can
+  name (the grammar's keys, `reading.PointShape` as relation, shape and
+  `by`, since Phase 3, step 4 - the 25 intents' names until then, a freeze
+  retired with the intent; the 26th and 27th, `reading.PLAYERS_COUNTED`, how many
+  players a season line holds, and a team's best single game,
+  `team_games/rows/measure`, both by Jeff's lifting of D4 on 2026-10-13,
+  ISSUES.md #390 and #364; the 28th, `reading.TEAM_SEASON_HISTORY`, a
+  team's season line season by season over a range or every season,
+  `team_seasons/split/season`, by Jeff's lifting on 2026-10-14, ISSUES.md
+  #372 - named by a player's history's words under a team's line, and keyed
+  so by the point reader for a team's line whose span is more than one
+  season, `point._team_season_key`), the page's 7 renderers (one per
+  `reading.Shape`, since Phase 4, step 1 - 22 keyed by the label until
+  then) and the 4 scoping
+  declarations left in `src` (by module and name, read from the source),
+  none of which is added; and that `templates/`,
+  `compose/present.py` and `compose/adapt.py` do not come back as source
+  files. Phase 2 (2026-10-03 to 2026-10-05) removed the twelve templates
+  (the registry stood empty after the shot chart, and step 6 deleted it
+  with `check_scope`, `HONORED_SCOPING` and the `templates` package), the
+  presenters and `compose/present.py`, and the ten adapters and
+  `compose/adapt.py`. Step 6 deleted the scoping freeze too while 12 of its
+  14 declarations were still there; restored 2026-10-05, it labels each
+  one, and since Phase 3, step 2's closing slice it holds the 4 the
+  roadmap keeps and nothing else - the per-relation cell tables, one table
+  of cells and one table of shapes' rows per relation
+  (`RELATION_SCOPING` and `RELATION_SCOPING_EXCLUDED` on
+  `query/player_relation.py`, `TEAM_RELATION_SCOPING` and
+  `TEAM_RELATION_SCOPING_EXCLUDED` on `query/team_relation.py`), the debt
+  at 0. Step 2 retired the rest slice by slice: the window took
+  `compose.core.COMPILER_SLOTS` (`ranked_by` is the typed window's `by`),
+  the companions `WITH_WITHOUT_STATED` (a row of the planner's table), the
+  subject's own `router._MODEL_SLOTS` (the subject is handed on typed
+  since; the router went with Phase 3, step 4), and step 1 had taken
+  `coverage._BOX_SCORE_SCOPING` (the floor follows the planned point's
+  relation); the closing slice made the planner's check one function over
+  the typed cells and the tables (`compose.plan.cells_unhonored`,
+  `cells_declined`), each shape's row a `reading.ShapeCells` keyed by the
+  planned point's `PointShape`, and deleted the planner's `STATED_SCOPING`,
+  `compose.plan._TEAM_READER_REFUSES`, `reading.SCOPING_SLOTS` and
+  `conditions._CONDITION_PLAYER_ONLY_CELLS` - each a field of a shape's
+  row now (what the words do not state, what is refused outright, what is
+  taken beyond the relation, where a decline is said, whether one named
+  half of the starter/bench split is all it honors, what needs a named
+  player). A P1 wrong answer is
+  still fixed, in the code that exists. The sections below describe the
+  readers and the sayer, because they are what runs; they are not an
+  invitation to add a shape.
+
+*Lines 124-183; the rule now: "What the roadmap is deleting may not grow".*
+
+- **What the roadmap is deleting may not grow.** `scripts/check_ratchets.py`
+  lists today's violations of each direction by name
+  (`scripts/ratchets.json`): a function outside the reader that takes the
+  question's text (any parameter holding it, not only one named
+  `question`; 24 when Phase 3 opened, 1 since its first step - the trace
+  file's writer, `history.RunHistory.write`, which records the question
+  asked and answers nothing), how many statements each module executes (105 in 19
+  modules when it was first counted, 2026-10-02; 80 in 20 since
+  2026-10-05; 74 in 12 since Phase 4, step 5 (2026-10-12): the relation
+  modules and their shared steps (`conditions` among them), `entities`
+  (the name index's two loads and the resolver's elimination read) and
+  `connection` (the latest season), and no module of `compose/` - counted
+  per module because a listed module could grow
+  statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
+  package's own string-SQL helpers since 2026-10-03, when a statement
+  through `entities._read_table` counted as none (each found by its body
+  since 2026-10-12 - a function that runs the SQL it is handed, as a
+  parameter (`con.execute(sql)`) or an attribute of one
+  (`con.execute(statement.sql, ...)`), or hands its parameter on to such a
+  function - and its own call of that SQL no longer counted beside its
+  callers', which read the name index's two loads as three and the
+  compiler's one door, `compose.core._executed`, as a statement of
+  `compose.core`'s, #397); and since 2026-10-05
+  every `core.rows_of`/`core.values_of` call over a statement the compiler
+  did not build, in the module making the call, and every call of a
+  function that only hands its parameter to one, such as
+  `season_line._values` - Phase 2 moved 35 hand-written statements behind
+  that door, where the count read 38 and the sites were 105 still; the
+  argument's tracing is `_origin`'s docstring), a module but the lexicon
+  that calls `re` or imports it at run time, or a module outside the
+  reader that takes a reader's private pattern (`regex_outside_the_lexicon`
+  since Phase 4, step 6; `regex_outside_the_reader` until then, which saw
+  modules OUTSIDE the reader only: 6, then 4 since `refusals.py` went, 3
+  since `calendar.py`'s patterns moved to the lexicon with the games'
+  cuts, 0 since Phase 3, step 4, slice (b), where `entities`' last pattern
+  became `lexicon.word_start` - and `regex_in_the_reader` beside it, the
+  `re` calls each reader module but the lexicon made, by module, since
+  2026-10-11: `point` 12, `parse` 5 with the parent grammar's 23 rows,
+  `line` 1, the 18 the Phase 3 review found the step 4 exit "the reader's
+  regexes outside the lexicon are gone" blind to; 2 after step 6's first
+  slice moved the point reader's and the refusals' patterns to the
+  lexicon, 0 after its second made the grammar's rows predicates over
+  typed values with their words in the lexicon, and folded in then - an
+  import under `TYPE_CHECKING`, for an annotation, is none), and a reader
+  function that
+  takes a DuckDB connection, by its name or its annotation (23, 0 since
+  slice (b): the reader takes the names' in-memory index,
+  `names.NameIndex`, which the answering loop reads before the parser
+  runs, `entities.names_of`). The two at zero are held as empty lists, so
+  a new one fails. Two more are gone: a private name `compose/` took from
+  `templates/`, which reached 0 and was deleted with `templates/` (step 6),
+  and `regex_in_the_reader`, folded into `regex_outside_the_lexicon` at 0
+  (Phase 4, step 6). It fails
+  on a NEW one or a count that grew, and on a listed one that is GONE or a
+  count that fell, so the lists only shrink. A NEW failure is fixed in the
+  code - pass the Reading, not the question; narrow through the relation's
+  shared steps, not a new `execute` - and adding to the list is Jeff's
+  call. A GONE failure is the ratchet working: run
+  `scripts/check_ratchets.py --shrink` (it only removes and lowers) and
+  commit the shorter list with the change.
+
+*Lines 184-195; the rule now: "The reader does not import the answer side".*
+
+- **The reader does not import the answer side, and the answer side never
+  reaches the model** (`[tool.importlinter]`). The reader's imports of
+  `compose`, `templates` and the relations were listed by name, and the
+  list is empty since 2026-10-05: the contract holds with no ignored edge
+  (nine when it was written; the last, `point -> compose.adapt`, went
+  with the last adapter, whose default point the reader now reads itself,
+  `point.DEFAULT_POINTS` - the rest were vocabulary and intent sets that
+  now live on the reader's side: `subject.team_named_in`, `reading`'s
+  intent sets, limits, `ordinal_word` and `Unsupported`,
+  `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the metric and measure
+  aliases and `resolve_metric`/`stat_measure`). A new one fails; an
+  ignore is not the way past it.
+
+*Lines 196-275; the rule now: "A change to the pipeline is proven on the recorded populations".*
+
+- **A change to the pipeline is proven on the recorded populations -
+  since D12 (Jeff, 2026-10-14, Phase 5's step 6 on) one run per PUSH: the
+  feed (`scripts/stage_snapshots.py run --feed --workers 4`, about 80
+  seconds sharded) on the branch tip against a fresh run of the tip
+  before it, compared with nothing ignored but a field the push names,
+  every moved answer enumerated and attributed to the push; the corpus at
+  the lead's merge per batch; the unit-test calls only where a stage
+  boundary moves; the readings at the agent's option for a reader-only
+  change; the ledger report, the ratchets and the three Phase 5 harnesses
+  at every commit. The four-population proof per commit below was the
+  rewrite's rule (Phases 1-5 through step 5), and it is what the tools
+  still do when asked - the description stands as the tools' reference.**
+  Until D12: proven stage by stage, on four
+  populations. `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
+  recorded questions through the whole agent with no model (the
+  normalizer's recorded replies, the date pinned, DuckDB single-threaded,
+  about two minutes) and writes what each stage produced: the reading
+  (with the reader's own verdict on the point: declined, or the cause it
+  refuses by), the query the planner planned (the one the compiler runs:
+  a season-line point its reader does not read is planned as the
+  game-level one, 3 of the 628 on 2026-10-05), the result's values,
+  the answer. `compare` reports
+  the first stage each question differs in and exits 1. The second
+  population is every call the unit tests make across a stage boundary
+  (`tests/stage_calls.py`: the parser's two steps, the planner's
+  `plan_point` and `refusal_result`, `compose.answer` with the reason it
+  declined by, `Agent.ask`): run the suite on each tree with
+  `ASSOCIATION_STAGE_CALLS=<dir>` and `compare-calls` the two
+  directories. It keys a call by its position among its test's calls
+  and records each Reading whole, so a step that ADDS a recorded call
+  (a `refusal_result` the planner now says) reads as every later call
+  of that test moved, and a Reading field added with an empty default
+  reads as every call moved: align first, with
+  `~/association-research/stages/calls_aligned.py` (the enumerated new
+  calls by their cause's kind taken out, the new empty fields stripped,
+  a renamed test mapped), which is how Phase 3's step 0 proved 2,536 of
+  2,550 identical and 14 moved. The planner joined on 2026-10-05 (#331): the refusals the
+  templates said are the planner's since Phase 2, and 93 tests recorded
+  no refusal, decline or answer text until then (1,408
+  calls became 2,554: 1,085 `plan_point`, 61 `refusal_result`, the 1,408
+  identical). The third is the 2,710 readings,
+  `~/association-research/stages/reader_pop.py` (the 628 and the 2,082
+  questions outside them, read and planned, no answer; `reader_cmp.py`
+  compares two, in seconds). The fourth is those 2,082 ANSWERED:
+  `run --feed OUT.jsonl` answers them as `run` answers the 628, from
+  `~/association-research/stages/feed_recorded.jsonl` (`feed_replies.py`
+  writes it: the StatMuse feed with no names and no stat, which no model
+  was asked, and 15 franchise and companion wordings with theirs - tree
+  against tree on equal input, not production's answer), about four and
+  a half minutes a tree, and `compare` reads it unchanged. It is the one
+  that sees an answer move on a question the corpus does not hold: the
+  Phase 2 review found 4 moved answers no commit named there (#332).
+  Three things to hold to:
+  - **Run the "before" tree, not a stored file.** The baseline is
+    `PYTHONPATH=<before>/src ... run before.jsonl`, and the first line of
+    each file says which copy of the code it read; check it. Measured
+    2026-09-30: two runs of one tree are identical on both populations
+    (628 of 628 questions, text included; 1,363 of 1,363 calls), and on
+    2026-10-05 two copies of one tree on the other two (2,082 of 2,082
+    feed answers; 2,554 of 2,554 calls with the planner), so ANY
+    difference is the change.
+  - **Identical means identical.** `--values-only` leaves the sentences
+    out, and is only for a change the roadmap allows to reword an answer
+    (a Phase 2 sayer). Everything else compares text and all. One
+    permitted move, Jeff's rule (2026-10-05): a decline the user sees
+    ("Nothing here answers this question: ...", `answered_by="refused"`)
+    becoming a `reading.Cause` the planner says - which changes the
+    reading's verdict (`point_declined` -> `point_refusal`) and the
+    answer's `answered_by` - is done as ONE commit of its own, with every
+    moved reading and answer enumerated in the commit message and
+    `CHANGES.md` (the population, the count, before and after), the
+    sentence identical or the change named. A Cause is what Phase 3
+    reads; a decline is a dead end the user gets no help from. The same
+    class, under the same terms (2026-10-05, slice (iv)): an intent whose
+    reading declined while its retired template answered GAINED a point when it was
+    ported, because a planned query needs one - the readings and the
+    planned query move for exactly those questions, the answers do not.
+  - **A boundary that moves is recorded on both sides first.** A phase
+    that replaces `compose.answer` adds the new boundary to
+    `tests/stage_calls.py` before it deletes the old one.
+
+*Lines 276-361; the rule now: "A word the reading does not depend on is counted".*
+
+- **A word the reading does not depend on is counted, and a number among
+  them is a bug.** `scripts/claims_ledger.py run` reads each recorded
+  question whole and again with each content word deleted (no model, about
+  twelve seconds since names come from the index), and reports the words whose deletion leaves the reading
+  and the planned query unchanged. It measures from outside the reader, so
+  the count means the same before and after the reader is replaced.
+  Baseline: 695 of 2,409 content words in 393 of 628 questions, most of
+  them words that restate the shape ("average", "record", "stats"),
+  measured on the replies re-recorded on the OVH devbox (2026-10-05, the
+  Phase 2 review). It read 690 in 391 before Phase 2: five words, "team"
+  in "nba team with least playoff wins since 2022" (and its "fewest"
+  twin) and in "which team had the best record?", "teams" in the two
+  "knicks playoff statistics vs other historic teams" wordings, counted
+  as read only because the point the reader declined for them carried a
+  reason sentence that named a team when the word was there; slice (iv)
+  gave them a point, the same without the word, and none is needed -
+  "playoff wins" and "best record" over the league are teams' already,
+  and the whole comparison clause of the Knicks questions is unread
+  (`ISSUES.md`, "A question with zero valid readings..."). It read 683 at `42e95d3`: seven words ("points" in "when maxey
+  scored 20+ points", "shot" in "shot distance") counted as read only
+  because the parser's decision records named the slots a second stage
+  run had moved; with the stages run once there is no second run to
+  list, and the reading and the query are the same without them. On the old box's replies it was 679 of 2,415 at
+  `011091f` and 684 once the one reader of companions no longer needed
+  the verb in "when Embiid and Paul George play"; 709 after the window
+  slice's fix (`d12f899`, Jeff's call to let it grow), 702 after the line
+  slice, 690 after Phase 3, step 3 - and 702 of 2,411 in 405 questions since
+  step 4's slice (c) (2026-10-11; the same at Phase 4's close, 2026-10-13): twelve words a window read as the typed
+  window no longer needs ("games" after "last 10 ..."), left unread by
+  Jeff's ruling to keep that slice's moves; on the 2,082 feed questions
+  (`claims_ledger.py run --feed`) 2,879 words are unread (3,658 at Phase
+  4's close, 3,023 after the P1 sweep, 2,879 since Phase 5, step 1's
+  refusals claim the words they name; 2026-10-14), 25 questions
+  hold an unread number (177 at Phase 4's close, 86 after the sweep; 191 at the Phase 3 review; read one by one in
+  the cleanup's (b)5, six fixed and the rest filed by shape) and 74 disagree
+  between the Reading's list and the deletion (91 until the sweep). The 628's: 690 words, 5 numbers. Since the review's cleanup
+  (b)5 (2026-10-12) both populations are HELD, in
+  `scripts/ledger_held.json`, as the ratchets are: the unread words by
+  count and the questions holding an unread number by question, each
+  population's, and the feed's disagreements by question and its joins by
+  kind (none since Phase 4, step 6 fixed #354's `situation+date` 4). `run` writes which population it read
+  on its first line, and `report` exits 1 on a grown count or a question
+  new to a list, and - on a run of the whole population - on one that fell
+  or left it, until `report --shrink` lowers the file with the change (it
+  only removes and lowers) - step 3
+  being where "18-year-old" and the twelve
+  words of "since 2000-01, how many games have players recorded 33 points,
+  13 rebounds, 10 assists, 2 blocks, and 2 steals?" came to be read (689)
+  and the "against" of "evaluate sga against embiid" stopped being read
+  through a spelling the window took from the next name (690, an overcount
+  exposed, as `d12f899`'s fifteen words were; Jeff's call, 2026-10-10, to
+  let it grow by that one word: 702 -> 690 across the step). Seven
+  questions have an unread NUMBER since then: five "100"s of "per 100
+  possessions" (the rate reads per 100 from "per possessions" alone, so the
+  number restates it), the "2" of "in 2 hours", which nothing can read, and
+  the "2" of "2 threes in games Jamal Murray played" (`ISSUES.md` #357).
+  After a reader change, run it on both populations and read the unread
+  numbers first; the counts may not grow, and `report` says so. It is blind to a word only the model could have
+  dropped, and a word a rule matched and did not need ("games" in "last 10
+  games") is unread in both measures, since the claims are cut to the
+  words each rule needed. Since Phase 3, step 3 the Reading states the same list
+  itself: `Reading.unread`, the content words no claim covers, counted by
+  the ledger's own rule moved to the lexicon (`lexicon.content_words`,
+  `CONTENT_STOPWORDS`, `MODEL_STAT_WORDS`; the model's names and stat ride
+  into the parser's last step, `parse._reading`'s `model_names`/`model_stat`,
+  so a word the model accounts for is left out as the ledger leaves it
+  out), recorded beside the reading
+  (`unread`). `run` records it beside the deletion's list and `report`
+  names every question where the two differ and exits 1 on one: they
+  measure one thing two ways, so a disagreement is a finding - a claim
+  over a word the reading does not depend on, or a word a stage reads
+  without claiming it. They agree on 625 of the 628 since step 3 (284
+  before its claims), and 625 is the step's exit by Jeff's ruling
+  (2026-10-10): the 3 that differ are the subject reading's, which is read
+  once and never probed for its claims ("head" in "lebron vs kawhi head to
+  head" stops the spelling reader completing "kawhi"; "against" where the
+  second team named is the opponent anyway, twice), and the ledger holds
+  them by question text, each with its reason (`HELD_DISAGREEMENTS`):
+  `report` exits 0 while the questions that differ are exactly those, and
+  1 on any other - or on a held one that agrees now, which leaves the list
+  with the change that cleared it, as a ratchet's GONE entry does. And a disagreement the other way round is the
+  one that found answers: a word whose presence makes a rule read LESS -
+  "2024 and 2025", two seasons read as none - is read by the deletion (take
+  one year away and the other is read) and claimed by nothing
+  (`span.needed`'s `gives_up`), and the step fixed the readers it named
+  (`CHANGES.md`).
+
+*Lines 362-377; the rule now: "A caveat, a stated default or a definition is written through `query/notes.py`" (the kinds were 28 when Phase 0 closed them).*
+
+- **A caveat, a stated default or a definition is written through
+  `query/notes.py`.** `note(kind, text, **facts)` for something about the
+  data or a term the answer uses, `decided(kind, text, field=, chose=, ...)`
+  for something the question left open and the system chose ("could the
+  question have said it differently?"). Both hand the sentence back
+  unchanged and, inside `Agent.ask`, record the kind and facts on the
+  answer (`Answer.notes`, `Answer.decisions`) and in the stage snapshot's
+  `remarks`. The 29 kinds (21 notes, 8 decisions; 28 when Phase 0 closed
+  them) and each kind's fact names are closed
+  (`NOTE_KINDS`, `DECISION_KINDS`, `FACTS`): a new remark uses one, and
+  adding a kind or a fact name is a deliberate edit there. Facts are plain
+  values, never a sentence or an object. Wrap at the writer, once, not
+  where the sentence is attached. `scripts/stage_snapshots.py remarks`
+  lists a remark that was written and never reached its answer;
+  `compare` holds the remarks identical unless `--ignore-remarks` is
+  given, which is only for a change whose point is to record more.
+
+### Before you commit
+
+*Lines 403-436; the rule now: "While iterating, run `scripts/check_fast.sh`" and "A slow test is found, not marked".*
+
+**While iterating, run `scripts/check_fast.sh` instead** - every gate except
+the Sphinx build, plus the whole test suite, in parallel. Measured on 24 cores
+with nothing else running (2026-10-02, the OVH devbox, Python 3.14; on the
+8-core box before it the same five were 42s, 6s, 29s, 184s and 34s):
+
+| command | time |
+| --- | --- |
+| `scripts/check_fast.sh` | 24s |
+| the hooks it runs (all but Sphinx) | 4s |
+| `uv run pre-commit run --all-files` | 17s (13s of it Sphinx) |
+| `uv run pytest -q` | 87s |
+| `uv run pytest -q -n auto` | 20s |
+
+So the full check above costs about 37s and the iteration check about 24s.
+The fast one leaves out exactly one thing, and its own header says so: the
+docs build, which is the gate that catches a malformed docstring. A commit
+touching a docstring runs the full check. Nothing else may be skipped.
+
+There is no `slow` marker any more. It covered one test, the Eastern-date
+agreement check, which spent 60 of the suite's 68 seconds inserting 140,256
+rows through DuckDB's `executemany` - one statement per row. Registered as a
+single Arrow table, the same rows take half a second. Before marking a test
+slow, find out where its time goes.
+
+The same cost hid in fixtures, a few rows at a time. DuckDB's Python API
+binds `?` parameters slowly, so a fixture built row by row through
+`executemany` or one `execute` per row pays it again for every test that
+asks for it: `cx_ctx` (`test_compose.py`) and `league`
+(`test_conditions.py`) spent 34 of their files' 39 seconds on it
+(2026-10-13; a multi-row `INSERT` with the values bound is no cure, since the
+binding is the cost). A fixture's rows go through
+`tests/warehouse_rows.py`'s `insert_rows`, one Arrow table per table, and
+`pytest --durations` showing the time under `setup` is the sign to look.
+
+
+*Lines 443-455; the rule now: "The interpreter is pinned" and "A Python script a gate runs goes through that interpreter by name".*
+
+**The interpreter is pinned: `.python-version` says 3.14, and `uv` reads it
+here and in CI.** Until 2026-10-02 nothing pinned it, `requires-python` said
+`>=3.10`, CI ran on its runner's own 3.12 and a new devbox took 3.14 - where
+one test was red with nothing wrong in the tree, because `names.sql_lower`
+leaned on the interpreter's Unicode tables. Moving the pin is one change:
+`.python-version`, `requires-python`, and the ruff, mypy and pyright targets
+in `pyproject.toml`, then `uv lock`. **A Python script a gate runs goes
+through that interpreter by name** - `.venv/bin/python scripts/x.py` in a
+hook, `uv run python scripts/x.py` in a workflow - never through its
+shebang: the day the pin landed, three scripts CI ran bare were parsed by
+the runner's own 3.12, one held a 3.14-only `except A, B:`, and CI was red
+for three pushes while every local gate passed (the hooks run under `uv
+run`, which puts the venv first on `PATH`). After a push, read the CI run.
+
+*Lines 467-495; the rule now: "The CHANGES rule is also held per COMMIT" and the three ways the local run was weaker than CI.*
+
+A second is not a hook because a hook cannot see it: the CHANGES rule held
+per COMMIT (`scripts/check_changes_per_commit.py`, the `changelog-per-commit`
+job in `ci.yml`). The hook reads the index it runs on; a rebase that folds
+neighbors together, or a hook skipped once, leaves a commit holding `src/`
+with no entry - `bfe09f7` did (ISSUES.md #380, the Phase 3 review). The job
+reads every non-merge commit a push or a pull request carries (the pushed
+head alone after a force-push), history before 2026-10-12 left out. Run it
+on a branch before pushing: `uv run python scripts/check_changes_per_commit.py
+--range origin/master..HEAD`. A commit it names is amended or split; it
+cannot be fixed by a later commit.
+
+That equivalence is not automatic, and it has broken three times. All three
+were the local run being *weaker* than CI, never the reverse, so the failure
+mode is always the same: green locally, red on the PR.
+
+- **`--all-files` means every file git knows about, not every file on disk.**
+  A new, untracked test is skipped entirely, so the gates pass while saying
+  nothing about it. `git add` first, then run them. This has cost two CI
+  round trips, on a line-length error and a formatting one.
+- **Read the exit status, not the output.** `pre-commit run --all-files | tail`
+  hides a failure in the *first* hook - and `ruff` is first. Redirect to a file
+  and check `$?`.
+- **A gate script has to work when run directly**, not only through `uv run`.
+  `pre-commit` runs its hooks under `uv run`, which exports `VIRTUAL_ENV`; CI
+  invokes the same scripts bare. `scripts/check_types_complete.sh` resolved
+  imports out of the active venv under the first and not the second, so it
+  passed locally and failed in CI on the same commit. Test a change to one with
+  plain `bash scripts/x.sh`.
+
+
+*Lines 498-512; the rule now: "The docs gate rebuilds from scratch".*
+
+- **The docs gate rebuilds from scratch (`-E`) and then reads the HTML.**
+  An incremental Sphinx build re-reads a page only when a source it knows
+  about changed, and a function patched in `docs/conf.py` is not one: the
+  `:rtype:` shim there was invisible to an incremental build (18 of 40 pages
+  kept the literal line, 0 in a fresh build), and a page not re-read also
+  re-emits none of its warnings, so `-W` passed locally where CI's clean build
+  would not. `-E` costs 11s against 2.7s, and buys a gate that says the same
+  thing here as in CI. `scripts/check_docs_markup.py` then fails the build on
+  a docstring field marker printed as text (`:rtype:` after a line of prose),
+  which is valid reStructuredText and so nothing `-W` can see.
+- **The docs gate deletes `docs/api/generated/` before building.** autosummary
+  writes a stub page per module and never removes one, so after a module moved
+  the stale stub still named the old path: autodoc failed to import it locally,
+  while CI, which starts with no stubs, passed. The directory is gitignored and
+  regenerated every build.
+
+*Lines 526-543; the rule now: "`CHANGES.md`".*
+
+Any commit touching `src/` must also touch `CHANGES.md`; a hook enforces it.
+Add to the `## Unreleased` section.
+
+**There must be exactly one `## Unreleased` heading, and the same hook now
+checks that too.** Two parallel branches each adding one merge *without a
+conflict* - git sees an insert in two places, not a clash - and the changelog
+ends up with two Unreleased sections. `bump_version.py` renames the first and
+silently leaves the second behind, so the next release ships a changelog with an
+orphaned section in the middle of its history. Nothing caught this: the older
+rule only asked that the file was touched. Found by reading the file after a
+merge, which is not a gate; now it is one.
+
+**Every released version keeps its own heading, checked by the same hook.** A
+fix for an entry that landed inside the last release's section renamed
+`## 4.3.0` to `## Unreleased` instead of adding a heading above it, and 4.4.0's
+notes then held all of 4.3.0's too. The hook checks the heading for the version
+in `pyproject.toml` everywhere and for every tag where the clone has tags (CI's
+shallow clone has none, and says so).
+
+### Conventions
+
+*Lines 585-624; the rule now: "Every module lives in a package".*
+
+- **Every module lives in a package; the root of `src/association` holds only
+  `__init__.py` and `py.typed`.** Modules had drifted to the root because both
+  `fetch` and `query` needed them; that is what `nba/` is for. Where things go:
+  - `cli/` - the `association` command (`commands.py`) and the default
+    warehouse and data paths the scripts share (`paths.py`).
+  - `nba/` - what both `fetch` and `query` need to know: seasons and Eastern
+    dates, franchise names by season, coverage floors, NetPoints categories.
+    It imports nothing else from `association`.
+  - `fetch/` - ESPN and NetPoints clients, parsing, the pipeline and the
+    warehouse build; `fetch/repairs/` - load-time repairs of ESPN's faults and
+    the tables built beside them.
+  - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
+    what the model sees in `normalizer.py`, the grammar's rules that settle
+    what the words ask in `grammar.py`, the words every tagger reads by in
+    `lexicon.py` - the span,
+    window, cuts, period, line and measure families' since Phase 3, step 2,
+    the calendar's own patterns and the team metrics' words among them,
+    and the subject's (who a question is about: the team words, cities
+    and abbreviations, the singulars, the position words, the versus and
+    "for" phrases, the grammar a dropped subject is read back from, where a
+    name ends) - and the seven taggers, `span.py`,
+    `window.py`, `cuts.py`, `period.py`, `line.py`, `split.py` and
+    `measure.py`, which also holds the measure catalog;
+    `calendar.py` is the situation's parsers and clauses over the lexicon's
+    words),
+    entities, the relations (`player_games.py` and its
+    shared steps `player_relation.py`, `team_games.py` and
+    `team_relation.py`, `season_line.py`, `team_seasons.py` and the
+    standings beside it, `standings.py`, which builds and runs the four
+    statements a team's record reads, and the two declared
+    relations' own since Phase 4, step 5: `netpoints.py`, the NetPoints
+    relation, which builds and runs every statement the NetPoints reader
+    and the fingerprint read and a comparison's NetPoints rows, and
+    `shots.py`, the shot relation, every
+    statement its chart and distance read - each relation module runs
+    its own statements, and `compose/` runs only what the compiler built
+    or a relation hands it, Phase 4, step 5), the
+    compiler's readers and the sayer (`compose/`), the coverage
+    declaration (`coverage.py`), renderers, the answering loop
+    (`agent.py`). `web/` - the local web interface.
+
+*Lines 632-637; the rule now: "Call-time imports are absolute".*
+
+- **Call-time imports are absolute.** A `from .fetch import warehouse` inside a
+  function resolves against wherever the module lives *when it is called*:
+  moving `cli.py` into `cli/` turned seven of them into imports of
+  `association.cli.fetch`, which fails only when the command runs - the import
+  of the module itself was fine. Write `from association.fetch import ...`
+  inside functions.
+
+*Lines 643-649; the rule now: "American spelling".*
+
+- **American spelling.** "defense", "offense", "serialize". British spellings
+  drifted back in twice after being removed wholesale in `c09d6f7`, so
+  codespell now enforces it (`en-GB_to_en-US`, `[tool.codespell]`). A word it
+  flags that is right - a basketball token, a regex stem, a misspelling a test
+  depends on - takes `# codespell:ignore <word> - <why>` on its line, or joins
+  `ignore-words-list` if it recurs. `CHANGES.md` is skipped: released entries
+  quote the spellings that were fixed.
+
+*Lines 658-676; the rule now: "Mark public API changes with a version directive".*
+
+- **Mark public API changes with a version directive.** A new public function,
+  class or module gets `.. versionadded:: X.Y.Z` at the end of its docstring; a
+  renamed or reshaped one gets `.. versionchanged:: X.Y.Z` saying what moved.
+  Use the version being released next, not the current one - and work out
+  which that is from `git tag` and what `## Unreleased` already holds, not from
+  memory: 2.2.0 went out with directives naming 2.3.0 and 2.1.1, versions nobody
+  released, which a pre-release audit had to correct. While `## Unreleased`
+  records a breaking change, a new directive says the next *major* version -
+  and note that the number can move under you, so **re-check every directive
+  added since the last tag as part of the pre-release audit**
+  (`git grep -n 'version\(added\|changed\):: '` over the diff). Three agents
+  working in parallel were told 3.1.0, correctly at the time; a breaking change
+  in a fourth branch made the release 4.0.0 and six directives had to be
+  rewritten before the bump. An agent cannot know a number that another
+  branch has not settled yet. Only the public
+  surface is worth marking — internal helpers and the set of question shapes are
+  explicitly outside the compatibility promise (see the preamble in
+  `CHANGES.md`). Module-level constants need an attribute docstring (a string
+  literal directly *after* the assignment) for the directive to attach.
