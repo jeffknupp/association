@@ -98,8 +98,6 @@ class AnswerContext:
     the readers testable with a plain in-memory DuckDB connection.
 
     .. versionadded:: 5.0.0
-       ``association.query.templates.TemplateContext`` until the templates
-       were gone (Phase 2, step 6).
     """
 
     con: duckdb.DuckDBPyConnection

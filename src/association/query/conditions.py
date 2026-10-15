@@ -703,8 +703,6 @@ def presence_games_sql(
     (DuckDB will not mix ``?`` and ``$name`` in one statement).
 
     .. versionadded:: 5.0.0
-       ``_with_without_games``' statement, which executed it here until
-       Phase 2's slice (iv).
     """
     teams = sorted({w.team_id for w in windows})
     narrowed = _with_without_team_games(scope, teams)

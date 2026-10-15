@@ -210,7 +210,6 @@ RATING_NOTE = "Ratings and pace count possessions as FGA - OREB + TOV + 0.44 x F
 ``rating_formula``, said by ``compose.say``).
 
 .. versionadded:: 5.0.0
-   Moved from ``templates.teams``.
 """
 
 

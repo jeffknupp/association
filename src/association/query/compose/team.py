@@ -467,7 +467,6 @@ def opponent_figure(q: TeamQuery) -> bool:
     relation's own column (``points_allowed``), not this.
 
     .. versionadded:: 6.0.0
-       ISSUES.md #425: the team's own season total answered for it.
     """
     return q.metric != "points_allowed" and q.measure is not None and q.measure.whose == "opponent" and q.measure.key == q.metric
 
@@ -480,8 +479,6 @@ def season_read_from_games(q: TeamQuery) -> bool:
     are summed, their opponents' scores or box rows.
 
     .. versionadded:: 6.0.0
-       ISSUES.md #425: a total of points allowed was declined with the
-       season line's reason, and a count given up answered as the team's own.
     """
     return q.metric == "points_allowed" or opponent_figure(q)
 
@@ -516,9 +513,6 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     default beats a question").
 
     .. versionadded:: 5.0.0
-       Before this, the window sum read one season type alone: "KNICKS point
-       differential over the last 7 games" summed seven regular-season games
-       (5-2) where the log listed the postseason's (6-1).
     """
     from association.query.compose.logs import _team_mixed_rows
     from association.query.compose.say import mixed_where

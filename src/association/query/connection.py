@@ -1,8 +1,6 @@
 """The one way the query side opens the warehouse.
 
 .. versionadded:: 5.0.0
-   Moved here from ``association.query.toolbox``, which went with the
-   tool-calling agent it served.
 """
 
 from __future__ import annotations

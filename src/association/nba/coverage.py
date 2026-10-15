@@ -72,8 +72,6 @@ tables (``query.coverage.SOURCES``) to it, so a typo is a floor that never fires
 silently unmatched.
 
 .. versionadded:: 5.0.0
-   Moved from ``association.query.prompt``, the agent's schema summary,
-   which went with the agent.
 """
 
 

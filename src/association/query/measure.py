@@ -503,7 +503,6 @@ def named(question: str) -> tuple[str, Claim] | None:
     normalizer's key, which is a guess the words correct.
 
     .. versionadded:: 6.0.0
-       ``parse.measure`` until Phase 3, step 2.
     """
     for pattern, key in lexicon.MEASURE_GRAMMAR:
         match = pattern.search(question)
@@ -536,7 +535,6 @@ def names_a_stat(question: str) -> bool:
     embiid" comes back with ``stat='points'`` 12 times out of 12.
 
     .. versionadded:: 6.0.0
-       ``router._named_a_stat`` until Phase 3, step 2.
     """
     return lexicon.STAT_WORDS.search(question) is not None
 
@@ -548,7 +546,6 @@ def team_metric_named(question: str) -> tuple[str, Claim] | None:
     refuse by name (:data:`~association.query.lexicon.GIVEN_UP`).
 
     .. versionadded:: 6.0.0
-       ``router._team_metric_in`` until Phase 3, step 2.
     """
     text = question.casefold()
     for alias, pattern in lexicon.TEAM_METRIC_NAMED:
@@ -582,7 +579,6 @@ GAMES_STATS: frozenset[str] = frozenset({"games", "game", "games_played", "games
 """What the model files for a count of games - no measure, and dropped where a line's reader would read it as one.
 
 .. versionadded:: 6.0.0
-   ``router._GAMES_STATS`` until Phase 3, step 2.
 """
 #: The stats that are a yes/no about a game, which a ranking counts per
 #: player; ranking THOSE GAMES by another measure is the window's `by`.
@@ -590,7 +586,6 @@ BOOLEAN_KEYS: frozenset[str] = frozenset({"triple_double", "double_double", "fou
 """The boolean measures, by key.
 
 .. versionadded:: 6.0.0
-   ``router._BOOLEAN_STATS`` until Phase 3, step 2.
 """
 
 

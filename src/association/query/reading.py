@@ -150,8 +150,6 @@ the league (``everyone``), or a team's players as a group
 the relation a point is on off it and the names beside it.
 
 .. versionadded:: 6.0.0
-   ``subject.SUBJECT_KINDS`` was the set; the literal is the typed
-   subject's (Phase 3, step 2).
 """
 
 SeasonType = Literal[2, 3]
@@ -172,7 +170,6 @@ SPLIT_KINDS: tuple[str, ...] = ("home_away", "starter_bench", "wins_losses", "mo
 when none is named; a team's games take all but ``starter_bench``.
 
 .. versionadded:: 5.0.0
-   On the reader's side (``templates.splits.SPLIT_KINDS`` was this).
 """
 
 
@@ -1159,8 +1156,6 @@ class Filtered:
     Reading or the query itself.
 
     .. versionadded:: 6.0.0
-       ``Scope`` (5.0.0) folded into the Reading and the queries; its
-       ``subject`` is :attr:`who`.
     """
 
     #: Who the read is about: one typed value (:class:`Subject` - the kind,
@@ -1805,8 +1800,6 @@ class DeclineReason(StrEnum):
     or a page reads the key, never a sentence.
 
     .. versionadded:: 6.0.0
-       Phase 5, step 5: the rows' reasons were sentences on the rows, and a
-       decline carried the sentence as its ``why`` fact.
     """
 
     #: The planner's own: a cell the shape's words do not state, declined where
@@ -1938,10 +1931,6 @@ class ShapeCells:
     the slot-era checks it replaced read them.
 
     .. versionadded:: 6.0.0
-       Phase 3, step 2's closing slice: one record per shape, where the
-       planner's ``STATED_SCOPING``, ``_TEAM_READER_REFUSES``, the four
-       branches of ``_shape_declines``, ``unhonored_scoping``'s split rule
-       and ``conditions._CONDITION_PLAYER_ONLY_CELLS`` stood.
     """
 
     #: The cells this shape's words do not state, each with why - a
@@ -2043,8 +2032,6 @@ class Reading(Filtered):
     #: sentence states what the query reads.
     #:
     #: .. versionadded:: 6.0.0
-    #:    One field where the point declared three, ``shape``, ``by`` and
-    #:    ``on`` (Phase 5, step 4, D9; Phase 3, step 1 named them).
     read_as: PointShape = PointShape("player_games", "rows")
     #: What the point measures, typed (:class:`Measure`, by the catalog's
     #: key): the box-score columns or derived measures a read reports,
@@ -2315,7 +2302,6 @@ the asked shape's default (:data:`~association.query.point.DEFAULT_POINTS`),
 before any move that reads a player's games (:func:`on_a_declared_relation`).
 
 .. versionadded:: 6.0.0
-   ``CHART_INTENTS``, the four intents' names, until Phase 3, step 4.
 """
 
 
@@ -2368,7 +2354,6 @@ DEFAULT_STREAK_LIMIT = 5
 player, or one per team-season.
 
 .. versionadded:: 5.0.0
-   On the reader's side (``templates.splits._DEFAULT_STREAK_LIMIT`` was this).
 """
 
 DEFAULT_NAMED_RUNS = 3
@@ -2376,7 +2361,6 @@ DEFAULT_NAMED_RUNS = 3
 two to tie it (the sayer shows the ties).
 
 .. versionadded:: 5.0.0
-   On the reader's side (``compose.core.DEFAULT_NAMED_RUNS`` was this).
 """
 
 
@@ -2489,7 +2473,6 @@ def period_label(period: int) -> str:
     """``1`` -> ``"1st quarter"``, ``5`` -> ``"overtime"``, ``6`` -> ``"2nd overtime"``.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``templates.common.period_label`` was this).
     """
     if 1 <= period <= 4:
         return f"{ordinal_word(period)} quarter"
@@ -2536,7 +2519,6 @@ def scope_reads_box_scores(scope: Filtered, measures: list[Any]) -> bool:
     narrowings themselves are applied by the relation's shared steps.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``templates.players._player_stat_reads_box_scores`` was this).
     """
     split_side = scope.split if scope.split in STARTER_SIDES else None
     cuts = scope.cuts

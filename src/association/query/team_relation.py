@@ -10,7 +10,6 @@ read the span and window steps on the player relation's side, which imports
 would be an import cycle.
 
 .. versionadded:: 5.0.0
-   Moved from ``association.query.templates.common`` and ``templates.splits`` (Phase 2, step 6).
 """
 
 from __future__ import annotations
@@ -640,7 +639,6 @@ def team_season_game_counts(con: duckdb.DuckDBPyConnection, scope: str, scope_pa
     none"; ``(0, 0)`` where the statement returns no row.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_records`` until then.
     """
     sql, params = season_game_counts_sql(scope, scope_params, team_id)
     counts = con.execute(sql, params).fetchall()
@@ -656,7 +654,6 @@ def team_game_list_gaps(
     (:func:`~association.query.team_games.game_list_gaps_sql`).
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_records`` until then.
     """
     sql, params = game_list_gaps_sql(narrowed, team_id, season_type, season=season, since=since, until=until, floor=floor)
     return con.execute(sql, params).fetchall()
@@ -670,7 +667,6 @@ def team_games_total(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, col
     with no row.
 
     .. versionadded:: 6.0.0
-       ``compose.team._compile_team_games_total``'s statement, moved whole.
 
     .. versionchanged:: 6.0.0
        ``join`` and ``counted``: a box-score count summed over the narrowed

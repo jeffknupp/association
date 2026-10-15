@@ -51,6 +51,4 @@ layup at the rim counts in driving, layup and rim - and summing them is
 meaningless.
 
 .. versionadded:: 5.0.0
-   Moved from ``association.query.templates.netpoints``, retired with
-   ``player_netpoints``' template (Phase 2, step 5).
 """

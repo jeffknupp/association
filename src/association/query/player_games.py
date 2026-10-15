@@ -1123,7 +1123,6 @@ def period_ranking_sql(narrowed: Narrowed, measure: str, *, minimum: int, limit:
     covered-games rule are the denominator.
 
     .. versionadded:: 5.0.0
-       ``templates.games._period_leaderboard_rows``' statement, moved here.
     """
     return grouped_sql(
         narrowed,
@@ -1142,7 +1141,6 @@ def period_quarter_sql(narrowed: Narrowed, *, minimum: int, rebuilt: bool) -> tu
     the four reads the league's points-by-quarter table joins by player.
 
     .. versionadded:: 5.0.0
-       ``templates.games._period_leaderboard_by_quarter``'s statement, moved here.
     """
     return grouped_sql(narrowed, "pgl.athlete_id, pgl.player_name", ["pgl.athlete_id", "pgl.player_name", "COUNT(*)", "AVG(pgl.points)"], having=f"COUNT(*) >= {int(minimum)}", rebuilt=rebuilt)
 
@@ -1153,7 +1151,6 @@ def most_games_sql(narrowed: Narrowed, *, rebuilt: bool) -> tuple[str, list[Any]
     share of.
 
     .. versionadded:: 5.0.0
-       ``templates.games._period_leaderboard_minimum``'s statement, moved here.
     """
     return grouped_sql(narrowed, "pgl.athlete_id", ["COUNT(*) AS games"], order="games DESC", limit=1, rebuilt=rebuilt)
 
@@ -1178,8 +1175,6 @@ def period_ranking(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, measure: 
     (:func:`period_ranking_sql`).
 
     .. versionadded:: 6.0.0
-       ``compose.periods.read_period_leaderboard``'s read, moved to its
-       relation (Phase 4, step 5).
     """
     return _period_values(con, period_ranking_sql(narrowed, measure, minimum=minimum, limit=limit, rebuilt=rebuilt))
 
@@ -1190,8 +1185,6 @@ def period_quarter(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, minimu
     in the quarter-narrowed relation (:func:`period_quarter_sql`).
 
     .. versionadded:: 6.0.0
-       ``compose.periods._period_leaderboard_by_quarter``'s read, moved to
-       its relation (Phase 4, step 5).
     """
     return _period_values(con, period_quarter_sql(narrowed, minimum=minimum, rebuilt=rebuilt))
 
@@ -1203,8 +1196,6 @@ def most_games(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: b
     share of.
 
     .. versionadded:: 6.0.0
-       ``compose.periods._period_leaderboard_minimum``'s read, moved to its
-       relation (Phase 4, step 5).
     """
     row = _period_values(con, most_games_sql(narrowed, rebuilt=rebuilt))
     return int(row[0][0]) if row else 0
@@ -1243,8 +1234,6 @@ def game_label_row(con: duckdb.DuckDBPyConnection, athlete_id: str, event_id: st
     (:func:`association.query.game_label.game_label`).
 
     .. versionadded:: 6.0.0
-       ``game_label.game_label``'s statement, moved whole to its relation
-       (Phase 4, step 5's close).
     """
     from association.query.compose.core import values_of  # at call time: the compiler imports this module
     from association.query.season_line import Statement  # and so does the season line, whose Statement the door takes

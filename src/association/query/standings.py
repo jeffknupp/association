@@ -94,8 +94,6 @@ def season_row(con: duckdb.DuckDBPyConnection, team_id: str, season: int) -> lis
     row for it.
 
     .. versionadded:: 6.0.0
-       ``compose.standings.read_standings_season``'s read, moved to its
-       relation.
     """
     from association.query.compose.core import values_of  # at call time: the compiler imports the relations
 
@@ -108,8 +106,6 @@ def career_rows(con: duckdb.DuckDBPyConnection, team_id: str) -> list[tuple[Any,
     (:func:`standings_career`).
 
     .. versionadded:: 6.0.0
-       ``compose.standings.read_standings_career``'s read, moved to its
-       relation.
     """
     from association.query.compose.core import values_of  # at call time, as above
 
@@ -122,8 +118,6 @@ def first_season(con: duckdb.DuckDBPyConnection) -> Any:
     (:func:`standings_first_season`).
 
     .. versionadded:: 6.0.0
-       ``compose.standings.read_standings_career``'s read, moved to its
-       relation.
     """
     from association.query.compose.core import values_of  # at call time, as above
 
@@ -138,7 +132,6 @@ def season_games(con: duckdb.DuckDBPyConnection, team_id: str, seasons: list[int
     short for most teams, and nothing in the row says so.
 
     .. versionadded:: 6.0.0
-       ``compose.standings._standings_short``'s read, moved to its relation.
     """
     from association.query.compose.core import values_of  # at call time, as above
 

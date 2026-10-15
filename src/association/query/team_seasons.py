@@ -51,7 +51,6 @@ def team_lines_statement(season: int, season_type: int) -> Statement:
     cover a different set of games than everything they are divided by.
 
     .. versionadded:: 5.0.0
-       ``team_metrics.season_table``'s statement, moved whole.
     """
     scope, params = games_scope(season_type, season)
     selected = ", ".join(f"{metric.expression} AS {key}" for key, metric in _line_metrics().items())
@@ -88,7 +87,6 @@ def team_lines(rows: list[tuple[Any, ...]], season: int) -> list[TeamLine]:
     None for every team before its own ``first_season``.
 
     .. versionadded:: 5.0.0
-       ``team_metrics.season_table``'s reading of its rows.
     """
     lines = []
     for row in rows:
@@ -107,7 +105,6 @@ def team_records_statement(season: int, season_type: int) -> Statement:
     which standings do not cover - ``(team, wins, losses)``.
 
     .. versionadded:: 5.0.0
-       ``team_metrics.record_table``'s two statements, moved whole.
     """
     if season_type == 2:
         return Statement(
@@ -171,7 +168,6 @@ BPI_SNAPSHOT_NAMES = {1: "preseason", 2: "regular-season", 3: "postseason", 5: "
 """What each of the power index's season-type codes is called in an answer.
 
 .. versionadded:: 5.0.0
-   Moved from ``templates.teams``.
 """
 
 
@@ -182,7 +178,6 @@ not winning them: in the 2026 postseason snapshot every conference
 finalist reads 100 and every other team 0.
 
 .. versionadded:: 5.0.0
-   ``templates.teams._BPI_CHANCES``.
 """
 
 
@@ -269,7 +264,6 @@ def snapshot_facts(snapshots: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
     the team asked about (``holds``).
 
     .. versionadded:: 5.0.0
-       ``templates.teams._team_outlook_snapshot_facts`` (without ``holds``).
     """
     return [{"kind": BPI_SNAPSHOT_NAMES.get(k, f"type-{k}"), "date": str(u)[:10], "teams": int(n), "holds": bool(has)} for k, u, n, has in snapshots]
 
@@ -281,7 +275,6 @@ def team_venue_records_statement(season: int, season_type: int, venue: str) -> S
     (``(team, wins, losses)``).
 
     .. versionadded:: 5.0.0
-       ``templates.teams._venue_records``' two statements, moved whole.
     """
     if season_type == 2:
         column = '"Home"' if venue == "home" else '"Road"'
@@ -338,7 +331,6 @@ def team_since_records_statement(season_type: int, since: int, until: int | None
     dropping out of a ranking of the worst records (F100, ISSUES.md).
 
     .. versionadded:: 5.0.0
-       ``templates.teams._team_leaderboard_since_records``' statement, moved whole.
     """
     span = span_of(reading.Span(since=since, until=until), "games", season_type=season_type)
     clause, params = team_span_clause(span)
@@ -370,7 +362,6 @@ def read_team_lines(con: duckdb.DuckDBPyConnection, season: int, season_type: in
     by :func:`team_lines`).
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_stats``' line and ranking readers until then.
     """
     return team_lines(_values(con, team_lines_statement(season, season_type)), season)
 
@@ -380,7 +371,6 @@ def read_team_records(con: duckdb.DuckDBPyConnection, season: int, season_type: 
     read by :func:`team_records`).
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_stats``' line and ranking readers until then.
     """
     return team_records(_values(con, team_records_statement(season, season_type)))
 
@@ -390,7 +380,6 @@ def read_team_since_records(con: duckdb.DuckDBPyConnection, season_type: int, si
     (:func:`team_since_records_statement`, read by :func:`team_records`).
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_stats``' ranking reader until then.
     """
     return team_records(_values(con, team_since_records_statement(season_type, since, until)))
 
@@ -402,7 +391,6 @@ def read_team_venue_rows(con: duckdb.DuckDBPyConnection, season: int, season_typ
     that season's standings" from "no rows" by both.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_stats``' ranking reader until then.
     """
     return _values(con, team_venue_records_statement(season, season_type, venue))
 
@@ -412,7 +400,6 @@ def read_team_outlook_snapshots(con: duckdb.DuckDBPyConnection, team_id: str, se
     (:func:`team_outlook_snapshots_statement`'s rows).
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_stats``' power-index reader until then.
     """
     return _values(con, team_outlook_snapshots_statement(team_id, season))
 
@@ -422,7 +409,6 @@ def read_team_outlook_rows(con: duckdb.DuckDBPyConnection, season: int, kind: in
     rows: one, or none).
 
     .. versionadded:: 6.0.0
-       Run by ``compose.team_stats``' power-index reader until then.
     """
     return _values(con, team_outlook_row_statement(season, kind, team_id))
 
@@ -433,7 +419,6 @@ def team_season_total_statement(team_id: str, season: int, season_type: int, col
     (``compose.team.SEASON_MEASURES``), never a slot.
 
     .. versionadded:: 6.0.0
-       ``compose.team._season_total``'s statement, moved whole.
     """
     return Statement(f"SELECT {column}, gamesPlayed FROM team_season_stats WHERE team_id = ? AND season = ? AND season_type = ?", [team_id, season, season_type])
 
@@ -444,7 +429,6 @@ def read_team_season_total(con: duckdb.DuckDBPyConnection, team_id: str, season:
     has no such row, or the row no value.
 
     .. versionadded:: 6.0.0
-       ``compose.team._season_total``'s read, moved here.
     """
     rows = _values(con, team_season_total_statement(team_id, season, season_type, column))
     row = rows[0] if rows else None

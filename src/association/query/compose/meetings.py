@@ -185,7 +185,6 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
     relation's own refusal (an ambiguous team, a coverage floor).
 
     .. versionadded:: 5.0.0
-       ``templates.games.head_to_head`` was this, with its sentences.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against

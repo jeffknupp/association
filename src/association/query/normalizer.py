@@ -132,7 +132,6 @@ def estimate_tokens(text: str) -> int:
     head-first and in silence.
 
     .. versionadded:: 5.0.0
-       Moved from ``association.query.prompt``, which went with the agent.
     """
     return len(text) // 4
 

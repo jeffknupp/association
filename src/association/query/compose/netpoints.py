@@ -138,7 +138,6 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> 
     per-game table a game's NetPoints come from is missing.
 
     .. versionadded:: 5.0.0
-       ``templates.netpoints.player_netpoints``, moved whole.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against
@@ -293,7 +292,6 @@ separable - and the palette in :mod:`association.query.radar` holds three
 series colors for the same reason.
 
 .. versionadded:: 5.0.0
-   Moved from ``association.query.templates.netpoints``.
 """
 
 
@@ -316,8 +314,6 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> Resul
     Raises ``Unsupported`` with no player named.
 
     .. versionadded:: 5.0.0
-       ``templates.netpoints.fingerprint``, moved whole; its drawing is
-       :func:`draw_fingerprint` and its words the sayer's.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against
@@ -420,7 +416,6 @@ def fingerprint_result(
     league scale the draw step needs.
 
     .. versionadded:: 5.0.0
-       ``fingerprint.render_for_players``' read and the template's around it.
     """
     try:
         fingerprints, league, games, _unit = load_for_players(con, players, ambiguous, season, view=view, scale=scale, min_minutes=min_minutes, season_type=season_type, order=order)

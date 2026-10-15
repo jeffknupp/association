@@ -453,8 +453,6 @@ def say_left_out(left_out: LeftOut) -> str:
     question also holds (``dropped``), or none matching (``unmatched``).
 
     .. versionadded:: 6.0.0
-       ``entities.compared_but_unmatched``'s sentence, which read the
-       question in the answering loop.
     """
     names = list(left_out.names)
     return decision_phrase(Decided(kind="name_left_out", field="players", chose=list(left_out.held), why="dropped" if names else "unmatched", facts={"names": names} if names else {}))
@@ -1432,7 +1430,6 @@ def rounded(value: Any) -> float | None:
     "21.33 points" next to a stored "27.7" reads as a different unit.
 
     .. versionadded:: 5.0.0
-       The sayer's, from ``templates.players._rounded``.
     """
     return None if value is None else round(float(value), 1)
 
@@ -1509,7 +1506,6 @@ def phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: l
     makes of its attempts.
 
     .. versionadded:: 5.0.0
-       The sayer's, from ``templates.players._phrase_player_stat``.
     """
     games = values.get("gamesPlayed")
     parts = []
@@ -2960,7 +2956,6 @@ def record_pct(value: float) -> str:
     """Basketball convention for a winning percentage: .646, not 0.646.
 
     .. versionadded:: 5.0.0
-       ``templates.teams._record_pct``, for the team-season sayers.
     """
     text = f"{value:.3f}"
     return text[1:] if text.startswith("0") else text
@@ -3112,7 +3107,6 @@ def tally(wins: int, losses: int) -> str:
     """A record and its percentage: "53-29 (.646)", or "0-0".
 
     .. versionadded:: 5.0.0
-       ``templates.teams._tally``, for the team-season sayers.
     """
     return f"{wins:,}-{losses:,} ({record_pct(wins / (wins + losses))})" if wins + losses else "0-0"
 
@@ -3121,7 +3115,6 @@ def possessive(name: str) -> str:
     """ "the Knicks'" but "the Thunder's" - a team name is plural only sometimes.
 
     .. versionadded:: 5.0.0
-       ``templates.teams._possessive``, for the team-season sayers.
     """
     return f"{name}'" if name.endswith("s") else f"{name}'s"
 
@@ -3130,7 +3123,6 @@ def metric_cell(metric: TeamMetric, value: float) -> str:
     """A team metric's value as a table shows it: one decimal, a percentage marked.
 
     .. versionadded:: 5.0.0
-       ``templates.teams._metric_cell``.
     """
     return f"{value:.1f}%" if metric.percent else f"{value:.1f}"
 
@@ -3142,7 +3134,6 @@ def short_of_games_said(metric: TeamMetric, period: str, short: dict[str, Any]) 
     without looking wrong.
 
     .. versionadded:: 5.0.0
-       ``templates.teams._incomplete_opponents``' sentence.
     """
     others = short["others"]
     return (
@@ -4284,7 +4275,6 @@ def say_player_netpoints(result: Result) -> Answer:
     he does have where the season was defaulted.
 
     .. versionadded:: 5.0.0
-       ``templates.netpoints.player_netpoints``' words.
     """
     if result.window is not None:
         return _say_netpoints_game(result)
@@ -4478,7 +4468,6 @@ def say_fingerprint(result: Result) -> Answer:
     fingerprint, and the other names that matched.
 
     .. versionadded:: 5.0.0
-       ``fingerprint.render_for_players``' message.
     """
     chart = result.chart
     assert chart is not None and chart.path is not None
@@ -4699,7 +4688,6 @@ championship for the past 10 years" was read as a team ranking and ranked
 regular-season records since 2017.
 
 .. versionadded:: 6.0.0
-   ``refusals.by_question``'s sentence.
 """
 
 
@@ -5010,8 +4998,6 @@ def nothing_answers(why: str, asked: PointShape | None = None) -> str:
     answers this question as a ranking of teams: ...").
 
     .. versionadded:: 6.0.0
-       The frame of ``agent.refusal_text``, which calls it; until Phase 4,
-       step 2 the shape was the page's label, written into ``why``.
     """
     read_as = "" if asked is None else f" as {asked_as(asked)}"
     return f"Nothing here answers this question{read_as}: {why}."

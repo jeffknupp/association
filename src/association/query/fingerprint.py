@@ -885,9 +885,6 @@ def load_for_players(
             ``also_matched`` decision.
 
     .. versionadded:: 5.0.0
-       ``render_for_players``' read, public for the NetPoints relation's
-       reader (:mod:`association.query.compose.netpoints`), which draws
-       through :func:`fingerprint_page`.
     """
     if scale not in FINGERPRINT_SCALES:
         raise FingerprintUnavailable("fingerprint_scale", scale=scale, scales=list(FINGERPRINT_SCALES))
@@ -927,8 +924,6 @@ def fingerprint_captions(
     they cover.
 
     .. versionadded:: 5.0.0
-       ``render_for_players``' captions, public for the NetPoints
-       relation's reader.
     """
     unit = PER_GAME if order else PER_100_POSSESSIONS
     title = " vs ".join(f.name for f in fingerprints)
@@ -950,8 +945,6 @@ def fingerprint_file(fingerprints: list[PlayerFingerprint], season: int, order: 
     """The HTML file's name: the players drawn, the season/game stamp, the view and the scale.
 
     .. versionadded:: 5.0.0
-       ``render_for_players``' file name, public for the NetPoints
-       relation's reader.
     """
     safe = "_vs_".join("".join(c if c.isalnum() else "_" for c in f.name.lower()) for f in fingerprints)
     stamp = f"{season}_{order}_game" if order else str(season)
@@ -964,8 +957,6 @@ def fingerprint_page(title: str, subtitle: str, axis_note: str, fingerprints: li
     same numbers under it.
 
     .. versionadded:: 5.0.0
-       ``render_for_players``' drawing, public for the NetPoints relation's
-       draw step (:func:`association.query.compose.netpoints.draw_fingerprint`).
     """
     headers, table_rows = _table(fingerprints, scale, unit)
     return render_fingerprint_html(

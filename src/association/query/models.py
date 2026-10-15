@@ -9,8 +9,6 @@ Deliberately free of heavy imports so ``cli/commands.py`` can read it at module 
 without pulling in ollama and duckdb at startup.
 
 .. versionadded:: 1.2.0
-   Replaces the copies previously in :mod:`association.cli` and
-   :mod:`association.query.agent`.
 
 .. versionchanged:: 4.4.0
    Held ``AGENT_BUDGET_SECONDS`` too, for the same reason.

@@ -89,7 +89,6 @@ class WindowCandidates:
         the period's).
 
         .. versionadded:: 6.0.0
-           ``parse._window_spans`` until Phase 4, step 6.
         """
         order, _count, claim = self.grammar
         windows = [claim] if order is not None and claim is not None else []

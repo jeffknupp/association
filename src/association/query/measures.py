@@ -231,7 +231,6 @@ refused rather than read as a win streak - "most consecutive double-doubles"
 must not come back as the Lakers' best run of wins.
 
 .. versionadded:: 5.0.0
-   On the reader's side (``templates.splits._RESULT_STATS`` was this).
 """
 
 
@@ -244,7 +243,6 @@ def streak_column(measure: Measure | None, threshold: int | None) -> str | None:
     win streak.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``templates.splits._streak_kind`` was this).
 
     .. versionchanged:: 6.0.0
        Takes the typed :class:`~association.query.reading.Measure`.
@@ -326,7 +324,6 @@ def stat_column(measure: Measure | None) -> str | None:
     catalog (:func:`~association.query.measure.column_name`) - or None.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``compose.adapt._stat_column`` was this).
 
     .. versionchanged:: 6.0.0
        Takes the typed :class:`~association.query.reading.Measure`.
@@ -378,7 +375,6 @@ def log_extras(measure: Measure | None) -> tuple[str, ...]:
     passed off as the one asked for.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``compose.logs._log_extras`` and ``templates.games._log_extras`` were this).
 
     .. versionchanged:: 6.0.0
        Takes the typed :class:`~association.query.reading.Measure`, read by its key.

@@ -137,7 +137,6 @@ def bare_month(situation: str | None) -> int | None:
     (:func:`parse_situation`).
 
     .. versionadded:: 5.0.0
-       ``templates.teams._team_record_month`` was this.
     """
     if situation is None:
         return None
@@ -397,7 +396,6 @@ def conference_named(scope: Filtered) -> str | None:
     cause.
 
     .. versionadded:: 5.0.0
-       ``templates.teams._conference_refusal``'s reading.
 
     .. versionchanged:: 6.0.0
        Lives here, beside :func:`parse_alignment`, which reads the same

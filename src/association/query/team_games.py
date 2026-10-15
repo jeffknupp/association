@@ -925,7 +925,6 @@ def period_games_sql(narrowed: TeamNarrowed, columns: tuple[str, ...]) -> tuple[
     against the CTE's own (a ``BinderException`` nowhere near this line).
 
     .. versionadded:: 5.0.0
-       ``templates.games._team_quarter_points_games``'s statement, moved here.
     """
     if narrowed.periods is None:
         raise ValueError("a period-narrowed read needs the period narrowed")
@@ -949,8 +948,6 @@ def period_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, columns
     (:func:`~association.query.compose.core.values_of`).
 
     .. versionadded:: 6.0.0
-       ``compose.periods._team_quarter_points_games``' read, moved to its
-       relation (Phase 4, step 5).
     """
     # At call time: the compiler imports this module, and the season line's
     # `Statement` (the door's) imports it through the team-season relation.
@@ -970,8 +967,6 @@ def unnarrowed_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, sea
     (:func:`~association.query.compose.core.values_of`).
 
     .. versionadded:: 6.0.0
-       ``compose.logs._team_log_none``'s read, moved to its relation
-       (Phase 4, step 5).
     """
     # At call time, as in `period_games`.
     from association.query.compose.core import values_of
@@ -992,7 +987,6 @@ def season_game_counts_sql(scope: str, scope_params: list[Any], team_id: str) ->
     warehouse holds no games that season" from "the team played none".
 
     .. versionadded:: 5.0.0
-       ``templates.teams._no_team_games``' statement, moved here.
     """
     return f"{TEAM_GAMES_SQL} SELECT count(*), count(*) FILTER (WHERE team_id = ?) FROM team_games WHERE {scope}", [team_id, *scope_params]
 
@@ -1005,7 +999,6 @@ def game_list_gaps_sql(narrowed: TeamNarrowed, team_id: str, season_type: int, *
     played in.
 
     .. versionadded:: 5.0.0
-       ``templates.teams._game_list_gaps``' statement, moved here.
     """
     subquery, sub_params = games_subquery(narrowed)
     by_season = "year(eastern_date)" if season_type == 3 else "season"

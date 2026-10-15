@@ -30,7 +30,6 @@ with/without split: "maxey points when embiid starts" is Maxey's line in
 Embiid's starts.
 
 .. versionadded:: 6.0.0
-   ``parse._OWN_READ_ROLES`` until Phase 3, step 4.
 """
 
 
@@ -53,7 +52,6 @@ def role_phrases(conditions: tuple[Companion, ...], question: str) -> list[tuple
     never a second reader of them.
 
     .. versionadded:: 6.0.0
-       ``parse._read_route_role_phrases`` until Phase 3, step 4.
     """
     phrases: list[tuple[re.Match[str], str]] = []
     for match in _companion_phrases(question):
@@ -70,8 +68,6 @@ def read_split(question: str, conditions: tuple[Companion, ...] = ()) -> SplitRe
     subject reading's ``conditions``): None for none, or for two.
 
     .. versionadded:: 6.0.0
-       ``router._route_split_slot`` and ``parse._read_route_split`` until
-       Phase 3, step 4, two readers of one value.
     """
     blanked = _split_blanked(question, conditions)
     found = [(name, match) for name, pattern in lexicon.SPLIT_WORDS.items() if (match := pattern.search(blanked)) is not None]

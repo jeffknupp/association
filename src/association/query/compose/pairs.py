@@ -41,7 +41,6 @@ MATCHUP_MEETINGS_SHOWN = 5
 where the question named no count.
 
 .. versionadded:: 5.0.0
-   ``templates.games._DEFAULT_MEETINGS_LOGGED`` was this.
 """
 
 

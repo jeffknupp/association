@@ -85,7 +85,6 @@ def conference_refusal(scope: Filtered) -> Unanswered | None:
     said by the sayer's ``conference_named`` phrase) - None otherwise.
 
     .. versionadded:: 5.0.0
-       ``templates.teams.conference_refusal`` was this.
     """
     from association.query.calendar import conference_named
 
@@ -384,7 +383,6 @@ def short_of_games(metric_key: str, lines: list[TeamLine], subject: str | None =
     first short one otherwise, and how many others are short.
 
     .. versionadded:: 5.0.0
-       ``templates.teams._incomplete_opponents``' facts.
     """
     short = [line for line in lines if line.values.get(metric_key) is None]
     example = next((line for line in short if line.team == subject), short[0])
@@ -427,7 +425,6 @@ DEFAULT_TEAM_LEADERBOARD_LIMIT = 10
 """How many teams a ranking lists where the question named no count.
 
 .. versionadded:: 5.0.0
-   Moved from ``templates.teams``.
 """
 
 

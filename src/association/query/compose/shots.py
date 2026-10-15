@@ -89,7 +89,6 @@ SHOT_VALUE_FROM_STAT: dict[str, int] = {"threePointFieldGoalsMade": 3, "freeThro
 mean the same shots.
 
 .. versionadded:: 5.0.0
-   ``templates.shots.SHOT_VALUE_FROM_STAT`` was this.
 """
 
 
@@ -99,7 +98,6 @@ def shot_value_of(scope: Filtered) -> int | None:
     (:data:`SHOT_VALUE_FROM_STAT`), or every shot (``None``).
 
     .. versionadded:: 5.0.0
-       ``templates.shots._shot_value`` was this.
     """
     if scope.measure is None:
         return None
@@ -239,7 +237,6 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result |
     career and a window at once, a free throw's distance.
 
     .. versionadded:: 5.0.0
-       ``templates.shots.shot_distance`` was this, the read moved whole.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against
@@ -513,8 +510,6 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result | Un
     nothing the seasons the player IS on record for (``season_redirected``).
 
     .. versionadded:: 5.0.0
-       ``templates.shots.shot_chart`` and ``shotchart.render_for_player``
-       were this, the read moved whole.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against

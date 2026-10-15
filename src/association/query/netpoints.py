@@ -46,7 +46,6 @@ NETPOINTS_TOTALS = ("overall", "offense", "defense", "overall_per_100_poss", "to
 reads it.
 
 .. versionadded:: 6.0.0
-   ``compose.netpoints._NETPOINTS_TOTALS`` was this.
 """
 
 Column = tuple[str, str]
@@ -98,7 +97,6 @@ def netpoints_totals_statement(athlete_id: str, season: int, season_type: int) -
     the numeric one every other table uses silently matches nothing.
 
     .. versionadded:: 5.0.0
-       ``templates.netpoints.player_netpoints``' first statement.
 
     .. versionchanged:: 6.0.0
        Moved from ``compose.netpoints`` to the relation.
@@ -113,7 +111,6 @@ def netpoints_fingerprint_statement(athlete_id: str, season: int, categories: Se
     table has no season_type column at all.
 
     .. versionadded:: 5.0.0
-       ``templates.netpoints.player_netpoints``' second statement.
 
     .. versionchanged:: 6.0.0
        Moved from ``compose.netpoints`` to the relation, and takes the
@@ -130,7 +127,6 @@ def netpoints_game_statement(athlete_id: str, season: int, season_type: int, ord
     normal numeric season_type - dated from ``games``.
 
     .. versionadded:: 5.0.0
-       ``templates.netpoints._single_game_netpoints``' statement.
 
     .. versionchanged:: 6.0.0
        Moved from ``compose.netpoints`` to the relation.
@@ -187,7 +183,6 @@ def netpoints_statement(athlete_id: str, season: int, season_type: int) -> State
     the caller's to catch.
 
     .. versionadded:: 5.0.0
-       ``templates.players._compare_netpoints``' statement.
 
     .. versionchanged:: 6.0.0
        Moved from ``season_line`` to the relation.
@@ -204,9 +199,6 @@ def netpoints_row(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, 
     caller catches - the table exists only where the NetPoints fetch was run.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.seasons``' comparison reader until then; on the
-       season line (``season_line.netpoints_row``) until it moved to the
-       relation, the same day.
     """
     return _first(_values(con, netpoints_statement(athlete_id, season, season_type)))
 
@@ -223,7 +215,6 @@ def season_fingerprints(con: duckdb.DuckDBPyConnection, season: int, columns: Se
     column. Whatever the season's rows cover is what a fingerprint means.
 
     .. versionadded:: 6.0.0
-       ``fingerprint.load_fingerprints``' statement, moved whole.
     """
     return _values(con, Statement(f"SELECT athlete_id, minutes, total_poss, {_season_columns(columns)} FROM net_points_player_fingerprint WHERE season = ?", [season]))
 
@@ -237,7 +228,6 @@ def game_fingerprints(con: duckdb.DuckDBPyConnection, season: int, season_type: 
     (:func:`~association.query.fingerprint.load_game_fingerprints`).
 
     .. versionadded:: 6.0.0
-       ``fingerprint._load_game_fingerprints_rows``' statement, moved whole.
     """
     return _values(
         con,
@@ -265,7 +255,6 @@ def fingerprint_game_of(con: duckdb.DuckDBPyConnection, athlete_id: str, season:
     the date it was meant to be played on.
 
     .. versionadded:: 6.0.0
-       ``fingerprint._game_for``'s statement, moved whole.
     """
     return _first(
         _values(

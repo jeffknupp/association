@@ -576,7 +576,6 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Re
     rebuilt too seldom right, the relation's own.
 
     .. versionadded:: 5.0.0
-       ``templates.games.team_quarter_points`` was this, with its sentences.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against
@@ -684,7 +683,6 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result 
     refusal.
 
     .. versionadded:: 5.0.0
-       ``templates.games.period_leaderboard`` was this, with its sentences.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against

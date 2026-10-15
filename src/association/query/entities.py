@@ -985,7 +985,6 @@ def unmatched(index: names.NameIndex, text: str, kind: str = "player") -> Clarif
     reading the sentence as its message either way, as the charts' did.
 
     .. versionadded:: 2.1.0
-       As ``no_match``, which returned the sentence.
 
     .. versionchanged:: 5.0.0
        Returns the typed outcome; the sayer words it
@@ -1019,14 +1018,12 @@ GAME_LOGS = Availability("player_game_log")
 """The game logs as an availability: the table a log rests on.
 
 .. versionadded:: 5.0.0
-   Declared beside :class:`Availability` (``templates.common.GAME_LOGS`` was this).
 """
 
 BOX_SCORES = Availability("player_box_stats")
 """The box scores as an availability: the table a box-score answer rests on.
 
 .. versionadded:: 5.0.0
-   Declared beside :class:`Availability` (``templates.common.BOX_SCORES`` was this).
 """
 
 SHOT_AVAILABILITY = Availability("shot_chart")

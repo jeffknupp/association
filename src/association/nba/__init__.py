@@ -11,6 +11,4 @@ the shared knowledge sits in its own package below both. Nothing here imports
 anything else from ``association``.
 
 .. versionadded:: 3.0.0
-   The modules moved here from the package root; ``association.net_points_categories``
-   is now :mod:`association.nba.netpoints`.
 """

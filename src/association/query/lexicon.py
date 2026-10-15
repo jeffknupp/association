@@ -43,8 +43,6 @@ O'Neal). The name index matches a token strongly where it starts one
 surname a typo backs off to is kept only where it does (:func:`word_start`).
 
 .. versionadded:: 6.0.0
-   ``entities._WORD_START`` until Phase 3, step 4: the last pattern outside
-   the lexicon.
 """
 
 
@@ -423,7 +421,6 @@ def opponent_kind(words: str) -> TypedKind:
     by "versus", or by neither ("v warriors", a team named bare).
 
     .. versionadded:: 6.0.0
-       ``mark_opponent``'s choice of mark until Phase 4, step 6.
     """
     led = words.casefold()
     return "opponent_against" if led.startswith(("against", "vs")) else "opponent_versus" if led.startswith("versus") else "opponent"
@@ -436,7 +433,6 @@ def companion_kind(words: str) -> TypedKind:
     read, or any other ("in games X missed", the words after a versus word).
 
     .. versionadded:: 6.0.0
-       ``mark_companions``' choice of mark until Phase 4, step 6.
     """
     return "companion_with" if PRESENCE_WORDS.search(words) else "companion"
 
@@ -839,7 +835,6 @@ COUNT_NUMBERS: dict[str, int] = {
 """A count of games written in words, one through a hundred.
 
 .. versionadded:: 6.0.0
-   ``parse._NUMBERS`` until Phase 3, step 2.
 """
 COUNT = r"(\d{1,3}|" + "|".join(re.escape(w).replace(r"\ ", r"[\s-]+") for w in sorted(COUNT_NUMBERS, key=len, reverse=True)) + ")"
 """The fragment a count of games is written as: up to three digits, or a
@@ -847,7 +842,6 @@ number word (``COUNT_NUMBERS``), the longest first. Shared by the window
 grammar and the subject grammar's log row ("last N games").
 
 .. versionadded:: 6.0.0
-   ``parse._COUNT`` until Phase 3, step 2.
 """
 
 COUNT_WORD = re.compile(COUNT, re.IGNORECASE)
@@ -862,7 +856,6 @@ def count_of(word: str) -> int:
     with any spacing or hyphen between its parts ("twenty-five").
 
     .. versionadded:: 6.0.0
-       ``parse._count`` until Phase 3, step 2.
     """
     return int(word) if word.isdigit() else COUNT_NUMBERS[" ".join(word.lower().replace("-", " ").split())]
 
@@ -1066,7 +1059,6 @@ SINGLE_GAME = re.compile(r"\b(?:his|her|their|the|\w+'s)\s+(last|first|latest|pr
 """One game at one end of the span, named as the subject's own.
 
 .. versionadded:: 6.0.0
-   ``router._SINGLE_GAME`` until Phase 3, step 2.
 """
 
 # Which end of a team ranking was asked for. The four are not two pairs: for
@@ -1087,7 +1079,6 @@ RANK_WORDS: tuple[tuple[Literal["most", "fewest", "best", "worst"], re.Pattern[s
 """Which end of a team ranking was asked for, by name, in the order tried.
 
 .. versionadded:: 6.0.0
-   ``router.RANK_WORDS`` until Phase 3, step 2.
 """
 
 # A ranking of the GAMES that satisfy a yes/no stat (a triple-double, a
@@ -1104,13 +1095,11 @@ RANKED_BOOLEAN_GAMES = re.compile(
 """The games over a yes/no stat ranked by another measure, named.
 
 .. versionadded:: 6.0.0
-   ``router._RANKED_BOOLEAN_GAMES`` until Phase 3, step 2.
 """
 RANKED_BY_WORD = re.compile(r"\b(scoring|points?|rebounds?|assists?|steals?|blocks?|minutes?)\b", re.IGNORECASE)
 """The measure a ranking of games is ordered by, as the question words it.
 
 .. versionadded:: 6.0.0
-   ``router._RANKED_BY_WORD`` until Phase 3, step 2.
 """
 
 # A ranking's qualifier as the question states it - "minimum 100 games
@@ -1191,13 +1180,11 @@ GAMES_WORDS = re.compile(r"\bgames?\b|\blast\b", re.IGNORECASE)
 """A player's games rather than his line: "games", or "last".
 
 .. versionadded:: 6.0.0
-   ``router._GAMES_WORDS`` until Phase 3, step 2.
 """
 WHO_RANKS = re.compile(r"\bwho\b.{0,30}\b(?:most|fewest|highest|lowest|best|worst|leads?|led)\b|\btop\s+\d+\b|\bleaders?\b", re.IGNORECASE)
 """A ranking asked of the league - "who attempted the most", "who leads", "top 10".
 
 .. versionadded:: 6.0.0
-   ``router._WHO_RANKS`` until Phase 3, step 2.
 """
 PERIOD_TOP = re.compile(r"\b(?:most|highest|top|best)\b", re.IGNORECASE)
 """A rank word beside a quarter or half: players ranked by it, unless a
@@ -1205,7 +1192,6 @@ team is named ("the Pistons' most points in a first half" is the team's
 single best half).
 
 .. versionadded:: 6.0.0
-   ``router._PERIOD_TOP`` until Phase 3, step 2.
 """
 LAST_WORD = re.compile(r"\blast\b", re.IGNORECASE)
 """The bare word "last": the one guard of this family the span tagger reads
@@ -1213,7 +1199,6 @@ LAST_WORD = re.compile(r"\blast\b", re.IGNORECASE)
 not a count was read beside it).
 
 .. versionadded:: 6.0.0
-   ``span._LAST`` until the window's slice.
 """
 LOG_OR_WINDOW_WORDS = AnyOf((Words(re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)), stands("window")))
 """A log word or a window of games beside two teams - in words, or as the
@@ -1221,7 +1206,6 @@ window tagger typed it where the parent grammar reads it: one team's
 games, not their meetings.
 
 .. versionadded:: 6.0.0
-   ``parse._LOG_OR_WINDOW_WORDS`` until Phase 3, step 2.
 """
 
 
@@ -1354,8 +1338,6 @@ opened on one dated, which the parent grammar asks for as the cuts tagger
 typed it (:meth:`~association.query.cuts.CutsRead.dated`).
 
 .. versionadded:: 6.0.0
-   ``SLASHED_DAY`` (``parse._SLASHED_DAY`` until Phase 4, step 6), slashes
-   alone, until ISSUES.md #323.
 """
 
 # Where a game was played. "Far away" and "fade away" are shot descriptions,
@@ -1366,13 +1348,11 @@ VENUE_HOME = re.compile(r"\bhome\b(?!\s+runs?)", re.IGNORECASE)
 """The games at home.
 
 .. versionadded:: 6.0.0
-   ``router._HOME`` until Phase 3, step 2.
 """
 VENUE_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
 """The games on the road.
 
 .. versionadded:: 6.0.0
-   ``router._AWAY`` until Phase 3, step 2.
 """
 
 # One round of the postseason. No table carries a round, so no reader can
@@ -1383,7 +1363,6 @@ ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?final
 """A playoff round, as worded.
 
 .. versionadded:: 6.0.0
-   ``router._ROUND_WORDS`` until Phase 3, step 2.
 """
 
 # One game of a playoff series, by number: "game 4", "game 7s". Read as a
@@ -1395,7 +1374,6 @@ SERIES_GAME = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
 """One game of each playoff series, by its number.
 
 .. versionadded:: 6.0.0
-   ``router._GAME_N`` until Phase 3, step 2.
 """
 
 # A season named by ordinal: "his 18th season", "15th season played". The
@@ -1408,7 +1386,6 @@ ORDINAL_SEASON = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNOREC
 """A season named by its place in a career.
 
 .. versionadded:: 6.0.0
-   ``router._SEASON_N`` until Phase 3, step 2.
 """
 
 # One row per holiday a question can name as a day: its label, the kind and
@@ -1442,7 +1419,6 @@ of the narrowing it is, and every spelling read as it (lowercase, straight
 apostrophes).
 
 .. versionadded:: 6.0.0
-   ``calendar._HOLIDAY_SPELLINGS`` until Phase 3, step 2.
 """
 UNREAD_HOLIDAYS: tuple[str, ...] = ("easter",)
 """Holidays a question can name that no day is read for. The tagger
@@ -1452,7 +1428,6 @@ narrow. Easter follows the church calendar (the Gregorian computus), which
 no narrowing here states.
 
 .. versionadded:: 6.0.0
-   ``calendar.UNREAD_HOLIDAYS`` until Phase 3, step 2.
 """
 
 
@@ -1472,7 +1447,6 @@ the calendar reads cannot drift apart: a key the captured words never hold
 ("valentine's day", #238) would narrow nothing.
 
 .. versionadded:: 6.0.0
-   ``calendar.HOLIDAY_WORDS`` until Phase 3, step 2.
 """
 
 #: The conference and division words a situation names the OPPONENT to be
@@ -1498,7 +1472,6 @@ ALIGNMENT_NAMES: dict[str, tuple[str, str]] = {
 """Each conference or division word, to the kind and the stored name.
 
 .. versionadded:: 6.0.0
-   ``calendar._ALIGNMENT_NAMES`` until Phase 3, step 2.
 """
 _ALIGNMENT_WORD = "|".join(sorted(ALIGNMENT_NAMES, key=len, reverse=True))
 # Deliberately narrow, the same way the holidays are: only the fixed
@@ -1517,7 +1490,6 @@ ALIGNMENT = re.compile(rf"^(?:(?:vs\.?|against|in)\s+)?(?:the\s+)?(?P<name>{_ALI
 """A whole situation value naming the opponent's conference or division.
 
 .. versionadded:: 6.0.0
-   ``calendar._ALIGNMENT`` until Phase 3, step 2.
 """
 
 # The words after a subject that name a circumstance, filed in one
@@ -1609,7 +1581,6 @@ SITUATION = re.compile(
 """A circumstance the games are under, as the question worded it.
 
 .. versionadded:: 6.0.0
-   ``router._SITUATION`` until Phase 3, step 2.
 """
 
 # The calendar module's readers of a situation VALUE, each anchored to the
@@ -1620,21 +1591,18 @@ SITUATION_WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thu
 """A situation value that is a weekday.
 
 .. versionadded:: 6.0.0
-   ``calendar._WEEKDAY`` until Phase 3, step 2.
 """
 SITUATION_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH_WORD}\.?$", re.IGNORECASE)
 """A situation value that is a month, written out or short ("oct" before
 its year).
 
 .. versionadded:: 6.0.0
-   ``calendar._IN_MONTH`` until Phase 3, step 2.
 """
 SITUATION_SINCE_DAY = re.compile(rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_WORD}\.?\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
 """A situation value opening a range on a day of each season - its month
 written out or short ("after dec 11", ISSUES.md #353).
 
 .. versionadded:: 6.0.0
-   ``calendar._SINCE_DAY`` until Phase 3, step 2.
 """
 # A range opened on a worded day WITH its year: "since january 31st 2020",
 # "after Dec 11 2023" - every game from that calendar day on, across
@@ -1671,14 +1639,12 @@ SITUATION_SINCE_NUMERIC = re.compile(r"^(?:since|from|after)\s+(?:the\s+)?(?P<da
 """A situation value opening a range on a date written in numbers.
 
 .. versionadded:: 6.0.0
-   ``calendar._SINCE_NUMERIC`` until Phase 3, step 2.
 """
 BARE_MONTH = re.compile(rf"^in {_MONTH_NAME}$", re.IGNORECASE)
 """A situation value of exactly "in <month>" - anchored to that shape, so
 "since january 31st" (a window) is not mistaken for one.
 
 .. versionadded:: 6.0.0
-   ``calendar._BARE_MONTH`` until Phase 3, step 2.
 """
 
 # Conference and division words where a TEAM belongs - the subject's team or
@@ -1692,7 +1658,6 @@ CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?
 """A conference or division word where a team's name stands.
 
 .. versionadded:: 6.0.0
-   ``calendar._CONFERENCE_WORDS`` until Phase 3, step 2.
 """
 # How a situation nothing reads is told apart for the refusal's facts
 # (`reading.Cause("non_calendar_situation")`, its `reads_as`): an age, or a
@@ -1702,13 +1667,11 @@ AGE_WORDS = re.compile(r"\b(?:\d+[\s-]+years?[\s-]+old|(?:before|after|by|at)\s+
 """An age, which no table holds a birth date for.
 
 .. versionadded:: 6.0.0
-   ``parse._AGE`` until Phase 3, step 2.
 """
 CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 """A conference or division word anywhere in a situation.
 
 .. versionadded:: 6.0.0
-   ``parse._CONFERENCE_OR_DIVISION`` until Phase 3, step 2.
 """
 NAME_LIST_SPLIT = re.compile(r",|\band\b|&")
 """Where a list of names written as one string splits ("Anthony Black,
@@ -1929,7 +1892,6 @@ ORDINAL_PERIODS: dict[str, int] = {"first": 1, "1st": 1, "second": 2, "2nd": 2, 
 """The ordinal a quarter or half is named by, to its number.
 
 .. versionadded:: 6.0.0
-   ``router._ORDINAL_PERIODS`` until Phase 3, step 2.
 """
 
 # Which quarter or half, in the forms questions actually use. All three
@@ -1945,13 +1907,11 @@ WHICH_QUARTER = re.compile(
 """Which quarter the words name, by ordinal or by number.
 
 .. versionadded:: 6.0.0
-   ``router._WHICH_QUARTER`` until Phase 3, step 2.
 """
 WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<hn>[12])h\b", re.IGNORECASE)
 """Which half the words name, by ordinal or by number.
 
 .. versionadded:: 6.0.0
-   ``router._WHICH_HALF`` until Phase 3, step 2.
 """
 
 # The words that name a quarter at all, which the grammar's rules read
@@ -1965,7 +1925,6 @@ QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-
 lowercased question, as the grammar's rule reads it.
 
 .. versionadded:: 6.0.0
-   ``router._QUARTER_WORDS`` until Phase 3, step 2.
 """
 # A half is never a quarter. team_quarter_points reads a period number and
 # the model mapped "first half" onto period 1, which is wrong for a TEAM the
@@ -1978,7 +1937,6 @@ HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)[\s-]+half\b|\b[12]h\b|\bhal
 """A half named at all.
 
 .. versionadded:: 6.0.0
-   ``router._HALF_WORDS`` until Phase 3, step 2.
 """
 
 # A quarter or half question that ranks PLAYERS rather than asking about
@@ -1998,7 +1956,6 @@ PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\
 """Players ranked by a quarter or half, rather than one asked about.
 
 .. versionadded:: 6.0.0
-   ``router._PERIOD_LEADERS`` until Phase 3, step 2.
 """
 # A named player's period "games" with no stat named is his games listed,
 # the way "log" is (yardstick-v2 F060, "Rudy gobert first half games this
@@ -2007,7 +1964,6 @@ PERIOD_GAMES_WORDS = re.compile(r"\bgames\b", re.IGNORECASE)
 """A named player's period games, listed.
 
 .. versionadded:: 6.0.0
-   ``router._PERIOD_GAMES_WORDS`` until Phase 3, step 2.
 """
 # A period used as a CONDITION on the games rather than the part of each
 # game measured: "vj edgecombe three points made per game after making one
@@ -2024,7 +1980,6 @@ PERIOD_AS_CONDITION = re.compile(
 """The words that make a period a condition on which games count.
 
 .. versionadded:: 6.0.0
-   ``router._PERIOD_AS_CONDITION`` until Phase 3, step 2.
 """
 # Every quarter at once, side by side (yardstick-v2 F048, "nba playerspoints
 # by quarter average", which no one period answers).
@@ -2035,14 +1990,12 @@ BY_QUARTER = re.compile(r"\b(?:by|per|each|every)\s+(?:quarter|qtr)s?\b|\bquarte
 """Every quarter at once - a breakdown, which names no one period.
 
 .. versionadded:: 6.0.0
-   ``router._BY_QUARTER`` until Phase 3, step 2.
 """
 PERIOD_WORD = re.compile(r"\b(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|half)\b|\bq[1-4]\b|\b[1-4]q\b|\b[12]h\b|\b(?:quarter|half)\b", re.IGNORECASE)
 """A quarter or half word anywhere, in any form - the ``period_as_condition``
 cause's second half, beside :data:`PERIOD_AS_CONDITION`.
 
 .. versionadded:: 6.0.0
-   ``parse._PERIOD_WORD`` until Phase 3, step 2.
 """
 # The point reader's guard: a league-wide or a team's read that names a
 # quarter, a half, an overtime or a period is the period relation's
@@ -2052,7 +2005,6 @@ PERIOD_GUARD = re.compile(r"\b(quarter|qtr|half|period|overtime|\d(?:st|nd|rd|th
 """Any period word, for the point reader's "the period relation's question" guard.
 
 .. versionadded:: 6.0.0
-   ``point._PERIOD`` until Phase 3, step 2.
 """
 PERIOD_INTENT_WORDS = r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b"
 """The words the parser's grammar names a period parent by
@@ -2077,7 +2029,6 @@ PERIOD_CONDITION = re.compile(
 (``parse.read_period_condition``, the line slice's reader).
 
 .. versionadded:: 6.0.0
-   ``parse._PERIOD_CONDITION`` until Phase 3, step 2.
 """
 
 
@@ -2149,8 +2100,6 @@ definition of what a question calls a column, which the threshold grammar
 (``lines.measure_filters``) and the point reader all read by.
 
 .. versionadded:: 6.0.0
-   In the lexicon (``measures.MEASURE_WORDS`` until Phase 3, step 2, the
-   line; ``measures`` re-exports it under the same name).
 """
 
 # --- A line on a stat: the five carriers' words --------------------------------------
@@ -2176,13 +2125,11 @@ THRESHOLD_SPELLINGS: tuple[str, ...] = (
 """The spellings the threshold grammar reads a line's stat by.
 
 .. versionadded:: 6.0.0
-   ``router._THRESHOLD_SPELLINGS`` until Phase 3, step 2.
 """
 THRESHOLD_WORDS: dict[str, str] = {word: MEASURE_WORDS[word] for word in THRESHOLD_SPELLINGS}
 """Each threshold spelling to the column it names (:data:`MEASURE_WORDS`).
 
 .. versionadded:: 6.0.0
-   ``router._THRESHOLD_WORDS`` until Phase 3, step 2.
 """
 _THRESHOLD_ALTERNATION = "|".join(sorted((re.escape(w) for w in THRESHOLD_WORDS), key=len, reverse=True))
 # Every "N+ <stat>" pair, in order: "20+ points", "36-plus points", "30 or
@@ -2195,7 +2142,6 @@ THRESHOLD_PAIR = re.compile(rf"\b(\d{{1,3}})[\s-]*(?:\+|plus|or\s+more)[\s-]*({_
 """A line at or above a number with its stat word, the plus required.
 
 .. versionadded:: 6.0.0
-   ``router._THRESHOLD_PAIR`` until Phase 3, step 2.
 """
 # The same spellings with the "+" optional - a line stated as a bare number
 # ("30 pt games", "15 reb"), read only under the readers whose shape is a
@@ -2209,8 +2155,6 @@ THRESHOLD = re.compile(rf"\b(\d{{1,3}})[\s-]*(?:\+|plus|or\s+more)?[\s-]*({_THRE
 inside his phrase (``subject._condition_role`` reads it through this too).
 
 .. versionadded:: 6.0.0
-   ``router._THRESHOLD`` and ``subject._CONDITION_THRESHOLD``, one pattern
-   twice, until Phase 3, step 2.
 """
 # "anthony edwards log with at least 50 points": the floor said in words before
 # the number - a line stated outright, as "50+ points" is, where a bare "50
@@ -2255,7 +2199,6 @@ SCORED = re.compile(
 """A line on points stated by a scoring verb and a bare number.
 
 .. versionadded:: 6.0.0
-   ``router._SCORED`` until Phase 3, step 2.
 """
 GIVEN_UP_LINE_LEAD = re.compile(r"\b(?:allow(?:ed|s|ing)?|gave\s+up|give[sn]?\s+up|giving\s+up|conced(?:e|ed|es|ing)|opponents?|opp)\s+$", re.IGNORECASE)
 """The words that make the line right after them a line on the OPPONENTS'
@@ -2288,7 +2231,6 @@ BELOW = re.compile(
 """A line a game is kept under, as worded.
 
 .. versionadded:: 6.0.0
-   ``router._BELOW`` until Phase 3, step 2.
 """
 # A comparison AT OR ABOVE a number, on minutes: "with 25 minutes", "20+
 # mins", "30 minutes or more", "when playing 20 or more minutes" - read out
@@ -2311,7 +2253,6 @@ ABOVE = re.compile(
 """A line of minutes a game is kept at or over, as worded.
 
 .. versionadded:: 6.0.0
-   ``router._ABOVE`` until Phase 3, step 2.
 
 .. versionchanged:: 6.0.0
    Reads "N or more minutes", the lead "playing" ("when playing 20 or
@@ -2484,7 +2425,6 @@ MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?:or\s+more\s+|
 """A below/above phrase split into its lead, its number and its stat words.
 
 .. versionadded:: 6.0.0
-   ``lines._MEASURE_PHRASE`` until Phase 3, step 2.
 """
 OVER_LEADS: tuple[str, ...] = ("over", "more than", "above", "greater than")
 """The leads of an above phrase that read as over, not at or over ("when
@@ -2518,13 +2458,11 @@ FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b", re.IGNORECASE)
 """Fouling out, by its words.
 
 .. versionadded:: 6.0.0
-   ``router._FOULED_OUT`` until Phase 3, step 2.
 """
 FOUL_OUT_THRESHOLD = 6
 """The fouls that foul a player out: the line :data:`FOULED_OUT` names.
 
 .. versionadded:: 6.0.0
-   ``router.FOUL_OUT_THRESHOLD`` until Phase 3, step 2.
 """
 # "td3" is a triple-double, and the model reads its "3" as a shot value:
 # "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
@@ -2534,7 +2472,6 @@ TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
 """The "td3" spelling of a triple-double.
 
 .. versionadded:: 6.0.0
-   ``router._TRIPLE_DOUBLE_ABBREVIATION`` until Phase 3, step 2.
 """
 # A player's games won or lost: "how many playoff games has embiid won" is
 # his team's record in the games he played, with no line at all.
@@ -2542,7 +2479,6 @@ GAMES_WON = re.compile(r"\bgames\b.{0,20}\b(won|lost|wins?|los[es]+)\b", re.IGNO
 """Games won or lost, by their words, the result word in the group.
 
 .. versionadded:: 6.0.0
-   ``router._GAMES_WON`` until Phase 3, step 2.
 """
 WHEN_REACHES = re.compile(
     r"\bwhen\s+(?:[a-z][\w'.-]*\s+){1,3}?(?:scores?|scored|has|had|gets?|got|puts?\s+up|drops?|dropped|grabs?|grabbed|dishes|dished|records?|recorded|makes?|made|hits?)\b",
@@ -2551,7 +2487,6 @@ WHEN_REACHES = re.compile(
 """A "<team> when <player> reaches N" clause: "when <someone> scores/has/gets".
 
 .. versionadded:: 6.0.0
-   ``router._WHEN_REACHES`` until Phase 3, step 2.
 """
 # A line in one quarter or half, conditioning which games count: the number
 # as a word ("one three", "a three"), and the singular a line's words take
@@ -2561,7 +2496,6 @@ CONDITION_NUMBERS: dict[str, int] = {"a": 1, "an": 1, "one": 1, "two": 2, "three
 """A period line's number as a word.
 
 .. versionadded:: 6.0.0
-   ``parse._CONDITION_NUMBERS`` until Phase 3, step 2.
 """
 CONDITION_STAT_WORDS: dict[str, str] = {
     "three": "threePointFieldGoalsMade",
@@ -2587,7 +2521,6 @@ CONDITION_STAT_WORDS: dict[str, str] = {
 """A period line's stat in the singular, to the column the period's line rebuilds.
 
 .. versionadded:: 6.0.0
-   ``parse._CONDITION_STAT_WORDS`` until Phase 3, step 2.
 """
 
 # --- The companions: who stands beside the subject -------------------------------------
@@ -2609,7 +2542,6 @@ NAME_STOPWORDS: frozenset[str] = frozenset(
 """The words no companion's name holds.
 
 .. versionadded:: 6.0.0
-   ``router._NAME_STOPWORDS`` until Phase 3, step 2.
 """
 # What a phrase naming a player says about one who sat the games out: "with
 # Embiid out", "when Tatum is injured", "when Embiid doesn't play", "in games
@@ -2623,7 +2555,6 @@ ABSENCE_WORDS = (
 """The words that say a player sat the games out - a fragment, no groups.
 
 .. versionadded:: 6.0.0
-   ``router._ABSENCE_WORDS`` until Phase 3, step 2.
 """
 # "with Embiid out", "when Tatum and Brown are injured", "in games Brown
 # missed": a player named before an absence word sat those games out - the
@@ -2642,7 +2573,6 @@ ABSENT_NAMED = re.compile(
 """A player named before an absence word.
 
 .. versionadded:: 6.0.0
-   ``router._ABSENT_NAMED`` until Phase 3, step 2.
 """
 # A companion's phrase: what follows "without" / "with" / "when" / "while",
 # up to the next scoping word. Loose on purpose - the names it holds are
@@ -2659,7 +2589,6 @@ COMPANION = re.compile(
 """A companion phrase: the keyword, and the words after it a name is read from.
 
 .. versionadded:: 6.0.0
-   ``subject._COMPANION`` until Phase 3, step 2.
 """
 COMPANION_CLAUSE_BREAK = re.compile(r"\b(?:when|while|and)\s+$", re.IGNORECASE)
 """A clause break right before a companion's name inside his phrase - the
@@ -2675,7 +2604,6 @@ COMPARED_WITH = re.compile(r"\b(?:compare|compared|comparing|contrast|contrasted
 joins the two subjects; it is not a companion phrase (ISSUES.md #233).
 
 .. versionadded:: 6.0.0
-   ``subject._COMPARED_WITH`` until Phase 3, step 2.
 """
 # "in games Embiid started", "in the games Brown missed": the role stated
 # after the games it narrows, with no "when" or "with" before the name -
@@ -2689,7 +2617,6 @@ COMPANION_STOP = r"vs\.?|versus|against|in|for|this|last|the|what|who|how|which|
 """The words that end a companion phrase - a fragment.
 
 .. versionadded:: 6.0.0
-   ``subject._COMPANION_STOP`` until Phase 3, step 2.
 """
 COMPANION_IN_GAMES = re.compile(
     r"\b(in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+"
@@ -2701,7 +2628,6 @@ COMPANION_IN_GAMES = re.compile(
 """A companion named after the games his role narrows: "in games X started".
 
 .. versionadded:: 6.0.0
-   ``subject._COMPANION_IN_GAMES`` until Phase 3, step 2.
 """
 # A player after a versus word is on the OTHER side of the subject's games -
 # a condition ("most points by curry vs lebron"), never a
@@ -2710,7 +2636,6 @@ VERSUS_PHRASE = re.compile(rf"\b(vs\.?|versus|against|v\.?)\s+((?:(?!\b(?:{COMPA
 """The words after a versus word, a name on the other side is read from.
 
 .. versionadded:: 6.0.0
-   ``subject._VERSUS_PHRASE`` until Phase 3, step 2.
 """
 # What a companion phrase says the player DID in the games asked about: a
 # start, the bench ("off" alone too: the phrase stops at "the", a stop word,
@@ -2738,37 +2663,31 @@ CONDITION_STARTED = re.compile(r"\bstart(?:s|ed|ing)?\b|\bin the starting lineup
 """A start, by its words.
 
 .. versionadded:: 6.0.0
-   ``subject._CONDITION_STARTED`` until Phase 3, step 2.
 """
 CONDITION_BENCH = re.compile(r"\bbench\b|\boff\b|\bas a reserve\b", re.IGNORECASE)
 """The bench, by its words.
 
 .. versionadded:: 6.0.0
-   ``subject._CONDITION_BENCH`` until Phase 3, step 2.
 """
 CONDITION_ABSENT = re.compile(rf"\b(?:{ABSENCE_WORDS}|hurt)(?![A-Za-z])", re.IGNORECASE)
 """An absence, by its words (:data:`ABSENCE_WORDS`, and "hurt").
 
 .. versionadded:: 6.0.0
-   ``subject._CONDITION_ABSENT`` until Phase 3, step 2.
 """
 NAME_PIECES = re.compile(r"[^\s,&+]+|[,&+]")
 """A companion phrase's words and joiners, one piece each.
 
 .. versionadded:: 6.0.0
-   ``subject._NAME_PIECES`` until Phase 3, step 2.
 """
 NAME_SHAPED = re.compile(r"[A-Za-z][A-Za-z.'\-]*")
 """A piece shaped like a word of a name.
 
 .. versionadded:: 6.0.0
-   ``subject._NAME_SHAPED`` until Phase 3, step 2.
 """
 NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "&", "+", ","})
 """The joiners between two names in one phrase.
 
 .. versionadded:: 6.0.0
-   ``subject._NAME_JOINERS`` until Phase 3, step 2.
 """
 
 
@@ -2814,8 +2733,6 @@ def scored_threshold(text: str) -> re.Match[str] | None:
     states no line WITH its stat word (:func:`threshold_pairs`), which wins.
 
     .. versionadded:: 6.0.0
-       ``router._threshold_from_text_scored`` until Phase 3, step 2, which
-       returned the number and made the pairs' check itself.
     """
     match = SCORED.search(text)
     return match if match is not None and int(match.group(1)) >= 1 else None
@@ -2897,7 +2814,6 @@ not hold. Each key is a measure as typed, which the catalog resolves
 (``measure.key_of``).
 
 .. versionadded:: 6.0.0
-   ``parse.MEASURE_GRAMMAR`` until Phase 3, step 2.
 """
 
 MEASURE_ORDINARY_WORDS: frozenset[str] = frozenset({"to", "min"})
@@ -2906,7 +2822,6 @@ MEASURE_ORDINARY_WORDS: frozenset[str] = frozenset({"to", "min"})
 question writes them in capitals ("TO", "MIN").
 
 .. versionadded:: 6.0.0
-   ``parse._MEASURE_ORDINARY_WORDS`` until Phase 3, step 2.
 """
 
 MEASURE_WORD_SPLIT = re.compile(r"[^a-z0-9%/+]+")
@@ -2950,7 +2865,6 @@ STAT_WORDS = re.compile(
 the model's required key is dropped by where the words name none.
 
 .. versionadded:: 6.0.0
-   ``router._STAT_WORDS`` until Phase 3, step 2.
 """
 
 TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)  # codespell:ignore offen - a regex stem
@@ -2958,7 +2872,6 @@ TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessi
 pace, a rating, possessions, the record.
 
 .. versionadded:: 6.0.0
-   ``router._TEAM_STAT_WORDS`` until Phase 3, step 2.
 """
 
 # Rate stats the prompt never lists as a player `stat`, so the model reaches
@@ -2976,7 +2889,6 @@ ADVANCED_STAT_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
 model's key on the readers that look one up.
 
 .. versionadded:: 6.0.0
-   ``router._ADVANCED_STAT_WORDS`` until Phase 3, step 2.
 """
 
 # Hollinger's single-game composite (ISSUES.md #114). Anchored to the
@@ -2989,7 +2901,6 @@ GAME_SCORE = re.compile(r"\bgame\s*scores?\b", re.IGNORECASE)
 """Game score, by its two-word name.
 
 .. versionadded:: 6.0.0
-   ``router._GAME_SCORE`` until Phase 3, step 2.
 """
 
 GAMES_PLAYED = re.compile(r"\bgames?\s+played\b|\bgp\b", re.IGNORECASE)
@@ -3011,7 +2922,6 @@ TWO_POINT_PCT = re.compile(r"\b(?:2[- ]?pts?|2p|2[- ]?points?|two[- ]?points?)\b
 """A 2-point percentage, named.
 
 .. versionadded:: 6.0.0
-   ``router._TWO_POINT_PCT`` until Phase 3, step 2.
 """
 
 # A ranking of shot distance (ISSUES.md #114): no metric ranks it, and none is
@@ -3021,7 +2931,6 @@ SHOT_DISTANCE_RANKED = re.compile(r"\bshot\s+distance\b|\b(?:3|three)[- ]?points
 """Shot distance named as a thing to rank by.
 
 .. versionadded:: 6.0.0
-   ``router._LEADERBOARD_SHOT_DISTANCE`` until Phase 3, step 2.
 """
 
 ATTEMPTED = re.compile(r"\battempt(?:ed|s)?\b|\bfga\b|\b3pa\b|\bfta\b|\bshots?\s+taken\b", re.IGNORECASE)
@@ -3029,7 +2938,6 @@ ATTEMPTED = re.compile(r"\battempt(?:ed|s)?\b|\bfga\b|\b3pa\b|\bfta\b|\bshots?\s
 filed the made column).
 
 .. versionadded:: 6.0.0
-   ``router._ATTEMPTED`` until Phase 3, step 2.
 """
 
 # "mad" too: "show embiid's 3pt attempts and 3pts mad for his career" asks
@@ -3051,7 +2959,6 @@ SHOT_VALUE_WORDS: tuple[tuple[int, re.Pattern[str]], ...] = (
 """``(value, pattern)`` - a shot value named.
 
 .. versionadded:: 6.0.0
-   ``router._SHOT_VALUE_WORDS`` until Phase 3, step 2.
 """
 
 # The side of the ball a fingerprint or a NetPoints rating asked for,
@@ -3064,7 +2971,6 @@ SIDE_WORDS: dict[str, re.Pattern[str]] = {
 """The side words, by side.
 
 .. versionadded:: 6.0.0
-   ``router.SIDE_WORDS`` until Phase 3, step 2.
 """
 
 # A NetPoints rate asked for by any of its names. In this data the only
@@ -3075,7 +2981,6 @@ RATE_WORDS = re.compile(r"\badjusted\b|\bper\s+(?:100\s+)?poss?ess?ions?\b|\bper
 """A per-possession rate named.
 
 .. versionadded:: 6.0.0
-   ``router._RATE_WORDS`` until Phase 3, step 2.
 """
 
 # A rate per N minutes (ISSUES.md #388): "per 36 minutes", "per 36",
@@ -3135,7 +3040,6 @@ PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
 """A per-90 rate named - a football unit, held in nothing here.
 
 .. versionadded:: 6.0.0
-   ``router._PER_90`` until Phase 3, step 2.
 """
 
 #: A team's season TOTAL asked for by "how many ... made/scored/have" or
@@ -3148,7 +3052,6 @@ TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit
 """A season total asked of a team's own stat.
 
 .. versionadded:: 6.0.0
-   ``router._TEAM_TOTAL`` until Phase 3, step 2.
 """
 
 SINGLE_SEASON_RANKED = re.compile(
@@ -3182,7 +3085,6 @@ PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages?
 """A per-game figure asked for outright.
 
 .. versionadded:: 6.0.0
-   ``router._PER_GAME_WORDS`` until Phase 3, step 2.
 """
 
 # A team metric's word qualified as the OTHER side's: "rebounds allowed per
@@ -3193,14 +3095,12 @@ GIVEN_UP = re.compile(r"\s+(?:allowed|given\s+up|conceded)\b")
 """The words that make a measure the opponent's, after its name.
 
 .. versionadded:: 6.0.0
-   ``router._GIVEN_UP`` until Phase 3, step 2.
 """
 
 LOSING_STREAK = re.compile(r"\blos(?:ing|s|e)\s+streaks?\b|\bstraight\s+losses\b|\blosses\s+in\s+a\s+row\b|\bskid\b", re.IGNORECASE)
 """A run of losses, named.
 
 .. versionadded:: 6.0.0
-   ``router._LOSING_STREAK`` until Phase 3, step 2.
 """
 
 # Columns asked for beside a ranking - "top 5 scorers with their rebounds and
@@ -3209,7 +3109,6 @@ FIELDS_AFTER = re.compile(r"\b(?:with|alongside|and|plus|including)\s+(?:their|h
 """The words after which a ranking names the columns to show beside it.
 
 .. versionadded:: 6.0.0
-   ``parse._FIELDS_AFTER`` until Phase 3, step 2.
 """
 
 TEAM_FIELD_WORDS = re.compile(r"\bteams?\s+(?:they|he)\s+plays?(?:ed)?\s+for\b|\b(?:with|and|plus)\s+(?:the|their)\s+teams?\b|\btheir\s+current\s+teams?\b", re.IGNORECASE)
@@ -3219,7 +3118,6 @@ set aside by the compiler's league-wide guard, which otherwise reads any
 team word as a team's own question.
 
 .. versionadded:: 6.0.0
-   ``metrics.TEAM_FIELD_WORDS`` until Phase 3, step 2.
 """
 
 #: Words in the question for a measure the model may not have named - the
@@ -3245,7 +3143,6 @@ WORD_MEASURES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
 """``(pattern, measure)`` - a phrase naming one of the compiler's measures directly.
 
 .. versionadded:: 6.0.0
-   ``measures.WORD_MEASURES`` until Phase 3, step 2.
 """
 
 #: A word in the question naming a team's own measure directly - the team
@@ -3268,7 +3165,6 @@ TEAM_WORD_MEASURES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
 """``(pattern, measure)`` - a phrase naming a team's game-level or season-total measure.
 
 .. versionadded:: 6.0.0
-   ``point._TEAM_WORD_MEASURES`` until Phase 3, step 2.
 """
 
 #: A word in the question naming what a "highest/biggest ... triple-double"
@@ -3287,7 +3183,6 @@ BOOLEAN_RANK_WORDS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
 """``(pattern, measure)`` - the measure a ranking of boolean games is ordered by.
 
 .. versionadded:: 6.0.0
-   ``point._BOOLEAN_RANK_WORDS`` until Phase 3, step 2.
 """
 
 # The words a question uses for a TEAM metric, by the metric's key - the
@@ -3362,14 +3257,12 @@ TEAM_METRIC_WORDS: dict[str, tuple[str, ...]] = {
 """Team metric key -> the words a question names it by.
 
 .. versionadded:: 6.0.0
-   ``measures._ALIASES`` until Phase 3, step 2.
 """
 
 STAT_ALIASES: dict[str, str] = {alias: key for key, aliases in TEAM_METRIC_WORDS.items() for alias in aliases}
 """Normalized slot text -> ``team_metrics.TEAM_METRICS`` key.
 
 .. versionadded:: 6.0.0
-   ``measures.STAT_ALIASES`` until Phase 3, step 2 (``measures`` and ``team_metrics`` re-export it).
 """
 
 TEAM_METRIC_NAMED: tuple[tuple[str, re.Pattern[str]], ...] = tuple((alias, re.compile("(?<![a-z0-9])" + re.escape(alias) + "(?![a-z0-9])")) for alias in sorted(STAT_ALIASES, key=len, reverse=True))
@@ -3380,28 +3273,24 @@ reads turnovers) - the model invents team stats ("usage_pct_defense" for
 "lowest defensive rating"), and the question says which one it meant.
 
 .. versionadded:: 6.0.0
-   ``router._team_metric_in``'s search until Phase 3, step 2.
 """
 
 CAMEL_CASE_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 """Where a camelCase key breaks into words (``threePointFieldGoalsMade``).
 
 .. versionadded:: 6.0.0
-   ``team_metrics.normalize_stat``'s pattern until Phase 3, step 2.
 """
 
 HOW_MANY_GAMES = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 """A count asked outright ("how many") - beside a games key, a line's count of games rather than a log of one.
 
 .. versionadded:: 6.0.0
-   ``router._HOW_MANY`` until Phase 3, step 2 (the router kept its own for the span's context; the span's context reads this one since the router went, Phase 3, step 4).
 """
 
 LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
 """A game log asked for by name ("luka ft log" is his log, not his season average).
 
 .. versionadded:: 6.0.0
-   ``router._LOG_WORDS`` until Phase 3, step 2 (the router read it for the intent too; the grammar's rules read it for what the words ask since Phase 3, step 4).
 """
 
 WORD = re.compile(r"[a-z]+")
@@ -3460,7 +3349,6 @@ LINE_NUMBER_NO_PLUS = rf"{typed('line_number', 'line_at_least')}+"
 plus - where a grammar's row reads a bare number (``\\d+``).
 
 .. versionadded:: 6.0.0
-   ``MARKED_NUMBER``, its marks, until Phase 4, step 6.
 """
 # A line at or above a number, however it is written: "30+", "36-plus",
 # "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield) -
@@ -3472,7 +3360,6 @@ or the number of a line the lines tagger read stated with a plus, or with
 "at least" before it.
 
 .. versionadded:: 6.0.0
-   ``subject._N_PLUS`` until Phase 3, step 2.
 """
 
 # The child shapes the question's own words assign, gated on the subject's
@@ -3498,19 +3385,16 @@ CHILD_SINGLE_GAME_HIGH = ask(
 """The words that name a single game's high.
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_SHOT_DISTANCE = ask(r"\bhow far\b|\bdistance\b", re.IGNORECASE)
 """The words that name a shot distance.
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_STREAK = ask(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|wins|losses)\b|\bin a row\b|\bconsecutive\b", re.IGNORECASE)
 """The words that name a run of games.
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_RECORD_WHEN_LINE = ask(
     rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*(?:\d|{LINE_NUMBER_NO_PLUS})|{N_PLUS}\s*\w*.*\brecord\b"
@@ -3523,7 +3407,6 @@ CHILD_RECORD_WHEN_LINE = ask(
 """A record over a line: "record when he scored 30+".
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 # A player's games won or lost: his team's record in the games he played,
 # which is record_when's read with no threshold ("how many playoff games has
@@ -3532,7 +3415,6 @@ CHILD_RECORD_WHEN_GAMES_WON = ask(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b(?:won|
 """A player's games won or lost, asked as a count.
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_THRESHOLD_COUNT = ask(
     rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{N_PLUS}|\b(?:how many|most|fewest)\b.*{N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b"
@@ -3566,7 +3448,6 @@ CHILD_THRESHOLD_COUNT = ask(
 """A count of games over a line.
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_PLAYER_HISTORY = ask(
     rf"\b(?:over|for|in|during) the (?:past|last) {N_SEASONS}\b|\b(?:last|past) {N_SEASONS}\b|\b(?:by|per) (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
@@ -3576,13 +3457,11 @@ CHILD_PLAYER_HISTORY = ask(
 """A player's line season by season.
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_PLAYER_SPLITS = ask(r"\bsplits?\b|\bby month\b|\bhome and away\b|\bhome/away\b|\bhome vs\.? away\b|\bmonthly\b", re.IGNORECASE)
 """A player's splits.
 
 .. versionadded:: 6.0.0
-   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 
 # The thirty team nicknames, and the shorthand a question uses for some. Only to
@@ -3596,7 +3475,6 @@ TEAM_NICKNAME = re.compile(
 """A team's nickname (or its shorthand: "cavs", "mavs", "wolves", "sixers") as a whole word.
 
 .. versionadded:: 6.0.0
-   ``router._TEAM_WORD`` until Phase 3, step 2.
 """
 
 # A team named by its city or its abbreviation, which is how a question names
@@ -3632,7 +3510,6 @@ TEAM_CITIES: frozenset[str] = frozenset(
 """A team's city, matched as a whole name only.
 
 .. versionadded:: 6.0.0
-   ``router._TEAM_CITY`` until Phase 3, step 2.
 """
 TEAM_ABBREVIATIONS: frozenset[str] = frozenset(
     {
@@ -3644,7 +3521,6 @@ TEAM_ABBREVIATIONS: frozenset[str] = frozenset(
 """A team's three-letter abbreviation, matched as a whole name only.
 
 .. versionadded:: 6.0.0
-   ``router._TEAM_ABBREVIATION`` until Phase 3, step 2.
 """
 
 # The subject of a single-game high or a count over a line, when the model
@@ -3666,7 +3542,6 @@ SUBJECT_WORDS: frozenset[str] = frozenset({"who", "what", "which", "that", "he",
 """The words a subject-of grammar never reads as a name: the question words and pronouns.
 
 .. versionadded:: 6.0.0
-   ``router._SUBJECT_WORDS`` until Phase 3, step 2.
 """
 NOT_A_SUBJECT: frozenset[str] = SUBJECT_WORDS | frozenset(
     {
@@ -3716,7 +3591,6 @@ points games does lebron james have" would read "many" - each a refusal
 naming the wrong cause.
 
 .. versionadded:: 6.0.0
-   ``router._COUNT_SUBJECT_WORDS`` until Phase 3, step 2.
 """
 # The leading word is optional and captured, the way the count grammars below
 # capture one, because a one-word subject is a clarifying question where the
@@ -3740,7 +3614,6 @@ SUBJECT_OF_HIGH = ask(
 """A name before a scoring verb, "fouled out" or "had <N>", or with a possessive.
 
 .. versionadded:: 6.0.0
-   ``router._SUBJECT_OF_HIGH`` until Phase 3, step 2.
 """
 # None of SUBJECT_OF_HIGH covers a count over a line named with no verb at all
 # (#148): "jamal murray games with 2 threes including playoffs" fell through
@@ -3772,7 +3645,6 @@ SUBJECT_OF_COUNT = ask(
 """A name before "games with", "games of", "<N> <stat> games" or "career games".
 
 .. versionadded:: 6.0.0
-   ``router._SUBJECT_OF_COUNT`` until Phase 3, step 2.
 """
 # "how many 40+ point games does lebron james have": the subject sits between
 # an auxiliary and "have", nowhere near the count. The model dropped LeBron
@@ -3781,7 +3653,6 @@ SUBJECT_OF_HAVE = ask(r"\b(?:does|did|has|have)\s+(?:([A-Za-z][A-Za-z.'\-]*)\s+)
 """A name between an auxiliary and "have"/"had".
 
 .. versionadded:: 6.0.0
-   ``router._SUBJECT_OF_HAVE`` until Phase 3, step 2.
 """
 
 # A name the model hands back that is no name at all: what it files among the
@@ -3795,7 +3666,6 @@ NO_NAME_HAS = re.compile(r"\d|\+|^(?:most|fewest|least|top|best|worst|highest|lo
 """What a span holds that no player's name does.
 
 .. versionadded:: 6.0.0
-   ``subject._NO_NAME_HAS`` until Phase 3, step 2.
 """
 # A player after a versus word is on the OTHER side of the subject's games -
 # a condition ("most points by curry vs lebron"), never a second subject -
@@ -3806,7 +3676,6 @@ GAMES_NOT_SUMMARY = re.compile(r"\b(?:game ?logs?|gamelogs?|logs?|each game|by g
 """The words that ask for the subject's games - a log, a high, a low - rather than a pair's summary.
 
 .. versionadded:: 6.0.0
-   ``subject._GAMES_NOT_SUMMARY`` until Phase 3, step 2.
 """
 # "vs", "versus", "against" or "v" and whatever follows. Whether what follows
 # is a team is decided against the teams table, not here: "lebron vs kawhi" is
@@ -3815,7 +3684,6 @@ AGAINST_PHRASE = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)"
 """A versus word and everything after it, a team set against the subject is read from.
 
 .. versionadded:: 6.0.0
-   ``subject._AGAINST`` until Phase 3, step 2.
 """
 # "for", "with the" and whatever follows - a player's OWN team, unlike
 # AGAINST_PHRASE's opponent. Loose on purpose: a false match ("stats for this
@@ -3842,7 +3710,6 @@ lead too, and the teams table decides; "in" reads a team's nickname alone
 (``subject._team_after_for_nickname``), never a city ("when he won in miami").
 
 .. versionadded:: 6.0.0
-   ``subject._FOR_TEAM`` until Phase 3, step 2.
 """
 FOR_TEAM_BARE_GROUPS: tuple[int, ...] = (6, 7, 8)
 """The groups of :data:`FOR_TEAM_PHRASE` a bare "with", a "during" and an
@@ -3861,7 +3728,6 @@ VERSUS_WORD = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
 """A versus word, whole.
 
 .. versionadded:: 6.0.0
-   ``subject._VERSUS`` until Phase 3, step 2.
 """
 TEAM_SPELLING_RUN = re.compile(r"[a-zA-Z0-9']+")
 """A run of letters, digits and apostrophes: a word a team may be spelled by
@@ -3873,7 +3739,6 @@ LETTER_RUN = re.compile(r"[a-zA-Z']+")
 """A run of letters and apostrophes - the words a team's name is read from.
 
 .. versionadded:: 6.0.0
-   ``subject._LETTER_RUN`` until Phase 3, step 2.
 """
 WORD_RUN = re.compile(r"\w+")
 """A run of word characters: where a whole word starts and ends (the
@@ -3885,19 +3750,16 @@ LONG_LETTER_RUN = re.compile(r"[A-Za-z]{4,}")
 """A run of four letters or more: the words of a team's name worth looking for in a question.
 
 .. versionadded:: 6.0.0
-   ``router._team_slot_named_in_text``'s pattern until Phase 3, step 2.
 """
 PLAYER_NOUN = re.compile(r"\b(?:player|players)\b", re.IGNORECASE)
 """The word "player(s)": a team named beside it is its players as a group ("a Hawks player").
 
 .. versionadded:: 6.0.0
-   ``subject._decide``'s pattern until Phase 3, step 2.
 """
 TEAM_NOUN = re.compile(r"\bteam\b", re.IGNORECASE)
 """The word "team": beside "player", the team is the subject after all.
 
 .. versionadded:: 6.0.0
-   ``subject._decide``'s pattern until Phase 3, step 2.
 """
 # A team named as the team its PLAYERS played for, beside a single game:
 # "most points in a single game on the 76ers", "most points by a knick in a
@@ -3926,7 +3788,6 @@ def whole_phrases(phrases: list[str] | tuple[str, ...], *, possessive: bool = Fa
     without its mark, group 1 still the phrase alone.
 
     .. versionadded:: 6.0.0
-       ``subject._NICKNAME_RE``'s construction until Phase 3, step 2.
 
     .. versionchanged:: 6.0.0
        Takes ``possessive`` (Phase 5, step 2).
@@ -3944,8 +3805,6 @@ position holds ("Tatum, Brown and Holiday this season" ends each at a
 joiner, "a turnover" at a word no name holds).
 
 .. versionadded:: 6.0.0
-   ``subject._SPAN_MAX_WORDS`` and ``subject._MAX_NAME_WORDS`` until Phase
-   3, step 2: two names for one cap.
 """
 
 # Words that begin with a team's singular and name no team: a measure ("net
@@ -4009,7 +3868,6 @@ MONTH_ABBREVIATIONS: frozenset[str] = frozenset({"jan", "feb", "mar", "apr", "ju
 (``subject._dictionary``): "jan" is no player however many are named Jan.
 
 .. versionadded:: 6.0.0
-   ``subject._MONTH_ABBREVIATIONS`` until Phase 3, step 2.
 """
 
 FILLER_PLAYER_WORDS: frozenset[str] = frozenset({"player", "players", "a player", "any player"})
@@ -4033,7 +3891,6 @@ reads it as one) and the indefinite pronouns ("someone" is one near
 spelling from Simone Fontecchio, and a single near spelling defaults).
 
 .. versionadded:: 6.0.0
-   ``parse._NEVER_A_NAME`` until Phase 3, step 2.
 """
 
 COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min", "me"})
@@ -4084,26 +3941,22 @@ MEETING_WORDS = AnyOf(
 it, an opponent the subject reading typed led by one.
 
 .. versionadded:: 6.0.0
-   ``parse._MEETING`` until Phase 3, step 2.
 """
 TWO_TEAMS_LOG_WORDS = re.compile(r"\b(log|gamelog|game log)\b", re.IGNORECASE)
 """A log word: one team's games, never two teams' meetings.
 
 .. versionadded:: 6.0.0
-   ``parse._TWO_TEAMS_LOG_WORDS`` until Phase 3, step 2.
 """
 TWO_TEAMS_RECORD_WORDS = re.compile(r"\b(record|rec|w-?l|win.loss)\b", re.IGNORECASE)
 """A record word: over a window, still the two teams' meetings.
 
 .. versionadded:: 6.0.0
-   ``parse._TWO_TEAMS_RECORD_WORDS`` until Phase 3, step 2.
 """
 AS_TYPED_WORD = re.compile(r"[\w'.-]+")
 """A word as the question types it - apostrophes, dots and hyphens kept - a
 name the model copied is matched back to (``parse._as_typed``).
 
 .. versionadded:: 6.0.0
-   ``parse._AS_TYPED_WORD`` until Phase 3, step 2.
 """
 
 # The words a reading has to account for: the rule
@@ -4117,7 +3970,6 @@ CONTENT_TOKEN = re.compile(r"\S+")
 (:func:`content_tokens`).
 
 .. versionadded:: 6.0.0
-   ``scripts/claims_ledger.py``'s ``_TOKEN`` until Phase 3, step 3.
 """
 CONTENT_EDGE = re.compile(r"^[^\w%+']+|[^\w%+']+$")
 """The punctuation a counted word is read without, at either end: a comma,
@@ -4125,7 +3977,6 @@ a question mark, a quote - never a percent sign, a plus or an apostrophe,
 which are part of "ts%", "30+" and "curry's".
 
 .. versionadded:: 6.0.0
-   ``scripts/claims_ledger.py``'s ``_EDGE`` until Phase 3, step 3.
 """
 POSSESSIVE_END = re.compile("['\u2019]s$")
 """A possessive ending, typed with either apostrophe (:func:`without_possessive`).
@@ -4141,7 +3992,6 @@ account for. Deliberately short: a word left off this list is counted when
 nothing reads it, and a word wrongly on it hides.
 
 .. versionadded:: 6.0.0
-   ``scripts/claims_ledger.py``'s ``STOPWORDS`` until Phase 3, step 3.
 """
 MODEL_STAT_WORDS: dict[str, re.Pattern[str]] = {
     key: re.compile(words)
@@ -4191,7 +4041,6 @@ reply accounts for in the question (:func:`read_by_the_model`). A key
 missing here accounts for no word.
 
 .. versionadded:: 6.0.0
-   ``scripts/claims_ledger.py``'s ``STAT_WORDS`` until Phase 3, step 3.
 """
 
 
@@ -4202,7 +4051,6 @@ def content_tokens(question: str) -> list[tuple[int, int, str]]:
     punctuation included.
 
     .. versionadded:: 6.0.0
-       ``scripts/claims_ledger.py``'s ``tokens`` until Phase 3, step 3.
     """
     return [(found.start(), found.end(), CONTENT_EDGE.sub("", found.group()).lower()) for found in CONTENT_TOKEN.finditer(question)]
 
@@ -4211,7 +4059,6 @@ def without_possessive(word: str) -> str:
     """``word`` without its possessive ending, typed with either apostrophe.
 
     .. versionadded:: 6.0.0
-       ``scripts/claims_ledger.py``'s ``_possessive`` until Phase 3, step 3.
     """
     return POSSESSIVE_END.sub("", word)
 
@@ -4225,7 +4072,6 @@ def read_by_the_model(word: str, names: tuple[str, ...] | list[str], stat: str) 
     gone, so nothing could tell whether the reader read it.
 
     .. versionadded:: 6.0.0
-       ``scripts/claims_ledger.py``'s own until Phase 3, step 3.
     """
     bare = without_possessive(word)
     for name in names:
@@ -4242,7 +4088,6 @@ def content_words(question: str, names: tuple[str, ...] | list[str], stat: str) 
     ``stat``).
 
     .. versionadded:: 6.0.0
-       ``scripts/claims_ledger.py``'s own until Phase 3, step 3.
     """
     return [(start, end, word) for start, end, word in content_tokens(question) if word and without_possessive(word) not in CONTENT_STOPWORDS and not read_by_the_model(word, names, stat)]
 
@@ -4262,7 +4107,6 @@ def without_word(question: str, start: int, end: int) -> str:
     itself whether it needed a word by (:func:`~association.query.span.needed`).
 
     .. versionadded:: 6.0.0
-       ``scripts/claims_ledger.py``'s ``without`` until Phase 3, step 3.
     """
     return CONTENT_SPACES.sub(" ", question[:start] + " " + question[end:]).strip()
 
@@ -4404,7 +4248,6 @@ triple-doubles, never a chart of his twos, unless the words ask for one to
 be drawn ("td3" reads as a shot value to the model).
 
 .. versionadded:: 6.0.0
-   ``router._DRAW_WORDS`` until Phase 3, step 4.
 """
 
 COACH_WORDS = re.compile(r"\bcoach(?:es|ed|ing|es'|'s)?\b|\bhead\s+coach\b", re.IGNORECASE)
@@ -4417,7 +4260,6 @@ and Doc Rivers, Nick Nurse and Quin Snyder are real people a player question
 could name. No player or team has "coach" anywhere in its name.
 
 .. versionadded:: 6.0.0
-   ``router._COACH_WORDS`` until Phase 3, step 4.
 """
 
 COACH_UNDER = re.compile(r"\bunder\s+(?P<name>[A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){1,2})", re.IGNORECASE)
@@ -4448,7 +4290,6 @@ games: "Sixers record when Embiid scores 30 points this season" came back as
 a count and was answered with the league's 30-point games, Embiid dropped.
 
 .. versionadded:: 6.0.0
-   ``router._RECORD`` until Phase 3, step 4.
 """
 
 SPLIT_WORDS: dict[str, re.Pattern[str]] = {
@@ -4461,7 +4302,6 @@ SPLIT_WORDS: dict[str, re.Pattern[str]] = {
 (:func:`~association.query.split.read_split`).
 
 .. versionadded:: 6.0.0
-   ``router.SPLIT_WORDS`` until Phase 3, step 4.
 """
 
 STARTER_WORDS = re.compile(r"\b(?:starter|starting|starts|started)\b", re.IGNORECASE)
@@ -4472,14 +4312,12 @@ holiday last 50 games as a starter" is a log of his starts. A question that
 names both halves ("starting vs coming off the bench") keeps the category.
 
 .. versionadded:: 6.0.0
-   ``router._STARTER_WORDS`` until Phase 3, step 4.
 """
 
 BENCH_WORDS = re.compile(r"\b(?:bench|reserve|reserves)\b", re.IGNORECASE)
 """The other half of the starter/bench split named: off the bench.
 
 .. versionadded:: 6.0.0
-   ``router._BENCH_WORDS`` until Phase 3, step 4.
 """
 
 VERSUS_OR_AGAINST = re.compile(r"\b(?:vs\.?|versus|against)\s", re.IGNORECASE)
@@ -4487,7 +4325,6 @@ VERSUS_OR_AGAINST = re.compile(r"\b(?:vs\.?|versus|against)\s", re.IGNORECASE)
 opponent, two players set against each other, a career against one team.
 
 .. versionadded:: 6.0.0
-   ``router._VERSUS_WORDS`` until Phase 3, step 4.
 """
 
 TEAM_SUBJECT = re.compile(
@@ -4499,7 +4336,6 @@ team scores the most points per game" was answered with the players'
 scoring leaders - real, correct numbers about the wrong kind of thing.
 
 .. versionadded:: 6.0.0
-   ``router._TEAM_SUBJECT`` until Phase 3, step 4.
 """
 
 FINGERPRINT_NAMED = re.compile(r"\bfinger\s?prints?\b|\bradar\b", re.IGNORECASE)
@@ -4509,7 +4345,6 @@ subject): "compare fingerprints for embiid vs jokic in 2026" is the radar,
 never a table of averages.
 
 .. versionadded:: 6.0.0
-   ``router._FINGERPRINT_NAMED`` until Phase 3, step 4.
 """
 
 FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
@@ -4518,7 +4353,6 @@ names none of it is not asking for one ("Plot Curry's threes from last
 season" came back as a fingerprint under two prompt revisions).
 
 .. versionadded:: 6.0.0
-   ``router._FINGERPRINT_WORDS`` until Phase 3, step 4.
 """
 
 SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
@@ -4526,7 +4360,6 @@ SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointer
 shot chart, not the radar.
 
 .. versionadded:: 6.0.0
-   ``router._SHOT_WORDS`` until Phase 3, step 4.
 """
 
 BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+(?:nba\s+|league\s+)?records?\b", re.IGNORECASE)
@@ -4536,7 +4369,6 @@ team='worst'; "the league" or "NBA" between the two words is the same
 ranking ("Best NBA record since January 31st 201", yardstick-v2 F104).
 
 .. versionadded:: 6.0.0
-   ``router._BEST_WORST_RECORD`` until Phase 3, step 4.
 """
 
 COMPARE_WORDS = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b|\bbetter\b|\bwho scores more\b|\bside by side\b", re.IGNORECASE)
@@ -4544,7 +4376,6 @@ COMPARE_WORDS = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b|\bbetter\b|\bwho scor
 these is the two players' meetings over the seasons, never a comparison.
 
 .. versionadded:: 6.0.0
-   ``router._COMPARE_WORDS`` until Phase 3, step 4.
 """
 
 DENIED_ROLE = re.compile(r"(?:\bnot|n'?t|\bnever)\s+(?:be\s+|been\s+|get\s+|gets\s+)?(?:start|come|came|coming)", re.IGNORECASE)
@@ -4554,7 +4385,6 @@ not": as a condition that would narrow to the very games the question
 excludes, so the with/without split, which shows both halves, keeps it.
 
 .. versionadded:: 6.0.0
-   ``parse._DENIED_ROLE`` until Phase 3, step 4.
 """
 
 ROLE_TAIL = re.compile(r"\s*the\s+(?:bench|pine)\b", re.IGNORECASE)
@@ -4563,7 +4393,6 @@ role's words run past the phrase by that much - blanked with it where the
 split is read (:func:`~association.query.split.read_split`).
 
 .. versionadded:: 6.0.0
-   ``parse._ROLE_TAIL`` until Phase 3, step 4.
 """
 
 
@@ -4581,7 +4410,6 @@ players", never a ranking of the 76ers' points per game)
 - a ranking of single games, never of season lines.
 
 .. versionadded:: 6.0.0
-   ``point._TOP_IN_A_GAME`` until Phase 4, step 6.
 """
 # Not this relation's question: a team as the subject, an opponent's or
 # allowed figure, or a period. Refused, never answered with a ranking of
@@ -4592,19 +4420,16 @@ NOT_THE_PLAYERS_QUESTION = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopp
 not a ranking of players' games.
 
 .. versionadded:: 6.0.0
-   ``point._NOT_PLAYERS`` until Phase 4, step 6.
 """
 HOW_MANY_OR_OFTEN = re.compile(r"\bhow many\b|\bhow often\b|\bnumber of\b|\btimes\b", re.IGNORECASE)
 """A count asked: "how many", "how often", "number of", "times".
 
 .. versionadded:: 6.0.0
-   ``point._HOW_MANY_OR_OFTEN`` until Phase 4, step 6.
 """
 WON_WORDS = re.compile(r"\b(won|wins|win)\b", re.IGNORECASE)
 """A game won, asked of a count: "how many games did he win".
 
 .. versionadded:: 6.0.0
-   ``point._WON`` until Phase 4, step 6.
 """
 # "least" on its own is ascending ("the least points"); "AT least" is the
 # minimum-sample floor phrase (``reading.Minimum``, F056: "with at least
@@ -4630,7 +4455,6 @@ FEWEST_WORDS = re.compile(r"\b(fewest|lowest)\b|(?<!at )\bleast\b", re.IGNORECAS
 """A ranking from the bottom: "fewest", "lowest", "least" - never "at least".
 
 .. versionadded:: 6.0.0
-   ``point._FEWEST`` until Phase 4, step 6.
 """
 # "worst" ranks from the bottom of a stat a player wants more of - the worst
 # field-goal percentage is the lowest - and from the top of one he wants
@@ -4650,34 +4474,29 @@ TOTAL_WORD = re.compile(r"\btotal\b", re.IGNORECASE)
 """A total asked where a ranking would average: "total points".
 
 .. versionadded:: 6.0.0
-   ``point._TOTAL`` until Phase 4, step 6.
 """
 VERSUS_OR_AGAINST_WORD = re.compile(r"\b(vs\.?|versus|against)\b", re.IGNORECASE)
 """A versus word, whole - wherever it stands (:data:`VERSUS_OR_AGAINST`
 needs one before what follows it).
 
 .. versionadded:: 6.0.0
-   ``point._VS`` until Phase 4, step 6.
 """
 RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|worst|fewest|least|lowest)\b", re.IGNORECASE)
 """A ranking asked in words: "leaders", "most", "top", "worst", "fewest".
 
 .. versionadded:: 6.0.0
-   ``point._RANKING`` until Phase 4, step 6.
 """
 LOG_OR_STATS_WORDS = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.IGNORECASE)
 """A log asked, or the bare "stats" a position's log and a team's players
 are asked by.
 
 .. versionadded:: 6.0.0
-   ``point._LOG`` until Phase 4, step 6.
 """
 BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best)\b", re.IGNORECASE)
 """The words that size a ranking of yes/no games ("biggest triple-double"),
 which the games are then ordered by a measure for.
 
 .. versionadded:: 6.0.0
-   ``point._BOOLEAN_GAME_RANKING`` until Phase 4, step 6.
 """
 # A question about players ON a team - a ranking, a log, or an explicit
 # "who"/"which player" framing - is the league-wide read's question, never
@@ -4686,7 +4505,6 @@ PLAYERS_ON_A_TEAM = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplay
 """"who" or "which player": a team's players asked about, not the team.
 
 .. versionadded:: 6.0.0
-   ``point._TEAM_NOT_SUBJECT`` until Phase 4, step 6.
 """
 
 
@@ -4698,14 +4516,12 @@ CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+t
 ranking would answer the question fluently and wrongly.
 
 .. versionadded:: 6.0.0
-   ``parse._CHAMPIONSHIP`` until Phase 4, step 6.
 """
 TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
 """"Title odds": a regular-season projection ``TEAM_OUTLOOK`` answers, not a
 championship.
 
 .. versionadded:: 6.0.0
-   ``parse._TITLE_ODDS`` until Phase 4, step 6.
 """
 # A fact about a player or a game no table here holds or nothing here reads
 # (ISSUES.md #389): measured on the 2,082 feed questions, 41 named one and
@@ -4795,7 +4611,6 @@ BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
 """The word "bench", whole: "bench points" names a figure nothing reads.
 
 .. versionadded:: 6.0.0
-   ``parse._BENCH_WORD`` until Phase 4, step 6.
 """
 
 

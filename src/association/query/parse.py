@@ -256,7 +256,6 @@ def parent_asked(question: str | lexicon.GrammarText, kind: str, companions: boo
     and the words that rule it out.
 
     .. versionadded:: 6.0.0
-       ``parent_intent``, which returned an intent's name, until Phase 3, step 4.
 
     .. versionchanged:: 6.0.0
        Takes the grammar's text (:class:`~association.query.lexicon.GrammarText`)
@@ -751,8 +750,6 @@ def grammar_text(
     the grammar's rows over words alone goes through here.
 
     .. versionadded:: 6.0.0
-       ``marked_for_grammar``, which wrote each value into the question as
-       a mark, until Phase 4, step 6.
     """
     text = lines.numbered(question) if lines is not None else lexicon.GrammarText.of(question)
     text = text.typed_over(tuple((start, end, lexicon.opponent_kind(text.text[start:end])) for start, end in opponent_at))
@@ -868,8 +865,6 @@ def _tagged(
     (:func:`~association.query.span.needed`).
 
     .. versionadded:: 6.0.0
-       ``router._settle``'s taggers until Phase 3, step 4, slice (b), run
-       after the stages over their slot dict.
     """
     asked = settled.asked
     stated, typed = minimum if minimum is not None else (read_minimum(question), question)

@@ -56,8 +56,6 @@ def which_period(text: str) -> tuple[Period, Claim] | None:
     of one answers one.
 
     .. versionadded:: 6.0.0
-       ``router._period_asked`` until Phase 3, step 2, which returned the
-       slot pair.
     """
     half = lexicon.WHICH_HALF.search(text)
     if half is not None:

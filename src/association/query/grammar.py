@@ -156,9 +156,6 @@ def settle(
     returned.
 
     .. versionadded:: 6.0.0
-       ``router.settle`` until Phase 3, step 4, which took a slot dict and
-       the names typed (``router.Named``) and ran the taggers after the
-       rules, returning a ``router.Route``.
 
     .. versionchanged:: 6.0.0
        Reads the grammar's text (:class:`~association.query.lexicon.GrammarText`:

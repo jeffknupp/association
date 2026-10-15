@@ -175,8 +175,6 @@ def threshold_count_line(scope: Filtered) -> tuple[str, int | None]:
     none arrives).
 
     .. versionadded:: 5.0.0
-       On the reader's side, where ``threshold_count``'s default point reads
-       it (``templates.players._threshold_count_ask`` was this).
     """
     stat, threshold = spelled(scope.measure), threshold_of(scope)
     lined = bool(relation_lines(scope))

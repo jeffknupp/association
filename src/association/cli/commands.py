@@ -1,7 +1,6 @@
 """The ``association`` commands: ``data pull``, ``data load``, ``data check``, ``query`` and ``web``.
 
 .. versionadded:: 3.0.0
-   Split out of the former ``association.cli`` module, which is now a package.
 """
 
 from __future__ import annotations

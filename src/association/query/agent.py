@@ -149,8 +149,6 @@ class Agent:
         #: here, and handed to whatever answers.
         #:
         #: .. versionadded:: 6.0.0
-        #:    ``Agent.planned``, the ``Planned`` record, until Phase 4, step 4
-        #:    folded it into the Query-or-Cause.
         self.query: Verdict | None = None
         #: The kinds of the remarks written for the last question whose
         #: sentence did not reach its answer (:func:`association.query.notes.unsaid`):

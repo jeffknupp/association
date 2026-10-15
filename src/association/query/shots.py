@@ -61,7 +61,6 @@ def narrowed_games(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, box: BoxS
     date, a window - every cell the relation honors.
 
     .. versionadded:: 6.0.0
-       ``compose.shots._shots_narrowed_rows``' statement, moved whole.
     """
     base_sql, base_params = games_subquery(narrowed, box)
     return _values(con, Statement(f"SELECT event_id, day FROM ({base_sql}) g", list(base_params)))
@@ -99,7 +98,6 @@ def distance(con: duckdb.DuckDBPyConnection, athlete_id: str, span: ResolvedSpan
     a narrowing chose the games (:func:`narrowed_games`).
 
     .. versionadded:: 6.0.0
-       ``compose.shots._shot_distance_statement``'s read, moved whole.
     """
     (row,) = _values(con, _distance_statement(athlete_id, span, shot_value, event_ids))
     return row
@@ -149,6 +147,5 @@ def chart_shots(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int | N
     shot but free throws.
 
     .. versionadded:: 6.0.0
-       ``compose.shots._shot_chart_statement``'s read, moved whole.
     """
     return _values(con, _chart_statement(athlete_id, season, season_type, pinned, shot_value))

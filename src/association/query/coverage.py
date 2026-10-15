@@ -11,7 +11,6 @@ the answering loop and the readers run against it, keyed by the planned
 point's shape and never by a label.
 
 .. versionadded:: 5.0.0
-   Moved from ``association.query.templates.common`` (Phase 2, step 6); ``SOURCES`` was ``TEMPLATE_SOURCES``.
 
 .. versionchanged:: 6.0.0
    Keyed by the planned point's :class:`~association.query.reading.PointShape`
@@ -227,8 +226,6 @@ SOURCES: dict[PointShape, Tables] = {
 whose coverage floors :func:`check_coverage` refuses a season under.
 
 .. versionadded:: 5.0.0
-   ``association.query.templates.TEMPLATE_SOURCES`` until the templates were
-   gone (Phase 2, step 6).
 
 .. versionchanged:: 6.0.0
    Keyed by :class:`~association.query.reading.PointShape` (Phase 3, step 1).

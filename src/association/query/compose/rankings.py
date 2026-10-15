@@ -44,7 +44,6 @@ DEFAULT_LEADERBOARD_LIMIT = 10
 """How many leaders a ranking shows when the question names no count.
 
 .. versionadded:: 5.0.0
-   Moved from ``templates.players`` with the leaderboard's reader.
 """
 
 

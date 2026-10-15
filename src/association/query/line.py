@@ -195,8 +195,6 @@ def threshold_named(question: str) -> int | None:
     line is a ranking, a record with none is the with/without split.
 
     .. versionadded:: 6.0.0
-       ``router._threshold_from_text`` until Phase 3, step 2, which read
-       fouling out in a stage of its own.
     """
     if lexicon.FOULED_OUT.search(question):
         return lexicon.FOUL_OUT_THRESHOLD
@@ -461,8 +459,6 @@ def read_period_line(question: str) -> tuple[Line, Claim] | None:
     visible default that can be corrected).
 
     .. versionadded:: 6.0.0
-       ``parse.read_period_condition`` until Phase 3, step 2, which
-       returned a ``PeriodCondition``.
     """
     from association.query.measures import PERIOD_COLUMNS  # the columns a period's line rebuilds; `measures` imports the reading's types
 

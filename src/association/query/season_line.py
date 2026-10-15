@@ -67,14 +67,12 @@ to the candidates with a row there - so a candidate it eliminates is one
 whose answer would have been empty.
 
 .. versionadded:: 5.0.0
-   ``templates.players._SEASON_LINES`` was this.
 """
 
 DEFAULT_HISTORY_SEASONS = 4
 """How many seasons a history shows where the question named no count.
 
 .. versionadded:: 5.0.0
-   From ``templates.players``.
 """
 
 MAX_HISTORY_SEASONS = 20
@@ -82,14 +80,12 @@ MAX_HISTORY_SEASONS = 20
 default four.
 
 .. versionadded:: 5.0.0
-   From ``templates.players``.
 """
 
 MAX_COMPARED_PLAYERS = 4
 """The most players a comparison reads; names past it are not read.
 
 .. versionadded:: 5.0.0
-   From ``templates.players``.
 """
 
 # A comparison's default line is longer than a single player's, because the two
@@ -107,7 +103,6 @@ COMPARE_STAT_LINE = ("points", "rebounds", "assists", "steals", "blocks", "turno
 """The stats a comparison shows where none was named.
 
 .. versionadded:: 5.0.0
-   From ``templates.players``.
 """
 
 # The NetPoints summary rows, in the order player_netpoints reports them:
@@ -123,7 +118,6 @@ NETPOINTS_COMPARE_ROWS: tuple[tuple[str, str], ...] = (
 """A comparison's NetPoints rows: the label the table prints, and the column read.
 
 .. versionadded:: 5.0.0
-   From ``templates.players``.
 """
 
 # A career per-game figure is the career total over career games, never an
@@ -146,7 +140,6 @@ CAREER_TOTALS: dict[str, str | None] = {
 summed as the average times the games).
 
 .. versionadded:: 5.0.0
-   ``templates.players._CAREER_TOTALS`` was this.
 """
 
 
@@ -172,7 +165,6 @@ def line_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> tuple[Entit
     clarifying question.
 
     .. versionadded:: 5.0.0
-       ``templates.players._player_stat_season_line_subject`` was this.
     """
     return scoped_player(con, scope, "player", table="player_season_stats_deduped", available=SEASON_LINES)
 
@@ -197,7 +189,6 @@ def history_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Entity |
     differently.
 
     .. versionadded:: 5.0.0
-       ``templates.players._player_history_subject`` was this.
     """
     return resolved_player(con, scope.who.player, "player", available=SEASON_LINES, through=history_through(scope))
 
@@ -244,7 +235,6 @@ def season_statement(athlete_id: str, columns: list[str], season: int, season_ty
     one, so no reader has to remember to.
 
     .. versionadded:: 5.0.0
-       ``templates.players._season_row``'s statement.
     """
     return Statement(f"SELECT {', '.join(columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season = ? AND season_type = ?", [athlete_id, season, season_type])
 
@@ -259,7 +249,6 @@ def career_statement(athlete_id: str, season_type: int, wanted: list[str], shoot
     column beside it, where there is one.
 
     .. versionadded:: 5.0.0
-       ``templates.players._career_player_stat``'s statement.
     """
     selects = ["SUM(gamesPlayed)", "MIN(season)", "MAX(season)", "COUNT(*)"]
     for stat in wanted:
@@ -307,7 +296,6 @@ def advanced_statement(athlete_id: str, span: ResolvedSpan, spec: AdvancedStat) 
     "2012-2026" over 824 games was really 12 seasons over 534.
 
     .. versionadded:: 5.0.0
-       ``templates.players._player_stat_advanced``'s statement.
     """
     where, params = span.clause("season")
     if span.career:
@@ -343,7 +331,6 @@ def history_statement(athlete_id: str, stat: str, season_type: int, latest: int,
     ``seasons`` of them.
 
     .. versionadded:: 5.0.0
-       ``templates.players._player_history_read``'s statement.
     """
     columns = HISTORY_COLUMNS[stat][1]
     bound = "" if seasons is None else " LIMIT ?"
@@ -360,7 +347,6 @@ def history_total_statement(athlete_id: str, stat: str, season_type: int, latest
     (:func:`career_statement`; F041, ISSUES.md).
 
     .. versionadded:: 5.0.0
-       ``templates.players._player_history_career_count``'s statement.
     """
     per_game_col = HISTORY_COLUMNS[stat][1][0][0]
     total_col = CAREER_TOTALS.get(stat)
@@ -457,7 +443,6 @@ def seasons_played(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type:
     2002 shot floor against.
 
     .. versionadded:: 5.0.0
-       ``templates.shots._career_shot_span``'s statement, moved here.
     """
     return _season_range(
         _values(con, Statement("SELECT MIN(season), MAX(season) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND gamesPlayed > 0", [athlete_id, season_type]))
@@ -480,7 +465,6 @@ def season_row(con: duckdb.DuckDBPyConnection, athlete_id: str, columns: list[st
     their order, or ``None`` where the table holds no row for that season.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.seasons``' line and comparison readers until then.
     """
     return _first(_values(con, season_statement(athlete_id, columns, season, season_type)))
 
@@ -491,7 +475,6 @@ def career_row(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int
     count's attempted column beside it, where there is one.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.seasons``' line reader until then.
     """
     statement, attempted_col = career_statement(athlete_id, season_type, wanted, shooting)
     return _first(_values(con, statement)), attempted_col
@@ -502,7 +485,6 @@ def advanced_row(con: duckdb.DuckDBPyConnection, athlete_id: str, span: Resolved
     (:func:`advanced_statement`): its one row, or ``None``.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.seasons``' line reader until then.
     """
     return _first(_values(con, advanced_statement(athlete_id, span, spec)))
 
@@ -512,7 +494,6 @@ def history_rows(con: duckdb.DuckDBPyConnection, athlete_id: str, stat: str, sea
     each season, its games and the stat's columns.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.seasons``' history reader until then.
     """
     return _values(con, history_statement(athlete_id, stat, season_type, latest, seasons))
 
@@ -522,7 +503,6 @@ def history_total(con: duckdb.DuckDBPyConnection, athlete_id: str, stat: str, se
     (:func:`history_total_statement`): its one row, or ``None``.
 
     .. versionadded:: 6.0.0
-       Run by ``compose.seasons``' history reader until then.
     """
     return _first(_values(con, history_total_statement(athlete_id, stat, season_type, latest)))
 
@@ -715,7 +695,6 @@ def schedule_statement(season: int) -> Statement:
     median of them (:func:`default_min_sample`'s schedule length).
 
     .. versionadded:: 5.0.0
-       ``leaderboard._team_games_for_season``'s statement.
     """
     return Statement(
         "WITH per_team AS ("
@@ -935,7 +914,6 @@ def ranking_statement(
             apply it to.
 
     .. versionadded:: 5.0.0
-       ``leaderboard.run_leaderboard``'s statement.
     """
     season_type_value: int | str = SEASON_TYPE_LABELS[season_type] if spec.season_type_is_string else season_type
     select_cols, from_clause, select_params = _run_leaderboard_select(spec, fields, season, season_type, box=bool(lines))
@@ -1107,7 +1085,6 @@ def career_ranking_statement(
             apply it to.
 
     .. versionadded:: 5.0.0
-       ``leaderboard.run_career_leaderboard``'s statement.
     """
     has_value = f"t.{career.numerator} IS NOT NULL"
     value = _career_value_sql(career)
@@ -1164,7 +1141,6 @@ MIN_SAMPLE_LABELS: dict[str, str] = {
 ranking's ``minimum`` decision.
 
 .. versionadded:: 5.0.0
-   Moved from ``templates.players`` with the leaderboard's words.
 """
 
 
@@ -1181,7 +1157,6 @@ def most_recent_teams(con: duckdb.DuckDBPyConnection, athlete_ids: list[str], se
     than one team that season - the fact behind the "most recent team" note.
 
     .. versionadded:: 5.0.0
-       Moved from ``templates.players._leaderboard_team_names``, unchanged.
     """
     rows = _records(con, recent_teams_statement(athlete_ids, season, season_type))
     names = {row["athlete_id"]: row["team"] for row in rows}

@@ -150,7 +150,6 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
     floor, the relation's own).
 
     .. versionadded:: 5.0.0
-       ``templates.teams.team_record`` was this, with its sentences.
 
     .. versionchanged:: 6.0.0
        Takes no ``stated``: the answer side checks the point's cells against

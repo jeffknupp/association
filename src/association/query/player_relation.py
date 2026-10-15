@@ -13,7 +13,6 @@ module holds the steps that settle the names and spans and apply the cells,
 beside it rather than in it because the two together would pass 2,500 lines.
 
 .. versionadded:: 5.0.0
-   Moved from ``association.query.templates.common`` (Phase 2, step 6), where the steps had sat since before Phase 1.
 """
 
 from __future__ import annotations
@@ -1434,8 +1433,6 @@ def narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> boo
     the answer should name it rather than the span.
 
     .. versionadded:: 6.0.0
-       ``compose.splits._narrowing_emptied``, moved to its relation whole
-       (Phase 4, step 5).
     """
     if not narrowed.extra:
         return False
@@ -1456,8 +1453,6 @@ def log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bo
     never a hand-written ``COUNT(*)``.
 
     .. versionadded:: 6.0.0
-       ``compose.logs._player_log_total``, moved to its relation whole
-       (Phase 4, step 5).
     """
     sql, params = aggregate_sql(whole_span(narrowed), ["COUNT(*)", "MIN(pgl.season)", "MAX(pgl.season)"], rebuilt=rebuilt)
     row = con.execute(sql, params).fetchone()

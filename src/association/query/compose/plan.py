@@ -560,9 +560,6 @@ says, ``cannot_honor``). The shape the point is read and said as is
 :func:`planned_shape`'s, from the Reading and this.
 
 .. versionadded:: 6.0.0
-   Folds ``compose.plan.Planned``, the record that carried the query, the
-   decline's sentence, the said refusal, the shape and the decline's cause
-   beside one another until Phase 4, step 4.
 """
 
 #: What a point nothing reads is declined with, where neither the reader nor
@@ -692,8 +689,6 @@ def planned_shape(reading: Reading, planned: Verdict) -> PointShape | None:
     shape the answer was read as).
 
     .. versionadded:: 6.0.0
-       ``Planned.shape``, carried beside the query on the planning until
-       Phase 4, step 4.
     """
     if reading.refused is not None or reading.point_refusal is not None or reading.point is None or reading.asked is None:
         return None

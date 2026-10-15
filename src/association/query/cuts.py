@@ -101,7 +101,6 @@ class CutsRead:
         itself, as it did.
 
         .. versionadded:: 6.0.0
-           ``parse._date_spans`` until Phase 4, step 6.
 
         .. versionchanged:: 6.0.0
            A day written in numbers, ISO included, as well as a range opened
@@ -247,7 +246,6 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
     nothing, and is a situation the relation refuses by value.
 
     .. versionadded:: 6.0.0
-       ``router._validate_date`` was this, without the claim.
     """
     match = lexicon.CALENDAR_DATE.search(question)
     if match is None:

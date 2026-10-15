@@ -1140,7 +1140,6 @@ def with_without_named(scope: Filtered) -> tuple[list[str], bool, dict[str, tupl
     and by the relation's read of the split.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``templates.splits._with_without_named`` was this).
 
     .. versionchanged:: 6.0.0
        Reads the typed companions; the ``without``, ``with_player`` and
@@ -2015,8 +2014,6 @@ def subject_named_in(question: str | lexicon.GrammarText) -> str | None:
     the key they settle reads one and nobody else is named.
 
     .. versionadded:: 6.0.0
-       ``router._subject_named_in`` until Phase 3, step 2: the stages read a
-       name from the words themselves.
 
     .. versionchanged:: 6.0.0
        Takes the grammar's text as well as a plain question (Phase 4, step
@@ -2073,7 +2070,6 @@ def is_team_name(name: str) -> bool:
     matching turns 16 real player surnames into teams).
 
     .. versionadded:: 6.0.0
-       ``router._is_team_name`` until Phase 3, step 2.
     """
     words = name.lower().split()
     if not words:
@@ -2097,7 +2093,6 @@ def team_named_in_text(question: str, candidate: str | None) -> str | None:
     wrote, while the team held 'Boston Celtics', a word it did.
 
     .. versionadded:: 6.0.0
-       ``router._team_slot_named_in_text`` until Phase 3, step 2.
     """
     if candidate is None:
         return None
@@ -2338,8 +2333,6 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
         or to none.
 
     .. versionadded:: 6.0.0
-       ``entities._question_derived_player``, public in the reader, taking
-       the players' in-memory index (:func:`~association.query.entities.players_of`).
     """
     q_words = _words(question)
     name_words = [w for w in _words(name) if w]

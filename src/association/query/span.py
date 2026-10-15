@@ -196,7 +196,6 @@ def career_named(question: str) -> tuple[bool, Claim | None]:
     means that season's best, so it is blanked before the words are read.
 
     .. versionadded:: 6.0.0
-       ``router._validate_span`` was this, without the claim.
     """
     text = question
     if lexicon.CAREER_HIGH.search(text) and (lexicon.season_from_text(question) is not None or lexicon.SEASON_WORDS.search(text)):
@@ -246,7 +245,6 @@ def _validate_range(question: str) -> tuple[int, int | None, list[Claim]] | None
     a missing nicety.
 
     .. versionadded:: 6.0.0
-       ``router._validate_range`` was this, without the claims.
     """
     to_spans = _validate_range_to(question)
     if to_spans is not None:

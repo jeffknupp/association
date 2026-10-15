@@ -1105,7 +1105,6 @@ def _default_streak(scope: Filtered) -> Reading:
     (:func:`~association.query.compose.plan.cells_declined`).
 
     .. versionadded:: 5.0.0
-       On the reader's side (``compose.adapt._adapt_streak`` was this).
     """
     threshold = threshold_of(scope)
     column = streak_column(scope.measure, threshold)
@@ -1146,7 +1145,6 @@ def _default_player_matchup(scope: Filtered) -> Reading:
     person are declined as the pair is settled (``compose.core._resolve_pair``).
 
     .. versionadded:: 5.0.0
-       On the reader's side (``compose.adapt._adapt_player_matchup`` was this).
     """
     texts = list(dict.fromkeys(n.strip() for n in scope.who.players))
     if len(texts) != 2:
@@ -1177,7 +1175,6 @@ def _default_with_without(scope: Filtered) -> Reading:
     ``team_relation.TEAM_RELATION_SCOPING_EXCLUDED``).
 
     .. versionadded:: 5.0.0
-       On the reader's side (``compose.adapt._adapt_with_without`` was this).
     """
     mate_texts, _asked_without, _roles = with_without_named(scope)
     if not mate_texts:
@@ -1897,8 +1894,6 @@ under these alone (:func:`period_under`); on any other key the words are
 declined by the point reader's guard.
 
 .. versionadded:: 6.0.0
-   The period tagger's (``period.PERIOD_ASKS``) until Phase 3, step 4,
-   slice (b).
 """
 
 THRESHOLD_ASKS: frozenset[PointShape] = frozenset({GAMES_COUNTED, LINE_RECORD, LINE_RUNS, GAME_HIGHS})
@@ -1910,8 +1905,6 @@ where the words say so outright - a floor of minutes, a line under a
 number, two or more "N+ stat" pairs on one game (:func:`lines_under`).
 
 .. versionadded:: 6.0.0
-   The lines tagger's (``line.THRESHOLD_ASKS``, ``router._THRESHOLD_ASKS``
-   before it) until Phase 3, step 4, slice (b).
 """
 
 #: The keys under which exactly one "N+ stat" pair names the measure: the
@@ -1979,8 +1972,6 @@ LIMIT_COUNTS_SEASONS: frozenset[PointShape] = frozenset({SEASON_HISTORY})
 of seasons (:func:`span_under`).
 
 .. versionadded:: 6.0.0
-   The span tagger's (``span.LIMIT_COUNTS_SEASONS``) until Phase 3, step 4,
-   slice (b).
 """
 
 _MEASURE_ADVANCED: frozenset[PointShape] = frozenset({PLAYER_LINE, PLAYER_COMPARISON, SEASON_HISTORY, PLAYER_RANKING, PLAYER_LOG})
@@ -2036,7 +2027,6 @@ def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: 
     under a count or a record.
 
     .. versionadded:: 6.0.0
-       ``line.read_lines``' choice until Phase 3, step 4, slice (b).
     """
     asked = _ranked_as(asked)
     found: list[tuple[int, Line, Claim]] = []
@@ -2262,8 +2252,6 @@ def window_under(asked: PointShape | None, read: WindowCandidates) -> WindowRead
     games is ordered by.
 
     .. versionadded:: 6.0.0
-       ``window.read_window``'s reading of its intent until Phase 3, step 4,
-       slice (b).
     """
     asked = _ranked_as(asked)
     order, count, grammar_claim = read.grammar
@@ -2347,8 +2335,6 @@ def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
     games where no career or range stands.
 
     .. versionadded:: 6.0.0
-       ``span.read_span``'s reading of its intent until Phase 3, step 4,
-       slice (b).
     """
     asked = _ranked_as(asked)
     since = read.since if read.relative is None or asked in LIMIT_COUNTS_SEASONS else read.relative
@@ -2372,8 +2358,6 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
     columns beside a ranking.
 
     .. versionadded:: 6.0.0
-       ``measure.read_measure``'s reading of its intent until Phase 3, step
-       4, slice (b).
     """
     asked = _ranked_as(asked)
     claims: list[Claim] = []
