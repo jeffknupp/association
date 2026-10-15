@@ -133,6 +133,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the window class counts a window word before a time word ("time", "week", "month", "night"), a yes/no measure's words ("triple", "double"), a period word ("first quarter") and a line's words, back to the refusal by name; then the read itself - the newest game over a line is a log over the line with a window of one (`player_games/rows/date` with `lines` and `window.count=1`), which the frozen keys already name - under Jeff's lifting if it is a new shape. The harness holds the ten by text until then; the record in `ROADMAP.md`'s done table and `CHANGES.md`'s `f365d627` entry is corrected in the same change.
 - **Priority:** P1 - a fluent wrong answer on ten recorded questions.
 - **Source:** ours.
+- **GitHub:** #453
 
 ### Two stat words on a one-stat shape, one read: "James harden rebound and assist vs POR" answers his rebounds alone
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
@@ -141,6 +142,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** on a one-stat shape, a second stat word the tagger would read to another key is the `unread_stat` cause whether or not the first came from the words (the parser's last step, `parse._defaulted_class`); "gamelog" on the Giannis wording should also name the log, which shows the whole line.
 - **Priority:** P1 - a fluent wrong answer on two recorded questions.
 - **Source:** ours.
+- **GitHub:** #454
 
 ### "nba final stats" is not read as the Finals: "jaylen brown 2022 nba final stats" answers his 2021-22 regular season
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627` (the Phase 5 review had called "final" a window word in its Finals sense and the narrowing dropped it from the class; the answer was wrong either way).
@@ -149,6 +151,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** "nba final(s)", "the final(s)", "finals" read as the Finals round, refused by the round's cause as every round is (`Reading.unsupported`, `round`).
 - **Priority:** P1 - a fluent wrong answer on two recorded questions.
 - **Source:** ours.
+- **GitHub:** #455
 
 ### A compound stat nothing holds is read as its last word: "toronto raptors points off turnovers" answers the Raptors' turnovers
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
@@ -157,6 +160,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the phrases "points off turnovers", "second chance points", "fast break points", "points in the paint" are one measure each in the catalog, refused as a stat no table holds (`unknown_stat` with the phrase as typed), before the tagger reads a word inside them.
 - **Priority:** P1 - a fluent wrong answer.
 - **Source:** ours.
+- **GitHub:** #456
 
 ### A misspelled period word is dropped silently: "lebron james first quater log" answers his whole-game log <!-- codespell:ignore quater - the feed's question as typed -->
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
@@ -165,6 +169,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** a near spelling of a period word ("quater", "qaurter", "quarer") within one edit is read as the word and said (as the entity index says a near-spelled name), or the ordinal before an unread word that is near a period word is the `unread_window` cause. <!-- codespell:ignore quater - the feed's question as typed -->
 - **Priority:** P1 - a fluent wrong answer on one recorded question, and a typo class nothing guards.
 - **Source:** ours.
+- **GitHub:** #457
 
 ## P2: misleading or incomplete
 
@@ -1903,6 +1908,7 @@ those were found.
 - **Next step:** reproduce each on the warehouse through `Agent.ask` and re-rank: [345], [37] and [536] are P1 if the answer is as the reading says; the contradicting lines on [180]/[181] need the keyed line and the narrowing line to be one; the everyone-with-players and teams-of-a-player cases are the subject reading's (Phase 6, step 4).
 - **Priority:** P2 until reproduced through the answering loop; three of them are likely P1.
 - **Source:** ours.
+- **GitHub:** #458
 
 ## P3: refusal or gap
 
