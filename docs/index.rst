@@ -24,7 +24,6 @@ the machine.
    commands
    data-sources
    releasing
-   roadmap-2.0
    changelog
    api/index
 

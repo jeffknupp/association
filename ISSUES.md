@@ -3874,11 +3874,3 @@ those were found.
 - **Priority:** P4 - low impact.
 - **GitHub:** #460
 
-### `docs/roadmap-2.0.md` still describes the router, the templates and the fall-through agent as the system
-- **Found:** 2026-10-15, the p6-comments lane (its sweep covered `docs/*.rst`, not this file).
-- **Evidence:** `docs/roadmap-2.0.md:83-358`: "router → template → answer (fast path, 1-2s)", "the router already accepts `previous_question`", the fall-through agent's 6,000-token preamble - the 2.0 plan, kept under `docs/` beside the documents that describe today's system, with nothing marking it as archived.
-- **User sees:** a reader of the repository's docs finds a design that no longer exists; the Sphinx build does not include it.
-- **Next step:** move it beside `ROADMAP-2026-09.md` as an archived plan, or delete it (its content is in git), per Jeff's rule that history lives in the changelog, `ROADMAP-HISTORY.md` and `ISSUES.md`.
-- **Source:** ours.
-- **Priority:** P4 - docs.
-- **GitHub:** #461
