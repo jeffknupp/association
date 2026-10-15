@@ -62,15 +62,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - a fluent wrong answer.
 - **GitHub:** #432
 
-### "winningest franchises all-time" ranks the league's players by points per game
-- **Found:** 2026-10-14, the P1 sweep's lane T3, measuring #372's "winning percentage" class.
-- **Evidence:** on `eef7625`, "nba winningest percent franchises all-time" (1 of the 2,082 feed questions) is read `player_seasons/ranking/player` with `winningest`, `percent`, `franchises` unread, and answers "every player, regular season career (1994 on), by player (points per game, minimum 20 games): Luka Doncic 514 G points 29.2 ..."; "winningest franchises all-time" the same. Neither "winningest" nor "franchise(s)" is a team or record word to the parent grammar. Read as the teams' ranking by record ("best record all-time franchises"), it would still be refused - the teams' ranking declines a career ("every season of a career cannot be read here"), though it reads a range ("most wins nba 2020s" answers).
-- **User sees:** a fluent table of scorers where the franchises' records were asked.
-- **Next step:** "winningest" and "franchise(s)" read by the parent grammar as the teams' ranking by record (lane N's row, `lexicon.TEAM_RANKING_ROW` or its neighbors), measured on both populations; then the teams' ranking over a career read as the range from the standings' first season (`team_seasons`), or refused by a cause naming it.
-- **Source:** ours.
-- **Priority:** P1 - a fluent wrong answer.
-- **GitHub:** #433
-
 ### A team's figure given up is read as its own where the words' measure loses `whose`: "threes allowed by the celtics this season" is refused, and "how many assists on average do the mavericks give up" answers its own 25.3
 - **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), finishing #348; the answer side fixed by lane T2 (`sweep-T2`, the team compiler sums the opponents' box rows of the span's games and says them as theirs, so "assists allowed by the mavericks this season" answers "The Dallas Mavericks' opponents had 2,325 assists against them over 82 games in the 2026 regular season (26-56), 28.4 per game."; a total of points allowed is the games' opponent scores; a total whose words name no measure, "steals allowed", is declined by that name).
 - **Evidence:** probed on `sweep-T2` with the main warehouse: what is left is the point reader's and the measure's. (1) `point._team_measure` keeps a team's total only where the measure is the team's own or points allowed (`measure.key if measure.whose == "own"`), so "threes allowed by the celtics this season" and "celtics opp 3pm this season" (measure `threePointFieldGoalsMade`, `whose` `opponent`) are planned as the team's season line, which has no opponent metric, and refused "no team metric for stat 'threes allowed'" - the team compiler would answer them now. "assists allowed" reaches the compiler only because `lexicon.TEAM_WORD_MEASURES` reads "assists" first and states the measure the team's own (the planned `metric` is the own key, the typed measure beside it the opponent's, which the compiler reads). (2) `measure.key_of` has no given-up alias for steals, blocks, turnovers, fouls, "3pm" or "fgm" ("steals allowed" reads `key` None, `whose` `own`); the compiler declines those now rather than answering the team's own total, but they could be read. (3) The verb ("how many assists on average do the mavericks give up", the one feed question of the class) stays the team's own by #348's `lexicon.GIVEN_UP_KEYS` (points alone), and answers its own 25.3 per game. (4) An opponent's percentage over a season ("celtics opponents fg% this season") is refused "no team metric for stat 'fg%'", where the games' box rows would give it.
@@ -134,6 +125,15 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - a fluent wrong answer; 0 of the 628, 0 of the 2,082 answered (the one feed wording is refused by name).
 - **Source:** ours.
 - **GitHub:** #437
+
+### The teams' ranking over every season is refused: "nba winningest percent franchises all-time"
+- **Found:** 2026-10-14, the P1 sweep's lane T3, measuring #372's "winning percentage" class.
+- **Evidence:** since Phase 5, step 6 (lane N) "winningest" and "franchises" name the teams' ranking (`lexicon.LEAGUE_TEAMS_RANKED_ROW`; it ranked the league's players by points per game), and the teams' ranking declines a career: "nba winningest percent franchises all-time" (1 of the 2,082 feed questions) answers "Nothing here answers this question as a ranking of teams: every season of a career cannot be read here - it would answer for a different span than was asked." It reads a range ("winningest teams since 2015", "most wins nba 2020s"). "losingest" is left unread by the row: nothing reads its end (the window tagger's `rank`), so read as the teams' ranking it would rank the best records.
+- **User sees:** an honest refusal where the franchises' all-time records were asked.
+- **Next step:** the teams' ranking over a career read as the range from the standings' first season (`team_seasons`, lane T's relation), with the franchises' former names folded in by team id; "losingest" read as the ranking's worst end by the window tagger.
+- **Source:** ours.
+- **Priority:** P3 - a refusal by name.
+- **GitHub:** #433
 
 ### A team named beside a player in words no read places is refused by name: "Mikal bridges logs at philly", "kd stats in 4th quarter playoffs okc"
 - **Found:** 2026-10-14, Phase 5, step 2, reading the moves of the possessive-nickname fix ("Lebrons season outcome during lakers" became LeBron's 2026 line, "during lakers" applied by nothing).

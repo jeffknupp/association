@@ -4868,10 +4868,13 @@ PLAYERS_COUNTED_ROW = AllOf((row(r"\bhow\s+many\s+(?:\w+\s+){0,2}players?\b"), s
 .. versionadded:: 6.0.0
 """
 LEAGUE_TEAMS_RANKED_ROW = row(
-    r"(?=.*\b(team|teams|franchise)\b|.*\bnba\b.*\b(wins?|loss(?:es)?)\b|.*\b(wins?|loss(?:es)?)\b.*\bnba\b)(?!.*\bplayers?\b)"
-    r"(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)"
+    r"(?=.*\b(team|teams|franchises?)\b|.*\bnba\b.*\b(wins?|loss(?:es)?)\b|.*\b(wins?|loss(?:es)?)\b.*\bnba\b)(?!.*\bplayers?\b)"
+    r"(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed|winningest)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)"
 )
-"""The league's teams ranked.
+"""The league's teams ranked. "franchises" and "winningest" too: "winningest
+franchises all-time" ranked the league's players by points per game
+(ISSUES.md #433). Not "losingest": nothing reads its end, so the teams'
+ranking would answer the best records.
 
 .. versionadded:: 6.0.0
 """
