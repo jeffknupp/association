@@ -130,10 +130,13 @@ The rules:
   lead's, at the merge, per batch of pushes; the unit-test calls only
   where a stage boundary moves; the readings at the agent's option for a
   reader-only change. At every commit: the claims ledger's `report`, the
-  ratchets, the grammar-drops test, the three Phase 5 harnesses
+  ratchets, the grammar-drops test, the three meaning harnesses
   (`~/association-research/stages/unread_meaning.py`,
-  `grammar_rows_dropped.py`, `worded_declines.py`; D12 holds them at 0)
-  and the gate chain.
+  `grammar_rows_dropped.py`, `worded_declines.py`) and the gate chain.
+  Each harness holds its list - a question by its text, with its grade or
+  its reason, or by rule - and fails on a question new to the list; a held
+  question that no longer flags leaves the list with the change that
+  cleared it.
   Non-negotiable: one broad measurement of what a user sees per push with
   every move named, and no refusal becoming a fluent wrong answer - and
   "fluent to refusal" is the allowed direction only where the fluent
@@ -193,10 +196,10 @@ The rules:
   deletion leaves the reading and the planned query unchanged - measured
   from outside the reader, so the count means the same across a rewrite
   of it. Both populations are HELD in `scripts/ledger_held.json`, as the
-  ratchets are; today the corpus holds 681 unread words and 5 questions
-  with an unread number (the five "100"s of "per 100 possessions", which
-  the rate reads without the number), the feed 2,702 words, 24 numbers and 67
-  disagreements, and neither any joined claim. `report` exits 1 on a
+  ratchets are: the unread words, the questions with an unread number (on
+  the corpus the five "100"s of "per 100 possessions", which the rate
+  reads without the number), the disagreements, and no joined claim on
+  either. `report` exits 1 on a
   grown count or a question new to a list, and - on a run of the whole
   population - on one that fell or left it, until `report --shrink`
   lowers the file with the change (it only removes and lowers). After a
@@ -719,7 +722,8 @@ reading of the question. There are no templates and no fall-through agent
 `answered_by="fast"` - since looking at the question and having something
 to say is an answer - including words that ask for no shape (`no_shape`,
 "what its words ask has no reader"). Only a question too short to be one
-is answered `"refused"` (`too_short`; 2 of the 628, 0 of the 2,082). A
+(`too_short`), a normalizer reply that cannot be read or a value the
+Reading cannot hold (`Agent._read_or_refuse`) is answered `"refused"`. A
 question the yardstick grades as "fell through" is one of these
 refusals.
 
