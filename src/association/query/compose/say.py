@@ -5332,7 +5332,25 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "own_seasons_window": lambda facts: _own_seasons_window(facts["seasons"]),
     "own_alignment": lambda facts: _own_alignment(facts["alignment"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
+    "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
+    "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
 }
+
+
+def _ranking_needs_stat() -> str:
+    """The refusal for a ranking of players whose words name no stat it
+    reads (ISSUES.md #421): the stat is the missing fact, and the sentence
+    says how to name one rather than ranking by points unasked."""
+    return "A ranking of players needs a stat to rank them by, and the words name none read here - name one ('most points', 'best 3pt%', 'most triple-doubles')."
+
+
+def _single_season_ranking(words: str) -> str:
+    """The refusal for the best single season across years: the league's
+    read ranks one season or careers, never player-seasons from every year."""
+    return (
+        f"The best single season across every year ({words!r}) is read by nothing here yet - the league's leaders are ranked within one season "
+        "or over careers. Name the season ('in 2016'), or ask for the career leaders."
+    )
 
 
 def refusal_phrase(kind: str, facts: Mapping[str, Any]) -> str:

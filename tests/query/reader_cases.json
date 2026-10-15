@@ -1385,7 +1385,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -2304,7 +2314,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -2461,7 +2481,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -10413,7 +10443,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -17238,7 +17278,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -18490,7 +18540,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -26345,29 +26405,22 @@
      "by": "player"
     },
     "relation": "everyone",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "by": "count",
+    "measures": [],
     "group": "player",
-    "predicates": [],
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
     "order": "measure",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": 5,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
@@ -26522,29 +26575,22 @@
      "by": "player"
     },
     "relation": "everyone",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "by": "count",
+    "measures": [],
     "group": "player",
-    "predicates": [],
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
     "order": "measure",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": 5,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
@@ -26700,29 +26746,22 @@
      "by": "player"
     },
     "relation": "everyone",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "by": "count",
+    "measures": [],
     "group": "player",
-    "predicates": [],
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
     "order": "measure",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": 5,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
@@ -26878,29 +26917,22 @@
      "by": "player"
     },
     "relation": "everyone",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "by": "count",
+    "measures": [],
     "group": "player",
-    "predicates": [],
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
     "order": "measure",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": 5,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
@@ -29666,29 +29698,22 @@
      "by": "player"
     },
     "relation": "everyone",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "by": "count",
+    "measures": [],
     "group": "player",
-    "predicates": [],
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
     "order": "measure",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": 5,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
@@ -29843,29 +29868,22 @@
      "by": "player"
     },
     "relation": "everyone",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "by": "count",
+    "measures": [],
     "group": "player",
-    "predicates": [],
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
     "order": "measure",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": 5,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
@@ -30020,29 +30038,22 @@
      "by": "player"
     },
     "relation": "everyone",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "ranking",
-    "by": "player",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "by": "count",
+    "measures": [],
     "group": "player",
-    "predicates": [],
+    "predicates": [
+     [
+      "triple_double",
+      "=",
+      true
+     ]
+    ],
     "order": "measure",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": 5,
+    "minimum_games": null,
     "available": null,
     "subject_span": null,
     "who": {
@@ -30131,7 +30142,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -30159,8 +30170,6 @@
    },
    "minimum": null,
    "unread": [
-    "per",
-    "game",
     "leaders",
     "season"
    ],
@@ -30246,7 +30255,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -30311,7 +30320,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -30339,8 +30348,6 @@
    },
    "minimum": null,
    "unread": [
-    "per",
-    "game",
     "leaders",
     "season"
    ],
@@ -30426,7 +30433,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -30491,7 +30498,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -30519,8 +30526,6 @@
    },
    "minimum": null,
    "unread": [
-    "per",
-    "game",
     "leaders",
     "season"
    ],
@@ -30606,7 +30611,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -57385,7 +57390,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {
@@ -65221,7 +65236,7 @@
    "measure": {
     "key": "points",
     "as_typed": "points",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -65250,9 +65265,7 @@
    "minimum": null,
    "unread": [
     "led",
-    "league",
-    "per",
-    "game"
+    "league"
    ],
    "subject": {
     "kind": "everyone",
@@ -65336,7 +65349,7 @@
     "measure": {
      "key": "points",
      "as_typed": "points",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -92367,7 +92380,7 @@
    "measure": {
     "key": "plusMinus",
     "as_typed": "plus_minus",
-    "how": null,
+    "how": "per_game",
     "unit": null,
     "whose": "own",
     "side": null,
@@ -92400,8 +92413,6 @@
     "word": "games played"
    },
    "unread": [
-    "per",
-    "game",
     "leaders"
    ],
    "subject": {
@@ -92486,7 +92497,7 @@
     "measure": {
      "key": "plusMinus",
      "as_typed": "plus_minus",
-     "how": null,
+     "how": "per_game",
      "unit": null,
      "whose": "own",
      "side": null,
@@ -101471,16 +101482,16 @@
   }
  },
  {
-  "name": "nba_alone_with_a_yes_no_measure_stays_the_teams",
-  "why": "Lane N, 2026-10-13: \"nba\" alone stays the teams' ranking where the measure the words name is a yes/no one: the players' ranking of triple-doubles falls to points per game over a span (ISSUES.md, the players' ranking's default measure), so the teams' refusal stands until it refuses by name.",
+  "name": "nba_alone_with_a_yes_no_measure_is_the_players_ranking",
+  "why": "ISSUES.md #421: \"nba\" alone with a yes/no measure is the players' ranking (Nikola Jokic's 34 triple-doubles in 2026), where it was held the teams' refusal for fear of the points default the ranking no longer falls to.",
   "question": "nba most triple doubles 2026",
   "names": [],
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "team_seasons",
+    "relation": "player_seasons",
     "shape": "ranking",
-    "by": "team"
+    "by": "player"
    },
    "who": {
     "kind": "everyone",
@@ -101526,11 +101537,13 @@
     "order": null,
     "count": null,
     "of": "games",
-    "rank": "most",
+    "rank": null,
     "by": null
    },
    "minimum": null,
-   "unread": [],
+   "unread": [
+    "most"
+   ],
    "subject": {
     "kind": "everyone",
     "players": [],
@@ -101542,9 +101555,9 @@
     "invented": [],
     "named_season": 2026,
     "asked": {
-     "relation": "team_seasons",
+     "relation": "player_seasons",
      "shape": "ranking",
-     "by": "team"
+     "by": "player"
     },
     "asked_reason": null,
     "conditions": [],
@@ -101562,21 +101575,34 @@
    ],
    "point": {
     "asked": {
-     "relation": "team_seasons",
+     "relation": "player_seasons",
      "shape": "ranking",
-     "by": "team"
+     "by": "player"
     },
-    "relation": "team_seasons",
-    "on": "team_seasons",
+    "relation": "everyone",
+    "on": "player_seasons",
     "shape": "ranking",
-    "by": "team",
-    "measures": [],
-    "group": "none",
+    "by": "player",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "player",
     "predicates": [],
-    "order": "date",
+    "order": "measure",
     "direction": "desc",
-    "limit": null,
-    "minimum_games": null,
+    "limit": 10,
+    "minimum_games": 20,
     "available": null,
     "subject_span": null,
     "who": {
@@ -101623,7 +101649,7 @@
      "order": null,
      "count": null,
      "of": "games",
-     "rank": "most",
+     "rank": null,
      "by": null
     },
     "minimum": null
@@ -104616,7 +104642,17 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "defaulted": {
+    "kind": "ranking_needs_stat",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
+   }
   }
  },
  {

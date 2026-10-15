@@ -687,6 +687,7 @@ class MeasureWords:
     rate: re.Match[str] | None
     team_total: re.Match[str] | None
     per_game: bool
+    ranked_per_game: re.Match[str] | None
     log: bool
     period_games: bool
     losing: re.Match[str] | None
@@ -732,6 +733,7 @@ def read_measure(question: str) -> MeasureWords:
         rate=lexicon.RATE_WORDS.search(question),
         team_total=lexicon.TEAM_TOTAL.search(question),
         per_game=lexicon.PER_GAME_WORDS.search(question) is not None,
+        ranked_per_game=lexicon.RANKED_PER_GAME.search(question),
         log=lexicon.LOG_WORDS.search(question) is not None,
         period_games=lexicon.PERIOD_GAMES_WORDS.search(question) is not None,
         losing=lexicon.LOSING_STREAK.search(question),

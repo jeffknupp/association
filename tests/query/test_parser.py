@@ -1437,3 +1437,87 @@ def test_a_total_asked_on_the_game_level_ranking_is_the_measures_own(con: duckdb
     reading = _read(con, question)
     assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "player")
     assert reading.point.measure is not None and reading.point.measure.how == how
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("Highest single season 3pt percent", "single season"),
+        ("most 60 points games on a single season", "on a single season"),
+        ("most assists in a season by a 76ers power forward in the 2000s", "in a season"),
+        ("most missed shots in a season", "in a season"),
+    ],
+)
+def test_the_best_single_season_across_years_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
+    """Phase 5, step 6 (lane L): the league's best single season across
+    years ranks player-seasons from every year, which no reader ranks - the
+    league's read answered the current season alone ("Highest single season
+    3pt percent": Luke Kennard's 2026) or the career list, fluently. It is
+    refused naming the words; a season named reads that season."""
+    reading = _read(con, question)
+    assert reading.point is None
+    assert reading.point_refusal is not None and reading.point_refusal.kind == "single_season_ranking"
+    assert reading.point_refusal.facts["words"] == words
+
+
+def test_the_best_single_season_of_a_named_season_reads_that_season(con: duckdb.DuckDBPyConnection) -> None:
+    """The words name the one season: no refusal, its leaders."""
+    reading = _read(con, "highest single season 3pt percent in 2016")
+    assert reading.point_refusal is None and reading.point is not None
+    assert reading.span.season == 2016
+
+
+@pytest.mark.parametrize(
+    ("question", "how"),
+    [
+        ("highest career ppg", "per_game"),
+        ("highest career points per game", "per_game"),
+        ("who averaged the most points in his career", "per_game"),
+        ("how many assist did Wilt average for his career", "per_game"),
+        ("most career points", None),
+    ],
+)
+def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.DuckDBPyConnection, question: str, how: str | None) -> None:
+    """Phase 5, step 6 (lane L): "highest career ppg" answered "LeBron James
+    leads in career points in the regular season: 43,440" - a career's bare
+    name reads the career total, and nothing read "ppg", "per game" or
+    "averaged" on the ranking. Asked per game, the measure is the per-game
+    figure (the season line's career points per game); unasked, the total."""
+    reading = _read(con, question, [], "assists" if "assist" in question else "points")
+    assert reading.point is not None and reading.point.read_as == PLAYER_RANKING
+    assert reading.point.measure is not None and reading.point.measure.how == how
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["best shooting percentages 2023", "list nba players most wins in a career", "Cousins player efficiency rating by year", "most career wins"],
+)
+def test_a_players_ranking_with_no_measure_read_is_refused_naming_the_stat(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ISSUES.md #421: the players' ranking answered "every player ... by
+    player (points per game ...)" where the words named a measure nothing
+    reads and the model none - "best shooting percentages", "most wins",
+    "efficiency rating". The ranking's points default is a cause the
+    planner says where the ranking would answer."""
+    reading = _read(con, question)
+    assert reading.defaulted is not None and reading.defaulted.kind == "ranking_needs_stat"
+
+
+@pytest.mark.parametrize("question", ["nba players who averaged 25 ppg in 2001", "most ppg in the 2024 playoffs", "top 10 scorers in 2024", "who led the league in assists in 2019"])
+def test_a_players_ranking_whose_words_name_its_stat_is_no_default(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """A season's line, a per-game abbreviation and a stat word each name
+    the ranking's stat: no cause, and "ppg" reads points per game."""
+    reading = _read(con, question)
+    assert reading.defaulted is None
+    assert reading.point is not None and reading.point.measure is not None and reading.point.measure.key is not None
+
+
+@pytest.mark.parametrize(("question", "stat"), [("most triple doubles since 2020", "triple_double"), ("most double doubles 2020-2023", "double_double")])
+def test_a_yes_no_measure_over_a_range_of_seasons_ranks_each_players_count(con: duckdb.DuckDBPyConnection, question: str, stat: str) -> None:
+    """ISSUES.md #421: "most triple doubles since 2020" ranked points per
+    game - the season line counts one season or a whole career, and the
+    planner's game-level re-plan dropped the predicate. It is each player's
+    count of the games that hold it."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "count")
+    assert reading.point.predicates == [(stat, "=", True)]
+    assert reading.defaulted is None

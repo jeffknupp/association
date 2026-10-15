@@ -222,6 +222,24 @@ def _everyone_guard(asked: PointShape | None, question: str, position: str | Non
         raise PointRefused(Cause(kind="team_only_question", facts={"shape": asked}), "a team's own question is not the player relation's")
 
 
+def _everyone_single_season(asked: PointShape | None, scope: Filtered, question: str) -> None:
+    """A league-wide question asked of the best single season across years
+    ("highest single season 3pt percent", "most ppg in nba history playoff
+    in a single season", "most 60 point games in a single season") ranks
+    player-seasons from every year, which no reader ranks: the league's read
+    is over one season or pools careers, so it answered the current season
+    alone or the career list, fluently. Refused naming the words, unless the
+    words name the one season itself ("highest single season 3pt percent in
+    2016")."""
+    found = lexicon.SINGLE_SEASON_RANKED.search(question)
+    if found is None:
+        return
+    span = scope.span
+    if span.season is not None and span.since is None and span.until is None and not span.career:
+        return
+    raise PointRefused(Cause(kind="single_season_ranking", facts={"shape": asked, "words": found.group(0)}))
+
+
 def _everyone_opponent(scope: Filtered, question: str) -> Filtered:
     """A team beside no player, with "vs"/"against", is the opponent."""
     team = scope.who.team
@@ -526,6 +544,9 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
             raise PointRefused(Cause(kind="shot_distance_ranking"))
         if stat is not None and stat.strip():
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
+        counted = _everyone_ranking_counted(scope, predicates)
+        if counted is not None:
+            return counted
     if lexicon.TOTAL_WORD.search(question):
         # "most total points by a center": the measure is asked as a total
         # (``Measure.how``), what the planner derives the ranking's sum from
@@ -555,6 +576,29 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
         direction=_asc_or_desc(question, measure),
         limit=_clamp_limit(scope.window.count, 10),
         minimum_games=minimum_games,
+        relation="everyone",
+    )
+
+
+def _everyone_ranking_counted(scope: Filtered, predicates: list[tuple[str, str, Any]]) -> Reading | None:
+    """A ranking of players by a yes/no game measure the season line does
+    not rank ("most triple doubles since 2020": a range of seasons, where
+    the season line's metric counts one season or a whole career) - each
+    player's count of the games it holds, the count's own ranking
+    (``player_games/ranking/count``), where the game-level ranking dropped
+    the predicate and ranked points per game until ISSUES.md #421. None
+    where a predicate is no yes/no measure held true."""
+    if not predicates or not all(name in BOOLEAN_MEASURES and value is True for name, _, value in predicates):
+        return None
+    return Reading(
+        **scope.filters(),
+        read_as=PointShape("player_games", "ranking", "count"),
+        measures=(),
+        group="player",
+        predicates=predicates,
+        order="measure",
+        direction="desc",
+        limit=_clamp_limit(scope.window.count, DEFAULT_LIMIT),
         relation="everyone",
     )
 
@@ -594,6 +638,13 @@ def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question
     own_boolean = all(scope.measure is not None and name == scope.measure.key and value is True for name, _, value in predicates)
     if asked != PLAYER_RANKING or not own_boolean or scope.who.position is not None:
         return None
+    if predicates and (scope.span.since is not None or scope.span.until is not None):
+        # A yes/no measure over a range of seasons ("most triple doubles
+        # since 2020"), which the season line ranks over one season or a
+        # whole career only: each player's count of the games that hold it
+        # (ISSUES.md #421), where the planner's game-level re-plan dropped
+        # the predicate and ranked points per game.
+        return _everyone_ranking_counted(scope, predicates)
     metric = resolve_metric(scope.measure, career=scope.span.career)
     if metric is None:
         return None
@@ -658,6 +709,7 @@ def _everyone_point(asked: PointShape | None, scope: Filtered, question: str, me
        ``threshold_count``/ranking question than either of those.
     """
     _everyone_guard(asked, question, scope.who.position, period_is_condition=any(line.period is not None for line in scope.lines))
+    _everyone_single_season(asked, scope, question)
     scope = _everyone_opponent(scope, question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
@@ -2312,13 +2364,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
     key = _measure_key_by_ask(asked, words, context, key, from_words=words.worded is not None)
     key = _measure_key_by_words(asked, words, context, key, claims)
     key, unit = _measure_rate(asked, words, key, claims)
-    how: MeasureHow | None = None
-    if unit is not None:
-        how = how_of(unit)
-    elif asked == PERIOD_LOG and (words.log or (words.period_games and key is None)):
-        # A quarter's or half's figure asked game by game: a log, or "games"
-        # with no stat named.
-        how = "per_game"
+    how = _measure_how(asked, words, key, unit, claims)
     of_wins = None
     if asked == LINE_RUNS:
         of_wins = words.losing is None
@@ -2347,6 +2393,25 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
         beside=beside,
     )
     return MeasureRead(measure, distinct)
+
+
+def _measure_how(asked: PointShape | None, words: MeasureWords, key: str | None, unit: str | None, claims: list[Claim]) -> MeasureHow | None:
+    """How the measure is asked: a unit's reading; a players' ranking asked
+    per game ("highest career ppg", "who averaged the most points in his
+    career") the per-game figure, where a career's bare name reads the
+    career TOTAL (the record books' list) and answered LeBron's 43,440
+    points to a per-game question; a quarter's or half's figure asked game
+    by game (a log, or "games" with no stat named)."""
+    if unit is not None:
+        return how_of(unit)
+    if asked == PLAYER_RANKING and key not in (None, "shot_distance") and words.ranked_per_game is not None:
+        # (Not the shot-distance sentinel, which the ranking refuses by name:
+        # "avg 3 point distance" is the shot's distance, no game's figure.)
+        claims.append(Claim(words.ranked_per_game.start(), words.ranked_per_game.end(), "measure"))
+        return "per_game"
+    if asked == PERIOD_LOG and (words.log or (words.period_games and key is None)):
+        return "per_game"
+    return None
 
 
 def _measure_whose(asked: PointShape | None, words: MeasureWords, key: str | None, whose: MeasureWhose, claims: tuple[Claim, ...]) -> tuple[MeasureWhose, tuple[Claim, ...]]:
@@ -2435,6 +2500,13 @@ def _measure_key_ranked(words: MeasureWords, key: str | None, claims: list[Claim
     if words.shot_distance is not None:
         key = "shot_distance"
         claims.append(Claim(words.shot_distance.start(), words.shot_distance.end(), "measure"))
+    abbreviation = words.ranked_per_game.group(0).lower() if words.ranked_per_game is not None else None
+    if key is None and abbreviation in lexicon.SEASON_LINE_PER_GAME_WORDS and words.ranked_per_game is not None:
+        # A per-game abbreviation names the ranking's stat ("most ppg in a
+        # playoff season", ISSUES.md #421), where the words named none and
+        # the ranking's points default was all that made it points.
+        key = lexicon.SEASON_LINE_PER_GAME_WORDS[abbreviation]
+        claims.append(Claim(words.ranked_per_game.start(), words.ranked_per_game.end(), "measure"))
     return key
 
 
