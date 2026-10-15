@@ -55,9 +55,6 @@ HELD: dict[str, str] = {
     ),
     "Towns over 9 rebound": "refused by name (unread_number): with no model names 'towns' is an ordinary word, and a line on the league's season ranking reads nothing",
     "harden 61 points": "refused by name (unread_number): with no model names 'harden' is an ordinary word; a bare '61 points' can name one game or a line",
-    "most 30 point triple doubles in the last 3 years": (
-        "refused by name (unread_number): a count of a yes/no game measure over a line ignores the line where it is read (ISSUES.md, 'A count of triple-doubles over a line ...')"
-    ),
     "2 threes in games Jamal Murray played including playoffs": "the one player named only as a companion is the subject, and the games he played are his own (subject._read_subject_alone)",
     "murray games of 20+ rebounds": "refused by name (unread_number, Phase 5, step 2): with no model names 'murray' is several players, and a line on the league's season ranking reads nothing",
     "murray's games of 20+ rebounds": "refused by name (unread_number, Phase 5, step 2): as 'murray games of 20+ rebounds'",

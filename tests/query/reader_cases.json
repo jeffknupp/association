@@ -106703,15 +106703,15 @@
  },
  {
   "name": "phase5_step2_held_drop#4",
-  "why": "A typed value the key's reading drops with no cause the planner says, held by its question in tests/grammar_drops.py with its reason (Phase 5, step 2).",
+  "why": "Phase 5, step 2 held its line as dropped (refused by name); since step 6 (ISSUES.md #437) the count of triple-doubles over a 30-point line reads both, each player's count of the games holding them.",
   "question": "most 30 point triple doubles in the last 3 years",
   "names": [],
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "player_games",
+    "shape": "scalar",
+    "by": "count"
    },
    "who": {
     "kind": "everyone",
@@ -106730,7 +106730,19 @@
     "season_n": null
    },
    "companions": [],
-   "lines": [],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 30,
+     "period": null,
+     "as_typed": "30 point",
+     "keyed": true,
+     "narrows": false,
+     "per": "game",
+     "whose": "own"
+    }
+   ],
    "measure": {
     "key": "triple_double",
     "as_typed": "triple_double",
@@ -106761,9 +106773,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "most"
-   ],
+   "unread": [],
    "subject": {
     "kind": "everyone",
     "players": [],
@@ -106775,11 +106785,11 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
     },
-    "asked_reason": null,
+    "asked_reason": "the words '30 point triple doubles' name player_games/scalar/count",
     "conditions": [],
     "filler": []
    },
@@ -106790,80 +106800,43 @@
      "field": "kind",
      "before": null,
      "after": "everyone",
-     "reason": ""
+     "reason": "the words '30 point triple doubles' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/ranking/player",
+     "after": "player_games/scalar/count",
+     "reason": "the words '30 point triple doubles' name player_games/scalar/count"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
     },
     "relation": "everyone",
     "on": "player_games",
-    "shape": "rows",
-    "by": "",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     },
-     {
-      "key": "minutes",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     },
-     {
-      "key": "rebounds",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     },
-     {
-      "key": "assists",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
-    "group": "none",
+    "shape": "ranking",
+    "by": "count",
+    "measures": [],
+    "group": "player",
     "predicates": [
      [
       "triple_double",
       "=",
       true
+     ],
+     [
+      "points",
+      ">=",
+      30
      ]
     ],
     "order": "measure",
     "direction": "desc",
-    "limit": 3,
+    "limit": 5,
     "minimum_games": null,
     "available": null,
     "subject_span": null,
@@ -106884,7 +106857,19 @@
      "season_n": null
     },
     "companions": [],
-    "lines": [],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 30,
+      "period": null,
+      "as_typed": "30 point",
+      "keyed": true,
+      "narrows": false,
+      "per": "game",
+      "whose": "own"
+     }
+    ],
     "measure": {
      "key": "triple_double",
      "as_typed": "triple_double",
@@ -106917,25 +106902,7 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null,
-   "defaulted": {
-    "kind": "unread_number",
-    "facts": {
-     "shape": {
-      "relation": "player_seasons",
-      "shape": "ranking",
-      "by": "player"
-     },
-     "words": [
-      "30"
-     ],
-     "classes": {
-      "number": [
-       "30"
-      ]
-     }
-    }
-   }
+   "point_refusal": null
   }
  },
  {

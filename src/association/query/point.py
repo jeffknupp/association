@@ -33,7 +33,20 @@ from association.query.cuts import CutsRead
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
 from association.query.line import LineCandidate, LineCandidates, LinesRead
 from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
-from association.query.measure import GAMES_STATS, MADE_TO_ATTEMPTED, NETPOINTS_PER_100, MeasureContext, MeasureRead, MeasureWords, how_of, key_of, measured, named_by_a_team_metric
+from association.query.measure import (
+    GAMES_STATS,
+    MADE_TO_ATTEMPTED,
+    NETPOINTS_PER_100,
+    MeasureContext,
+    MeasureRead,
+    MeasureWords,
+    how_of,
+    key_of,
+    measured,
+    named,
+    named_by_a_team_metric,
+    team_metric_named,
+)
 from association.query.measures import (
     BOOLEAN_MEASURES,
     DERIVED_LINES,
@@ -261,7 +274,10 @@ def _everyone_threshold_predicates(scope: Filtered, measure: str | None, predica
     if line is None or int(line.value) <= 0:
         return predicates
     column = line.measure or stat_measure(scope.measure)
-    if column and column != measure:
+    if column and (column != measure or any(name in BOOLEAN_MEASURES for name, _, _ in predicates)):
+        # Beside a yes/no measure the line is a second predicate on the same
+        # game ("30 point triple doubles", ISSUES.md #437), whatever stat the
+        # words also name.
         return [*predicates, (column, ">=", int(line.value))]
     return predicates
 
@@ -318,7 +334,10 @@ def _everyone_boolean_game_ranking(asked: PointShape | None, question: str, scop
     .. versionadded:: 4.4.0
     """
     boolean = [name for name, _, value in predicates if name in BOOLEAN_MEASURES and value is True]
-    if not boolean:
+    if not boolean or (asked == GAMES_COUNTED and threshold_line(scope) is not None):
+        # (The count's own line beside the yes/no measure - "most 30 point
+        # triple doubles" - is who had the most such games, ISSUES.md #437,
+        # never the games ranked by the line's stat.)
         return None
     # "Most triple-doubles" is a COUNT per player (the season line's own
     # metric, leaderboard's retired reader): the games are ranked only where
@@ -787,7 +806,14 @@ def _move_boolean_count(question: str, measure: str | None, asked: PointShape | 
         # very line ``fouled_out`` is defined as (DERIVED) - so the keyed
         # line's own count is this one, and threshold_count's default point says it.
         return None
-    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), group="none", predicates=[(measure, "=", True)])
+    predicates: list[tuple[str, str, Any]] = [(measure, "=", True)]
+    line = threshold_line(career)
+    if asked == GAMES_COUNTED and line is not None and line.measure is not None and int(line.value) > 0:
+        # "how many 30 point triple doubles does jokic have": the games the
+        # yes/no measure holds over the line, both on the same game (ISSUES.md
+        # #437) - the line was dropped and every triple-double counted.
+        predicates.append((line.measure, ">=", int(line.value)))
+    return Reading(**career.filters(), read_as=_COUNT_SHAPES.get(asked, _COUNT_UNREAD), measures=(), group="none", predicates=predicates)
 
 
 def _move_boolean_count_is_line(measure: str, scope: Filtered) -> bool:
@@ -1661,6 +1687,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     scope = replace(reading, who=replace(reading.who, kind=subject.kind, position=subject.position))
     _player_rating_refused(reading.asked, question)
     _player_win_pct_refused(reading.asked, question)
+    _measures_combined_refused(reading.asked, question)
     scope = _season_lines_refused(reading.asked, question, scope)
     try:
         point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _seasons_counted(_read_point(reading.asked, scope, question, subject), reading.asked, question)
@@ -1742,6 +1769,27 @@ def _player_rating_refused(asked: PointShape | None, question: str) -> None:
     rating = lexicon.PLAYER_RATING.search(question)
     if rating is not None and lexicon.TEAM_WORD_HERE.search(question) is None:
         raise PointRefused(Cause(kind="fact_not_read", facts={"fact": "player rating", "words": rating.group(0)}), f"{rating.group(0)!r} is a team's figure")
+
+
+def _measures_combined_refused(asked: PointShape | None, question: str) -> None:
+    """Two measures joined by an arithmetic word ("fgm + opp fgm", "ortg +
+    drtg", "ppg*ts%") ask a figure combined from both, which no measure
+    reads: the measure tagger read the first and answered it alone
+    (ISSUES.md #424). Refused by a cause naming both - but on a log, whose
+    rows show each game's line, "points+rebounds game log" asks for the two
+    columns, which it shows."""
+    if asked is not None and asked.shape == "rows" and asked.by == "date":
+        return
+    for found in lexicon.MEASURES_COMBINED.finditer(question):
+        first, second = found.group("first"), found.group("second")
+        if _names_a_measure(first) and _names_a_measure(second):
+            raise PointRefused(Cause(kind="measures_combined", facts={"shape": asked, "words": question[found.start() : found.end("second")]}))
+
+
+def _names_a_measure(word: str) -> bool:
+    """Whether one word names a measure - a box-score word, a rate, a team
+    metric's alias (``measure.named``, ``team_metric_named``)."""
+    return named(word) is not None or team_metric_named(word) is not None
 
 
 def _player_win_pct_refused(asked: PointShape | None, question: str) -> None:

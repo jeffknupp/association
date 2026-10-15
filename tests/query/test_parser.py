@@ -1594,3 +1594,46 @@ def test_a_teams_figure_given_up_is_the_team_compilers_total(con: duckdb.DuckDBP
     reading = _read(con, question)
     assert reading.point is not None and reading.point.relation == "team"
     assert reading.measure is not None and reading.measure.whose == "opponent"
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "read_as"),
+    [
+        ("most 30+ point triple doubles", [], PointShape("player_games", "ranking", "count")),
+        ("most 30 point triple doubles in the last 3 years", [], PointShape("player_games", "ranking", "count")),
+        ("how many 30 point triple doubles does jokic have", ["Nikola Jokic"], GAMES_COUNTED),
+    ],
+)
+def test_a_count_of_a_yes_no_measure_over_a_line_keeps_both(con: duckdb.DuckDBPyConnection, question: str, names: list[str], read_as: PointShape) -> None:
+    """ISSUES.md #437: "most 30+ point triple doubles" listed three single
+    games, and a count of a player's 30-point triple-doubles counted every
+    triple-double. The count's child grammar reads "N stat triple doubles"
+    as its games, and the line is a second predicate on the same game."""
+    reading = _read(con, question, names)
+    assert reading.point is not None and reading.point.read_as == read_as
+    assert ("triple_double", "=", True) in reading.point.predicates and ("points", ">=", 30) in reading.point.predicates
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("most fgm + opp fgm in a game by Knicks this season", "fgm + opp fgm"),
+        ("knicks fgm + opp fgm per game this season", "fgm + opp fgm"),
+        ("highest ppg*ts% by a team in a season", "ppg*ts%"),
+        ("fewest field goal misses + opp fga minus opp fgm by knicks 2025", "fga minus opp fgm"),
+    ],
+)
+def test_two_measures_combined_are_refused_naming_both(con: duckdb.DuckDBPyConnection, question: str, words: str) -> None:
+    """ISSUES.md #424: "most fgm + opp fgm in a game by Knicks this season"
+    answered the Knicks' field goals made alone - the measure tagger read
+    the first. A figure combined from two measures is read by nothing."""
+    reading = _read(con, question)
+    assert reading.point_refusal is not None and reading.point_refusal.kind == "measures_combined"
+    assert reading.point_refusal.facts["words"] == words
+
+
+@pytest.mark.parametrize("question", ["jokic points+rebounds game log", "lebron +/- this season", "most 20+ point games"])
+def test_a_log_of_two_columns_and_a_plus_sign_are_no_combined_measure(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """A log shows each game's columns; "+/-" and "20+" are no pair."""
+    reading = _read(con, question, ["Nikola Jokic"] if "jokic" in question else None)
+    assert reading.point_refusal is None or reading.point_refusal.kind != "measures_combined"

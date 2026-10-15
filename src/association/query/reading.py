@@ -1485,6 +1485,9 @@ CAUSES: frozenset[str] = frozenset(
         # Phase 5, step 6 (lane L): a ranking of players whose words name
         # no measure it reads (ISSUES.md #421), never the points default.
         "ranking_needs_stat",
+        # Phase 5, step 6 (lane L): two measures combined by an arithmetic
+        # word, which no measure reads (ISSUES.md #424).
+        "measures_combined",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
