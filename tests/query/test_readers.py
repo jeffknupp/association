@@ -6387,9 +6387,14 @@ def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_
     assert len(recent_dates) == 2 and len(first_dates) == 2
     assert first_dates == sorted(first_dates) and recent_dates == sorted(recent_dates, reverse=True)
     assert first_dates[0] < recent_dates[-1]
-    assert "the 2 earliest" in (first.text or "") and "the 2 most recent" in (recent.text or "")
-    # The header still answers the whole season either way.
-    assert "over 5 games" in (first.text or "") and "over 5 games" in (recent.text or "")
+    # A count of games the words asked is the games the figure is over, said
+    # as that count from its end - never the whole season's 5 beneath a log of
+    # 2 (#473: "cade cunningham 1st half stats in his last 4 games" answered
+    # all 64 of his games).
+    assert (first.text or "").startswith(f"Stephen Curry scored 9 points in the 1st quarter over the first 2 games of the {SEASON} regular season, averaging 4.5.")
+    assert (recent.text or "").startswith("Stephen Curry scored 3 points in the 1st quarter over the last 2 games of the")
+    assert "line, every game:" in (first.text or "") and "line, every game:" in (recent.text or "")
+    assert first.data["games_played"] == 2 and recent.data["games_played"] == 2
 
 
 def test_a_period_without_a_teammate_nothing_resolves_refuses_rather_than_dropping_him(period_ctx: AnswerContext) -> None:

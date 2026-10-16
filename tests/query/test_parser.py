@@ -677,6 +677,17 @@ def test_a_named_players_period_games_are_listed(con: duckdb.DuckDBPyConnection)
     assert total.measure is None or total.measure.how != "per_game"
 
 
+def test_a_count_of_games_after_a_halfs_stats_is_its_window(con: duckdb.DuckDBPyConnection) -> None:
+    """#473, "cade cunningham 1st half stats in his last 4 games": the half's
+    log over a window of the newest four games - read here, and cut by the
+    period reader (``compose.periods._period_games_asked``), which read the
+    whole season beneath a log of the last four."""
+    route = _route(con, "tyrese maxey 1st half stats in his last 4 games", ["tyrese maxey"], "")
+    assert route.reading is not None
+    window = route.reading.window
+    assert (route.asked, _half(route), window.count, window.order, window.of) == (PERIOD_LOG, 1, 4, "recent", "games")
+
+
 def test_points_by_quarter_with_no_one_named_is_the_leagues_table(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F048, "nba playerspoints by quarter average": every
     quarter at once is a ranking of a period (``PERIOD_RANKING``) with no

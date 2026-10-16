@@ -173,10 +173,17 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
         if refused is not None:
             return refused
     read = replace(q, measures=_PERIOD_LOG_MEASURES, limit=None, offset=0, direction="asc")
-    compiled = compile_query(con, read)
+    asked_games = _period_games_asked(scope)
+    # A count of games the words asked ("in his last 4 games") is the games
+    # the figure is over, cut by the compiler's own limit from the end the
+    # words named and put back in date order; read over the whole span, it
+    # answered all 64 of Cade Cunningham's 2026 games under a log of the
+    # last 4 (ISSUES.md #473). With no count asked the figure is the span's
+    # and the log beneath it the newest few.
+    compiled = compile_query(con, read if asked_games is None else replace(read, limit=asked_games[1], direction="desc" if asked_games[0] == "recent" else "asc"))
     if compiled.player is None:
         return None
-    rows = rows_of(con, compiled)
+    rows = sorted(rows_of(con, compiled), key=lambda row: row["day"])
     season = scope.span.season or current_season()
     if scope.cuts.date is not None and rows:
         # The season a date's game actually falls in, read off the row itself
@@ -191,7 +198,16 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
         redirected = _period_redirect(con, read, compiled, asked[1], measure)
         if redirected is not None:
             return redirected
-    return _period_log_result(compiled, scope, rows, season, asked[1], measure, where)
+    return _period_log_result(compiled, scope, rows, season, asked[1], measure, where, cut=asked_games is not None)
+
+
+def _period_games_asked(scope: Filtered) -> tuple[str, int] | None:
+    """The games a count the words asked keeps - which end and how many
+    (:func:`~association.query.player_relation.relation_window`) - or
+    ``None`` where the words asked no count of games."""
+    if scope.window.count is None or scope.window.of != "games":
+        return None
+    return relation_window(scope)
 
 
 def _period_games(rows: list[dict[str, Any]], measure: str) -> list[dict[str, Any]]:
@@ -237,12 +253,14 @@ def _period_log_result(
     measure: str,
     where: tuple[tuple[Cell, ...], tuple[str, ...]],
     *,
+    cut: bool,
     fallback: Decided | None = None,
 ) -> Result | Unanswered:
     """The games read, the figures over them and the caveats - or, with no
     games, the Result the sayer says "no games found" from. ``fallback`` is
     the redirect's decision (:class:`~association.query.result.Decided`),
-    carried on ``Result.decisions``."""
+    carried on ``Result.decisions``; ``cut``, whether the games are the
+    count the words asked."""
     assert compiled.player is not None
     games = _period_games(rows, measure)
     if games and _period_unread(games, measure):
@@ -257,7 +275,7 @@ def _period_log_result(
         # named (``_period_full_line``), so its caveat names every column.
         notes = period_agreement_notes(season, measure, full_line=named is None)
     cells, also = where
-    facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, also=also)
+    facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, also=also, cut=cut)
     # The log beneath a per-game figure: the newest N, or the first N.
     window = Window(limit=_clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.window.count, ascending=scope.window.order == "first")
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {})
@@ -340,7 +358,7 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
         return None
     where = _period_where(scope, widened.narrowed)
     fallback = Decided(kind="season_fallback", field="season", chose=season, before=span.season, facts={"games": len(rows), "season_type": span.season_type})
-    return _period_log_result(widened, scope, rows, season, period_label, measure, where, fallback=fallback)
+    return _period_log_result(widened, scope, rows, season, period_label, measure, where, cut=True, fallback=fallback)
 
 
 # --- the four quarters side by side ------------------------------------------------------

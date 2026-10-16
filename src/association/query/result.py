@@ -537,9 +537,13 @@ class PeriodFacts:
     """A player's quarter or half, besides its rows or quarters: the
     measure, whether a per-game log was asked (``per_game``) and of his
     whole line (``full_line``), the relation's own words for a teammate's
-    role or a calendar cut it applied (``also``), and the games read.
+    role or a calendar cut it applied (``also``), the games read, and
+    whether they are the count of games the words asked (``cut``).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       Gains ``cut``.
     """
 
     stat: str
@@ -547,6 +551,9 @@ class PeriodFacts:
     full_line: bool = False
     also: tuple[str, ...] = ()
     games: int = 0
+    #: Whether the games are the count the words asked, cut from the end
+    #: they named (the read's ``window``), rather than every game of the span.
+    cut: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -180,15 +180,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #472
 
-### A window on a half's line is dropped silently: "cade cunningham 1st half stats in his last 4 games" answers all 64 games
-- **Found:** 2026-10-16, the lead, enumerating the recorded "last N" wordings.
-- **Evidence:** the reading holds `window.count=4, order=recent`; the answer is "Cade Cunningham scored 758 points in the 1st half over 64 games of the 2026 regular season" - the window typed and not applied. Sibling wordings honor it ("Ben simmons in 1st quarter last 5 games" answers 5 games), so the drop is in the half's read or in "in his last 4 games" after a period phrase. `tests/grammar_drops.py` and the research harness hold no such drop, so the window is read and lost after the parser.
-- **User sees:** the season's half-game line where the last four games' was asked, fluently.
-- **Next step:** reproduce through `Agent.ask` with the recorded reply, find where `player_periods/rows/date` loses the window (the period reader's `relation_window` or the planner's cells), add the wording as a parser and reader case watched to fail.
-- **Priority:** P1 - a fluent wrong answer, a silent narrowing of the window kind the grammar-drops rule exists to catch.
-- **Source:** ours.
-- **GitHub:** #473
-
 ### "X without Y" is cut to the games the two were teammates, so the games after Y's trade are dropped: "jeremiah fears stats without dejounte murray" answers 63 of 68 games
 - **Found:** 2026-10-16, Jeff's reading of the feed sample's FS227; decision D15.
 - **Evidence:** the with/without split and the pair relation read the games the two shared as teammates (`conditions._teammate_games`, the time together as the box scores show it): Fears without Murray answers 63 games at 13.2 points where every 2025-26 game Murray did not play for New Orleans is 68 at 14.5 (the key); "james harden stats with no paul george" (FS111) pins the pair to 2023-24 and refuses 2026 where George plays for Philadelphia; "terrance mann without kawhi leonard" (FS032) likewise.

@@ -1928,13 +1928,16 @@ def _period_header(result: Result, games: list[dict[str, Any]], season_label: st
     assert period is not None and window is not None
     measure, period_label, subject = facts.stat, period.label, result.subject
     plural = "game" if len(games) == 1 else "games"
+    # The games a count the words asked kept are said as that count, from
+    # its end: "over 4 games of the 2026 regular season" read as his season.
+    counted = f"the {'first' if window.ascending else 'last'} {len(games)} {plural}" if facts.cut else f"{len(games)} {plural}"
     total = summary["total"]
     if measure in PERIOD_RATE_WORDS:
         did = period_rate_said(total, summary["attempted"], summary["average"], measure)
-        header = f"{subject} {did} in the {period_label} over {len(games)} {plural} of the {season_label}{vs}{at}."
+        header = f"{subject} {did} in the {period_label} over {counted} of the {season_label}{vs}{at}."
     else:
         did = f"scored {total} points" if measure == "points" else f"had {total} {period_noun(measure, total)}"
-        header = f"{subject} {did} in the {period_label} over {len(games)} {plural} of the {season_label}{vs}{at}, averaging {summary['average']:.1f}."
+        header = f"{subject} {did} in the {period_label} over {counted} of the {season_label}{vs}{at}, averaging {summary['average']:.1f}."
     if len(games) == 1:
         g = games[0]
         against = f"the {g['opponent']}" if g["opponent"] else "their opponent"
