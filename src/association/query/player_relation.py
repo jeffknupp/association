@@ -1274,26 +1274,47 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Companion, playe
         if column is None or stat is None or threshold is None or threshold < 1:
             raise Unsupported(f"a reached condition needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
         line = (column, ">=", threshold, f"{threshold}+ {STAT_LABELS.get(stat, stat)}s")
-    tenure = _tenure_clause(con, found, span.season) if side == "own" and predicate == "absent" else None
-    return Condition(found, side, predicate, line, tenure)
+    # An own-side absence was returned above, so no tenure is carried here.
+    return Condition(found, side, predicate, line)
 
 
 def _absence_condition(con: duckdb.DuckDBPyConnection, mate: Entity, player: Entity, span: ResolvedSpan, opponent: Entity | None) -> Condition:
-    """ "Without X" as the relation reads it: the games X missed while on
-    the subject's team (bounded to that tenure), or - where X was never his
-    teammate in the span and the games are narrowed to an ``opponent`` X
-    played for then - the games X missed on the OTHER side ("vs lakers
-    without lebron"), bounded to his time on that team and
-    said as "without X on the other side". Settled here, where the name is
-    resolved, since the parser reads no roster (Jeff's call).
-    A man on neither side keeps the own-side reading, whose empty answer
-    says he was never the subject's teammate.
+    """ "Without X" as the relation reads it: the games in which X had no
+    row for the subject's team, or - where X was never his teammate in the
+    span and the games are narrowed to an ``opponent`` X played for then -
+    for the OTHER side ("vs lakers without lebron"), said as "without X on
+    the other side". Over one season that is every such game, traded or
+    injured alike (decision D15); over a career it is bounded to X's time on
+    the team (:func:`_absence_tenure`), whose empty answer says he was never
+    the subject's teammate. Settled here, where the name is resolved, since
+    the parser reads no roster (Jeff's call).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       No tenure bounds the absence over one season (D15).
     """
     if opponent is not None and not _teammates_among(con, [mate], player, span) and _on_team_in_span(con, mate, opponent, span):
-        return Condition(mate, "opponent", "absent", None, _tenure_clause(con, mate, span.season, side="opponent"))
-    return Condition(mate, "own", "absent", None, _tenure_clause(con, mate, span.season))
+        return Condition(mate, "opponent", "absent", None, _absence_tenure(con, mate, span, side="opponent"))
+    together = span.season is None or bool(_teammates_among(con, [mate], player, replace(span, season=None, since=None, until=None)))
+    return Condition(mate, "own", "absent", None, _absence_tenure(con, mate, span, side="own", ever_together=together))
+
+
+def _absence_tenure(con: duckdb.DuckDBPyConnection, mate: Entity, span: ResolvedSpan, *, side: str, ever_together: bool = True) -> tuple[str, list[Any]] | None:
+    """The tenure an absence is bounded to: none over one season, where
+    "without Y" is every game of the subject's in which Y had no row for the
+    team - the games after Y was traded away above all, which are the ones
+    the question is about (decision D15: "jeremiah fears stats without
+    dejounte murray" answered 63 games where 68 were asked); Y's time on the
+    team over a career, where the decades before he arrived are not games
+    played "without" him (D15 keeps the cut there, said in the answer). A
+    teammate who never shared a team with the subject in any season keeps
+    the cut over one season too, so the answer says he was never his
+    teammate rather than calling every game "without" a stranger ("rui
+    hachimura stats without reeves" read as Antonio Reeves)."""
+    if span.season is not None and ever_together:
+        return None
+    return _tenure_clause(con, mate, span.season, side=side)
 
 
 def _on_team_in_span(con: duckdb.DuckDBPyConnection, mate: Entity, team: Entity, span: ResolvedSpan) -> bool:
@@ -1479,6 +1500,27 @@ def narrowed_cells(narrowed: Narrowed) -> tuple[Cell, ...]:
     return tuple(cells)
 
 
+def without_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed) -> list[Note]:
+    """What "without" was taken to mean: over one season, where no tenure
+    bounds the absence (decision D15), a game he did not play for the team,
+    traded or injured alike - and, for a teammate with no game for the
+    subject's team in the season at all, that every game is without him,
+    since a table of every game headed "without LeBron James" hides that
+    LeBron James was elsewhere; over a career, a game he did not play while
+    on the same team.
+
+    .. versionadded:: 7.0.0
+    """
+    absences = [c for c in narrowed.conditions if c.side == "own" and c.predicate == "absent"]
+    if any(c.tenure is not None for c in absences):
+        return [Note("definition", {"term": "without", "names": [c.player.name for c in absences]})]
+    elsewhere = [c.player for c in absences if not _teammates_among(con, [c.player], player, span)]
+    notes = [Note("definition", {"term": "without", "names": [c.player.name for c in absences], "what": "season"})]
+    if elsewhere:
+        notes.append(Note("definition", {"term": "without", "names": [mate.name for mate in elsewhere], "what": "elsewhere", "whose": player.name}))
+    return notes
+
+
 def box_score_notes_read(
     con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0
 ) -> list[Note]:
@@ -1494,7 +1536,7 @@ def box_score_notes_read(
     """
     notes: list[Note] = []
     if narrowed.without:
-        notes.append(Note("definition", {"term": "without", "names": [mate.name for mate in narrowed.without]}))
+        notes += without_notes(con, player, span, narrowed)
     if rebuilt_shown:
         # Said outright, because these numbers did not come from ESPN. Per game
         # they are close (see REBUILT_STATS) but they are not the box score, and

@@ -8,15 +8,17 @@ per team and side), its games the team compiler's ``presence`` statement
 through the one door; the sayer (:mod:`association.query.compose.say`,
 ``say_with_without``) words it.
 
-Only games inside a teammate's time on the team count - StatMuse answers
-"Nets record without KD" all-time with 439-672, decades of games before he
-arrived every one "without" him - and a question naming two teammates is
+Over a career, only games inside a teammate's time on the team count -
+StatMuse answers "Nets record without KD" all-time with 439-672, decades of
+games before he arrived every one "without" him; over one season with a
+player named, every game of his counts, the games after the teammate was
+traded away above all (decision D15) - and a question naming two teammates is
 divided by both of them: "Celtics record without Tatum and Brown" is the
 games NEITHER of them played, and "record when A and B play" the games both
 did; the games where one played and one sat belong to neither of those, and
-go on the other row (:func:`_with_without_played`). Only the time they were
-ALL on the same team is counted, for the same reason one teammate's tenure
-is.
+go on the other row (:func:`_with_without_played`). Where a tenure is
+counted, only the time they were ALL on the same team is, for the same
+reason one teammate's tenure is.
 
 .. versionadded:: 5.0.0
 """
@@ -134,7 +136,7 @@ def _with_without_result(
     first, last = min(g["season"] for g in games), max(g["season"] for g in games)
     used = [w for w in windows if any(g["team_id"] == w.team_id and w.first <= g["day"] <= w.last for g in games)]
     tenure = [{"team": team_names[w.team_id], "from": str(w.first), "to": str(w.last)} for w in used]
-    notes = _with_without_notes(named, tenure, asked_without, unknown, subject)
+    notes = _with_without_notes(named, tenure, asked_without, unknown, subject, covered.season)
     teams = [team_names[t] for t in team_order]
     return Result(
         subject=subject.name if subject is not None else ", ".join(teams),
@@ -168,11 +170,16 @@ def _with_without_groups(games: list[dict[str, Any]], team_names: dict[str, str]
     return team_order, groups
 
 
-def _with_without_notes(named: list[str], tenure: list[dict[str, str]], asked_without: bool, unknown: int, subject: Entity | None) -> list[Note]:
+def _with_without_notes(named: list[str], tenure: list[dict[str, str]], asked_without: bool, unknown: int, subject: Entity | None, season: int | None) -> list[Note]:
     """The remarks under the table, in order: the tenure
     counted, what "played" (or "out") means for one teammate against two,
     the games with no box score, and a player subject's columns."""
-    notes = [Note("definition", {"term": "tenure_counted", "names": named, "stints": tenure})]
+    # Over one season a named player's own stints are the games counted
+    # (D15), said as his games rather than a time together.
+    counted: dict[str, Any] = {"term": "tenure_counted", "names": named, "stints": tenure}
+    if subject is not None and season is not None:
+        counted["what"] = "season"
+    notes = [Note("definition", counted)]
     if len(named) == 1 or not asked_without:
         notes.append(Note("definition", {"term": "played", "names": named}))
     else:
@@ -249,9 +256,12 @@ def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str],
 
 
 def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], subject: Entity | None, team: Entity | None, scope: _Scope) -> list[Any] | Unanswered:
-    """The overlap of every teammate's (and, if named, the subject's) stints on
-    the team - or the refusal naming whichever teammate has no box-score
-    appearance to build a stint from at all."""
+    """The games the split divides: over one season with a player named, his
+    own stints on the team (decision D15: "X without Y" is every game of X's
+    that Y did not play for his team, the games after Y's trade above all);
+    otherwise the overlap of every teammate's (and, if named, the subject's)
+    stints on the team - or the refusal naming whichever teammate has no
+    box-score appearance to build a stint from at all."""
     named = [m.name for m in mates]
     stints = [_stints(con, m.id, scope.phantoms) for m in mates]
     absent = next((m for m, spells in zip(mates, stints, strict=True) if not spells), None)
@@ -263,7 +273,12 @@ def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], s
     for spells in stints[1:]:
         windows = _overlaps(windows, spells)
     if subject is not None:
-        windows = _overlaps(_stints(con, subject.id, scope.phantoms), windows)
+        own = _stints(con, subject.id, scope.phantoms)
+        together = _overlaps(own, windows)
+        # A teammate never on his team at all is no absence to divide by
+        # ("rui hachimura stats without reeves" read as Antonio Reeves): the
+        # empty windows say they were never together.
+        windows = own if scope.season is not None and together else together
     if team is not None:
         windows = [w for w in windows if w.team_id == team.id]
     return windows

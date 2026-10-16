@@ -4743,11 +4743,34 @@ def test_without_narrows_a_shared_name_to_that_seasons_teammates(pg_ctx: AnswerC
     assert result.data["without"] == ["Stephen Curry"]
 
 
-def test_a_mid_season_arrival_is_not_missing_from_the_games_before_he_came(pg_ctx: AnswerContext) -> None:
-    """Seth Curry joins at e3. The Warriors' games before that were not played
-    "without" a man who was on another team's books."""
-    answer = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),))).text
-    assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them without Seth Curry."
+def test_over_one_season_without_is_every_game_he_did_not_play_for_the_team(pg_ctx: AnswerContext) -> None:
+    """Seth Curry joins at e3. Over one season "without Seth Curry" is every
+    game of Podziemski's in which Seth had no row for the Warriors - the games
+    before he came as much as a game after a trade (decision D15) - and the
+    definition says so rather than "while on the same team"."""
+    s = current_season()
+    result = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),)))
+    assert sorted(g["date"] for g in result.data["games"]) == [f"{s - 1}-11-01", f"{s - 1}-12-01"]
+    assert "Without Seth Curry means games he did not play for his team, traded or injured alike" in result.text
+    assert "while on the same team" not in result.text
+
+
+def test_over_a_career_without_keeps_his_time_on_the_team(pg_ctx: AnswerContext) -> None:
+    """D15 keeps the tenure cut over a career: the Warriors' games before
+    Seth Curry arrived are not games played "without" a man on another
+    team's books, and the definition says "while on the same team"."""
+    answer = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),), span=Span(career=True))).text
+    assert "none of them without Seth Curry" in answer
+
+
+def test_a_teammate_of_another_season_is_said_to_have_played_elsewhere(pg_ctx: AnswerContext) -> None:
+    """Last season Seth Curry was a Celtic: over that season every game of
+    Podziemski's is "without" him (D15), and a table headed by his name would
+    hide that he was elsewhere, so the answer says it."""
+    result = player_log(
+        pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),), span=Span(season=current_season() - 1))
+    )
+    assert "Seth Curry played no game for Brandin Podziemski's team in the season asked, so every game is without him." in result.text
 
 
 def test_a_teammate_carried_over_is_on_the_team_before_his_first_game(pg_ctx: AnswerContext) -> None:

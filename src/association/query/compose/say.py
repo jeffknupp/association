@@ -225,9 +225,26 @@ def _say_definition(facts: dict[str, Any], about: str = "", placed: str = "") ->
         return f"{facts['units']}" + (f" over {possessions:,.0f} possessions" if possessions else "")
     if facts.get("term") != "without":
         raise ValueError(f"no phrase for the definition of {facts.get('term')!r}")
+    return _say_without(facts)
+
+
+def _say_without(facts: dict[str, Any]) -> str:
+    """What "without" was taken to mean: over a career a game he did not
+    play while on the same team; over one season, where no tenure bounds the
+    absence (decision D15), a game he did not play for the team, traded or
+    injured alike - and, for a teammate who played no game for the
+    subject's team in the season, that every game is without him."""
     names = list(facts["names"])
+    if facts.get("what") == "elsewhere":
+        # A teammate of another season, on no game of the subject's team in
+        # this one: every game is "without" him, and the answer says so.
+        them = "him" if len(names) == 1 else "them"
+        return f"{_joined(names)} played no game for {facts['whose']}'s team in the season asked, so every game is without {them}."
     who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
-    return f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
+    # Over one season no tenure bounds the absence (decision D15): a game
+    # after a trade is as much "without" him as a game he sat out injured.
+    where = "for his team, traded or injured alike" if facts.get("what") == "season" else "while on the same team"
+    return f"Without {_joined(names)} means games {who} {where} - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
 
 
 def _say_presence_played(names: list[str]) -> str:
@@ -242,6 +259,12 @@ def _say_tenure_counted(facts: dict[str, Any], about: str) -> str:
     """The games a with/without split counted: inside ``about`` (whose time
     on the team, which only the answer's heading names), each stint spelled
     out - under its team's name where the stints span several teams."""
+    if facts.get("what") == "season":
+        # Every game of the subject's in the season (decision D15): nothing
+        # was cut to a time together, so no stint is spelled out.
+        names = list(facts["names"])
+        out = f"out is a game {names[0]} did not play for his team" if len(names) == 1 else f"each game is divided by whether {_joined(names)} played for his team"
+        return f"Counted: {about}; {out}, traded or injured alike."
     stints = list(facts["stints"])
     several = len({stint["team"] for stint in stints}) > 1
     spelled = "; ".join(f"{stint['team']} {stint['from']} to {stint['to']}" if several else f"{stint['from']} to {stint['to']}" for stint in stints)
@@ -3498,6 +3521,9 @@ def _with_without_heading(result: Result, named: list[str], all_of: str) -> tupl
         whose = f"{all_of}'s time with the team" if len(named) == 1 else f"the time {all_of} were on the team together"
         return f"{counted_teams} with and without {all_of}{versus}, {label}:", headers, whose
     whose = f"the time {subject} and {all_of} were both on the team" if len(named) == 1 else f"the time {_joined([subject, *named])} were on the team together"
+    if any(each.facts.get("term") == "tenure_counted" and each.facts.get("what") == "season" for each in result.notes):
+        # One season with a player named counts every game of his (D15).
+        whose = f"every game {subject}'s team played in the {label} while he was on it"
     return f"{subject} with and without {all_of} ({counted_teams}){versus}, {label}:", [*headers, "Played", "MIN", "PTS", "REB", "AST", "FG%"], whose
 
 

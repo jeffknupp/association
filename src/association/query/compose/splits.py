@@ -22,7 +22,7 @@ from association.query.lines import measure_filters
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import games_subquery
-from association.query.player_relation import condition_scope, narrowed_cells, narrowing_emptied, no_games, no_narrowed_games, span_of
+from association.query.player_relation import condition_scope, narrowed_cells, narrowing_emptied, no_games, no_narrowed_games, span_of, without_notes
 from association.query.reading import SPLIT_KINDS, Filtered, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span, SplitsFacts, Unanswered
 from association.query.season_text import MONTH_NAMES
@@ -215,6 +215,11 @@ def _player_splits(
     split, kinds = _kinds(scope.split, "p")
     groups, unread = _player_groups(con, q, compiled, line, kinds)
     notes = _player_notes(con, covered, base, params, first, kinds, unread)
+    if narrowed.without and span is not None:
+        # What "without" was taken to mean, as the log and the line say it:
+        # over one season a teammate who played elsewhere leaves every game
+        # "without" him (D15), which a table headed by his name hides.
+        notes = (*notes, *without_notes(con, player, span, narrowed))
     facts = _player_facts(team, line, split, kinds, games)
     return Result(
         subject=player.name,

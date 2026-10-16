@@ -189,16 +189,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #472
 
-### "X without Y" is cut to the games the two were teammates, so the games after Y's trade are dropped: "jeremiah fears stats without dejounte murray" answers 63 of 68 games
-- **Found:** 2026-10-16, Jeff's reading of the feed sample's FS227; decision D15.
-- **Evidence:** the with/without split and the pair relation read the games the two shared as teammates (`conditions._teammate_games`, the time together as the box scores show it): Fears without Murray answers 63 games at 13.2 points where every 2025-26 game Murray did not play for New Orleans is 68 at 14.5 (the key); "james harden stats with no paul george" (FS111) pins the pair to 2023-24 and refuses 2026 where George plays for Philadelphia; "terrance mann without kawhi leonard" (FS032) likewise.
-- **User sees:** a fluent "without" line over the wrong set of games, the games after the trade - the ones most asked about - missing, with a sentence that makes the cut sound like the answer.
-- **Measured 2026-10-16 (lane p6-span, a prototype not committed):** the reader's half is two lines - the player relation's absence (`player_relation._absence_condition`) carries no tenure clause over a single season (`condition_clause` then reads "no row of Y's for X's team in the game", D15's own definition), and the with/without split's windows over a single season are the subject's own stints (`compose.presence._with_without_windows`), the overlap kept over a career. On the feed it moves 29 answers (FS227 then answers 68 games at 14.5, the key's exactly; FS032 every one of Mann's 63 Brooklyn games, the key's reading b; "AD win percentage without Lebron james", "luke kornet without kristap porzingis gamelog", "John Collin's record without Trae young" answer where they said "was not his teammate"), the corpus none. It is not committed because two sentences the sayer writes would then be false, and the sayer is lane p6-sayer's file: `say._say_tenure_counted` with the heading's `whose` ("Counted: games inside the time Terance Mann and Kawhi Leonard were both on the team (...)", `say._with_without_heading`), and the "without" definition ("Without Y means games he did not play while on the same team", `say._say_definition`). One hazard the prototype showed: "rui hachimura stats without reeves" resolves "reeves" to Antonio Reeves (no Lakers teammate) rather than Austin Reaves, a refusal today and a fluent split over the wrong player under D15 - the teammate's resolution should prefer a near spelling who shared the subject's team.
-- **Next step:** D15 - the two reader lines above, landed with the sayer's two sentences for a single season ("Counted: every game of <subject>'s in the 2026 regular season; out is a game <Y> did not play for his team, traded or injured alike" and the definition's "while on the same team" said only over a career, where the tenure cut stays and says so), in one change across the two lanes' files; the teammate's resolution narrowed to who shared the subject's team first; the sample's FS227, FS111 and FS032 re-graded as the proof.
-- **Priority:** P1 - a fluent wrong answer on a shape people ask often.
-- **Source:** ours.
-- **GitHub:** #474
-
 ## P2: misleading or incomplete
 
 ### A team's best single game lists three of the teams tied at the top and says "by" them as if all: "most 3s made in a single game by a team" leaves out Milwaukee's 29
@@ -2002,6 +1992,14 @@ those were found.
 - **GitHub:** #471
 
 ## P3: refusal or gap
+
+### A teammate's surname that is one player's exactly is read as him, though a near spelling was the subject's teammate: "rui hachimura stats without reeves" reads Antonio Reeves
+- **Found:** 2026-10-16, lane p6-span's prototype of D15, re-measured by lane p6-d15.
+- **Evidence:** "reeves" is Antonio Reeves's surname exactly, so the teammate's resolution (`compose.presence._with_without_resolve`, `player_relation._resolved_teammate`, through `entities.resolve_player`) takes him and never reaches the near-spelling pass that would find Austin Reaves, Hachimura's Lakers teammate - the near spelling is read only for a span that matches no player exactly (`entities.read_near_spelling`, AGENTS.md "Typos are the entity index's job"). The answer says "Rui Hachimura and Antonio Reeves were never on the same team together" (the feed's one wording). Under D15 a teammate who never shared the subject's team keeps that refusal (lane p6-d15's guard), so it is a refusal naming the player read, not a fluent split over him.
+- **User sees:** a refusal naming Antonio Reeves where Austin Reaves was meant; "without austin reaves" answers.
+- **Next step:** the teammate's resolution eliminates a candidate who never shared the subject's team before choosing (the move `_resolved_teammate` already makes between namesakes, `_teammates_among`), and then reads a single near spelling who did - said as a name reading; check both conditions of the default rule (visible, correctable) first.
+- **Priority:** P3 - a refusal that names the player read.
+- **Source:** ours.
 
 ### A dated "since" beside a conference is read as a single season and a career at once: "celtics all-time record vs eastern conference including playoffs since september 11th 2001"
 - **Found:** 2026-10-14, the P1 sweep's lane T3, fixing #341 (the record against a conference).

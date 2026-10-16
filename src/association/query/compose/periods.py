@@ -58,7 +58,7 @@ from association.query.player_games import (
     period_ranking,
     period_rate,
 )
-from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
+from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of, without_notes
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, Filtered, Measure, PointShape, Unsupported, _clamp_limit, period_narrowing
 from association.query.result import (
     Cell,
@@ -198,7 +198,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
         redirected = _period_redirect(con, read, compiled, asked[1], measure)
         if redirected is not None:
             return redirected
-    return _period_log_result(compiled, scope, rows, season, asked[1], measure, where, cut=asked_games is not None)
+    return _period_log_result(con, compiled, scope, rows, season, asked[1], measure, where, cut=asked_games is not None)
 
 
 def _period_games_asked(scope: Filtered) -> tuple[str, int] | None:
@@ -245,6 +245,7 @@ def _period_unread(games: list[dict[str, Any]], measure: str) -> bool:
 
 
 def _period_log_result(
+    con: duckdb.DuckDBPyConnection,
     compiled: Compiled,
     scope: Filtered,
     rows: list[dict[str, Any]],
@@ -274,6 +275,9 @@ def _period_log_result(
         # The whole line is shown beneath the figure wherever no stat was
         # named (``_period_full_line``), so its caveat names every column.
         notes = period_agreement_notes(season, measure, full_line=named is None)
+        if compiled.narrowed.without and compiled.span is not None:
+            # What "without" was taken to mean, as the log says it (D15).
+            notes += without_notes(con, compiled.player, compiled.span, compiled.narrowed)
     cells, also = where
     facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, also=also, cut=cut)
     # The log beneath a per-game figure: the newest N, or the first N.
@@ -358,7 +362,7 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
         return None
     where = _period_where(scope, widened.narrowed)
     fallback = Decided(kind="season_fallback", field="season", chose=season, before=span.season, facts={"games": len(rows), "season_type": span.season_type})
-    return _period_log_result(widened, scope, rows, season, period_label, measure, where, cut=True, fallback=fallback)
+    return _period_log_result(con, widened, scope, rows, season, period_label, measure, where, cut=True, fallback=fallback)
 
 
 # --- the four quarters side by side ------------------------------------------------------

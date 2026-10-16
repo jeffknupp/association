@@ -67,6 +67,22 @@ def test_each_note_kind_has_one_phrase() -> None:
     assert note_phrase(Note("window_short", {"found": 3, "asked": 5, "season_type": [2, 3]}), narrowing=" at home") == "Only 3 games at home found across the regular season and postseason."
     assert note_phrase(Note("window_short", {"found": 1, "asked": 5, "season": None, "season_type": 2})) == "Only 1 game in his box scores."
     assert note_phrase(Note("definition", {"term": "without", "names": ["Joel Embiid", "Paul George"]})).startswith("Without Joel Embiid and Paul George means games neither of them played")
+    # D15: over one season no tenure bounds the absence, and the sentences say so.
+    assert note_phrase(Note("definition", {"term": "without", "names": ["Dejounte Murray"], "what": "season"})).startswith(
+        "Without Dejounte Murray means games he did not play for his team, traded or injured alike - "
+    )
+    assert note_phrase(Note("definition", {"term": "without", "names": ["Dejounte Murray"]})).startswith("Without Dejounte Murray means games he did not play while on the same team - ")
+    assert (
+        note_phrase(Note("definition", {"term": "without", "names": ["LeBron James"], "what": "elsewhere", "whose": "Anthony Davis"}))
+        == "LeBron James played no game for Anthony Davis's team in the season asked, so every game is without him."
+    )
+    assert (
+        note_phrase(
+            Note("definition", {"term": "tenure_counted", "names": ["Dejounte Murray"], "stints": [], "what": "season"}),
+            about="every game Jeremiah Fears's team played in the 2026 regular season while he was on it",
+        )
+        == "Counted: every game Jeremiah Fears's team played in the 2026 regular season while he was on it; out is a game Dejounte Murray did not play for his team, traded or injured alike."
+    )
     assert note_phrase(Note("games_unseen", {"games": 2, "why": "empty_box_score"})) == "Not counted: 2 games in this span whose box score lists him with no minutes and no stats."
     # #282: the comparison's missing-season note says "have" of two names, joined by "and".
     assert note_phrase(Note("no_data_for", {"names": ["Joel Embiid"], "period": "2027 regular season"})) == "(Joel Embiid has no 2027 regular season numbers in the warehouse.)"
