@@ -2066,6 +2066,24 @@ with nothing to read fills the silence from its own weights), and more data
     the two left are a player's log, the span lane's files. The lane filed
     "ecf" read by nothing (#475, P1).
 
+52. **Step 2's span lane landed (2026-10-16, master `b66df9a0`).** D13 as
+    ten rules in the span tagger, each the kind of history words can imply
+    (an opponent, a pair, a companion who played, a holiday, a count over a
+    line, the single game's high, an inactive player asked his line, ...),
+    standing under the keys that read over a career, with the guards that
+    keep a career off; D14 on the games relations and on two teams'
+    meetings; "last N meetings" counted. The lead's runs 80 to 81: feed 472
+    of 2,082 readings moved and 363 answers reworded, every one fluent on
+    both sides and 39 of them a "no games in 2026" sentence that now
+    answers over the career; corpus 61 readings and 39 answers; 15
+    grade-aware flags, each the yardstick's own career reading but F153,
+    whose rows are identical under a career heading. Forty of the lane's 57
+    sample ids match the key. D15 was measured (29 feed moves; FS227 then
+    exact) and held because its two sentences live in the sayer, which the
+    other lane owned until it landed; a follow-up lane takes it with the
+    period reads under D14 and the D13 decision sentence. Issues #366 and
+    #446 closed; #476-#479 filed.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
