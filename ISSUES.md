@@ -178,6 +178,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** one rule in the span resolution: a games window (`reading.Window` with a count of games) spans both season types whatever else is set (`point.span_under`, `span.read_span`'s window rule, the period reads' season cap), the answer's heading saying the split as the bare case does; proven on the 109 wordings above moving to both types and the sample's FS172 re-graded.
 - **Priority:** P1 - a fluent wrong answer on about 100 recorded wordings.
 - **Source:** ours.
+- **GitHub:** #472
 
 ### A window on a half's line is dropped silently: "cade cunningham 1st half stats in his last 4 games" answers all 64 games
 - **Found:** 2026-10-16, the lead, enumerating the recorded "last N" wordings.
@@ -186,6 +187,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** reproduce through `Agent.ask` with the recorded reply, find where `player_periods/rows/date` loses the window (the period reader's `relation_window` or the planner's cells), add the wording as a parser and reader case watched to fail.
 - **Priority:** P1 - a fluent wrong answer, a silent narrowing of the window kind the grammar-drops rule exists to catch.
 - **Source:** ours.
+- **GitHub:** #473
 
 ## P2: misleading or incomplete
 
