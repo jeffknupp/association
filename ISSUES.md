@@ -189,6 +189,14 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #473
 
+### "X without Y" is cut to the games the two were teammates, so the games after Y's trade are dropped: "jeremiah fears stats without dejounte murray" answers 63 of 68 games
+- **Found:** 2026-10-16, Jeff's reading of the feed sample's FS227; decision D15.
+- **Evidence:** the with/without split and the pair relation read the games the two shared as teammates (`conditions._teammate_games`, the time together as the box scores show it): Fears without Murray answers 63 games at 13.2 points where every 2025-26 game Murray did not play for New Orleans is 68 at 14.5 (the key); "james harden stats with no paul george" (FS111) pins the pair to 2023-24 and refuses 2026 where George plays for Philadelphia; "terrance mann without kawhi leonard" (FS032) likewise.
+- **User sees:** a fluent "without" line over the wrong set of games, the games after the trade - the ones most asked about - missing, with a sentence that makes the cut sound like the answer.
+- **Next step:** D15 - within the question's span, "without Y" is every game of X that Y did not play for X's team, traded away or injured alike; the tenure cut only over a career span where the two shared a team in part of it, said in the answer; the sample's FS227, FS111 and FS032 re-graded as the proof.
+- **Priority:** P1 - a fluent wrong answer on a shape people ask often.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A team's games or count over a line, given up or its own, are named from the words only after a window: "celtics games where they gave up 120 points" is refused for an unread number, and "celtics game log when they score 120+ points" answers its record over the line
