@@ -239,16 +239,20 @@ def season_statement(athlete_id: str, columns: list[str], season: int, season_ty
     return Statement(f"SELECT {', '.join(columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season = ? AND season_type = ?", [athlete_id, season, season_type])
 
 
-def career_statement(athlete_id: str, season_type: int, wanted: list[str], shooting: ShootingStat | None) -> tuple[Statement, str | None]:
+def career_statement(athlete_id: str, season_type: int, wanted: list[str], shooting: ShootingStat | None, *, shots: tuple[ShootingStat, ...] = ()) -> tuple[Statement, str | None]:
     """A career line summed from the season table: the games, the first and
     last season and how many, then per wanted stat its per-game figure and
     its total, then a single made count's attempts, then a percentage's
-    makes and attempts. A season whose total is missing falls back to its
-    average times its games, and each per-game figure is divided by the
-    games that actually carry that stat. Returns the made count's attempted
-    column beside it, where there is one.
+    makes and attempts, then each of ``shots``' makes and attempts (the
+    full line's shooting, :data:`FULL_LINE_SHOTS`). A season whose total is
+    missing falls back to its average times its games, and each per-game
+    figure is divided by the games that actually carry that stat. Returns
+    the made count's attempted column beside it, where there is one.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       Takes ``shots``, the makes and attempts the full line sums.
     """
     selects = ["SUM(gamesPlayed)", "MIN(season)", "MAX(season)", "COUNT(*)"]
     for stat in wanted:
@@ -261,8 +265,8 @@ def career_statement(athlete_id: str, season_type: int, wanted: list[str], shoot
     attempted_col = MADE_STAT_ATTEMPTS.get(wanted[0]) if len(wanted) == 1 else None
     if attempted_col:
         selects.append(f"SUM({attempted_col})")
-    if shooting:
-        made, attempted = shooting.made, shooting.attempted
+    for each in (shooting, *shots) if shooting else shots:
+        made, attempted = each.made, each.attempted
         selects += [f"SUM(CASE WHEN {attempted} IS NOT NULL THEN {made} END)", f"SUM({attempted})"]
     sql = f"SELECT {', '.join(selects)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND gamesPlayed > 0"
     return Statement(sql, [athlete_id, season_type]), attempted_col
@@ -469,14 +473,19 @@ def season_row(con: duckdb.DuckDBPyConnection, athlete_id: str, columns: list[st
     return _first(_values(con, season_statement(athlete_id, columns, season, season_type)))
 
 
-def career_row(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int, wanted: list[str], shooting: ShootingStat | None) -> tuple[tuple[Any, ...] | None, str | None]:
+def career_row(
+    con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int, wanted: list[str], shooting: ShootingStat | None, *, shots: tuple[ShootingStat, ...] = ()
+) -> tuple[tuple[Any, ...] | None, str | None]:
     """A career line summed from the season table (:func:`career_statement`):
     its one row - ``None`` where the statement returns none - and the made
     count's attempted column beside it, where there is one.
 
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 7.0.0
+       Takes ``shots``, the makes and attempts the full line sums.
     """
-    statement, attempted_col = career_statement(athlete_id, season_type, wanted, shooting)
+    statement, attempted_col = career_statement(athlete_id, season_type, wanted, shooting, shots=shots)
     return _first(_values(con, statement)), attempted_col
 
 
@@ -1560,6 +1569,50 @@ MADE_STAT_ATTEMPTS: dict[str, str] = {
 
 .. versionadded:: 4.4.0
 """
+
+
+# The full box line: what a line shows beside the sentence where the words
+# asked the line rather than one of its three headline figures ("lebron
+# james stats in the 2009 playoffs", "zubac for 24-25 season", "wembanyama
+# shooting percentages in his last 30 games"). The feed sample's key marked
+# the shooting `must_include` on a "stats" question and the blocks on a
+# center's or a wing's bare line (14 partial verdicts, ISSUES.md #471): the
+# three-stat sentence alone answered the right games and the right numbers
+# with the stat the question turned on missing. The comparison's own line
+# (COMPARE_STAT_LINE), in the order a box score prints it, and the three
+# shooting splits with their makes and attempts.
+FULL_LINE_STATS: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls")
+"""The per-game stats of the full box line, in the order a box score prints them.
+
+.. versionadded:: 7.0.0
+"""
+
+FULL_LINE_SHOTS: tuple[str, ...] = ("fieldGoalPct", "threePointFieldGoalPct", "freeThrowPct")
+"""The shooting splits of the full box line (``SHOOTING_STATS`` keys), each
+said with its makes and attempts.
+
+.. versionadded:: 7.0.0
+"""
+
+# A line whose words name one of its three headline figures ("Anthony
+# edwards points a game", "jalen Brunson assists") asked that figure; every
+# other line - none named, a shooting word, a stat outside the three - asked
+# the line, and shows it whole.
+_HEADLINE_STATS: frozenset[str] = frozenset(STAT_LINE)
+
+
+def full_line_asked(stat: str | None) -> bool:
+    """Whether a player's line shows the full box line beside its sentence:
+    where the words named no stat, a shooting percentage, or a box-score
+    stat outside points, rebounds and assists - never for one of those
+    three alone, and never for a computed advanced stat (its own figure
+    with its own volume) or a stat the line has no column for.
+
+    .. versionadded:: 7.0.0
+    """
+    if stat is None:
+        return True
+    return stat not in _HEADLINE_STATS and (stat in SHOOTING_STATS or stat in PLAYER_STAT_COLUMNS)
 
 
 @dataclass(frozen=True)

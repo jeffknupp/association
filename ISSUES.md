@@ -1973,11 +1973,11 @@ those were found.
 - **Source:** ours (the build).
 - **GitHub:** #467
 
-### A season line shows three stats where the words asked the shooting or the blocks: "lebron james stats in the 2009 playoffs" shows no percentages
-- **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1).
-- **Evidence:** 14 of the sample's 65 partial verdicts: a line asked as "stats" or with a shooting word shows points, rebounds and assists only ("lebron 2011 playoff stats", "kawhi leonard 2012-2013", "dwayne wade stats in 2012 playoff", "wembanyama shooting percentages in his last 30 games", "melo stats 2004"); a center's or a wing's line without blocks ("zubac for 24-25 season", "Alex sarr per career", "wemby vs the clippers 23-24").
+### A player's log and a period's line show three stats where the words asked the shooting or the blocks: "klay thompson last 5 games away" shows no threes
+- **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1); the season line, the games line and the comparison show the full box line since lane p6-sayer (#471's first part), the sample's FS024, FS061, FS062, FS119, FS179, FS204, FS207, FS258, FS266, FS344 and FS373.
+- **Evidence:** 3 of the sample's 14 three-stat partials remain: a player's log shows MIN, PTS, REB and AST ("Walker kessler vs dal last 25 games" without his blocks, "klay thompson last 5 games away" without his threes; FS240, FS213 - the log's columns are `compose.logs`' and the point's measures), and a period's line without a log says its one measure ("lebron james 4th qtr stats 2026" says his 4th-quarter points alone; FS359).
 - **User sees:** the right games and the right numbers, with the stat the words named missing.
-- **Next step:** the season line and the games line show the full box line (shooting splits, steals, blocks, turnovers) where the words say "stats" or name a shooting word, as the comparison does; the sample's 14 re-graded `correct` as the proof.
+- **Next step:** the log shows the full line's columns where the words named no stat, as the line does (`season_line.full_line_asked`); the period line says the period's whole line beneath its figure where no stat was named; the sample's three re-graded.
 - **Priority:** P2 - a correct but incomplete answer.
 - **Source:** ours.
 - **GitHub:** #471

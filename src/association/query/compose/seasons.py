@@ -23,6 +23,7 @@ the planned point, as it does for every reader.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -40,16 +41,20 @@ from association.query.result import Decided, Grouped, LineFacts, Part, Refusal,
 from association.query.season_line import (
     ADVANCED_STATS,
     COMPARE_STAT_LINE,
+    FULL_LINE_SHOTS,
+    FULL_LINE_STATS,
     HISTORY_COLUMNS,
     HISTORY_LINE,
     MAX_COMPARED_PLAYERS,
     NETPOINTS_COMPARE_ROWS,
     PLAYER_STAT_COLUMNS,
     SHOOTING_STATS,
+    ShootingStat,
     advanced_row,
     advanced_span,
     career_row,
     compared_player,
+    full_line_asked,
     history_rows,
     history_seasons,
     history_subject,
@@ -140,8 +145,65 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     wanted = [] if shooting else wanted_stats(scope)
     facts = LineFacts(stat=stat if shooting else None, wanted=tuple(wanted))
     if span.career:
-        return _player_line_career(con, player, span, wanted, shooting, facts)
-    return _player_line_season(con, player, span, scope.span.season_type or 2, wanted, shooting, facts)
+        line = _player_line_career(con, player, span, wanted, shooting, facts)
+        return _with_full_line(line, stat, lambda: _full_line_career(con, player, span.season_type))
+    season_type = scope.span.season_type or 2
+    line = _player_line_season(con, player, span, season_type, wanted, shooting, facts)
+    return _with_full_line(line, stat, lambda: _full_line_season(con, player, span.season or current_season(), season_type))
+
+
+def _with_full_line(line: Result, stat: str | None, read: Callable[[], Scalar | None]) -> Result:
+    """The line with the full box line beside it, as a detail part, where
+    the words asked the line rather than one of its headline figures
+    (:func:`~association.query.season_line.full_line_asked`) and the line
+    found games - the season line's own read of the same season or
+    career, so the sentence's figures are the line's as before."""
+    found = line.scalar
+    if not full_line_asked(stat) or found is None or not found.games:
+        return line
+    full = read()
+    return line if full is None else replace(line, parts=(*line.parts, Part(role="detail", body=full)))
+
+
+def _full_line_season(con: duckdb.DuckDBPyConnection, player: Entity, season: int, season_type: int) -> Scalar | None:
+    """One season's full box line from the season table: each of
+    ``FULL_LINE_STATS`` per game as stored (``values``), each of
+    ``FULL_LINE_SHOTS``' makes and attempts (``sums``, by their stable
+    keys)."""
+    shots = [SHOOTING_STATS[name] for name in FULL_LINE_SHOTS]
+    columns = ["gamesPlayed", *(PLAYER_STAT_COLUMNS[name][0] for name in FULL_LINE_STATS), *(column for shot in shots for column in (shot.made, shot.attempted))]
+    row = season_row(con, player.id, columns, season, season_type)
+    if row is None:
+        return None
+    per_game = row[1 : 1 + len(FULL_LINE_STATS)]
+    counts = row[1 + len(FULL_LINE_STATS) :]
+    sums = _full_line_shots(shots, counts)
+    return Scalar(games=int(row[0] or 0), values=dict(zip(FULL_LINE_STATS, per_game, strict=True)), sums=sums, how="season")
+
+
+def _full_line_shots(shots: Sequence[ShootingStat], counts: Sequence[Any]) -> dict[str, Any]:
+    """Each split's makes and attempts by their stable keys, read off the
+    statement's pairs of columns in ``shots``' order."""
+    sums: dict[str, Any] = {}
+    for index, shot in enumerate(shots):
+        sums[shot.made_key], sums[shot.attempted_key] = counts[2 * index], counts[2 * index + 1]
+    return sums
+
+
+def _full_line_career(con: duckdb.DuckDBPyConnection, player: Entity, season_type: int) -> Scalar | None:
+    """A career's full box line summed from the season table
+    (:func:`~association.query.season_line.career_row`, with every shooting
+    split's makes and attempts): each of ``FULL_LINE_STATS`` per game over
+    the games that carry it (``values``), each split's makes and attempts
+    (``sums``, by their stable keys)."""
+    shots = tuple(SHOOTING_STATS[name] for name in FULL_LINE_SHOTS)
+    row, _ = career_row(con, player.id, season_type, list(FULL_LINE_STATS), None, shots=shots)
+    if row is None or not row[0]:
+        return None
+    per_game = row[4 : 4 + 2 * len(FULL_LINE_STATS) : 2]
+    counts = row[4 + 2 * len(FULL_LINE_STATS) :]
+    sums = _full_line_shots(shots, counts)
+    return Scalar(games=int(row[0]), values=dict(zip(FULL_LINE_STATS, per_game, strict=True)), sums=sums, how="season")
 
 
 def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, season_type: int, wanted: list[str], shooting: Any, facts: LineFacts) -> Result:
@@ -440,7 +502,11 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
         raise Unsupported("the named players resolved to the same person")
     season_type = scope.span.season_type or 2
     wanted = wanted_stats(scope, COMPARE_STAT_LINE)
-    lines = _player_compare_lines(con, resolved, wanted, season, season_type)
+    # The whole line where no stat was named, its shooting splits included
+    # (ISSUES.md #471: "compare lebron and shai 2026 playoffs" showed no
+    # shooting); a named stat narrows the table to it.
+    shots = tuple(SHOOTING_STATS[name] for name in FULL_LINE_SHOTS) if full_line_asked(spelled(scope.measure)) else ()
+    lines = _player_compare_lines(con, resolved, wanted, season, season_type, shots)
     parts = [Part(body=Grouped(by="subject", rows=tuple(lines.values())))]
     netpoints = _player_compare_netpoints(con, resolved, season, season_type)
     if netpoints is not None:
@@ -452,14 +518,16 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
     )
 
 
-def _player_compare_lines(con: duckdb.DuckDBPyConnection, players: list[Entity], wanted: list[str], season: int, season_type: int) -> dict[str, dict[str, Any]]:
+def _player_compare_lines(con: duckdb.DuckDBPyConnection, players: list[Entity], wanted: list[str], season: int, season_type: int, shots: tuple[ShootingStat, ...]) -> dict[str, dict[str, Any]]:
     """Each player's line for the season, by name - two players sharing a
-    name are one entry, the later one's."""
-    columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
+    name are one entry, the later one's: his games, each wanted stat per
+    game, and each of ``shots``' makes and attempts by their stable keys."""
+    columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted] + [column for shot in shots for column in (shot.made, shot.attempted)]
     lines: dict[str, dict[str, Any]] = {}
     for player in players:
         row = season_row(con, player.id, columns, season, season_type)
-        lines[player.name] = {"key": player.name, **({"games": row[0], **dict(zip(wanted, row[1:], strict=True))} if row else {})}
+        found = {"games": row[0], **dict(zip(wanted, row[1 : 1 + len(wanted)], strict=True)), **_full_line_shots(shots, row[1 + len(wanted) :])} if row else {}
+        lines[player.name] = {"key": player.name, **found}
     return lines
 
 

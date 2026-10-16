@@ -910,6 +910,42 @@ def test_every_per_game_metric_carries_both_games_qualifiers() -> None:
 # ---------------- a player's line ----------------
 
 
+# The full box line a player's line shows where its words asked the line
+# (``season_line.full_line_asked``): the season table's per-game columns and
+# totals, and the game log's columns, a fixture built for one stat lacks. Added
+# empty, so a line read off such a fixture shows the full line's cells as "-".
+_SEASON_FULL_LINE_COLUMNS: tuple[tuple[str, str], ...] = (
+    *((column, "DOUBLE") for column in ("avgMinutes", "avgPoints", "avgRebounds", "avgAssists", "avgSteals", "avgBlocks", "avgTurnovers", "avgFouls")),
+    *((column, "INTEGER") for column in ("points", "totalRebounds", "assists", "steals", "blocks", "turnovers", "fouls")),
+    *((column, "INTEGER") for column in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted", "freeThrowsMade", "freeThrowsAttempted")),
+)
+_GAME_FULL_LINE_COLUMNS: tuple[tuple[str, str], ...] = tuple(
+    (column, "INTEGER")
+    for column in (
+        "minutes",
+        "points",
+        "rebounds",
+        "assists",
+        "steals",
+        "blocks",
+        "turnovers",
+        "fouls",
+        "fieldGoalsMade",
+        "fieldGoalsAttempted",
+        "threePointFieldGoalsMade",
+        "threePointFieldGoalsAttempted",
+        "freeThrowsMade",
+        "freeThrowsAttempted",
+    )
+)
+
+
+def _with_full_line_columns(con: duckdb.DuckDBPyConnection, table: str, columns: tuple[tuple[str, str], ...]) -> None:
+    """``table`` with every column of the full box line it lacks, empty."""
+    for column, kind in columns:
+        con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {kind}")
+
+
 @pytest.fixture
 def ps_con(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
@@ -917,12 +953,14 @@ def ps_con(tmp_path: Path) -> AnswerContext:
     c.execute(
         "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, "
         "gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, avgRebounds DOUBLE, avgAssists DOUBLE, assists INTEGER, "
-        "avgSteals DOUBLE, avgBlocks DOUBLE, avgTurnovers DOUBLE, avgFouls DOUBLE, avgMinutes DOUBLE, fouls INTEGER)"
+        "avgSteals DOUBLE, avgBlocks DOUBLE, avgTurnovers DOUBLE, avgFouls DOUBLE, avgMinutes DOUBLE, fouls INTEGER, "
+        "fieldGoalsMade INTEGER, fieldGoalsAttempted INTEGER, threePointFieldGoalsMade INTEGER, threePointFieldGoalsAttempted INTEGER, freeThrowsMade INTEGER, freeThrowsAttempted INTEGER)"
     )
     c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Luka Garza'),('3','Nikola Jokic'),('4','Stephen Curry'),('5','Seth Curry')")
     s = current_season()
-    c.execute("INSERT INTO player_season_stats_deduped VALUES ('1',?,2,64,33.5,2143,7.7,8.3,531,1.4,0.5,4.0,2.1,37.5,134)", [s])
-    c.execute("INSERT INTO player_season_stats_deduped VALUES ('3',?,2,65,27.7,1799,12.9,10.7,697,1.3,0.9,3.6,2.5,34.6,163)", [s])
+    c.execute("INSERT INTO player_season_stats_deduped VALUES ('1',?,2,64,33.5,2143,7.7,8.3,531,1.4,0.5,4.0,2.1,37.5,134,731,1504,282,620,399,509)", [s])
+    c.execute("INSERT INTO player_season_stats_deduped VALUES ('3',?,2,65,27.7,1799,12.9,10.7,697,1.3,0.9,3.6,2.5,34.6,163,763,1310,117,284,389,471)", [s])
+    _with_full_line_columns(c, "player_season_stats_deduped", _SEASON_FULL_LINE_COLUMNS)
     # A comparison reports a NetPoints summary under the box-score line. Only
     # Luka has a row, so the "some players have none" path is exercised too.
     c.execute(
@@ -946,7 +984,15 @@ def test_player_line_reports_one_named_stat_with_its_total(ps_con: AnswerContext
 
 def test_player_line_with_no_stat_gives_a_stat_line(ps_con: AnswerContext) -> None:
     result = player_line(ps_con, Reading(who=Who(kind="player", players=("Nikola Jokic",))))
-    assert result.text == (f"Nikola Jokic averaged 27.7 points, 12.9 rebounds and 10.7 assists per game in 65 games in the {current_season()} regular season.")
+    # The words named no stat, so the full box line is beneath the sentence:
+    # every figure it did not say, the shooting with its makes and attempts
+    # (ISSUES.md #471).
+    assert result.text == (
+        f"Nikola Jokic averaged 27.7 points, 12.9 rebounds and 10.7 assists per game in 65 games in the {current_season()} regular season.\n"
+        "   MIN  STL  BLK  TOV   PF               FG%            3PT%             FT%\n"
+        "  34.6  1.3  0.9  3.6  2.5  58.2 (763-1,310)  41.2 (117-284)  82.6 (389-471)"
+    )
+    assert result.data["stats"]["avgBlocks"] == 0.9 and result.data["stats"]["fieldGoalsAttempted"] == 1310 and result.data["stats"]["fieldGoalPct"] == 58.2
 
 
 def test_player_line_asks_instead_of_guessing_between_players(ps_con: AnswerContext) -> None:
@@ -975,6 +1021,14 @@ def test_player_line_reports_a_missing_season_honestly(ps_con: AnswerContext) ->
     assert result.text == "Luka Doncic has no 1999 regular season numbers in the warehouse."
 
 
+# The columns a retired player's season row is given in below; the full
+# line's columns ps_con carries beside them stay empty.
+_OLD_TIMER_INSERT = (
+    "INSERT INTO player_season_stats_deduped "
+    "(athlete_id, season, season_type, gamesPlayed, avgPoints, points, avgRebounds, avgAssists, assists, avgSteals, avgBlocks, avgTurnovers, avgFouls, avgMinutes, fouls) "
+)
+
+
 def test_player_line_defaulted_season_redirects_to_a_retired_players_range(ps_con: AnswerContext) -> None:
     """The season was never named - it defaulted to "now" - so a retired
     player with nothing there gets pointed at what the warehouse DOES hold for
@@ -982,8 +1036,8 @@ def test_player_line_defaulted_season_redirects_to_a_retired_players_range(ps_co
     missing (issue #18). "Allen Iverson has no 2026 regular season numbers"
     is true and answers a different question than the one asked."""
     ps_con.con.execute("INSERT INTO players VALUES ('6','Old Timer')")
-    ps_con.con.execute("INSERT INTO player_season_stats_deduped VALUES ('6',2005,2,70,20.0,1400,5.0,4.0,280,1.0,0.5,2.0,2.0,35.0,140)")
-    ps_con.con.execute("INSERT INTO player_season_stats_deduped VALUES ('6',2008,2,60,18.0,1080,4.0,3.5,210,1.0,0.4,1.8,1.8,32.0,108)")
+    ps_con.con.execute(_OLD_TIMER_INSERT + "VALUES ('6',2005,2,70,20.0,1400,5.0,4.0,280,1.0,0.5,2.0,2.0,35.0,140)")
+    ps_con.con.execute(_OLD_TIMER_INSERT + "VALUES ('6',2008,2,60,18.0,1080,4.0,3.5,210,1.0,0.4,1.8,1.8,32.0,108)")
     answer = player_line(ps_con, Reading(who=Who(kind="player", players=("Old Timer",)), measure=Measure(key="points", as_typed="points"))).text
     assert answer == (
         f"Old Timer has no {current_season()} regular season numbers in the warehouse. He last appears in 2008. The warehouse holds his 2005-2008 regular seasons; name one, or ask for his career."
@@ -1005,7 +1059,7 @@ def test_player_line_a_named_season_keeps_the_plain_refusal(ps_con: AnswerContex
     the defaulted case above, redirecting a season asked for outright would be
     a fluent answer to a question nobody asked."""
     ps_con.con.execute("INSERT INTO players VALUES ('6','Old Timer')")
-    ps_con.con.execute("INSERT INTO player_season_stats_deduped VALUES ('6',2005,2,70,20.0,1400,5.0,4.0,280,1.0,0.5,2.0,2.0,35.0,140)")
+    ps_con.con.execute(_OLD_TIMER_INSERT + "VALUES ('6',2005,2,70,20.0,1400,5.0,4.0,280,1.0,0.5,2.0,2.0,35.0,140)")
     answer = player_line(ps_con, Reading(who=Who(kind="player", players=("Old Timer",)), measure=Measure(key="points", as_typed="points"), span=Span(season=1999))).text
     assert answer == "Old Timer has no 1999 regular season numbers in the warehouse."
 
@@ -1044,6 +1098,7 @@ def curry_ctx(tmp_path: Path) -> AnswerContext:
         "opponent_abbr VARCHAR, minutes DOUBLE, points INTEGER, rebounds INTEGER, assists INTEGER)"
     )
     c.execute("INSERT INTO player_game_log VALUES ('6',?,2,'2026-01-02','BOS',34.0,31,5,6)", [s])
+    _with_full_line_columns(c, "player_season_stats_deduped", _SEASON_FULL_LINE_COLUMNS)
     return AnswerContext(con=c, out_dir=tmp_path)
 
 
@@ -1079,7 +1134,11 @@ def _paytons(ctx: AnswerContext) -> None:
     father's last is 2007. Not "Dell Curry": that name matches one player, so
     it never reaches the exact-match rule."""
     ctx.con.execute("INSERT INTO players VALUES ('7','Gary Payton'),('8','Gary Payton II')")
-    ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('7',2007,2,70,5.0,350,2.0,3.0,210),('8',?,2,60,7.0,420,3.0,2.0,120)", [current_season()])
+    ctx.con.execute(
+        "INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints, points, avgRebounds, avgAssists, assists) "
+        "VALUES ('7',2007,2,70,5.0,350,2.0,3.0,210),('8',?,2,60,7.0,420,3.0,2.0,120)",
+        [current_season()],
+    )
 
 
 def test_a_name_given_in_full_is_its_owner_wherever_he_has_numbers(curry_ctx: AnswerContext) -> None:
@@ -1913,6 +1972,40 @@ def test_player_comparison_defaults_to_the_whole_stat_line(ps_con: AnswerContext
     for label in ("points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls", "minutes"):
         assert f"\n{label}" in answer, label
     assert "4.0" in answer and "3.6" in answer  # turnovers, which a three-stat line omits
+
+
+def test_player_comparison_shows_each_shooting_split_with_its_makes_and_attempts(ps_con: AnswerContext) -> None:
+    """ "compare lebron and shai 2026 playoffs" showed no shooting, which the
+    feed sample's key required (ISSUES.md #471): the whole line's comparison
+    says each split as the percentage and the makes and attempts it is of,
+    computed from the two; a named stat narrows the table to it."""
+    result = player_comparison(ps_con, Reading(who=Who(kind="pair", players=("Luka Doncic", "Nikola Jokic"))))
+    rows = {line.split()[0]: line.split()[1:] for line in (result.text or "").split("\n")[2:] if line.strip()}
+    assert rows["FG%"] == ["48.6", "(731-1,504)", "58.2", "(763-1,310)"]
+    assert rows["3PT%"] == ["45.5", "(282-620)", "41.2", "(117-284)"]
+    assert rows["FT%"] == ["78.4", "(399-509)", "82.6", "(389-471)"]
+    assert result.data["players"]["Luka Doncic"]["fieldGoalPct"] == 48.6 and result.data["players"]["Nikola Jokic"]["freeThrowsAttempted"] == 471
+    named = player_comparison(ps_con, Reading(who=Who(kind="pair", players=("Luka Doncic", "Nikola Jokic")), measure=Measure(key="points", as_typed="points"))).text or ""
+    assert "FG%" not in named
+
+
+def test_a_career_line_shows_the_full_box_line_summed_over_its_seasons(ps_con: AnswerContext) -> None:
+    """A career's full line is summed as its sentence is - each per-game
+    figure a total over the games that carry it, each split's makes and
+    attempts summed over every season - never a mean of the seasons'
+    averages: Luka's two seasons, 64 and 20 games, block 0.5 and 1.0 a game,
+    so (32 + 20) / 84 = 0.6."""
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET blocks = 32 WHERE athlete_id = '1'")
+    ps_con.con.execute(
+        "INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints, points, avgRebounds, avgAssists, assists, avgSteals, avgBlocks, "
+        "avgTurnovers, avgFouls, avgMinutes, fouls, blocks, fieldGoalsMade, fieldGoalsAttempted, threePointFieldGoalsMade, threePointFieldGoalsAttempted, freeThrowsMade, freeThrowsAttempted) "
+        "VALUES ('1', 2019, 2, 20, 10.0, 200, 4.0, 3.0, 60, 1.0, 1.0, 2.0, 2.0, 25.0, 40, 20, 80, 200, 20, 80, 20, 25)"
+    )
+    text = player_line(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",)), span=Span(career=True))).text or ""
+    sentence, heads, cells = text.split("\n")
+    assert sentence.startswith("Luka Doncic averaged 27.9 points") and "in 84 games over his career" in sentence
+    assert dict(zip(heads.split(), cells.split("  ")[1:], strict=False))["BLK"].strip() == "0.6"
+    assert "47.6 (811-1,704)" in cells and "43.1 (302-700)" in cells and "78.5 (419-534)" in cells
 
 
 def test_player_comparison_shows_the_netpoints_summary(ps_con: AnswerContext) -> None:
@@ -2987,9 +3080,9 @@ def test_player_comparison_refuses_a_named_stat_it_cannot_provide(ps_con: Answer
 
 
 def test_player_line_answers_three_pointers_made_with_their_attempts_and_percentage(ps_con: AnswerContext) -> None:
-    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN avgThreePointFieldGoalsMade DOUBLE")
-    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsMade INTEGER")
-    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsAttempted INTEGER")
+    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN IF NOT EXISTS avgThreePointFieldGoalsMade DOUBLE")
+    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN IF NOT EXISTS threePointFieldGoalsMade INTEGER")
+    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN IF NOT EXISTS threePointFieldGoalsAttempted INTEGER")
     ps_con.con.execute("UPDATE player_season_stats_deduped SET avgThreePointFieldGoalsMade = 4.4, threePointFieldGoalsMade = 282, threePointFieldGoalsAttempted = 620 WHERE athlete_id = '1'")
     answer = player_line(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",)), measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"))).text or ""
     # F051 (ISSUES.md): a made-count stat carries its attempts and the
@@ -3006,10 +3099,14 @@ def test_player_line_answers_two_point_percentage_for_a_season_and_a_career(ps_c
     lookup and the career sum, which read the season table two different ways
     (``season_line.season_statement``'s plain SELECT and ``career_statement``'s per-season SUM)."""
     for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
-        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN IF NOT EXISTS {col} INTEGER")
     ps_con.con.execute("UPDATE player_season_stats_deduped SET fieldGoalsMade=700, fieldGoalsAttempted=1300, threePointFieldGoalsMade=200, threePointFieldGoalsAttempted=500 WHERE athlete_id='1'")
     season = player_line(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",)), measure=Measure(key="twoPointFieldGoalPct", as_typed="twoPointFieldGoalPct"))).text
-    assert season == f"Luka Doncic shot 62.5% on 2-pointers (500 of 800) in 64 games in the {current_season()} regular season."
+    assert season == (
+        f"Luka Doncic shot 62.5% on 2-pointers (500 of 800) in 64 games in the {current_season()} regular season.\n"
+        "   MIN   PTS  REB  AST  STL  BLK  TOV   PF               FG%            3PT%             FT%\n"
+        "  37.5  33.5  7.7  8.3  1.4  0.5  4.0  2.1  53.8 (700-1,300)  40.0 (200-500)  78.4 (399-509)"
+    )
 
     # A second season, so the career sum is a total over games, not an
     # average of the two seasons' percentages - (500+200)/(800+400) = 58.3%,
@@ -3251,7 +3348,7 @@ def test_season_history_reports_a_percentage_with_its_volume(ps_con: AnswerConte
     # A percentage without makes/attempts is the thing people immediately ask
     # "out of how many?" about.
     for col, typ in [("threePointFieldGoalPct", "DOUBLE"), ("threePointFieldGoalsMade", "INTEGER"), ("threePointFieldGoalsAttempted", "INTEGER")]:
-        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} {typ}")
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN IF NOT EXISTS {col} {typ}")
     ps_con.con.execute("UPDATE player_season_stats_deduped SET threePointFieldGoalPct=38.3, threePointFieldGoalsMade=202, threePointFieldGoalsAttempted=527 WHERE athlete_id='1'")
     answer = season_history(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",)), measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"))).text or ""
     assert "3PT%" in answer and "3PM" in answer and "3PA" in answer
@@ -3280,7 +3377,7 @@ def test_season_history_answers_two_point_percentage_computed_not_stored(ps_con:
     "show me sga's 2pt percentage for the past 5 years" with
     stat='fieldGoalPct' answers two-point shooting, never OVERALL shooting."""
     for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
-        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN IF NOT EXISTS {col} INTEGER")
     ps_con.con.execute("UPDATE player_season_stats_deduped SET fieldGoalsMade=700, fieldGoalsAttempted=1300, threePointFieldGoalsMade=200, threePointFieldGoalsAttempted=500 WHERE athlete_id='1'")
     answer = season_history(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",)), measure=Measure(key="twoPointFieldGoalPct", as_typed="twoPointFieldGoalPct"))).text or ""
     assert "2PT%" in answer and "2PM" in answer and "2PA" in answer
@@ -4169,6 +4266,7 @@ def pg_ctx(tmp_path: Path) -> AnswerContext:
             ("20", 1990, 82, 33.6, 2753, 6.9, 565, 6.3, 519, 39.0, 92, 245),
         ],
     )
+    _with_full_line_columns(c, "player_season_stats_deduped", _SEASON_FULL_LINE_COLUMNS)
     # Podziemski's postseason shots, for a period log's game_n cell: one
     # labeled three in the first quarter of p1, p2 and p3, two in p5, none in
     # p4 - so the shot table covers four of his five playoff games, and game 2
@@ -4727,7 +4825,11 @@ def test_player_line_on_one_date_is_that_games_line(pg_ctx: AnswerContext) -> No
     the date replaced left unsaid."""
     s = current_season()
     result = player_line(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(date=f"{s - 1}-12-01")))
-    assert result.text == f"Brandin Podziemski had 20 points, 7 rebounds and 5 assists on {s - 1}-12-01."
+    assert result.text == (
+        f"Brandin Podziemski had 20 points, 7 rebounds and 5 assists on {s - 1}-12-01.\n"
+        "   MIN  STL  BLK  TOV   PF           FG%     3PT%          FT%\n"
+        "  32.0  1.0  0.0  2.0  3.0  50.0 (10-20)  - (0-0)  100.0 (4-4)"
+    )
     assert result.data["date"] == f"{s - 1}-12-01" and result.data["stats"]["gamesPlayed"] == 1
     # A date in the previous season is found under a season that holds none
     # of it: the date replaces the season, never read beside it as a career
@@ -4821,7 +4923,13 @@ def test_player_line_answers_a_shooting_percentage_with_its_makes_and_attempts(p
     """ "What is Jokic's 3 point percentage this season" is answered with the makes and attempts."""
     s = current_season()
     season = player_line(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"))).text
-    assert season == f"Brandin Podziemski shot 35.7% on 3-pointers (100 of 280) in 70 games in the {s} regular season."
+    # The season table here carries no steals, blocks, turnovers, fouls or
+    # field goals: the full line says so cell by cell rather than dropping them.
+    assert season == (
+        f"Brandin Podziemski shot 35.7% on 3-pointers (100 of 280) in 70 games in the {s} regular season.\n"
+        "   MIN   PTS  REB  AST  STL  BLK  TOV  PF  FG%  FT%\n"
+        "  30.0  14.0  5.0  4.0    -    -    -   -    -    -"
+    )
     career = player_line(
         pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"), span=Span(career=True))
     ).text
@@ -4850,11 +4958,15 @@ def test_player_line_answers_a_made_count_stat_with_its_attempts_and_percentage(
     # the identical makes/attempts/percentage, phrased as a total rather than
     # a percentage-first sentence.
     assert "That is 5 of 6 (83.3%)." in against
-    # A multi-stat line (no single `stat` named) adds no attempts: singling
-    # out one entry's attempts would read as though only it needed the
-    # qualifier.
+    # A multi-stat line (no single `stat` named) adds no attempts to its
+    # sentence - singling out one entry's would read as though only it needed
+    # the qualifier - and says every shooting split, with its makes and
+    # attempts, in the full line beneath (ISSUES.md #471).
     default_line = player_line(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Detroit Pistons"))).text or ""
-    assert "of 6" not in default_line and "%" not in default_line
+    sentence, heads, cells = default_line.split("\n")[:3]
+    assert "of 6" not in sentence and "%" not in sentence
+    assert heads.split() == ["MIN", "STL", "BLK", "TOV", "PF", "FG%", "3PT%", "FT%"]
+    assert cells.split()[-6:] == ["48.6", "(17-35)", "-", "(0-0)", "83.3", "(5-6)"]
 
 
 def test_player_line_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: AnswerContext) -> None:
@@ -5239,6 +5351,7 @@ def narrowed_rebuilt_ctx(tmp_path: Path) -> AnswerContext:
         "INSERT INTO player_game_log VALUES (?,?,2,'1','2','1','Anthony Davis',FALSE,NULL,?,?,?,?,?,?,?,?,'LAL',TRUE)",
         [("e1", s, 24, 8, 3, 3, 2, 9, 18, f"{s - 1}-11-01"), ("e2", s, 18, 6, 4, 5, 4, 7, 15, f"{s - 1}-12-01")],
     )
+    _with_full_line_columns(c, "player_game_log", _GAME_FULL_LINE_COLUMNS)
     # The filled view the log is built over on a real warehouse: both of his
     # games rebuilt, as the log's flags say.
     c.execute("CREATE VIEW player_box_stats_filled AS SELECT pbs.*, TRUE AS reconstructed FROM player_box_stats pbs")
@@ -5351,7 +5464,7 @@ def test_season_history_career_states_the_combined_percentage(ps_con: AnswerCont
     which would give a different, wrong number here ((60% + 20%) / 2 = 40%,
     not the true (600+40)/(1000+200) = 53.3%)."""
     for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
-        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN IF NOT EXISTS {col} INTEGER")
     s = current_season()
     ps_con.con.execute(
         "UPDATE player_season_stats_deduped SET fieldGoalsMade=600, fieldGoalsAttempted=1000, threePointFieldGoalsMade=0, threePointFieldGoalsAttempted=0 WHERE athlete_id='1' AND season=?", [s]

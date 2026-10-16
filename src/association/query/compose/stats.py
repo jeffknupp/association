@@ -30,7 +30,7 @@ from association.query.notes import Note
 from association.query.player_relation import box_score_notes_read, narrowed_cells, no_narrowed_games
 from association.query.reading import Aggregate, Unsupported
 from association.query.result import LineFacts, Narrowing, Part, Result, Rows, Scalar, Span, Unanswered
-from association.query.season_line import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, wanted_stats
+from association.query.season_line import ADVANCED_STATS, FULL_LINE_SHOTS, FULL_LINE_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, full_line_asked, wanted_stats
 
 from .core import _MADE_RATE, Compiled, Query, _compile_rows, compile_query, rows_of
 
@@ -102,7 +102,36 @@ def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     if compiled.player is None:
         return None
     (line,) = rows_of(con, compiled)
-    return _player_stat_result(con, q, compiled, line)
+    result = _player_stat_result(con, q, compiled, line)
+    return _with_full_line(con, q, result)
+
+
+def _with_full_line(con: duckdb.DuckDBPyConnection, q: Query, result: Result) -> Result:
+    """The line with the full box line over the same narrowed games beside
+    it, as a detail part after the headline, where the words asked the line
+    rather than one of its headline figures
+    (:func:`~association.query.season_line.full_line_asked`): the point
+    compiled again with the ``line`` aggregate over the full line's
+    measures. Its own statement, so the sentence's figures are the line's
+    as before: the rebuilt-line rule reads a line of rebuildable columns
+    over every game and one with minutes or attempts over the fetched games
+    alone, and the full line carries its own count."""
+    found = result.scalar
+    if not full_line_asked(spelled(q.measure)) or found is None or not found.games:
+        return result
+    compiled = compile_query(con, replace(q, aggregate=Aggregate.LINE, measures=[*FULL_LINE_STATS, *(SHOOTING_RATES[name] for name in FULL_LINE_SHOTS)]))
+    (line,) = rows_of(con, compiled)
+    sums: dict[str, Any] = {}
+    for name in FULL_LINE_SHOTS:
+        shot, rate = SHOOTING_STATS[name], SHOOTING_RATES[name]
+        sums[shot.made_key], sums[shot.attempted_key] = line[f"{rate}_made"], line[f"{rate}_attempted"]
+    full = Scalar(games=int(line["games"] or 0), values={name: line[name] for name in FULL_LINE_STATS}, sums=sums)
+    if not full.games:
+        # Every game the line is over is rebuilt from play-by-play, which
+        # measured none of the minutes or attempts: there is no full line
+        # to show beside it.
+        return result
+    return replace(result, parts=(result.parts[0], Part(role="detail", body=full), *result.parts[1:]))
 
 
 def _player_stat_sums(compiled: Compiled, line: dict[str, Any]) -> dict[str, Any]:

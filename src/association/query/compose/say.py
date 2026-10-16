@@ -15,7 +15,7 @@ outside this module, phrases its notes through it too
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -102,7 +102,17 @@ from association.query.result import (
     TeamRecordFacts,
     TeamStatFacts,
 )
-from association.query.season_line import ADVANCED_STATS, HISTORY_COLUMNS, MADE_STAT_ATTEMPTS, NETPOINTS_COMPARE_ROWS, PLAYER_STAT_COLUMNS, SEASON_TOTAL_OF, SHOOTING_STATS
+from association.query.season_line import (
+    ADVANCED_STATS,
+    FULL_LINE_SHOTS,
+    FULL_LINE_STATS,
+    HISTORY_COLUMNS,
+    MADE_STAT_ATTEMPTS,
+    NETPOINTS_COMPARE_ROWS,
+    PLAYER_STAT_COLUMNS,
+    SEASON_TOTAL_OF,
+    SHOOTING_STATS,
+)
 from association.query.season_text import MONTH_NAMES, SEASON_TYPE_NAMES, season_label, season_phrase
 from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
@@ -1599,6 +1609,83 @@ def _player_stat_meetings(meetings: Rows) -> list[str]:
     ]
 
 
+# The full box line's columns as its table heads them, in the line's order
+# (``season_line.FULL_LINE_STATS``); the shooting splits are headed by their
+# own percentage labels.
+_FULL_LINE_HEADS: dict[str, str] = {"minutes": "MIN", "points": "PTS", "rebounds": "REB", "assists": "AST", "steals": "STL", "blocks": "BLK", "turnovers": "TOV", "fouls": "PF"}
+
+
+def _full_line(result: Result) -> Scalar | None:
+    """The full box line a line's reader read beside its headline (its
+    detail part, ``season_line.full_line_asked``), or ``None``."""
+    return next((part.body for part in result.parts[1:] if part.role == "detail" and isinstance(part.body, Scalar)), None)
+
+
+def _shot_counts(full: Scalar, shot: Any) -> tuple[int | None, int | None, float | None]:
+    """A shooting split's makes, attempts and percentage off the full line
+    - computed from the two, never a stored percentage (``None`` with no
+    attempts)."""
+    made, attempted = full.sums.get(shot.made_key), full.sums.get(shot.attempted_key)
+    made, attempted = (None if made is None else int(made)), (None if attempted is None else int(attempted))
+    return made, attempted, (100.0 * made / attempted if made is not None and attempted else None)
+
+
+def _shot_cell(made: int | None, attempted: int | None, pct: float | None) -> str:
+    """A shooting split as a table prints it: the percentage and the makes
+    and attempts it is of ("51.0 (167-327)"), "-" with none on record."""
+    if made is None or attempted is None:
+        return "-"
+    return f"{'-' if pct is None else f'{pct:.1f}'} ({made:,}-{attempted:,})"
+
+
+def full_line_said(full: Scalar, said: Collection[str], games: int) -> tuple[list[str], dict[str, Any]]:
+    """The full box line beneath a line's sentence: an aligned table of
+    every figure the sentence did not say (``said``: the stats it named,
+    a shooting split by its key or its made count's), each per game and
+    each shooting split with its makes and attempts - headed by its own
+    games where they are fewer than the sentence's (a rebuilt game carries
+    no minutes or attempts) - and every figure as ``data["stats"]`` keys
+    it, the said ones included.
+
+    .. versionadded:: 7.0.0
+    """
+    heads: list[str] = []
+    cells: list[str] = []
+    data: dict[str, Any] = {}
+    for stat in FULL_LINE_STATS:
+        value = rounded(full.values.get(stat))
+        data[PLAYER_STAT_COLUMNS[stat][0]] = value
+        if stat not in said:
+            heads.append(_FULL_LINE_HEADS[stat])
+            cells.append(table_cell(value))
+    for name in FULL_LINE_SHOTS:
+        shot = SHOOTING_STATS[name]
+        made, attempted, pct = _shot_counts(full, shot)
+        data |= {shot.made_key: made, shot.attempted_key: attempted, name: None if pct is None else round(pct, 1)}
+        if name not in said and shot.made_key not in said:
+            heads.append(shot.pct_label)
+            cells.append(_shot_cell(made, attempted, pct))
+    widths = [max(len(head), len(cell)) for head, cell in zip(heads, cells, strict=True)]
+    lines = [f"  Per game over the {count_games(full.games)} with a full box score:"] if full.games != games else []
+    lines += ["  " + "  ".join(head.rjust(width) for head, width in zip(heads, widths, strict=True)), "  " + "  ".join(cell.rjust(width) for cell, width in zip(cells, widths, strict=True))]
+    return lines, data
+
+
+def _with_full_line_said(said: Answer, result: Result, games: int) -> Answer:
+    """``said`` with the full box line's table beneath its sentence and its
+    figures beside the sentence's in ``data["stats"]`` - where the reader
+    read one (:func:`_full_line`)."""
+    full = _full_line(result)
+    if full is None:
+        return said
+    facts = _facts(result, LineFacts)
+    lines, figures = full_line_said(full, {*facts.wanted, *([facts.stat] if facts.stat else [])}, games)
+    data = dict(said.data or {})
+    stats = dict(data.get("stats") or {})
+    data["stats"] = stats | {key: value for key, value in figures.items() if key not in stats}
+    return replace(said, text="\n".join([said.text, *lines]), data=data)
+
+
 def say_player_stat(result: Result) -> Answer:
     """A player's line over the games a question narrowed to, worded: one
     sentence (a percentage with its makes and attempts, or each stat per
@@ -1629,8 +1716,9 @@ def say_player_stat(result: Result) -> Answer:
         said = Answer(data={"player": result.subject, **scope, "stats": values, "labels": stat_value_labels(wanted)}, text=answer)
     if notes:
         said = replace(said, text=" ".join([said.text, *notes]))
-    if len(result.parts) > 1 and isinstance(result.parts[1].body, Rows):
-        meetings = result.parts[1].body
+    said = _with_full_line_said(said, result, line.games)
+    meetings = next((part.body for part in result.parts[1:] if isinstance(part.body, Rows)), None)
+    if meetings is not None:
         said = replace(said, text="\n".join([said.text, *_player_stat_meetings(meetings)]), data={**(said.data or {}), "recent": [dict(g) for g in meetings.rows]})
     return said
 
@@ -2839,10 +2927,10 @@ def say_player_line(result: Result) -> Answer:
     if stat is not None:
         shooting = SHOOTING_STATS[stat]
         values = {"gamesPlayed": line.games, shooting.made: line.sums["made"], shooting.attempted: line.sums["attempted"]}
-        return shooting_result(name, about, values, shooting, when=when)
+        return _with_full_line_said(shooting_result(name, about, values, shooting, when=when), result, line.games)
     values, attempted = _player_line_values(result, line, wanted)
     answer = phrase_player_stat(name, period, values, wanted, when=when, attempted=attempted)
-    return Answer(data={"player": name, **about, "stats": values, "labels": stat_value_labels(wanted)}, text=answer)
+    return _with_full_line_said(Answer(data={"player": name, **about, "stats": values, "labels": stat_value_labels(wanted)}, text=answer), result, line.games)
 
 
 def _history_table(name: str, label: str, period: str, history: list[dict[str, Any]], columns: list[tuple[str, str, str]], *, career: bool) -> str:
@@ -2911,6 +2999,7 @@ def _compare_table(rows: dict[str, dict[str, Any]], wanted: list[str], period: s
     for stat in wanted:
         column, _, label = PLAYER_STAT_COLUMNS[stat]
         entries.append((label, [table_cell(rows[name].get(column)) for name in names]))
+    entries += _compare_shot_entries(rows, names)
     # Shown only when somebody has a row: an empty NetPoints block under a
     # comparison of two 1990s players would read as "both contributed nothing"
     # rather than "this season predates the data".
@@ -2929,6 +3018,31 @@ def _compare_table(rows: dict[str, dict[str, Any]], wanted: list[str], period: s
     return "\n".join(lines)
 
 
+def _compare_shot_entries(rows: dict[str, dict[str, Any]], names: list[str]) -> list[tuple[str, list[str]]]:
+    """The comparison table's shooting rows, where it read them (the whole
+    line, no stat named): each split as its percentage with the makes and
+    attempts it is of, "-" for a player with no line."""
+    entries: list[tuple[str, list[str]]] = []
+    for split in FULL_LINE_SHOTS:
+        shot = SHOOTING_STATS[split]
+        if any(shot.attempted_key in rows[name] for name in names):
+            entries.append((shot.pct_label, [_shot_cell(rows[name].get(shot.made_key), rows[name].get(shot.attempted_key), rows[name].get(split)) if rows[name] else "-" for name in names]))
+    return entries
+
+
+def _compare_shots(line: Mapping[str, Any]) -> dict[str, Any]:
+    """A compared player's shooting splits, where the comparison read them:
+    each split's makes and attempts by their stable keys and the percentage
+    they make under the split's own (``None`` with no attempts)."""
+    found: dict[str, Any] = {}
+    for split in FULL_LINE_SHOTS:
+        shot = SHOOTING_STATS[split]
+        if shot.attempted_key in line:
+            made, attempted, pct = _shot_counts(Scalar(games=0, sums=line), shot)
+            found |= {shot.made_key: made, shot.attempted_key: attempted, split: None if pct is None else round(pct, 1)}
+    return found
+
+
 def say_player_compare(result: Result) -> Answer:
     """Two or more players' season lines side by side, worded: a table of
     the games and each stat per game, the NetPoints summary beneath where
@@ -2940,7 +3054,7 @@ def say_player_compare(result: Result) -> Answer:
     assert groups is not None and result.span.season is not None
     wanted = list(_facts(result, LineFacts).wanted)
     columns = {stat: PLAYER_STAT_COLUMNS[stat][0] for stat in wanted}
-    rows = {line["key"]: ({"gamesPlayed": line["games"], **{columns[stat]: line[stat] for stat in wanted}} if "games" in line else {}) for line in groups.rows}
+    rows = {line["key"]: ({"gamesPlayed": line["games"], **{columns[stat]: line[stat] for stat in wanted}, **_compare_shots(line)} if "games" in line else {}) for line in groups.rows}
     detail = result.parts[1].body if len(result.parts) > 1 else None
     netpoints = {line["key"]: {k: v for k, v in line.items() if k != "key"} for line in detail.rows} if isinstance(detail, Grouped) else {}
     missing_note = "".join(_said(result))
