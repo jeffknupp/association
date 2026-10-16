@@ -856,7 +856,15 @@ by its `PointShape` key. The populations record the typed Reading
     `reading.Span`, returning `Claim`s (`(start, end, what)`). It runs LAST,
     because its rules read the typed window. The point reader writes no
     span of its own: a span it settles apart from the scope's is
-    `Reading.subject_span`, the one typed override.
+    `Reading.subject_span`, the one typed override. Where no season is
+    named, the words that imply history read the career (decision D13,
+    Jeff's: `span.IMPLIED_CAREERS` - an opponent, a pair, a companion who
+    played, a holiday, a count over a line, the single game's high, an
+    inactive player asked his line, ...), each standing under the keys
+    `point.span_under` lists; the current season stays the default only
+    where the words ask a current line. A guard word that keeps a career
+    off ("best season", a versus word with nobody read beside it) is the
+    span's claim, so the ledger and `Reading.unread` agree on it.
 - **Names arrive as typed.** A typo reaches the entity index, which reads a
   single near spelling as that player and says so; nothing corrects it
   upstream.

@@ -1193,6 +1193,33 @@ single best half).
 
 .. versionadded:: 6.0.0
 """
+ONE_SEASON_ASKED = re.compile(r"\b(?:best|worst|greatest|highest|lowest|top|single|rookie|a|one|per|each)\s+(?:[a-z'+%-]+\s+){0,3}?(?:season|year)\b(?!\s*(?:-|\d))|\brookie\b", re.IGNORECASE)
+"""The words that ask about ONE season the question does not name - "michael
+jordan's best season", "the most points in a season", "on a season", "his
+rookie season", "per season" - which no career answers: the guard that keeps the careers a question implies
+(:data:`~association.query.span.IMPLIED_CAREERS`, decision D13) off a
+question whose season is the thing asked for.
+
+.. versionadded:: 7.0.0
+"""
+
+HIS_LINE_ASKED = re.compile(r"\b(?:stats?|statistics|numbers|averages?|averaged|career|playoffs?|postseason|record|log|gamelog|games?|line)\b", re.IGNORECASE)
+"""The words that ask a player's line, his record or his games ("kobe bryant
+playoff stats", "iverson playoff record", "kyrie last 5 games"), beside
+:data:`STAT_WORDS`: the question a career answers for a player with no game
+this season (decision D13) - and not "vince carter teammates" or "how many
+rings does jeremy lin have", which no line of his answers.
+
+.. versionadded:: 7.0.0
+"""
+
+WH_QUESTION = re.compile(r"^\s*(?:what|which|who|whom|whose|when|where|why)\b", re.IGNORECASE)
+"""A question that opens on a question word asking for a fact, not a figure
+("what position did moses malone play"): no line of a player answers it.
+
+.. versionadded:: 7.0.0
+"""
+
 LAST_WORD = re.compile(r"\blast\b", re.IGNORECASE)
 """The bare word "last": the one guard of this family the span tagger reads
 ("last 8 games vs pistons" is every meeting across the seasons, whether or

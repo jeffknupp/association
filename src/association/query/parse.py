@@ -27,9 +27,10 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from association.query import lexicon, measure, names
+from association.query.calendar import HOLIDAYS
 from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
 from association.query.decisions import Decision
-from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
+from association.query.entities import _edit_budget, _words, find_players, find_teams, former_franchise, suggest_players, team_abbreviations
 from association.query.grammar import Asked, absent, settle
 from association.query.line import LinesNamed, LinesRead, lines_named, read_lines, read_period_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
@@ -66,15 +67,17 @@ from association.query.reading import (
     LeftOut,
     Line,
     Measure,
+    Minimum,
     PointRefused,
     PointShape,
     Reading,
+    Span,
     Unsupported,
     Window,
     key_path,
 )
 from association.query.reading import Subject as ReadSubject
-from association.query.span import SpanContext, needed, read_by, read_span
+from association.query.span import SpanContext, SpanRead, needed, read_by, read_span
 from association.query.span import claimed as claimed_once
 from association.query.split import OWN_READ_ROLES, read_split, role_phrases
 from association.query.subject import (
@@ -704,11 +707,21 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     reached_when = any(predicate == "reached" and question[start:end].lower().startswith("when") for start, end, predicate in read.companion_phrases)
     settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent, lines=named_lines, reached_when=reached_when)
     final = settled_ask.asked
-    scope, tagger_claims = (
-        _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None, minimum=(stated_minimum, unblanked), phrases=read.companion_phrases)
+    scope, tagger_claims, tagger_decisions = (
+        _tagged(
+            question,
+            settled_ask,
+            read.conditions,
+            lines=period_lines,
+            model_stat=stat or None,
+            minimum=(stated_minimum, unblanked),
+            phrases=read.companion_phrases,
+            inactive=_inactive(index, settled_ask.subject.players),
+        )
         if not settled_ask.coach
-        else (Reading(), ())
+        else (Reading(), (), ())
     )
+    decisions = (*decisions, *tagger_decisions)
     # The one reading, settled under the key the words end with: what the
     # parser's last step and everything after it answer from.
     settled = settle_subject(read, final, parent=parent, words=words)
@@ -716,6 +729,26 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # a quarter the parser's; the rules' and the taggers' read first.
     claims = claimed_once([*claimed_once([*settled_ask.claims, *tagger_claims]), *child_claims, *period_claims, *read.claims, *parent_claims])
     return _reading(index, asked, final, scope, settled, decisions=decisions, claims=claims, model_names=given, model_stat=stat)
+
+
+def _inactive(index: names.NameIndex, players: tuple[str, ...]) -> bool:
+    """Whether every player named is inactive - no player his name reaches
+    has a box score in the latest season on record
+    (:attr:`~association.query.names.NameIndex.active`): the span tagger
+    reads his career where no season is named (decision D13: "kobe bryant
+    playoff stats"). A name that reaches nobody, or an active set that could
+    not be read, is no such reading: the season stays the default, and the
+    answer says what it finds there."""
+    if not players:
+        return False
+    active = index.active
+    if active.season is None or active.error is not None:
+        return False
+    for player in players:
+        found = find_players(index.players, player, limit=None)
+        if not found or any(each.id in active.ids for each in found):
+            return False
+    return True
 
 
 def _blanked(question: str, claims: tuple[Claim, ...]) -> str:
@@ -837,7 +870,8 @@ def _tagged(
     fields: tuple[str, ...] = (),
     minimum: tuple[MinimumRead, str] | None = None,
     phrases: tuple[tuple[int, int, str], ...] = (),
-) -> tuple[Reading, tuple[Claim, ...]]:
+    inactive: bool = False,
+) -> tuple[Reading, tuple[Claim, ...], tuple[Decision, ...]]:
     """The taggers, each the one reader of its family, over the key and the
     names the grammar's rules settled (``settled``), in the order each reads
     what the ones before it wrote: the split (the cuts tagger reads it), the
@@ -886,7 +920,8 @@ def _tagged(
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
 
     window = window_under(asked, read_window(_tagged_window_words(question, asked, cuts_context, split.split), window_context))
-    span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts)))
+    implied = _SpanImplied.of(companions, cuts, kept.minimum, inactive=inactive, teams=settled.subject.teams)
+    span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts, implied=implied)))
     scope = Reading(
         who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span, minimum=kept.minimum
     )
@@ -916,9 +951,17 @@ def _tagged(
             outside="measure",
             gives_up=True,
         ),
-        *needed(question, span.claims, lambda q: span_under(asked, read_span(q, _tagged_span_context(settled, q, window=window.window, cuts=cuts))).span, outside="span", gives_up=True),
+        *needed(question, span.claims, lambda q: _tagged_span(asked, q, settled, window=window.window, cuts=cuts, implied=implied), outside="span", gives_up=True),
     )
-    return scope, claims
+    return scope, claims, _tagged_decisions(span)
+
+
+def _tagged_decisions(span: SpanRead) -> tuple[Decision, ...]:
+    """The taggers' decisions the trace records: the career the words imply
+    where no season is named (decision D13), with the rules that read it."""
+    if not span.implied:
+        return ()
+    return (Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"),)
 
 
 def _tagged_window_words(question: str, asked: PointShape | None, context: CutsContext, split: str | None) -> str:
@@ -966,7 +1009,52 @@ def _tagged_measure_context(settled: Asked, question: str, read: LinesRead, *, s
     )
 
 
-def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts: CutsRead) -> SpanContext:
+def _tagged_span(asked: PointShape | None, question: str, settled: Asked, *, window: Window, cuts: CutsRead, implied: _SpanImplied) -> tuple[Span, bool]:
+    """What the span tagger writes into the reading, under the key: its
+    span (:func:`~association.query.point.span_under`) and whether the
+    words implied the career, which the parser's decision records - so a
+    career word a career the words also imply stands beside is still the
+    word the span was read by ("demar derozan points career vs
+    clippers")."""
+    read = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window, cuts=cuts, implied=implied)))
+    return read.span, bool(read.implied)
+
+
+@dataclass(frozen=True)
+class _SpanImplied:
+    """What the span tagger reads beside the words for the careers they
+    imply (decision D13; :data:`~association.query.span.IMPLIED_CAREERS`),
+    each a value another family typed or the subject reading settled: an
+    opponent the cuts read, a companion who played, a holiday, every
+    player named inactive in the latest season, a ranking's floor of
+    games."""
+
+    opponent: bool = False
+    companion_played: bool = False
+    companion_reached: bool = False
+    annual_day: bool = False
+    inactive: bool = False
+    minimum_games: int | None = None
+    former_era: bool = False
+
+    @classmethod
+    def of(cls, companions: tuple[Companion, ...], cuts: CutsRead, minimum: Minimum | None, *, inactive: bool, teams: tuple[str, ...]) -> _SpanImplied:
+        """The facts from the typed companions, cuts, minimum and teams."""
+        situation = cuts.cuts.situation
+        calendar = situation.calendar if situation is not None else None
+        eras = (former_franchise(name) for name in (*teams, cuts.cuts.tenure, cuts.cuts.opponent) if name)
+        return cls(
+            former_era=any(era is not None and era.last_season is not None for era in eras),
+            opponent=cuts.cuts.opponent is not None or any(c.side == "opponent" for c in companions),
+            companion_played=any(c.predicate not in ("absent", "reached") for c in companions),
+            companion_reached=any(c.predicate == "reached" for c in companions),
+            annual_day=calendar is not None and calendar in HOLIDAYS.values(),
+            inactive=inactive,
+            minimum_games=minimum.count if minimum is not None and minimum.unit == "games" else None,
+        )
+
+
+def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts: CutsRead, implied: _SpanImplied) -> SpanContext:
     """What the span tagger reads beside the words
     (:class:`~association.query.span.SpanContext`): the settled key, the
     typed window, the typed cuts (a date, a game of a series, an ordinal
@@ -987,6 +1075,14 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         dated_since=cuts.dated_since,
         dated_until=cuts.dated_until,
         dated_both=cuts.dated_both,
+        opponent=implied.opponent,
+        companion_played=implied.companion_played,
+        companion_reached=implied.companion_reached,
+        annual_day=implied.annual_day,
+        inactive=implied.inactive,
+        pair=len(settled.subject.players) >= 2,
+        minimum_games=implied.minimum_games,
+        former_era=implied.former_era,
     )
 
 

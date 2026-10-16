@@ -2321,27 +2321,54 @@ def _window_order(asked: PointShape | None, read: WindowCandidates, order: str |
 #: The career a key implies, by the words' rule it reads under
 #: (``span.SpanCandidates.implied``): a pair's record, a log's meetings with
 #: an opponent, a count asked of one player.
-_SPAN_IMPLIED: dict[PointShape, str] = {PLAYER_MEETINGS: "meetings", PLAYER_LOG: "log", GAMES_COUNTED: "count"}
+#: A player's games, each key a reader over them that reads every season
+#: on record: what an implied career stands under where the words name the
+#: player (decision D13).
+_PLAYER_GAMES_ASKS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_LINE, PLAYER_SPLITS, LINE_RECORD, GAMES_COUNTED, GAME_HIGHS, LINE_RUNS, PLAYER_MEETINGS})
+#: Each implied career (:data:`~association.query.span.IMPLIED_CAREERS`) by
+#: the keys it stands under: the words that imply it read a career only
+#: where the key is a read over games the career holds.
+_SPAN_IMPLIED: dict[str, frozenset[PointShape]] = {
+    "meetings": frozenset({PLAYER_MEETINGS}),
+    "log": frozenset({PLAYER_LOG}),
+    "count": frozenset({GAMES_COUNTED}),
+    "versus": _PLAYER_GAMES_ASKS,
+    "pair": frozenset({PLAYER_MEETINGS}),
+    "with": _PLAYER_GAMES_ASKS | {PRESENCE_SPLIT, TEAM_RECORD},
+    "annual": _PLAYER_GAMES_ASKS | {TEAM_RECORD},
+    "events": frozenset({GAMES_COUNTED}),
+    "high": frozenset({GAME_HIGHS, TEAM_GAME_HIGHS}),
+    "inactive": _PLAYER_GAMES_ASKS,
+    "minimum": frozenset({PLAYER_RANKING}),
+    "playoff_window": frozenset({PLAYER_LOG}),
+    "in_a_game": frozenset({GAME_HIGHS, TEAM_GAME_HIGHS, PLAYER_RANKING, PLAYER_LINE}),
+}
 
 
 def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
     """The span under the key: a relative "past N seasons" a range of
     seasons, except where the key counts seasons (a history's window counts
-    them, :data:`LIMIT_COUNTS_SEASONS`); the career a pair's record, a log's
-    meetings with an opponent and a count asked of one player imply, each
-    under its own key; and both season types on a log of the newest N
-    games where no career or range stands.
+    them, :data:`LIMIT_COUNTS_SEASONS`); the careers the words imply where
+    no season is named (:data:`~association.query.span.IMPLIED_CAREERS`,
+    decision D13), each under the keys that read over the games a career
+    holds (:data:`_SPAN_IMPLIED`), said on the :class:`SpanRead`; and both
+    season types on a log of the newest N games where no career or range
+    stands.
 
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 7.0.0
+       Reads the careers of decision D13, and says which stood
+       (:attr:`SpanRead.implied <association.query.span.SpanRead.implied>`).
     """
     asked = _ranked_as(asked)
     since = read.since if read.relative is None or asked in LIMIT_COUNTS_SEASONS else read.relative
     season, career = read.season, read.career
-    implied = _SPAN_IMPLIED.get(asked) if asked is not None else None
-    if implied is not None and implied in read.implied:
-        career, season = True, None
+    implied = tuple(sorted(rule for rule in read.implied if asked is not None and asked in _SPAN_IMPLIED[rule])) if not career and season is None else ()
+    if implied:
+        career = True
     both = read.both or (asked == PLAYER_LOG and read.both_on_log and not career and since is None)
-    return SpanRead(Span(season=season, season_type=read.season_type, both=both, career=career, since=since, until=read.until), read.claims)
+    return SpanRead(Span(season=season, season_type=read.season_type, both=both, career=career, since=since, until=read.until), read.claims, implied)
 
 
 def measure_under(asked: PointShape | None, words: MeasureWords, context: MeasureContext) -> MeasureRead:
