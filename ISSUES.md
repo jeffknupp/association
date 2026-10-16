@@ -199,6 +199,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the team high's reader (`compose.highs`/`compose.team`, TEAM_GAME_HIGHS) reads past the limit while the next row ties the last, or says "and N more"; a test with a four-way tie.
 - **Priority:** P2 - an incomplete answer said as complete.
 - **Source:** ours.
+- **GitHub:** #476
 
 ### "None of them" over a career counts only the games with box scores and names their seasons as his career: "Anthony Davis played 398 games over his career (2019-2026 regular seasons)"
 - **Found:** 2026-10-16, lane p6-span, reading the feed's moves under D13 ("Anthony Davis plays 45 minutes against the jazz").
@@ -207,6 +208,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** count the career's games without the line's own clause (or say the unseen games, as `_empty_box_scores` does for a per-game answer); a test with a fixture in the shape of the empty seasons.
 - **Priority:** P2 - a wrong figure in a refusal's sentence.
 - **Source:** ESPN's empty box scores (DATA.md); the sentence is ours.
+- **GitHub:** #477
 
 ### A per-game figure under 0.5 is said as "averaged 0": "Tim Duncan averaged 0 3-pointers per game in 1,392 games"
 - **Found:** 2026-10-16, lane p6-span, reading the sample's FS292 under D13 ("tim duncan threes made").
@@ -215,6 +217,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** in the sayer (`compose/say.py`, the season line's sentence), a per-game figure that rounds to 0 from a non-zero total is said to one decimal or led by the total; a test per wording.
 - **Priority:** P2 - a misleading figure, the right one beside it.
 - **Source:** ours.
+- **GitHub:** #478
 
 ### A team's games or count over a line, given up or its own, are named from the words only after a window: "celtics games where they gave up 120 points" is refused for an unread number, and "celtics game log when they score 120+ points" answers its record over the line
 - **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), probing #348's neighbors; the record half fixed by lane T2 (`Line.whose`, the team's record over a line split by the opponents' score or box row); the log half by Phase 5, step 6's lane T (`p5s6-T`): a team's log keeps its games past a line on its own score or box row or its opponents' (`TeamNarrowed.narrow_line`, `compose.logs._team_log_lines`) - "celtics last 10 games when allowing 120+ points" lists the 7 games of 2026 the Celtics allowed 120+, where it was declined "relation: a line on a box-score stat keeps a PLAYER's games; a team's log has no such column".
