@@ -185,10 +185,10 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         },
         declined="plan",
     ),
-    PointShape("team_periods", "scalar", "total"): ShapeCells(
-        unstated={"both": DeclineReason.TEAM_PERIOD_BOTH},
-        declined="plan",
-    ),
+    # A team's quarter or half states every cell of the relation: over both
+    # season types each season's rebuilt column is caveated by its own
+    # agreement, as across seasons (decision D14).
+    PointShape("team_periods", "scalar", "total"): ShapeCells(unstated={}, declined="plan"),
     # A record for one game is a single result, which a log already
     # answers directly, and a record over a limited number of recent games is
     # the same substitution the player relation refuses for the same two

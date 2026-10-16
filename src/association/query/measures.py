@@ -99,7 +99,9 @@ GAME_COLUMNS: frozenset[str] = frozenset(MEASURE_WORDS.values()) | frozenset(
 .. versionadded:: 5.0.0
 """
 
-DERIVED_MEASURES: frozenset[str] = frozenset({"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct", "opponent_name"})
+DERIVED_MEASURES: frozenset[str] = frozenset(
+    {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct", "opponent_name", "season_type"}
+)
 """Measures computed from columns per game, by name; the SQL is
 :data:`association.query.compose.core.DERIVED`'s.
 
@@ -115,7 +117,7 @@ says the same thing, and the test checks it.
 .. versionadded:: 5.0.0
 """
 
-LABEL_MEASURES: frozenset[str] = frozenset({"opponent_name"})
+LABEL_MEASURES: frozenset[str] = frozenset({"opponent_name", "season_type"})
 """Measures that name something about a game rather than count it - listed
 beside a game's figures, never averaged, summed, counted or read as a stat
 a question asks about.

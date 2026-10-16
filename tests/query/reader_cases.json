@@ -4941,7 +4941,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -5006,6 +5006,13 @@
      "before": null,
      "after": "Boston Celtics",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -5045,7 +5052,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -5085,7 +5092,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -5158,7 +5165,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -5221,6 +5228,13 @@
      "before": null,
      "after": "Boston Celtics",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -5260,7 +5274,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -5300,7 +5314,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -20126,7 +20140,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": false,
     "since": null,
     "until": null
@@ -20237,7 +20251,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": false,
      "since": null,
      "until": null
@@ -20277,7 +20291,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": false,
      "since": null,
      "until": null
@@ -74100,7 +74114,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -74169,6 +74183,13 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "player",
      "before": "Duncan Robinson",
@@ -74213,7 +74234,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -74253,7 +74274,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -74325,7 +74346,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -74392,6 +74413,13 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "player",
      "before": "Duncan Robinson",
@@ -74436,7 +74464,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -74476,7 +74504,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -74548,7 +74576,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -74615,6 +74643,13 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "player",
      "before": "Duncan Robinson",
@@ -74659,7 +74694,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -74699,7 +74734,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -76609,7 +76644,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -76674,6 +76709,13 @@
      "before": null,
      "after": "Brooklyn Nets",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -76713,7 +76755,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -76742,7 +76784,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -110543,7 +110585,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -110608,6 +110650,13 @@
      "before": null,
      "after": "Toronto Raptors",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -110647,7 +110696,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -110676,7 +110725,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },

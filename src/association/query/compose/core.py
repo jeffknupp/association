@@ -128,6 +128,9 @@ DERIVED: dict[str, str] = {
     # a period's log names the team, where the fixed columns carry its
     # abbreviation.
     "opponent_name": f"(SELECT {season_name_sql('t.team_id', 'g.season', 't.display_name')} FROM teams t WHERE t.team_id = pgl.opponent_team_id)",
+    # The game's season type, a label of the game as ``won`` is: a period's
+    # log over both types counts the games of each (decision D14).
+    "season_type": "pgl.season_type",
 }
 """A measure name that is not a stored column, and the SQL that computes it per game.
 
@@ -548,7 +551,7 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
 #: What a period-narrowed read may measure: the columns the period's line
 #: rebuilds, and the measures computed only from them (a rate is a ratio of
 #: the period's sums; a game's result is the game's).
-_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "opponent_name"}
+_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "opponent_name", "season_type"}
 
 
 def _check_period_measures(q: Query) -> None:
@@ -930,7 +933,9 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     """
     # The game's own season beside the quarters: a date names one game,
     # whose season the answer is labeled and caveated by.
-    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt), "MIN(pgl.season) AS first_season"]
+    # Every season the games are from, for a read across seasons, which is
+    # caveated - or refused - season by season.
+    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt), "MIN(pgl.season) AS first_season", "LIST(DISTINCT pgl.season) AS seasons"]
     parts: list[str] = []
     params: list[Any] = []
     for quarter in REGULATION_QUARTERS:

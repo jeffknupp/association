@@ -220,29 +220,17 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         named_subject=frozenset({"opponent", "venue"}),
     ),
     # A quarter's or half's accuracy caveat (PERIOD_RECONCILIATION) is measured
-    # per SEASON against ESPN's own linescores - summing across several would mix
-    # seasons of different reliability under one caveat, or none, and the header
-    # names ONE season regardless (`season_phrase`), which would be wrong for a
-    # range too: measured, `since=2023` (honored before this exclusion, since
-    # scoped_player read it directly off the full slots dict) pulled the correct
-    # 257 games back to 2023 but still headed them "the 2026 regular season".
-    # `date` is not here: it narrows to one game (and so one season) through
-    # `scoped_games`, the same as every other reader on the relation. The period
+    # per SEASON against ESPN's own linescores, so a read across seasons - a
+    # career, a range, both season types, the last N games across seasons
+    # (decisions D13, D14) - is caveated season by season and labeled by the
+    # seasons and types it holds (`compose.periods`); a season under
+    # PERIOD_REFUSE_BELOW is left out of such a read and said. The period
     # CONDITION (a quarter conditioning which games count, beside the quarter
     # measured) is excluded from the reader's WORDS, not from the point: it steps
     # aside and the compiler's own sentence, which names both quarters, answers.
     **dict.fromkeys(
         (PointShape("player_periods", "rows", "date"), PointShape("player_periods", "split", "period")),
-        ShapeCells(
-            unstated={
-                "career": DeclineReason.PERIOD_CAVEAT_CAREER,
-                "range": DeclineReason.PERIOD_CAVEAT_RANGE,
-                "both": DeclineReason.PERIOD_CAVEAT_BOTH,
-                "period_line": DeclineReason.PERIOD_ONE_PERIOD,
-            },
-            refused=frozenset({"career", "range"}),
-            sides=True,
-        ),
+        ShapeCells(unstated={"period_line": DeclineReason.PERIOD_ONE_PERIOD}, sides=True),
     ),
     # Two players' meetings, refused outright where a narrowing would cut
     # the pair the matchup exists to compare.

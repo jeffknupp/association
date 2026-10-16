@@ -5951,6 +5951,61 @@ def test_a_period_read_says_the_team_its_games_were_cut_to(period_ctx: AnswerCon
     assert (result.text or "").startswith(f"Stephen Curry scored 12 points in the 1st quarter over 5 games of the {SEASON} regular season with the Golden State Warriors, averaging 2.4.")
 
 
+def _period_across_seasons_fixture(con: Any) -> None:
+    """Beside the fixture's games: a 2016 game, a season whose per-period
+    points agree with ESPN's quarter scores too seldom to answer (76.5%), and
+    a postseason game this season - each with one first-quarter three."""
+    con.execute("INSERT INTO games VALUES ('e16',2016,2,'2015-11-05T00:30Z','9','13',110,100,'9')")
+    con.execute("INSERT INTO player_box_stats VALUES ('e16',2016,2,'9','1',FALSE,30)")
+    con.execute("INSERT INTO shot_chart VALUES ('1',2016,2,'e16','9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
+    con.execute("INSERT INTO games VALUES ('p1',?,3,?,'9','2',110,100,'9')", [SEASON, f"{SEASON}-04-25T00:30Z"])
+    con.execute("INSERT INTO player_box_stats VALUES ('p1',?,3,'9','1',FALSE,30)", [SEASON])
+    con.execute("INSERT INTO shot_chart VALUES ('1',?,3,'p1','9',1,'10:00',TRUE,'Jump Shot',25,26,0,'26-foot jumper')", [SEASON])
+
+
+def test_a_period_read_across_seasons_caveats_each_and_leaves_an_untrusted_one_out(period_ctx: AnswerContext) -> None:
+    """Decision D13 ("kyrie Irving second half stats vs denver" is his career
+    against Denver, FS027): a quarter over every season reads them all,
+    labeled by the first and last, each season's agreement said - and a
+    season whose figures cannot be trusted (2016) is left out and said,
+    rather than refusing the whole or summing it in."""
+    _period_across_seasons_fixture(period_ctx.con)
+    result = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1)))
+    answer = result.text or ""
+    assert answer.startswith("Stephen Curry scored 15 points in the 1st quarter over 6 games of his career (2004-2026 regular seasons), averaging 2.5.")
+    assert "In 2004 that sum matches ESPN's own quarter scores 96% of the time" in answer
+    assert "(Not counted: 1 game from 2016, whose per-quarter figures rebuilt from play-by-play agree with the official ones too seldom to answer.)" in answer
+
+
+def test_a_period_stretch_reads_both_season_types_and_says_each(period_ctx: AnswerContext) -> None:
+    """Decision D14: "last 3 games" in a quarter are the last three he
+    played, the postseason game among them, and the heading says how many
+    of each type, as the bare log's does."""
+    _period_across_seasons_fixture(period_ctx.con)
+    window = Window(count=3, order="recent", of="games")
+    who = Who(kind="player", players=("Stephen Curry",))
+    season = period_log(period_ctx, Reading(who=who, span=Span(season=SEASON, both=True), window=window, period=Period(number=1)))
+    assert (season.text or "").startswith(
+        f"Stephen Curry scored 6 points in the 1st quarter over the last 3 games of the {SEASON} regular season and postseason (2 regular season and 1 postseason), averaging 2.0."
+    )
+    career = period_log(period_ctx, Reading(who=who, span=Span(career=True, both=True), window=window, period=Period(number=1)))
+    assert (career.text or "").startswith(
+        f"Stephen Curry scored 6 points in the 1st quarter over the last 3 games of his career ({SEASON} regular season and postseason; 2 regular season and 1 postseason)"
+    )
+
+
+def test_four_quarters_across_seasons_refuse_a_season_that_cannot_be_trusted(period_ctx: AnswerContext) -> None:
+    """One table over every season cannot leave a season's games out of one
+    quarter and not another, so a season that cannot be trusted refuses the
+    four quarters by name; without it, they are read across the seasons."""
+    who = Who(kind="player", players=("Stephen Curry",))
+    clean = period_log(period_ctx, Reading(who=who, span=Span(career=True)))
+    assert (clean.text or "").startswith("Stephen Curry, points per game by quarter in his career (2004-2026 regular seasons) (6 games):")
+    _period_across_seasons_fixture(period_ctx.con)
+    refused = period_log(period_ctx, Reading(who=who, span=Span(career=True)))
+    assert refused.text == "Per-quarter scoring cannot be answered for 2016: its per-period points agree with ESPN's own quarter scores only 76% of the time."
+
+
 def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx: AnswerContext) -> None:
     """ "Jokic points by quarter" (#162): a period's log with no period is the
     breakdown across all four - the compiler's grouped read by period
@@ -6032,13 +6087,15 @@ def test_a_rebuilt_games_quarters_are_read_like_any_others(period_ctx: AnswerCon
     assert one.data["total"] == 2 and one.data["games_played"] == 5, "a quarter of the rebuilt game counts as any other quarter does"
 
 
-def test_a_period_logs_narrowings_are_stated_and_a_career_or_since_span_refused() -> None:
-    """A period's log states the opponent, the venue, a companion, the window
-    and the date: each is a cell the read filters on, so none is unhonored -
-    an unhonored one would refuse a question this answers perfectly well.
-    The other direction matters too: a cell stated that the read ignores
-    would silently answer a broader question, which is the shape this whole
-    module exists to prevent; a career and a since-bounded span are refused.
+def test_a_period_logs_narrowings_and_spans_are_stated() -> None:
+    """A period's log states the opponent, the venue, a companion, the window,
+    the date, a career, a since-bounded span and both season types: each is
+    a cell the read filters on, so none is unhonored - an unhonored one would
+    refuse a question this answers perfectly well (decisions D13, D14: the
+    accuracy caveat is said season by season across them, and a season that
+    cannot be trusted is left out and said). The other direction matters
+    too: a cell stated that the read ignores would silently answer a broader
+    question, which the reader's own tests below hold it to.
     """
     # Through its shape's row (``compose.plan.cells_unhonored``).
     curry = Who(kind="player", players=("Stephen Curry",))
@@ -6048,15 +6105,11 @@ def test_a_period_logs_narrowings_are_stated_and_a_career_or_since_span_refused(
         Reading(who=curry, period=Period(number=1), companions=(Companion(player="Klay Thompson", predicate="absent"),)),
         Reading(who=curry, period=Period(number=1), window=Window(order="recent")),
         Reading(who=curry, period=Period(number=1), cuts=Cuts(date="2026-01-02")),
+        Reading(who=curry, period=Period(number=1), span=Span(career=True)),
+        Reading(who=curry, period=Period(number=1), span=Span(since=2023)),
+        Reading(who=curry, period=Period(number=1), span=Span(both=True)),
     ):
         assert [cell for cell, _ in cells_unhonored(given, PERIOD_LOG)] == []
-    # Two spans it does not filter on: the accuracy caveat
-    # (PERIOD_RECONCILIATION) is measured per season, and this reads only one
-    # - see its row in RELATION_SCOPING_EXCLUDED. The point itself refuses
-    # them (point._default_period_split), naming why.
-    for span in (Span(career=True), Span(since=2023)):
-        with pytest.raises(Unsupported, match="accuracy caveat is measured per season"):
-            plan(default_point(PERIOD_LOG, Reading(who=curry, span=span, period=Period(number=1))))
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: AnswerContext) -> None:
@@ -6124,29 +6177,16 @@ def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_c
     assert "96% of the time" in (quarters.text or "")
 
 
-def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(period_ctx: AnswerContext) -> None:
-    """`span` "career" is excluded: `PERIOD_RECONCILIATION` is measured per
-    season, and summing points across a career would need to apply it once
-    per season summed in, which this does not do. The refusal is in the
-    shape's words (its row of `RELATION_SCOPING_EXCLUDED`), the same as every
-    other excluded cell here.
-    """
-    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1)), PERIOD_LOG)] == ["career"]
-
-
 def test_a_career_read_of_a_period_sums_every_season_over_the_relations_games(period_ctx: AnswerContext) -> None:
-    """Called directly (the shape's words are what refuse `span` "career" in
-    the pipeline - see the test above): the shot CTEs join to the relation's
-    own selected games, never a literal ``season = ?``/``season_type = ?``
-    pair, so a career - whose ``span.season`` is ``None`` - sums every
-    season rather than binding ``season = NULL``, which matches nothing and
-    would answer "No {current season} games found for Stephen Curry", a
-    false-cause refusal about a player the fixture holds two seasons of
-    games for.
+    """The shot CTEs join to the relation's own selected games, never a
+    literal ``season = ?``/``season_type = ?`` pair, so a career - whose
+    ``span.season`` is ``None`` - sums every season rather than binding
+    ``season = NULL``, which matches nothing and would answer "No {current
+    season} games found for Stephen Curry", a false-cause refusal about a
+    player the fixture holds two seasons of games for.
     """
-    # The compiler's statement over a career span: the point refuses a
-    # career (the per-season caveat), so the join is exercised the way the
-    # cross-season redirect (compose.periods._period_redirect) exercises it.
+    # The compiler's statement over a career span, as the period reader reads
+    # one (decision D13).
     scope = Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1))
     subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span=Span(career=True))
     assert not isinstance(subject, Unanswered)

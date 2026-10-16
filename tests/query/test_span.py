@@ -302,11 +302,12 @@ def test_a_stretch_of_games_reads_both_types_whatever_else_is_set(question: str,
 
 
 def test_a_stretch_of_games_stays_one_type_where_its_reader_reads_one() -> None:
-    """Not yet a quarter's or a half's (the period reads label and caveat one
-    season's games), nor a declared relation's single game, nor a team's
-    with/without split, which takes no window."""
+    """Not a declared relation's single game, nor a team's with/without
+    split, which takes no window - but a quarter's or a half's stretch is
+    both types (decision D14): the period reads label and caveat the games
+    by every season and type they hold (FS225)."""
     window = {"order": "recent", "limit": 10}
-    assert not _read("derozan 2nd half stats vs lac last 10 games", shape=PERIOD_LOG, player_named=True, opponent=True, **window).both
+    assert _read("derozan 2nd half stats vs lac last 10 games", shape=PERIOD_LOG, player_named=True, opponent=True, **window).both
     assert not _read("piston vs heat last 15 games without ausar thompson", shape=PRESENCE_SPLIT, opponent=True, **window).both
 
 
