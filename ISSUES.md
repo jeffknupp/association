@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the subject reading (`subject._conditions_read`) reads a denial after a companion's name or verb ("doesnt", "did not", "isn't playing") as the absent role; the split then answers the mixed row (`compose.presence`, `_with_without_played` already divides by each predicate); a test per wording; the span's guard then reads nothing and leaves. <!-- codespell:ignore doesnt - the feed's question as typed -->
 - **Priority:** P1 - a different question answered fluently, two feed wordings and #248's.
 - **Source:** ours.
+- **GitHub:** #479
 
 ### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
