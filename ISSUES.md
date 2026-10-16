@@ -196,6 +196,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** D15 - within the question's span, "without Y" is every game of X that Y did not play for X's team, traded away or injured alike; the tenure cut only over a career span where the two shared a team in part of it, said in the answer; the sample's FS227, FS111 and FS032 re-graded as the proof.
 - **Priority:** P1 - a fluent wrong answer on a shape people ask often.
 - **Source:** ours.
+- **GitHub:** #474
 
 ## P2: misleading or incomplete
 
