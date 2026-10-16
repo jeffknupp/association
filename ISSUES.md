@@ -189,6 +189,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** end a stint at the day before the teammate's first row for his next team (or the trade's date where the warehouse holds it), not at his last row for this one; measure the moves on the career "without" wordings; FS354 re-graded.
 - **Priority:** P2 - a correct-looking count short by the games the question is most about.
 - **Source:** ours.
+- **GitHub:** #480
 
 ### A team's best single game lists three of the teams tied at the top and says "by" them as if all: "most 3s made in a single game by a team" leaves out Milwaukee's 29
 - **Found:** 2026-10-16, lane p6-span, re-reading the feed sample's FS334 under D13 (now read over every season on record).
@@ -1990,6 +1991,7 @@ those were found.
 - **Next step:** the teammate's resolution eliminates a candidate who never shared the subject's team before choosing (the move `_resolved_teammate` already makes between namesakes, `_teammates_among`), and then reads a single near spelling who did - said as a name reading; check both conditions of the default rule (visible, correctable) first.
 - **Priority:** P3 - a refusal that names the player read.
 - **Source:** ours.
+- **GitHub:** #481
 
 ### A dated "since" beside a conference is read as a single season and a career at once: "celtics all-time record vs eastern conference including playoffs since september 11th 2001"
 - **Found:** 2026-10-14, the P1 sweep's lane T3, fixing #341 (the record against a conference).
