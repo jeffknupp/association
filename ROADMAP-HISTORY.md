@@ -2037,6 +2037,21 @@ with nothing to read fills the silence from its own weights), and more data
     "harnesses held at 0", a docstring naming a parse function that does
     not exist, two comments naming helpers that do not exist, and the CLI
     help naming a template.
+50. **Phase 6 accepted (2026-10-16) on step 1's numbers.** The feed sample -
+    425 wordings keyed blind with the SQL beside every answer, graded blind,
+    every numerator verdict re-read by the lead against the warehouse and the
+    71 moved toward acceptable read by Jeff, who reversed three - gave the
+    project its first correctness rates on real questions: of 243 answered,
+    23.0% wrong, 26.3% partial, 50.6% correct; of 169 refusals, 46.7% a false
+    cause, 36.1% a true limit of the system on a read the data answers, 17.2%
+    the right cause. Jeff's readings became D13 (a question naming no season
+    reads the career where its words imply history), D14 (a stretch of games
+    includes the playoffs; a stretch of seasons stays), D15 ("without Y" is
+    every game Y did not play for X's team), a standing order that garbage
+    wordings leave the populations, and the priority: the honest-limit
+    refusals, what the data answers and the system cannot produce. Step 2 was
+    dispatched the same day in two lanes along the files' seams.
+
 
 ## AGENTS.md's provenance, folded 2026-10-14
 
