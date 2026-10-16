@@ -108,15 +108,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #445
 
-### "last N meetings" ignores N: "celtics vs heat last 4 meetings" answers the last 10
-- **Found:** 2026-10-14, the Phase 5 review, probing the meetings window landed in step 7 (`bd5a9aee`).
-- **Evidence:** "celtics vs heat last 4 meetings" answers their last 10 meetings, and "last 3 meetings between knicks and nets" the Knicks' last 10 games against everyone: "meetings" is no games word to the window tagger (`lexicon.MEANING_WINDOW_NEXT` has it for step 1's class, the tagger's own count rule does not), so the count is dropped and the log's default ten stands; the second wording loses the opponent too ("between X and Y").
-- **User sees:** ten meetings where four were asked; the wrong team's games on the "between" form.
-- **Next step:** the window tagger reads "last/past/first N meetings|matchups|games between" as the count on two teams' meetings, and "between X and Y" as the pair; the meetings read already takes the window (step 7); a test per wording.
-- **Priority:** P1 - a different set of games than asked, fluently.
-- **Source:** ours.
-- **GitHub:** #446
-
 ### "may" is read as the player Sean May: "how many points may luka score tonight" answers a Sean May comparison
 - **Found:** 2026-10-14, the Phase 5 review, probing step 1's date class.
 - **Evidence:** the subject reading reads "may" as a whole word of Sean May's name (`players_named_in`'s rule, one whole word of exactly one player) and the question becomes a comparison of Luka Doncic and Sean May; the verb "may" before another verb names nobody. Step 1's date class read "may" as a month on the same wording until its narrowing (2026-10-14, the lead); the subject reading's half is this entry.

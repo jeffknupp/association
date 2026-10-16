@@ -177,6 +177,8 @@ def test_a_count_a_pair_and_a_log_imply_a_career_without_a_career_word() -> None
     assert _read("jaylen brown last 8 games vs pistons", shape=PLAYER_LOG, versus=True, window_named=True).career
     assert _read("prichard stats vs 76ers including playoffs game log", shape=PLAYER_LOG, versus=True).career
     assert not _read("jaylen brown last 8 games vs pistons this season", shape=PLAYER_LOG, versus=True, window_named=True).career
+    # The opponent read with no versus word beside it (ISSUES.md #446).
+    assert _read("last 3 meetings between knicks and nets", shape=PLAYER_LOG, opponent=True, window_named=True).career
 
 
 @pytest.mark.parametrize(

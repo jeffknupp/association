@@ -915,7 +915,7 @@ _NOT_GAMES = (
     "ages",
     "gems",
 )
-WINDOW_GAMES = r"(?:(?!(?:" + "|".join(_NOT_GAMES) + r")\b)(?:" + "|".join(dict.fromkeys(_games_one_edit("games") + _games_one_edit("game"))) + r")|match(?:e?s)?|match[\s-]?ups?)"
+WINDOW_GAMES = r"(?:(?!(?:" + "|".join(_NOT_GAMES) + r")\b)(?:" + "|".join(dict.fromkeys(_games_one_edit("games") + _games_one_edit("game"))) + r")|match(?:e?s)?|match[\s-]?ups?|meetings?)"
 """The fragment a window's "games" is written as: "game(s)", one edit
 from it, or "match(es)"/"match ups" - never a word of its own one edit
 away. Shared by the window grammar's rows and :data:`ORDER_WORDS`, so the

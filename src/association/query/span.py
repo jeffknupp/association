@@ -533,7 +533,7 @@ def _implied_career(question: str, context: SpanContext, career: bool, *, ranged
     held: set[str] = set()
     if context.record:
         held.add("meetings")
-    if context.versus and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
+    if (context.versus or context.opponent) and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
         held.add("log")
     if context.player_named and context.how_many and not career and not context.season_n:
         held.add("count")
