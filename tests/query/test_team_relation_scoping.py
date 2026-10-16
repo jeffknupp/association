@@ -48,7 +48,7 @@ def test_team_readers_declare_scoping_through_the_shared_table() -> None:
     # What each reader's words state.
     assert cells_stated(TEAM_RECORD) == (TEAM_RELATION_SCOPING | {"split"}) - {"date", "window", "period"}
     assert cells_stated(TEAM_RANKING) == {"venue", "range"}
-    assert cells_stated(TEAM_MEETINGS) == TEAM_RELATION_SCOPING - {"game_n", "situation", "period", "both"}
+    assert cells_stated(TEAM_MEETINGS) == TEAM_RELATION_SCOPING - {"game_n", "situation", "period"}
     assert cells_stated(TEAM_PERIOD_TOTAL) == TEAM_RELATION_SCOPING - {"both"}
 
 

@@ -1069,6 +1069,7 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         record=lexicon.RECORD_WORD.search(question) is not None,
         order=window.order,
         limit=window.count,
+        window_of=window.of,
         date=cuts.cuts.date,
         game_n=cuts.cuts.game_n,
         season_n=cuts.cuts.season_n,

@@ -23,6 +23,7 @@ from association.query import reading
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
+from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
 from association.query.reading import Cuts, Filtered, PointShape, Unsupported
 from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Refusal, Result, Span, Unanswered, Window
@@ -203,8 +204,12 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
     unread = _head_to_head_unread(q, a)
     if unread is not None:
         return unread
-    season_type = scope.span.season_type or 2
     date, venue = scope.cuts.date, scope.cuts.venue
+    # Both season types where the words read them - a stretch of the newest
+    # meetings naming no type (decision D14: "spurs record vs thunder last
+    # 16 games" holds the 2026 West finals), or "including the playoffs" -
+    # but not on one date, which is its own game's type.
+    season_type = BOTH_SEASON_TYPES if scope.span.both and date is None else scope.span.season_type or 2
     since, until, career = _head_to_head_span_slots(scope, date)
     window = _head_to_head_window(scope)
     if window is not None and date is None and scope.span.season is None and not career and since is None and until is None:

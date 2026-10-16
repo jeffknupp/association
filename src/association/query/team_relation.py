@@ -170,7 +170,8 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # and `game_n` pick out a subset of the tally); a team's quarter or half
     # over the relation's whole set, the quarter the relation's own
     # narrowing; a team's record, by month as well ("including the playoffs"
-    # both season types together).
+    # both season types together, as the meetings read them too: decision
+    # D14's stretch of the newest meetings holds the playoffs).
     PointShape("team_games", "comparison", "opponent"): ShapeCells(
         unstated={
             # The window is read: the last or first N meetings, sliced from
@@ -181,7 +182,6 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             # all-time series is a real question no reader answers.
             "situation": DeclineReason.MEETINGS_TALLY_SITUATION,
             "period": DeclineReason.MEETINGS_TALLY_PERIOD,
-            "both": DeclineReason.MEETINGS_TALLY_BOTH,
         },
         declined="plan",
     ),

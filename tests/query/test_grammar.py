@@ -100,8 +100,6 @@ def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> N
     ("question", "context"),
     [
         ("Knicks last 5 games", {"game_n": 4}),  # one game of a KNOWN playoff series
-        ("Knicks last 5 games of his career", {}),  # a career has no single year to mix two types within
-        ("Knicks last 5 games since 2020", {}),  # a range of seasons
         ("Knicks last 5 games", {"date": "2026-04-12"}),  # one calendar day already finds its own game
     ],
 )
@@ -112,6 +110,17 @@ def test_a_last_n_games_signal_defers_to_narrower_words_already_read(question: s
     from association.query.span import SpanContext, read_span
 
     assert not span_under(PLAYER_LOG, read_span(question, SpanContext(order="recent", limit=5, **context))).span.both
+
+
+@pytest.mark.parametrize("question", ["Knicks last 5 games of his career", "Knicks last 5 games since 2020"])
+def test_a_last_n_games_signal_reads_both_types_over_a_career_or_a_range(question: str) -> None:
+    """Decision D14: the last N games are the last N played, whatever span
+    holds them - a career or a range of seasons widens to both season types
+    too (the newest five games of a career hold its last playoff run)."""
+    from association.query.point import span_under
+    from association.query.span import SpanContext, read_span
+
+    assert span_under(PLAYER_LOG, read_span(question, SpanContext(order="recent", limit=5))).span.both
 
 
 def test_a_team_metric_given_up_is_named_as_asked() -> None:

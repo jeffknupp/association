@@ -12568,7 +12568,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -12708,7 +12708,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -12737,7 +12737,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -61950,7 +61950,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -62093,7 +62093,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -62122,7 +62122,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -63635,7 +63635,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -63775,7 +63775,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -63804,7 +63804,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -66191,7 +66191,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -66331,7 +66331,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -66360,7 +66360,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -94880,7 +94880,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -95020,7 +95020,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -95049,7 +95049,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null

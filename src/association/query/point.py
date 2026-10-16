@@ -2345,6 +2345,23 @@ _SPAN_IMPLIED: dict[str, frozenset[PointShape]] = {
 }
 
 
+#: The relations a stretch of the newest N games is read over in both
+#: season types (decision D14, Jeff's: the last N games are the last N
+#: played, whatever else is set): a player's and a team's games - not a
+#: season line's seasons, the declared relations' single game (a shot
+#: chart's or a fingerprint's "last game", which the words name the type
+#: of where they mean the postseason), and not yet a quarter's or a half's:
+#: the period reads label and caveat one season's games
+#: (``compose.periods``), and both types there step aside to a sentence
+#: that finds none where the season's own read falls back to the last
+#: season he played.
+_STRETCH_RELATIONS: frozenset[str] = frozenset({"player_games", "team_games"})
+#: The keys on those relations whose readers take no window at all: both
+#: types would only add a second clause to the decline the window gets
+#: (a team's with/without split).
+_STRETCH_UNREAD: frozenset[PointShape] = frozenset({PRESENCE_SPLIT})
+
+
 def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
     """The span under the key: a relative "past N seasons" a range of
     seasons, except where the key counts seasons (a history's window counts
@@ -2352,14 +2369,15 @@ def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
     no season is named (:data:`~association.query.span.IMPLIED_CAREERS`,
     decision D13), each under the keys that read over the games a career
     holds (:data:`_SPAN_IMPLIED`), said on the :class:`SpanRead`; and both
-    season types on a log of the newest N games where no career or range
-    stands.
+    season types on a stretch of the newest N games, whatever else is set
+    (decision D14, :data:`_STRETCH_RELATIONS`).
 
     .. versionadded:: 6.0.0
 
     .. versionchanged:: 7.0.0
        Reads the careers of decision D13, and says which stood
-       (:attr:`SpanRead.implied <association.query.span.SpanRead.implied>`).
+       (:attr:`SpanRead.implied <association.query.span.SpanRead.implied>`);
+       both season types on any stretch of games (decision D14).
     """
     asked = _ranked_as(asked)
     since = read.since if read.relative is None or asked in LIMIT_COUNTS_SEASONS else read.relative
@@ -2367,7 +2385,7 @@ def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
     implied = tuple(sorted(rule for rule in read.implied if asked is not None and asked in _SPAN_IMPLIED[rule])) if not career and season is None else ()
     if implied:
         career = True
-    both = read.both or (asked == PLAYER_LOG and read.both_on_log and not career and since is None)
+    both = read.both or (asked is not None and asked.relation in _STRETCH_RELATIONS and asked not in _STRETCH_UNREAD and read.both_on_log)
     return SpanRead(Span(season=season, season_type=read.season_type, both=both, career=career, since=since, until=read.until), read.claims, implied)
 
 

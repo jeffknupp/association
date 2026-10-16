@@ -24,6 +24,7 @@ from association.query.point import span_under
 from association.query.reading import (
     GAME_HIGHS,
     GAMES_COUNTED,
+    PERIOD_LOG,
     PLAYER_COMPARISON,
     PLAYER_LINE,
     PLAYER_LOG,
@@ -32,6 +33,7 @@ from association.query.reading import (
     PLAYER_SPLITS,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
+    TEAM_MEETINGS,
     TEAM_RANKING,
     TEAM_RECORD,
     Claim,
@@ -269,6 +271,39 @@ def test_a_bare_last_n_games_log_reads_both_types() -> None:
     assert _read("knicks last 5 games", shape=PLAYER_LOG, order="recent", limit=5).both
     assert not _read("knicks last 5 regular season games", shape=PLAYER_LOG, order="recent", limit=5).both
     assert not _read("knicks last 5 games", shape=PLAYER_LOG, order="first", limit=5).both
+
+
+@pytest.mark.parametrize(
+    ("question", "shape", "context"),
+    [
+        # An opponent and the career it implies.
+        ("kyrie irving last 5 games vs thunder", PLAYER_LOG, {"player_named": True, "opponent": True, "versus": True}),
+        # A venue beside it.
+        ("jalen brunson last 5 home games vs 76ers", PLAYER_LOG, {"player_named": True, "opponent": True, "versus": True}),
+        # A named season.
+        ("brook lopez last 10 games against washington in 2024", PLAYER_LOG, {"player_named": True, "opponent": True, "versus": True}),
+        # Two teams' meetings.
+        ("spurs record vs thunder last 16 games", TEAM_MEETINGS, {"opponent": True, "versus": True, "record": True}),
+    ],
+)
+def test_a_stretch_of_games_reads_both_types_whatever_else_is_set(question: str, shape: PointShape, context: dict[str, Any]) -> None:
+    """Decision D14: the last N games are the last N played, both season
+    types, with an opponent, a venue, a career or a named season beside the
+    window - and a type named, or a stretch of seasons, keeps one."""
+    window = {"order": "recent", "limit": int(next(w for w in question.split() if w.isdigit()))}
+    assert _read(question, shape=shape, **context, **window).both
+    assert not _read(question.replace("games", "regular season games"), shape=shape, **context, **window).both
+    assert not _read(question.replace("games", "playoff games"), shape=shape, **context, **window).both
+    assert not _read(question, shape=shape, **context, **window, window_of="seasons").both
+
+
+def test_a_stretch_of_games_stays_one_type_where_its_reader_reads_one() -> None:
+    """Not yet a quarter's or a half's (the period reads label and caveat one
+    season's games), nor a declared relation's single game, nor a team's
+    with/without split, which takes no window."""
+    window = {"order": "recent", "limit": 10}
+    assert not _read("derozan 2nd half stats vs lac last 10 games", shape=PERIOD_LOG, player_named=True, opponent=True, **window).both
+    assert not _read("piston vs heat last 15 games without ausar thompson", shape=PRESENCE_SPLIT, opponent=True, **window).both
 
 
 # ---------------- the claims ----------------

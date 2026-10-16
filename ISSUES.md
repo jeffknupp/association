@@ -171,12 +171,12 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #470
 
-### A player's or a team's "last N games" against an opponent, at a venue or in a period reads the regular season only: "kyrie irving last 5 games vs thunder" leaves the playoff games out
-- **Found:** 2026-10-16, Jeff's reading of the feed sample's FS172, then measured by the lead over every recorded "last N" wording (352 in the feed and the corpus); decision D14.
-- **Evidence:** a bare "last N games" reads both season types (52 player and 14 team wordings: "Aaron Gordon, last 5 games (2 regular season and 3 postseason)"); with an opponent, a venue or both the span resolves through the career path, regular season only (74 player wordings: "Agbaji last 10 games vs denver" answers "last 10 games of his career (2023-2026 regular seasons)"; 10 team wordings: "spurs record vs thunder last 16 games" answers "their last 16 of 122 meetings ... regular seasons", with the 2026 West finals left out); with a named season the playoffs of that season are left out (12); a quarter or half over the last N games is capped at the current season (13: "derozan 2nd half stats vs lac by game last 10 games" shows the 4 games of 2026).
-- **User sees:** a fluent "last N" that is not the last N games played - the newest playoff games silently missing.
-- **Next step:** one rule in the span resolution: a games window (`reading.Window` with a count of games) spans both season types whatever else is set (`point.span_under`, `span.read_span`'s window rule, the period reads' season cap), the answer's heading saying the split as the bare case does; proven on the 109 wordings above moving to both types and the sample's FS172 re-graded.
-- **Priority:** P1 - a fluent wrong answer on about 100 recorded wordings.
+### A quarter's or a half's "last N games" reads the current season alone: "derozan 2nd half stats vs lac by game last 10 games" shows 2026's 4
+- **Found:** 2026-10-16, Jeff's reading of the feed sample's FS172, measured by the lead over every recorded "last N" wording; decision D14. Rewritten 2026-10-16 by lane p6-span, which read both season types on every stretch of a player's or a team's games and on two teams' meetings (`CHANGES.md`: 82 feed answers, 9 corpus).
+- **Evidence (what remains):** the period reads (`player_periods`, `team_periods`; 14 player and 4 team wordings on the populations) read the season the span names or the current one - `compose.periods` labels the answer and its accuracy caveat by one season (`scope.span.season or current_season()`), and the planner declines a career and a range on them (`DeclineReason.PERIOD_CAVEAT_CAREER`, `PERIOD_CAVEAT_RANGE`), so a stretch of games is capped at the current season ("derozan 2nd half stats vs lac by game last 10 games": 4 games of 2026 where the key's 10 reach 2024, FS225), and both types there step aside to a sentence that finds none where the season's own read falls back to his last season ("Ben simmons in 1st quarter last 5 games" answers 5 games of 2025; with both types it said "No games ... in the 2026 regular season and postseason"), so the span reads one type there.
+- **User sees:** a quarter's line over this season's few meetings where the last N games across seasons were asked.
+- **Next step:** in the period reader (`compose/periods.py`, lane p6-sayer's file in Phase 6, step 2): label and caveat a stretch of games by the seasons it holds, then lift `PERIOD_CAVEAT_CAREER` for a window and add the period relations to `point._STRETCH_RELATIONS`; FS225 re-graded.
+- **Priority:** P1 - a fluent narrower answer on 18 recorded wordings.
 - **Source:** ours.
 - **GitHub:** #472
 

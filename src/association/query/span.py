@@ -51,6 +51,9 @@ class SpanContext:
     record: bool = False
     order: str | None = None
     limit: int | None = None
+    #: What the window counts - ``games`` or ``seasons``: only a stretch of
+    #: games reads both season types (decision D14); "last 3 seasons" stays.
+    window_of: str = "games"
     date: str | None = None
     game_n: int | None = None
     season_n: int | None = None
@@ -140,9 +143,9 @@ class SpanCandidates:
     #: (:data:`IMPLIED_CAREERS`; which stands is
     #: :func:`~association.query.point.span_under`'s).
     implied: frozenset[str]
-    #: A newest-N window with a real count naming no type, no series game
-    #: and no day: a log reads both types there, where no career or range
-    #: stands.
+    #: A newest-N window of games with a real count naming no type, no
+    #: series game and no day: a stretch of games reads both types there,
+    #: whatever else is set (decision D14).
     both_on_log: bool
 
 
@@ -592,18 +595,20 @@ def _implied_guard_claims(question: str, context: SpanContext, career: bool) -> 
 
 
 def _reads_both_types(question: str, context: SpanContext) -> bool:
-    """A "last N games" log naming no season type reads both and takes the
-    newest N by date, rather than silently defaulting to the regular season
-    ("Show me the Knicks last 5 games" in the regular season alone would
-    list games through 2026-04-12 while their real last five were the 2026
-    Finals). Only for
-    the shape: a newest-first window with a real count, and nothing already
-    fixing which games are meant - a game of a KNOWN playoff series, a
-    career (no single year to mix two types within), a range of seasons,
-    one calendar day - and no type named either way. A log's alone, and
-    only where no career or range stands: the key's reading
+    """A stretch of the newest N games naming no season type reads both and
+    takes the newest N by date, rather than silently defaulting to the
+    regular season ("Show me the Knicks last 5 games" in the regular season
+    alone would list games through 2026-04-12 while their real last five
+    were the 2026 Finals; "kyrie irving last 5 games vs thunder" left out
+    the 2024 West finals, decision D14). Only for the shape: a newest-first
+    window of GAMES with a real count ("last 3 seasons" stays the regular
+    season), and nothing already fixing which games are meant - a game of a
+    known playoff series, one calendar day - and no type named either way.
+    An opponent, a venue, a companion, a period, a career or a named season
+    beside it changes nothing: the last N games are the last N he played.
+    Which keys read it is the key's reading
     (:func:`~association.query.point.span_under`)."""
-    if context.order != "recent":
+    if context.order != "recent" or context.window_of != "games":
         return False
     if not isinstance(context.limit, int) or context.limit < 1:
         return False
