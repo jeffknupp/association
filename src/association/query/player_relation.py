@@ -1219,12 +1219,16 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
     if not candidates:
         return []
     clause, params = span.clause("season")
+    # Both season types read as one ("last 10 games", decision D14) are the
+    # two types' own rows: `season_type = 0` matched none, and every
+    # teammate read as nobody's.
+    type_clause, type_params = season_type_clause("season_type", span.season_type)
     placeholders = ", ".join("?" for _ in candidates)
     rows = con.execute(
         f"SELECT DISTINCT m.athlete_id FROM player_box_stats m "
-        f"JOIN (SELECT DISTINCT season, team_id FROM player_box_stats WHERE athlete_id = ? AND season_type = ? AND {clause}) s ON s.season = m.season AND s.team_id = m.team_id "
+        f"JOIN (SELECT DISTINCT season, team_id FROM player_box_stats WHERE athlete_id = ? AND {type_clause} AND {clause}) s ON s.season = m.season AND s.team_id = m.team_id "
         f"WHERE m.athlete_id IN ({placeholders})",
-        [player.id, span.season_type, *params, *(c.id for c in candidates)],
+        [player.id, *type_params, *params, *(c.id for c in candidates)],
     ).fetchall()
     have = {str(row[0]) for row in rows}
     return [c for c in candidates if c.id in have]
@@ -1320,7 +1324,8 @@ def _absence_tenure(con: duckdb.DuckDBPyConnection, mate: Entity, span: Resolved
 def _on_team_in_span(con: duckdb.DuckDBPyConnection, mate: Entity, team: Entity, span: ResolvedSpan) -> bool:
     """Whether ``mate`` has a box score for ``team`` in a season of ``span``."""
     clause, params = span.clause("season")
-    row = con.execute(f"SELECT 1 FROM player_box_stats WHERE athlete_id = ? AND team_id = ? AND season_type = ? AND {clause} LIMIT 1", [mate.id, team.id, span.season_type, *params]).fetchone()
+    type_clause, type_params = season_type_clause("season_type", span.season_type)
+    row = con.execute(f"SELECT 1 FROM player_box_stats WHERE athlete_id = ? AND team_id = ? AND {type_clause} AND {clause} LIMIT 1", [mate.id, team.id, *type_params, *params]).fetchone()
     return row is not None
 
 

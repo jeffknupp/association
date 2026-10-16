@@ -37,8 +37,8 @@ from association.query.entities import MAX_CANDIDATES, Availability, Entity, col
 from association.query.measures import PERIOD_RATE_STATS
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
-from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
-from association.query.player_relation import scoped_games, scoped_player
+from association.query.player_games import BOTH_SEASON_TYPES, PERIOD_COLUMNS, PERIOD_RATES, Narrowed, period_distrust
+from association.query.player_relation import scoped_games, scoped_player, span_of
 from association.query.point import default_point
 from association.query.reading import (
     GAME_HIGHS,
@@ -4753,6 +4753,18 @@ def test_over_one_season_without_is_every_game_he_did_not_play_for_the_team(pg_c
     assert sorted(g["date"] for g in result.data["games"]) == [f"{s - 1}-11-01", f"{s - 1}-12-01"]
     assert "Without Seth Curry means games he did not play for his team, traded or injured alike" in result.text
     assert "while on the same team" not in result.text
+
+
+def test_both_season_types_read_a_teammates_absence_by_his_own_rows(pg_ctx: AnswerContext) -> None:
+    """Over both season types read as one ("last 10 games", decision D14) a
+    teammate is still a teammate: the check of who shared his team asked for
+    `season_type = 0`, matched no row, and read Seth Curry as a stranger, so
+    the absence kept a tenure D15 drops over one season."""
+    span = span_of(Span(season=current_season(), both=True), "player_game_log", season_type=BOTH_SEASON_TYPES)
+    reading = Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),))
+    narrowed = scoped_games(pg_ctx.con, Entity(id="10", name="Brandin Podziemski"), span, reading, opponent=None, measures=[])
+    assert isinstance(narrowed, Narrowed)
+    assert [c.tenure for c in narrowed.conditions] == [None]
 
 
 def test_over_a_career_without_keeps_his_time_on_the_team(pg_ctx: AnswerContext) -> None:
