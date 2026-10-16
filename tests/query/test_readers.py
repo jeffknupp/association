@@ -5941,6 +5941,16 @@ def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: AnswerContext) 
     assert (result.text or "").startswith("Stephen Curry had 2 rebounds in the 1st quarter over 5 games of the 2026 regular season, averaging 0.4.")
 
 
+def test_a_period_read_says_the_team_its_games_were_cut_to(period_ctx: AnswerContext) -> None:
+    """ "jrue holiday 1st half with celtics vs knicks": the games are cut to
+    his own team's (the ``tenure`` cell), and the sentence says so - unsaid,
+    the figure reads as every game of his."""
+    result = period_log(
+        period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(tenure="Golden State Warriors"), span=Span(season=SEASON, season_type=2), period=Period(number=1))
+    )
+    assert (result.text or "").startswith(f"Stephen Curry scored 12 points in the 1st quarter over 5 games of the {SEASON} regular season with the Golden State Warriors, averaging 2.4.")
+
+
 def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx: AnswerContext) -> None:
     """ "Jokic points by quarter" (#162): a period's log with no period is the
     breakdown across all four - the compiler's grouped read by period

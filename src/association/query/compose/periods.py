@@ -144,6 +144,11 @@ def _period_where(scope: Filtered, narrowed: Narrowed) -> tuple[tuple[Cell, ...]
     # first quarter points in january" answered one January game as
     # though it were his season.
     also = [c.phrase() for c in narrowed.conditions if not (c.side == "own" and c.predicate == "absent")] + ([situation] if situation else [])
+    if narrowed.team is not None:
+        # His own team the games were cut to ("jrue holiday 1st half with
+        # celtics vs knicks"), in the relation's words: unsaid, the figure
+        # read as every game of his against the Knicks.
+        also.insert(0, f"with the {narrowed.team.name}")
     return tuple(cells), tuple(also)
 
 
