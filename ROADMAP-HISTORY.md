@@ -2051,6 +2051,21 @@ with nothing to read fills the silence from its own weights), and more data
     wordings leave the populations, and the priority: the honest-limit
     refusals, what the data answers and the system cannot produce. Step 2 was
     dispatched the same day in two lanes along the files' seams.
+51. **Step 2's sayer lane landed (2026-10-16, master `17d87c49`).** The
+    first of the two lanes: the three-stat line now carries the full box line
+    beneath its sentence wherever the words asked the line (#471; the
+    sentence's figures proved kept by a script, 349 of 349 feed answers, 58
+    of 58 corpus), a quarter's or half's figure carries the period's whole
+    line, a name reading beneath a table stands on its own line, and a count
+    of games after a half's stats is honored (#473 closed; three fluent wrong
+    figures in the feed corrected). The lead's runs 79 to 80: feed 419 of
+    2,082 moved, corpus 71 of 628, every move the lane's changelog
+    enumerated and no reading, planned query or ledger count moved; the 18
+    grade-aware flags each lines added under an unchanged sentence. Twelve
+    of the sample's 14 three-stat partials now show what the key requires;
+    the two left are a player's log, the span lane's files. The lane filed
+    "ecf" read by nothing (#475, P1).
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
