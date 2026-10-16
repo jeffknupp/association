@@ -1981,15 +1981,6 @@ those were found.
 - **Source:** ours (the build).
 - **GitHub:** #467
 
-### A player's log shows three stats where the words asked the shooting or the blocks: "klay thompson last 5 games away" shows no threes
-- **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1); the season line, the games line, the comparison and a period's line show the full box line since lane p6-sayer (#471's first part), the sample's FS024, FS061, FS062, FS119, FS179, FS204, FS207, FS258, FS266, FS344, FS359 and FS373.
-- **Evidence:** 2 of the sample's 14 three-stat partials remain, both a player's log, which shows MIN, PTS, REB and AST: "Walker kessler vs dal last 25 games" without his blocks (FS240), "klay thompson last 5 games away" without his threes (FS213). The log's columns are `compose.logs`' (`_LOG_BASE`) and the point's measures, on the span lane's files when this was written.
-- **User sees:** the right games and the right numbers, with the stat the words named missing.
-- **Next step:** the log shows the full line's columns (steals, blocks, turnovers, the shooting as made-attempted) where the words named no stat, as the line does (`season_line.full_line_asked`); the sample's two re-graded.
-- **Priority:** P2 - a correct but incomplete answer.
-- **Source:** ours.
-- **GitHub:** #471
-
 ## P3: refusal or gap
 
 ### A teammate's surname that is one player's exactly is read as him, though a near spelling was the subject's teammate: "rui hachimura stats without reeves" reads Antonio Reeves

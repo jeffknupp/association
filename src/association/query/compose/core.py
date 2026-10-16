@@ -801,6 +801,14 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
         # a log or a top-games read carrying the default line never showed a
         # rebuilt game at all, since that line carries minutes.
         read = [m for m in read if m != "minutes"]
+        if q.order == "date" and any(m in REBUILT_STATS for m in read):
+            # A log in date order lists the games: a column the rebuild does
+            # not fill prints blank on a rebuilt row (``measure_sql``'s
+            # blanking), so the full box line beside his points, rebounds
+            # and assists (ISSUES.md #471) does not hide the Pelicans' 2018
+            # behind "the box score is empty". Ordered by a measure, a
+            # blank would sort, and the strict rule stands.
+            read = [m for m in read if m not in UNGATED_ON_REBUILD]
     return box.rebuilt and ((q.skeleton == "grouped" or q.aggregate == Aggregate.RECORD) or (bool(read) and all(m in REBUILT_STATS for m in read)))
 
 

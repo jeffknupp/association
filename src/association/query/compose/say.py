@@ -296,7 +296,22 @@ def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
         return " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
     shown = facts["games"]
     whose = "their" if shown != 1 else "its"
-    return f"{shown} of these games {'have' if shown != 1 else 'has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
+    lost = _joined(["minutes", *dict.fromkeys(_UNREBUILT_WORDS[column] for column in facts.get("columns") or [] if column in _UNREBUILT_WORDS)])
+    return f"{shown} of these games {'have' if shown != 1 else 'has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and {lost} cannot be recovered at all."
+
+
+#: How the rebuilt games' note names a column a rebuild never fills, where a
+#: log shows it blank (ISSUES.md #471's full line).
+_UNREBUILT_WORDS: dict[str, str] = {
+    "turnovers": "turnovers",
+    "fouls": "fouls",
+    "threePointFieldGoalsMade": "threes",
+    "threePointFieldGoalsAttempted": "shot attempts",
+    "fieldGoalsAttempted": "shot attempts",
+    "freeThrowsAttempted": "free-throw attempts",
+    "offensiveRebounds": "offensive rebounds",
+    "defensiveRebounds": "defensive rebounds",
+}
 
 
 def _say_lines_rebuilt_counted(facts: dict[str, Any]) -> str:

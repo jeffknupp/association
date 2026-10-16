@@ -222,7 +222,8 @@ def league(tmp_path: Path) -> Iterator[AnswerContext]:
     c.execute("INSERT INTO player_season_stats_deduped VALUES (?, ?, 2), (?, ?, 2)", [TATUM, last, TATUM, S])
     # The log view the player-games relation reads, in the warehouse's shape.
     c.execute(
-        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "CREATE VIEW player_game_log AS SELECT pbs.*, NULL::INTEGER AS threePointFieldGoalsAttempted, NULL::INTEGER AS freeThrowsAttempted, "
+        "p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
@@ -270,7 +271,8 @@ def rebuilt_league(league: AnswerContext) -> AnswerContext:
     # so this fixture's must be too, or a rebuilt row is invisible to the read.
     c.execute("DROP VIEW player_game_log")
     c.execute(
-        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "CREATE VIEW player_game_log AS SELECT pbs.*, NULL::INTEGER AS threePointFieldGoalsAttempted, NULL::INTEGER AS freeThrowsAttempted, "
+        "p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats_filled pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )

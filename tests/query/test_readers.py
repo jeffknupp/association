@@ -2420,12 +2420,17 @@ def test_the_unseen_count_excludes_games_the_rebuild_answered(rebuilt_ctx: Answe
 
 
 def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebuilt_ctx: AnswerContext) -> None:
-    """The gate a listing applies before showing a rebuilt row. A table has no
-    room to caveat one column, so a single untrustworthy column sends the whole
-    log back to fetched lines. Asserted directly on the rule, because inline in
-    the query it could be relaxed with nothing noticing. The rule is the
-    compiler's (``core._rebuilt_for``) since the log executes the compiled
-    statement, over the columns the log shows as the point's measures."""
+    """The gate a listing applies before showing a rebuilt row. A column a
+    rebuild gets wrong is never shown from one: a log in date order lists the
+    games, so it widens and prints that column blank on a rebuilt row
+    (``measure_sql``'s blanking, the rebuilt games' note naming it - the full
+    box line of ISSUES.md #471 would otherwise hide the Pelicans' 2018 behind
+    "the box score is empty"); a listing ordered by a measure would sort a
+    blank, so one such column sends it back to fetched lines. Asserted
+    directly on the rule, because inline in the query it could be relaxed
+    with nothing noticing. The rule is the compiler's (``core._rebuilt_for``)
+    since the log executes the compiled statement, over the columns the log
+    shows as the point's measures."""
     from association.query.compose.core import Query, _rebuilt_for
     from association.query.compose.logs import LOG_COLUMNS
     from association.query.conditions import box_source
@@ -2433,15 +2438,21 @@ def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebu
     box = box_source(rebuilt_ctx.con)
     assert box.rebuilt
 
-    def readable(headers: list[str]) -> bool:
-        return _rebuilt_for(box, Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), skeleton="rows", measures=[LOG_COLUMNS[h] for h in headers]))
+    def readable(headers: list[str], order: str = "date") -> bool:
+        point = Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), skeleton="rows", order=order, measures=[LOG_COLUMNS[h] for h in headers])
+        return _rebuilt_for(box, point)
 
     assert readable(["MIN", "PTS", "REB", "AST"]) is True
     assert readable(["MIN", "PTS", "STL", "BLK"]) is True
-    # 0.181 mean error a game, wrong in one game in six.
-    assert readable(["MIN", "PTS", "PF"]) is False
+    # 0.181 mean error a game, wrong in one game in six: blank on a dated
+    # log's rebuilt row, never sorted by.
+    assert readable(["MIN", "PTS", "PF"]) is True
+    assert readable(["PF", "PTS"], order="measure") is False
     # 0.080, wrong in one game in thirteen.
-    assert readable(["MIN", "PTS", "TO"]) is False
+    assert readable(["MIN", "PTS", "TO"]) is True
+    assert readable(["TO", "PTS"], order="measure") is False
+    # A log of a column the rebuild never fills alone is no rebuilt row's.
+    assert readable(["MIN", "TO"]) is False
 
 
 def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: AnswerContext) -> None:
@@ -4541,7 +4552,9 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
     assert isinstance(read, Result)
     assert read.subject == "Brandin Podziemski" and read.relation == "player" and read.narrowing.opponent == "Detroit Pistons"
     body = read.rows
-    assert body is not None and [g["opponent"] for g in body.rows] == ["DET", "DET"] and body.total_before_window == 2 and body.columns == ("MIN", "PTS", "REB", "AST")
+    assert body is not None and [g["opponent"] for g in body.rows] == ["DET", "DET"] and body.total_before_window == 2
+    # No stat named: the full box line (ISSUES.md #471, the season line's rule).
+    assert body.columns == ("MIN", "PTS", "REB", "AST", "STL", "BLK", "TO", "FG%", "3PM", "3P%", "FT%")
     assert all(isinstance(each.kind, str) and isinstance(each.facts, dict) for each in read.notes)
     answered = planned_answer(pg_ctx, reading)
     assert answered is not None and say(read).text == answered.text and say(read).data == answered.data
@@ -4626,7 +4639,10 @@ def test_player_log_says_how_many_games_the_window_cut_from(pg_ctx: AnswerContex
 def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: AnswerContext) -> None:
     result = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="freeThrowPct", as_typed="freeThrowPct")))
     titles = result.text.splitlines()[1].split()
-    assert titles[-3:] == ["FTM", "FTA", "FT%"]
+    # The named stat's own columns after the four, then the rest of the box
+    # line a free-throw word asks (ISSUES.md #471), FT% not said twice.
+    assert titles[titles.index("AST") + 1 : titles.index("AST") + 4] == ["FTM", "FTA", "FT%"]
+    assert titles[-6:] == ["STL", "BLK", "TO", "FG%", "3PM", "3P%"]
     # Over the listed games: 2 of 3, 4 of 4, 1 of 2 - a total, not a mean of percentages.
     assert result.data["averages"]["freeThrowPct"] == pytest.approx(100 * 7 / 9)
 
