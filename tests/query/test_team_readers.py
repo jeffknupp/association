@@ -1263,6 +1263,15 @@ def test_a_teams_period_total_window_reads_the_last_n_games(tqp_ctx: AnswerConte
     assert "last 2 games" in (result.text or "")
 
 
+def test_a_teams_period_stretch_reads_both_season_types(tqp_ctx: AnswerContext) -> None:
+    """Decision D14: a team's "last 2 games" in a quarter are the last two it
+    played - here the series' p3 (Q1 19) and p4 (Q1 21) - not the regular
+    season's e3 and e4, and the span says both types."""
+    result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S, both=True), period=Period(number=1), window=Window(order="recent", count=2)))
+    assert [g["points"] for g in result.data["games"]] == [19, 21]
+    assert f"{S} regular season and postseason" in (result.text or "")
+
+
 def test_a_teams_period_total_window_oldest_first(tqp_ctx: AnswerContext) -> None:
     result = team_period_total(tqp_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), span=Span(season=S), period=Period(number=1), window=Window(order="first", count=2)))
     assert [g["points"] for g in result.data["games"]] == [30, 20]

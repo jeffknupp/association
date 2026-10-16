@@ -368,7 +368,8 @@ def ctx(tmp_path: Path) -> AnswerContext:
         _row = {"season": 2026, "season_type": 2, "team_id": _team_id, **{k: v * _factor if isinstance(v, float) else v for k, v in _team_season_row.items()}}
         con.execute(f"INSERT INTO team_season_stats ({', '.join(_row)}) VALUES ({', '.join('?' for _ in _row)})", list(_row.values()))
     con.execute(
-        "CREATE OR REPLACE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "CREATE OR REPLACE VIEW player_game_log AS SELECT pbs.*, NULL::INTEGER AS threePointFieldGoalsAttempted, NULL::INTEGER AS freeThrowsAttempted, "
+        "p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )

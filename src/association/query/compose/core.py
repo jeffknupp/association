@@ -128,6 +128,9 @@ DERIVED: dict[str, str] = {
     # a period's log names the team, where the fixed columns carry its
     # abbreviation.
     "opponent_name": f"(SELECT {season_name_sql('t.team_id', 'g.season', 't.display_name')} FROM teams t WHERE t.team_id = pgl.opponent_team_id)",
+    # The game's season type, a label of the game as ``won`` is: a period's
+    # log over both types counts the games of each (decision D14).
+    "season_type": "pgl.season_type",
 }
 """A measure name that is not a stored column, and the SQL that computes it per game.
 
@@ -548,7 +551,7 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
 #: What a period-narrowed read may measure: the columns the period's line
 #: rebuilds, and the measures computed only from them (a rate is a ratio of
 #: the period's sums; a game's result is the game's).
-_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "opponent_name"}
+_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "opponent_name", "season_type"}
 
 
 def _check_period_measures(q: Query) -> None:
@@ -798,6 +801,14 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
         # a log or a top-games read carrying the default line never showed a
         # rebuilt game at all, since that line carries minutes.
         read = [m for m in read if m != "minutes"]
+        if q.order == "date" and any(m in REBUILT_STATS for m in read):
+            # A log in date order lists the games: a column the rebuild does
+            # not fill prints blank on a rebuilt row (``measure_sql``'s
+            # blanking), so the full box line beside his points, rebounds
+            # and assists (ISSUES.md #471) does not hide the Pelicans' 2018
+            # behind "the box score is empty". Ordered by a measure, a
+            # blank would sort, and the strict rule stands.
+            read = [m for m in read if m not in UNGATED_ON_REBUILD]
     return box.rebuilt and ((q.skeleton == "grouped" or q.aggregate == Aggregate.RECORD) or (bool(read) and all(m in REBUILT_STATS for m in read)))
 
 
@@ -930,7 +941,9 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     """
     # The game's own season beside the quarters: a date names one game,
     # whose season the answer is labeled and caveated by.
-    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt), "MIN(pgl.season) AS first_season"]
+    # Every season the games are from, for a read across seasons, which is
+    # caveated - or refused - season by season.
+    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt), "MIN(pgl.season) AS first_season", "LIST(DISTINCT pgl.season) AS seasons"]
     parts: list[str] = []
     params: list[Any] = []
     for quarter in REGULATION_QUARTERS:

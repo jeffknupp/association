@@ -225,9 +225,26 @@ def _say_definition(facts: dict[str, Any], about: str = "", placed: str = "") ->
         return f"{facts['units']}" + (f" over {possessions:,.0f} possessions" if possessions else "")
     if facts.get("term") != "without":
         raise ValueError(f"no phrase for the definition of {facts.get('term')!r}")
+    return _say_without(facts)
+
+
+def _say_without(facts: dict[str, Any]) -> str:
+    """What "without" was taken to mean: over a career a game he did not
+    play while on the same team; over one season, where no tenure bounds the
+    absence (decision D15), a game he did not play for the team, traded or
+    injured alike - and, for a teammate who played no game for the
+    subject's team in the season, that every game is without him."""
     names = list(facts["names"])
+    if facts.get("what") == "elsewhere":
+        # A teammate of another season, on no game of the subject's team in
+        # this one: every game is "without" him, and the answer says so.
+        them = "him" if len(names) == 1 else "them"
+        return f"{_joined(names)} played no game for {facts['whose']}'s team in the season asked, so every game is without {them}."
     who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
-    return f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
+    # Over one season no tenure bounds the absence (decision D15): a game
+    # after a trade is as much "without" him as a game he sat out injured.
+    where = "for his team, traded or injured alike" if facts.get("what") == "season" else "while on the same team"
+    return f"Without {_joined(names)} means games {who} {where} - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
 
 
 def _say_presence_played(names: list[str]) -> str:
@@ -242,6 +259,12 @@ def _say_tenure_counted(facts: dict[str, Any], about: str) -> str:
     """The games a with/without split counted: inside ``about`` (whose time
     on the team, which only the answer's heading names), each stint spelled
     out - under its team's name where the stints span several teams."""
+    if facts.get("what") == "season":
+        # Every game of the subject's in the season (decision D15): nothing
+        # was cut to a time together, so no stint is spelled out.
+        names = list(facts["names"])
+        out = f"out is a game {names[0]} did not play for his team" if len(names) == 1 else f"each game is divided by whether {_joined(names)} played for his team"
+        return f"Counted: {about}; {out}, traded or injured alike."
     stints = list(facts["stints"])
     several = len({stint["team"] for stint in stints}) > 1
     spelled = "; ".join(f"{stint['team']} {stint['from']} to {stint['to']}" if several else f"{stint['from']} to {stint['to']}" for stint in stints)
@@ -273,7 +296,22 @@ def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
         return " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
     shown = facts["games"]
     whose = "their" if shown != 1 else "its"
-    return f"{shown} of these games {'have' if shown != 1 else 'has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
+    lost = _joined(["minutes", *dict.fromkeys(_UNREBUILT_WORDS[column] for column in facts.get("columns") or [] if column in _UNREBUILT_WORDS)])
+    return f"{shown} of these games {'have' if shown != 1 else 'has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and {lost} cannot be recovered at all."
+
+
+#: How the rebuilt games' note names a column a rebuild never fills, where a
+#: log shows it blank (ISSUES.md #471's full line).
+_UNREBUILT_WORDS: dict[str, str] = {
+    "turnovers": "turnovers",
+    "fouls": "fouls",
+    "threePointFieldGoalsMade": "threes",
+    "threePointFieldGoalsAttempted": "shot attempts",
+    "fieldGoalsAttempted": "shot attempts",
+    "freeThrowsAttempted": "free-throw attempts",
+    "offensiveRebounds": "offensive rebounds",
+    "defensiveRebounds": "defensive rebounds",
+}
 
 
 def _say_lines_rebuilt_counted(facts: dict[str, Any]) -> str:
@@ -340,6 +378,14 @@ def _say_games_unseen(facts: dict[str, Any], consequence: str = "") -> str:
         return f"{count} game{'' if count == 1 else 's'} inside that time {'has' if count == 1 else 'have'} no box score, so {consequence}."
     if facts.get("why") == "no_play_by_play":
         return f"{count} of the {facts['of']} games have no play-by-play and are not counted."
+    if facts.get("why") == "period_untrusted":
+        # A read across seasons leaves out a season whose per-period figures
+        # agree with the official ones too seldom to answer (decision D13).
+        seasons = list(facts["seasons"])
+        return (
+            f"(Not counted: {count} game{'' if count == 1 else 's'} from {_joined([str(season) for season in seasons])}, whose per-quarter figures rebuilt from "
+            f"play-by-play agree with the official ones too seldom to answer.)"
+        )
     if facts.get("what") == "meetings":
         return f" {count} game{'' if count == 1 else 's'} between their teams while both were playing for them {'has' if count == 1 else 'have'} no box score, so a meeting there is not counted."
     if facts.get("why") == "no_box_score":
@@ -411,6 +457,19 @@ def _say_record_note(kind: str, facts: dict[str, Any]) -> str:
     return " - the first the warehouse holds every game of"
 
 
+def say_career_implied(kind: str, season: int) -> str:
+    """The career a question naming no season was read over because its
+    words imply one (decision D13), said with the wording that asks about
+    one season instead: whose career by the subject's ``kind`` (a player's,
+    two players', or every season on record for anything else), and
+    ``season`` the season the suggested wording names.
+
+    .. versionadded:: 7.0.0
+    """
+    whose = {"player": "his career", "pair": "their careers"}.get(kind, "every season on record")
+    return decision_phrase(Decided(kind="career_implied", field="season", chose="career", why="implied", facts={"season": season}), whose=whose)
+
+
 def decision_phrase(each: Decided, **said_with: Any) -> str:
     """ONE phrase per decision kind (:data:`~association.query.notes.DECISION_KINDS`),
     recorded through :func:`~association.query.notes.decided` as it is
@@ -428,6 +487,11 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
         text = f"{each.facts['total']} players qualified; the top {each.chose} are shown."
     elif each.kind == "season_default":
         text = season_phrase(int(each.chose), int(each.facts["season_type"]))
+    elif each.kind == "career_implied":
+        # The career D13 reads where the words imply one: the default said,
+        # with the wording that reaches the season instead (AGENTS.md, "A
+        # reasonable default beats a question").
+        text = f'(No season was named, so this reads {said_with["whose"]} - add one, "in {each.facts["season"]}", to ask about that season alone.)'
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "also_matched":
@@ -1860,9 +1924,39 @@ def _period_where_said(result: Result) -> str:
 def _period_none_found(result: Result, season_label: str, vs: str, at: str) -> str:
     """No games under the narrowing. A date names its own day (``at`` says
     it), and no season was read for it: "No 2026 regular season games found
-    for Anthony Davis on 2015-01-10" named a season the date is not in."""
-    dated = result.span.date
+    for Anthony Davis on 2015-01-10" named a season the date is not in. A
+    read across seasons names them as the bare log does."""
+    dated, span = result.span.date, result.span
+    if span.season is None and not dated:
+        return f"No games found for {result.subject}{vs}{at}{_period_where_seasons(result)}."
     return f"No games found for {result.subject}{vs}{at}." if dated else f"No {season_label} games found for {result.subject}{vs}{at}."
+
+
+def _period_where_seasons(result: Result) -> str:
+    """The seasons a period read covers, as the bare log's heading names
+    them: " of the 2026 regular season", the season types counted where
+    both were read (" (7 regular season and 3 postseason)",
+    :func:`mixed_where`), " of his career (2012-2025 regular seasons)", or a
+    range's seasons alone (" (2022-2024 regular seasons)") - decisions D13,
+    D14."""
+    span, counts = result.span, dict(result.rows.by_season_type) if result.rows is not None else {}
+    if span.season is not None:
+        if len(counts) > 1:
+            # Both types found: the season named, then how many of each.
+            return f" of the {season_phrase(span.season, 0)} ({_joined([f'{count} {SEASON_TYPE_NAMES[kind]}' for kind, count in sorted(counts.items())])})"
+        return mixed_where(span.season, counts) if counts else f" of the {season_phrase(span.season, span.season_type or 2)}"
+    if span.first is None:
+        # Nothing found: the span as the words asked it, no seasons to name.
+        return f" since {span.since}" if span.since is not None else " over his career"
+    years = span.years or ""
+    if len(counts) == 1 and span.first is not None and span.last is not None:
+        # Both types read, one found: the seasons in that type's own words.
+        (kind,) = counts
+        name = SEASON_TYPE_NAMES[kind]
+        years = f"{span.first} {name}" if span.first == span.last else f"{span.first}-{span.last} {name}s"
+    elif len(counts) > 1:
+        years += f"; {_joined([f'{count} {SEASON_TYPE_NAMES[kind]}' for kind, count in sorted(counts.items())])}"
+    return f" ({years})" if span.since is not None or span.until is not None else f" of his career ({years})"
 
 
 def _period_about(result: Result) -> dict[str, Any]:
@@ -1932,16 +2026,19 @@ def _period_header(result: Result, games: list[dict[str, Any]], season_label: st
     # its end: "over 4 games of the 2026 regular season" read as his season.
     counted = f"the {'first' if window.ascending else 'last'} {len(games)} {plural}" if facts.cut else f"{len(games)} {plural}"
     total = summary["total"]
+    # The seasons the games are from: one season's name as it always was,
+    # or - over both types or across seasons - the bare log's wording.
+    where = _period_where_seasons(result) if result.span.season is None or (result.rows is not None and result.rows.by_season_type) else f" of the {season_label}"
     if measure in PERIOD_RATE_WORDS:
         did = period_rate_said(total, summary["attempted"], summary["average"], measure)
-        header = f"{subject} {did} in the {period_label} over {counted} of the {season_label}{vs}{at}."
+        header = f"{subject} {did} in the {period_label} over {counted}{where}{vs}{at}."
     else:
         did = f"scored {total} points" if measure == "points" else f"had {total} {period_noun(measure, total)}"
-        header = f"{subject} {did} in the {period_label} over {counted} of the {season_label}{vs}{at}, averaging {summary['average']:.1f}."
+        header = f"{subject} {did} in the {period_label} over {counted}{where}{vs}{at}, averaging {summary['average']:.1f}."
     if len(games) == 1:
         g = games[0]
         against = f"the {g['opponent']}" if g["opponent"] else "their opponent"
-        return f"{subject} {did} in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({season_label})."
+        return f"{subject} {did} in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({_period_one_game_season(result, season_label)})."
     if facts.per_game:
         count = window.limit
         earliest = window.ascending
@@ -1949,6 +2046,18 @@ def _period_header(result: Result, games: list[dict[str, Any]], season_label: st
         label = "every game" if len(shown) == len(games) else f"the {len(shown)} {'earliest' if earliest else 'most recent'}"
         header += "\n" + _period_log(shown if earliest else list(reversed(shown)), period_label, label, measure, full_line=facts.full_line)
     return header
+
+
+def _period_one_game_season(result: Result, season_label: str) -> str:
+    """The season one game is from: the read's own season and type, or -
+    over both types or across seasons - the game's (the one season the read
+    holds, and the one type it counted)."""
+    span, counts = result.span, dict(result.rows.by_season_type) if result.rows is not None else {}
+    season = span.season if span.season is not None else span.first
+    if season is None or (span.season is not None and not counts):
+        return season_label
+    kind = next(iter(counts)) if len(counts) == 1 else (span.season_type or 2)
+    return season_phrase(season, kind)
 
 
 def say_period_split(result: Result) -> Answer:
@@ -1960,8 +2069,8 @@ def say_period_split(result: Result) -> Answer:
     .. versionadded:: 5.0.0
     """
     body = result.rows
-    assert body is not None and result.span.season is not None
-    season_label = season_phrase(result.span.season, result.span.season_type or 2)
+    assert body is not None
+    season_label = season_phrase(result.span.season, result.span.season_type or 2) if result.span.season is not None else (result.span.years or "")
     vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
     at = _period_where_said(result)
     games = [dict(g) for g in body.rows]
@@ -1985,6 +2094,16 @@ def say_period_split(result: Result) -> Answer:
     return Answer(data=data, text=header + (f"\n{extra}" if extra else "") + caveat)
 
 
+def _period_quarters_in(result: Result, season_label: str) -> str:
+    """The seasons the four quarters are over: "the 2026 regular season",
+    or across seasons "his career (2012-2025 regular seasons)" or a range's
+    seasons alone (decision D13)."""
+    span = result.span
+    if span.season is not None or span.date:
+        return f"the {season_label}"
+    return span.years or "" if span.since is not None or span.until is not None else f"his career ({span.years})"
+
+
 def _period_quarter_cells(values: list[str]) -> str:
     return "".join(f"{value:>9}" for value in values[:-1]) + f"{values[-1]:>12}"
 
@@ -2004,7 +2123,7 @@ def _period_quarter_table(result: Result, quarters: list[dict[str, Any]], season
 
         pct_row = _period_quarter_cells([_pct(q["pct"]) for q in quarters] + [_pct(made * 100.0 / attempted if attempted else None)])
         made_row = _period_quarter_cells([f"{q['made']}-{q['attempted']}" for q in quarters] + [f"{made}-{attempted}"])
-        header = f"{result.subject}, {PERIOD_RATE_WORDS[measure]} by quarter in the {season_label}{vs}{at} ({games} games):"
+        header = f"{result.subject}, {PERIOD_RATE_WORDS[measure]} by quarter in {_period_quarters_in(result, season_label)}{vs}{at} ({games} games):"
         return header, [f"  {'':<10}{heads}", f"  {'percentage':<10}{pct_row}", f"  {'made-att':<10}{made_row}"]
 
     def _avg(average: float | None) -> str:
@@ -2013,7 +2132,7 @@ def _period_quarter_table(result: Result, quarters: list[dict[str, Any]], season
     noun = "points" if measure == "points" else period_noun(measure, 2)
     per_game = _period_quarter_cells([_avg(q["average"]) for q in quarters] + [_avg(sum(q["average"] or 0.0 for q in quarters))])
     totals = _period_quarter_cells([str(q["total"]) for q in quarters] + [str(sum(q["total"] for q in quarters))])
-    header = f"{result.subject}, {noun} per game by quarter in the {season_label}{vs}{at} ({games} games):"
+    header = f"{result.subject}, {noun} per game by quarter in {_period_quarters_in(result, season_label)}{vs}{at} ({games} games):"
     return header, [f"  {'':<10}{heads}", f"  {'per game':<10}{per_game}", f"  {'total':<10}{totals}"]
 
 
@@ -2025,9 +2144,9 @@ def say_period_by_quarter(result: Result) -> Answer:
     .. versionadded:: 5.0.0
     """
     groups = result.grouped
-    assert groups is not None and result.span.season is not None
+    assert groups is not None
     facts, window = _facts(result, PeriodFacts), result.window
-    season_label = season_phrase(result.span.season, result.span.season_type or 2)
+    season_label = season_phrase(result.span.season, result.span.season_type or 2) if result.span.season is not None else (result.span.years or "")
     vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
     at = _period_where_said(result)
     if window is not None:
@@ -3498,6 +3617,9 @@ def _with_without_heading(result: Result, named: list[str], all_of: str) -> tupl
         whose = f"{all_of}'s time with the team" if len(named) == 1 else f"the time {all_of} were on the team together"
         return f"{counted_teams} with and without {all_of}{versus}, {label}:", headers, whose
     whose = f"the time {subject} and {all_of} were both on the team" if len(named) == 1 else f"the time {_joined([subject, *named])} were on the team together"
+    if any(each.facts.get("term") == "tenure_counted" and each.facts.get("what") == "season" for each in result.notes):
+        # One season with a player named counts every game of his (D15).
+        whose = f"every game {subject}'s team played in the {label} while he was on it"
     return f"{subject} with and without {all_of} ({counted_teams}){versus}, {label}:", [*headers, "Played", "MIN", "PTS", "REB", "AST", "FG%"], whose
 
 
@@ -5150,9 +5272,6 @@ _DECLINE_REASONS: dict[DeclineReason, str] = {
     DeclineReason.RUN_ONE_GAME: "one game is not a run",
     DeclineReason.RUN_EVERY_GAME: "a run is read over every game in the span, not the last N",
     DeclineReason.RUN_WHOLE_GAMES: "a run is a run of whole games; a quarter or half of each is a different streak nobody has defined",
-    DeclineReason.PERIOD_CAVEAT_CAREER: "the accuracy caveat is measured per season, not across a career",
-    DeclineReason.PERIOD_CAVEAT_RANGE: "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
-    DeclineReason.PERIOD_CAVEAT_BOTH: "the accuracy caveat is measured per season and per season type; a read over both types would carry one caveat for games of two reliabilities",
     DeclineReason.PERIOD_ONE_PERIOD: "a period answer says the one period it measures, never a second one conditioning which games count",
     DeclineReason.MEETINGS_NO_THIRD_TEAM: "two players' meetings are the games they played against each other - there is no third team to narrow them to",
     DeclineReason.MEETINGS_AVERAGES: "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
@@ -5204,12 +5323,9 @@ _DECLINE_REASONS: dict[DeclineReason, str] = {
     DeclineReason.PRESENCE_CUTS: "the split's words state one opponent; another cut would narrow the teammates' games without the sentence saying so",
     DeclineReason.PRESENCE_WINDOW: "the split divides every game in the span by the teammates' presence; the last N games would cut both sides without the sentence saying so",
     DeclineReason.PRESENCE_PERIOD: "a record is won and lost over whole games; a quarter or half of each has no winner the split could count",
-    DeclineReason.MEETINGS_TALLY_WINDOW: "head_to_head counts every meeting in the span; picking the last N of them is not built",
     DeclineReason.MEETINGS_TALLY_GAME_N: "head_to_head counts every meeting; one numbered game of a series is not read here",
     DeclineReason.MEETINGS_TALLY_SITUATION: "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
     DeclineReason.MEETINGS_TALLY_PERIOD: "a series is won and lost in whole games; a quarter or half of each meeting has no winner to tally",
-    DeclineReason.MEETINGS_TALLY_BOTH: "a series is tallied in one season type; both at once would count regular-season and playoff meetings as one series",
-    DeclineReason.TEAM_PERIOD_BOTH: "a quarter's figures are reconciled per season and per type; one read over both types would carry one caveat for two",
     DeclineReason.TEAM_RECORD_ONE_GAME: "a record for one calendar date is a single game, which game_log already answers directly",
     DeclineReason.TEAM_RECORD_RECENT_GAMES: "a record over a limited set of games is a game_log question",
     DeclineReason.TEAM_RECORD_WHOLE_GAMES: "a record is won and lost over whole games; a quarter or half has no winner the record could count",

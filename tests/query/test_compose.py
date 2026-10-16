@@ -1954,8 +1954,15 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
     assert composed is not None
     lines = composed.text.split("\n")
     assert lines[0] == f"Brandin Podziemski, last 4 games of the {current_season()} regular season:"
-    assert lines[2].split() == [f"{current_season()}-03-01", "vs", "BOS", "W", "-", "10", "3", "2"]
-    assert lines[-1] == "1 of these games has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
+    # The full box line beside it (ISSUES.md #471): a column a rebuild does
+    # not fill is blank on the rebuilt row, and the note names it.
+    assert lines[2].split() == [f"{current_season()}-03-01", "vs", "BOS", "W", "-", "10", "3", "2", "1", "0", "-", "-", "-", "-", "-"]
+    assert lines[-1] == (
+        "1 of these games has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes, turnovers, threes, shot attempts and free-throw attempts cannot be recovered at all."
+    )
+    # The rates are over the games that carry both halves: 56.4% over the
+    # three fetched games, never the rebuilt game's makes over their attempts.
+    assert lines[-2].split()[-4] == "56.4"
 
 
 def test_a_teams_total_of_triple_doubles_is_declined_for_the_readings_cause(cx_ctx: AnswerContext) -> None:

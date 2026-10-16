@@ -37,8 +37,8 @@ from association.query.entities import MAX_CANDIDATES, Availability, Entity, col
 from association.query.measures import PERIOD_RATE_STATS
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
-from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
-from association.query.player_relation import scoped_games, scoped_player
+from association.query.player_games import BOTH_SEASON_TYPES, PERIOD_COLUMNS, PERIOD_RATES, Narrowed, period_distrust
+from association.query.player_relation import scoped_games, scoped_player, span_of
 from association.query.point import default_point
 from association.query.reading import (
     GAME_HIGHS,
@@ -2420,12 +2420,17 @@ def test_the_unseen_count_excludes_games_the_rebuild_answered(rebuilt_ctx: Answe
 
 
 def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebuilt_ctx: AnswerContext) -> None:
-    """The gate a listing applies before showing a rebuilt row. A table has no
-    room to caveat one column, so a single untrustworthy column sends the whole
-    log back to fetched lines. Asserted directly on the rule, because inline in
-    the query it could be relaxed with nothing noticing. The rule is the
-    compiler's (``core._rebuilt_for``) since the log executes the compiled
-    statement, over the columns the log shows as the point's measures."""
+    """The gate a listing applies before showing a rebuilt row. A column a
+    rebuild gets wrong is never shown from one: a log in date order lists the
+    games, so it widens and prints that column blank on a rebuilt row
+    (``measure_sql``'s blanking, the rebuilt games' note naming it - the full
+    box line of ISSUES.md #471 would otherwise hide the Pelicans' 2018 behind
+    "the box score is empty"); a listing ordered by a measure would sort a
+    blank, so one such column sends it back to fetched lines. Asserted
+    directly on the rule, because inline in the query it could be relaxed
+    with nothing noticing. The rule is the compiler's (``core._rebuilt_for``)
+    since the log executes the compiled statement, over the columns the log
+    shows as the point's measures."""
     from association.query.compose.core import Query, _rebuilt_for
     from association.query.compose.logs import LOG_COLUMNS
     from association.query.conditions import box_source
@@ -2433,15 +2438,21 @@ def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebu
     box = box_source(rebuilt_ctx.con)
     assert box.rebuilt
 
-    def readable(headers: list[str]) -> bool:
-        return _rebuilt_for(box, Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), skeleton="rows", measures=[LOG_COLUMNS[h] for h in headers]))
+    def readable(headers: list[str], order: str = "date") -> bool:
+        point = Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), skeleton="rows", order=order, measures=[LOG_COLUMNS[h] for h in headers])
+        return _rebuilt_for(box, point)
 
     assert readable(["MIN", "PTS", "REB", "AST"]) is True
     assert readable(["MIN", "PTS", "STL", "BLK"]) is True
-    # 0.181 mean error a game, wrong in one game in six.
-    assert readable(["MIN", "PTS", "PF"]) is False
+    # 0.181 mean error a game, wrong in one game in six: blank on a dated
+    # log's rebuilt row, never sorted by.
+    assert readable(["MIN", "PTS", "PF"]) is True
+    assert readable(["PF", "PTS"], order="measure") is False
     # 0.080, wrong in one game in thirteen.
-    assert readable(["MIN", "PTS", "TO"]) is False
+    assert readable(["MIN", "PTS", "TO"]) is True
+    assert readable(["TO", "PTS"], order="measure") is False
+    # A log of a column the rebuild never fills alone is no rebuilt row's.
+    assert readable(["MIN", "TO"]) is False
 
 
 def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: AnswerContext) -> None:
@@ -4541,7 +4552,9 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
     assert isinstance(read, Result)
     assert read.subject == "Brandin Podziemski" and read.relation == "player" and read.narrowing.opponent == "Detroit Pistons"
     body = read.rows
-    assert body is not None and [g["opponent"] for g in body.rows] == ["DET", "DET"] and body.total_before_window == 2 and body.columns == ("MIN", "PTS", "REB", "AST")
+    assert body is not None and [g["opponent"] for g in body.rows] == ["DET", "DET"] and body.total_before_window == 2
+    # No stat named: the full box line (ISSUES.md #471, the season line's rule).
+    assert body.columns == ("MIN", "PTS", "REB", "AST", "STL", "BLK", "TO", "FG%", "3PM", "3P%", "FT%")
     assert all(isinstance(each.kind, str) and isinstance(each.facts, dict) for each in read.notes)
     answered = planned_answer(pg_ctx, reading)
     assert answered is not None and say(read).text == answered.text and say(read).data == answered.data
@@ -4626,7 +4639,10 @@ def test_player_log_says_how_many_games_the_window_cut_from(pg_ctx: AnswerContex
 def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: AnswerContext) -> None:
     result = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="freeThrowPct", as_typed="freeThrowPct")))
     titles = result.text.splitlines()[1].split()
-    assert titles[-3:] == ["FTM", "FTA", "FT%"]
+    # The named stat's own columns after the four, then the rest of the box
+    # line a free-throw word asks (ISSUES.md #471), FT% not said twice.
+    assert titles[titles.index("AST") + 1 : titles.index("AST") + 4] == ["FTM", "FTA", "FT%"]
+    assert titles[-6:] == ["STL", "BLK", "TO", "FG%", "3PM", "3P%"]
     # Over the listed games: 2 of 3, 4 of 4, 1 of 2 - a total, not a mean of percentages.
     assert result.data["averages"]["freeThrowPct"] == pytest.approx(100 * 7 / 9)
 
@@ -4743,11 +4759,46 @@ def test_without_narrows_a_shared_name_to_that_seasons_teammates(pg_ctx: AnswerC
     assert result.data["without"] == ["Stephen Curry"]
 
 
-def test_a_mid_season_arrival_is_not_missing_from_the_games_before_he_came(pg_ctx: AnswerContext) -> None:
-    """Seth Curry joins at e3. The Warriors' games before that were not played
-    "without" a man who was on another team's books."""
-    answer = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),))).text
-    assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them without Seth Curry."
+def test_over_one_season_without_is_every_game_he_did_not_play_for_the_team(pg_ctx: AnswerContext) -> None:
+    """Seth Curry joins at e3. Over one season "without Seth Curry" is every
+    game of Podziemski's in which Seth had no row for the Warriors - the games
+    before he came as much as a game after a trade (decision D15) - and the
+    definition says so rather than "while on the same team"."""
+    s = current_season()
+    result = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),)))
+    assert sorted(g["date"] for g in result.data["games"]) == [f"{s - 1}-11-01", f"{s - 1}-12-01"]
+    assert "Without Seth Curry means games he did not play for his team, traded or injured alike" in result.text
+    assert "while on the same team" not in result.text
+
+
+def test_both_season_types_read_a_teammates_absence_by_his_own_rows(pg_ctx: AnswerContext) -> None:
+    """Over both season types read as one ("last 10 games", decision D14) a
+    teammate is still a teammate: the check of who shared his team asked for
+    `season_type = 0`, matched no row, and read Seth Curry as a stranger, so
+    the absence kept a tenure D15 drops over one season."""
+    span = span_of(Span(season=current_season(), both=True), "player_game_log", season_type=BOTH_SEASON_TYPES)
+    reading = Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),))
+    narrowed = scoped_games(pg_ctx.con, Entity(id="10", name="Brandin Podziemski"), span, reading, opponent=None, measures=[])
+    assert isinstance(narrowed, Narrowed)
+    assert [c.tenure for c in narrowed.conditions] == [None]
+
+
+def test_over_a_career_without_keeps_his_time_on_the_team(pg_ctx: AnswerContext) -> None:
+    """D15 keeps the tenure cut over a career: the Warriors' games before
+    Seth Curry arrived are not games played "without" a man on another
+    team's books, and the definition says "while on the same team"."""
+    answer = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),), span=Span(career=True))).text
+    assert "none of them without Seth Curry" in answer
+
+
+def test_a_teammate_of_another_season_is_said_to_have_played_elsewhere(pg_ctx: AnswerContext) -> None:
+    """Last season Seth Curry was a Celtic: over that season every game of
+    Podziemski's is "without" him (D15), and a table headed by his name would
+    hide that he was elsewhere, so the answer says it."""
+    result = player_log(
+        pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), companions=(Companion(player="Seth Curry", predicate="absent"),), span=Span(season=current_season() - 1))
+    )
+    assert "Seth Curry played no game for Brandin Podziemski's team in the season asked, so every game is without him." in result.text
 
 
 def test_a_teammate_carried_over_is_on_the_team_before_his_first_game(pg_ctx: AnswerContext) -> None:
@@ -5906,6 +5957,71 @@ def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: AnswerContext) 
     assert (result.text or "").startswith("Stephen Curry had 2 rebounds in the 1st quarter over 5 games of the 2026 regular season, averaging 0.4.")
 
 
+def test_a_period_read_says_the_team_its_games_were_cut_to(period_ctx: AnswerContext) -> None:
+    """ "jrue holiday 1st half with celtics vs knicks": the games are cut to
+    his own team's (the ``tenure`` cell), and the sentence says so - unsaid,
+    the figure reads as every game of his."""
+    result = period_log(
+        period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(tenure="Golden State Warriors"), span=Span(season=SEASON, season_type=2), period=Period(number=1))
+    )
+    assert (result.text or "").startswith(f"Stephen Curry scored 12 points in the 1st quarter over 5 games of the {SEASON} regular season with the Golden State Warriors, averaging 2.4.")
+
+
+def _period_across_seasons_fixture(con: Any) -> None:
+    """Beside the fixture's games: a 2016 game, a season whose per-period
+    points agree with ESPN's quarter scores too seldom to answer (76.5%), and
+    a postseason game this season - each with one first-quarter three."""
+    con.execute("INSERT INTO games VALUES ('e16',2016,2,'2015-11-05T00:30Z','9','13',110,100,'9')")
+    con.execute("INSERT INTO player_box_stats VALUES ('e16',2016,2,'9','1',FALSE,30)")
+    con.execute("INSERT INTO shot_chart VALUES ('1',2016,2,'e16','9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
+    con.execute("INSERT INTO games VALUES ('p1',?,3,?,'9','2',110,100,'9')", [SEASON, f"{SEASON}-04-25T00:30Z"])
+    con.execute("INSERT INTO player_box_stats VALUES ('p1',?,3,'9','1',FALSE,30)", [SEASON])
+    con.execute("INSERT INTO shot_chart VALUES ('1',?,3,'p1','9',1,'10:00',TRUE,'Jump Shot',25,26,0,'26-foot jumper')", [SEASON])
+
+
+def test_a_period_read_across_seasons_caveats_each_and_leaves_an_untrusted_one_out(period_ctx: AnswerContext) -> None:
+    """Decision D13 ("kyrie Irving second half stats vs denver" is his career
+    against Denver, FS027): a quarter over every season reads them all,
+    labeled by the first and last, each season's agreement said - and a
+    season whose figures cannot be trusted (2016) is left out and said,
+    rather than refusing the whole or summing it in."""
+    _period_across_seasons_fixture(period_ctx.con)
+    result = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1)))
+    answer = result.text or ""
+    assert answer.startswith("Stephen Curry scored 15 points in the 1st quarter over 6 games of his career (2004-2026 regular seasons), averaging 2.5.")
+    assert "In 2004 that sum matches ESPN's own quarter scores 96% of the time" in answer
+    assert "(Not counted: 1 game from 2016, whose per-quarter figures rebuilt from play-by-play agree with the official ones too seldom to answer.)" in answer
+
+
+def test_a_period_stretch_reads_both_season_types_and_says_each(period_ctx: AnswerContext) -> None:
+    """Decision D14: "last 3 games" in a quarter are the last three he
+    played, the postseason game among them, and the heading says how many
+    of each type, as the bare log's does."""
+    _period_across_seasons_fixture(period_ctx.con)
+    window = Window(count=3, order="recent", of="games")
+    who = Who(kind="player", players=("Stephen Curry",))
+    season = period_log(period_ctx, Reading(who=who, span=Span(season=SEASON, both=True), window=window, period=Period(number=1)))
+    assert (season.text or "").startswith(
+        f"Stephen Curry scored 6 points in the 1st quarter over the last 3 games of the {SEASON} regular season and postseason (2 regular season and 1 postseason), averaging 2.0."
+    )
+    career = period_log(period_ctx, Reading(who=who, span=Span(career=True, both=True), window=window, period=Period(number=1)))
+    assert (career.text or "").startswith(
+        f"Stephen Curry scored 6 points in the 1st quarter over the last 3 games of his career ({SEASON} regular season and postseason; 2 regular season and 1 postseason)"
+    )
+
+
+def test_four_quarters_across_seasons_refuse_a_season_that_cannot_be_trusted(period_ctx: AnswerContext) -> None:
+    """One table over every season cannot leave a season's games out of one
+    quarter and not another, so a season that cannot be trusted refuses the
+    four quarters by name; without it, they are read across the seasons."""
+    who = Who(kind="player", players=("Stephen Curry",))
+    clean = period_log(period_ctx, Reading(who=who, span=Span(career=True)))
+    assert (clean.text or "").startswith("Stephen Curry, points per game by quarter in his career (2004-2026 regular seasons) (6 games):")
+    _period_across_seasons_fixture(period_ctx.con)
+    refused = period_log(period_ctx, Reading(who=who, span=Span(career=True)))
+    assert refused.text == "Per-quarter scoring cannot be answered for 2016: its per-period points agree with ESPN's own quarter scores only 76% of the time."
+
+
 def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx: AnswerContext) -> None:
     """ "Jokic points by quarter" (#162): a period's log with no period is the
     breakdown across all four - the compiler's grouped read by period
@@ -5987,13 +6103,15 @@ def test_a_rebuilt_games_quarters_are_read_like_any_others(period_ctx: AnswerCon
     assert one.data["total"] == 2 and one.data["games_played"] == 5, "a quarter of the rebuilt game counts as any other quarter does"
 
 
-def test_a_period_logs_narrowings_are_stated_and_a_career_or_since_span_refused() -> None:
-    """A period's log states the opponent, the venue, a companion, the window
-    and the date: each is a cell the read filters on, so none is unhonored -
-    an unhonored one would refuse a question this answers perfectly well.
-    The other direction matters too: a cell stated that the read ignores
-    would silently answer a broader question, which is the shape this whole
-    module exists to prevent; a career and a since-bounded span are refused.
+def test_a_period_logs_narrowings_and_spans_are_stated() -> None:
+    """A period's log states the opponent, the venue, a companion, the window,
+    the date, a career, a since-bounded span and both season types: each is
+    a cell the read filters on, so none is unhonored - an unhonored one would
+    refuse a question this answers perfectly well (decisions D13, D14: the
+    accuracy caveat is said season by season across them, and a season that
+    cannot be trusted is left out and said). The other direction matters
+    too: a cell stated that the read ignores would silently answer a broader
+    question, which the reader's own tests below hold it to.
     """
     # Through its shape's row (``compose.plan.cells_unhonored``).
     curry = Who(kind="player", players=("Stephen Curry",))
@@ -6003,15 +6121,11 @@ def test_a_period_logs_narrowings_are_stated_and_a_career_or_since_span_refused(
         Reading(who=curry, period=Period(number=1), companions=(Companion(player="Klay Thompson", predicate="absent"),)),
         Reading(who=curry, period=Period(number=1), window=Window(order="recent")),
         Reading(who=curry, period=Period(number=1), cuts=Cuts(date="2026-01-02")),
+        Reading(who=curry, period=Period(number=1), span=Span(career=True)),
+        Reading(who=curry, period=Period(number=1), span=Span(since=2023)),
+        Reading(who=curry, period=Period(number=1), span=Span(both=True)),
     ):
         assert [cell for cell, _ in cells_unhonored(given, PERIOD_LOG)] == []
-    # Two spans it does not filter on: the accuracy caveat
-    # (PERIOD_RECONCILIATION) is measured per season, and this reads only one
-    # - see its row in RELATION_SCOPING_EXCLUDED. The point itself refuses
-    # them (point._default_period_split), naming why.
-    for span in (Span(career=True), Span(since=2023)):
-        with pytest.raises(Unsupported, match="accuracy caveat is measured per season"):
-            plan(default_point(PERIOD_LOG, Reading(who=curry, span=span, period=Period(number=1))))
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: AnswerContext) -> None:
@@ -6079,29 +6193,16 @@ def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_c
     assert "96% of the time" in (quarters.text or "")
 
 
-def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(period_ctx: AnswerContext) -> None:
-    """`span` "career" is excluded: `PERIOD_RECONCILIATION` is measured per
-    season, and summing points across a career would need to apply it once
-    per season summed in, which this does not do. The refusal is in the
-    shape's words (its row of `RELATION_SCOPING_EXCLUDED`), the same as every
-    other excluded cell here.
-    """
-    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1)), PERIOD_LOG)] == ["career"]
-
-
 def test_a_career_read_of_a_period_sums_every_season_over_the_relations_games(period_ctx: AnswerContext) -> None:
-    """Called directly (the shape's words are what refuse `span` "career" in
-    the pipeline - see the test above): the shot CTEs join to the relation's
-    own selected games, never a literal ``season = ?``/``season_type = ?``
-    pair, so a career - whose ``span.season`` is ``None`` - sums every
-    season rather than binding ``season = NULL``, which matches nothing and
-    would answer "No {current season} games found for Stephen Curry", a
-    false-cause refusal about a player the fixture holds two seasons of
-    games for.
+    """The shot CTEs join to the relation's own selected games, never a
+    literal ``season = ?``/``season_type = ?`` pair, so a career - whose
+    ``span.season`` is ``None`` - sums every season rather than binding
+    ``season = NULL``, which matches nothing and would answer "No {current
+    season} games found for Stephen Curry", a false-cause refusal about a
+    player the fixture holds two seasons of games for.
     """
-    # The compiler's statement over a career span: the point refuses a
-    # career (the per-season caveat), so the join is exercised the way the
-    # cross-season redirect (compose.periods._period_redirect) exercises it.
+    # The compiler's statement over a career span, as the period reader reads
+    # one (decision D13).
     scope = Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1))
     subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span=Span(career=True))
     assert not isinstance(subject, Unanswered)

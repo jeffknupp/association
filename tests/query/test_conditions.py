@@ -222,7 +222,8 @@ def league(tmp_path: Path) -> Iterator[AnswerContext]:
     c.execute("INSERT INTO player_season_stats_deduped VALUES (?, ?, 2), (?, ?, 2)", [TATUM, last, TATUM, S])
     # The log view the player-games relation reads, in the warehouse's shape.
     c.execute(
-        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "CREATE VIEW player_game_log AS SELECT pbs.*, NULL::INTEGER AS threePointFieldGoalsAttempted, NULL::INTEGER AS freeThrowsAttempted, "
+        "p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
@@ -270,7 +271,8 @@ def rebuilt_league(league: AnswerContext) -> AnswerContext:
     # so this fixture's must be too, or a rebuilt row is invisible to the read.
     c.execute("DROP VIEW player_game_log")
     c.execute(
-        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "CREATE VIEW player_game_log AS SELECT pbs.*, NULL::INTEGER AS threePointFieldGoalsAttempted, NULL::INTEGER AS freeThrowsAttempted, "
+        "p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats_filled pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
@@ -734,6 +736,35 @@ def test_a_traded_player_is_not_missing_from_his_old_team(league: AnswerContext)
     answer = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Journeyman Guy", predicate="absent"),), span=Span(season_type=2))).text
     # e0a tips at 00:30 UTC on the 10th, which is the evening of the 9th in Boston.
     assert "falls outside the" in answer and f"Boston Celtics {S - 2}-10-20 to {S - 2}-11-09" in answer
+
+
+def test_over_one_season_a_player_without_a_traded_teammate_counts_the_games_after_the_trade(league: AnswerContext) -> None:
+    """Decision D15 ("jeremiah fears stats without dejounte murray"): a Celtic
+    plays e1 and e2 this season and is traded to the Lakers, for whom he plays
+    e7. Brown's games without him are every Celtics game of Brown's he had no
+    row in - e3 and e4, after the trade - not only those inside the time the
+    two shared. Over a career the shared time still bounds it."""
+    league.con.execute("INSERT INTO players VALUES ('60', 'Traded Guy')")
+    for event, team, opponent in (("e1", BOS, LAL), ("e2", BOS, LAL), ("e7", LAL, BOS)):
+        league.con.execute("INSERT INTO player_box_stats VALUES (?,?,2,?,?,'60',TRUE,FALSE,20,10,5,3,0,0,0,1,5,10,0,0)", [event, S, team, opponent])
+    reading = Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Traded Guy", predicate="absent"),), span=Span(season=S, season_type=2))
+    result = presence_split(league, reading)
+    groups = {g["teammate_played"]: g for g in result.data["groups"]}
+    assert groups[True]["games"] == 2 and groups[False]["player_games"] == 3
+    assert "Counted: every game Jaylen Brown's team played in the" in (result.text or "") and "traded or injured alike" in (result.text or "")
+    career = presence_split(league, replace(reading, span=Span(season_type=2, career=True)))
+    assert {g["teammate_played"]: g for g in career.data["groups"]}[False]["player_games"] == 0
+
+
+def test_over_one_season_a_player_never_on_his_team_is_no_absence(league: AnswerContext) -> None:
+    """D15 counts every game a teammate did not play for the team, but a
+    player who was never on it at all is no teammate to be without ("rui
+    hachimura stats without reeves" read as Antonio Reeves): the answer says
+    they were never together rather than calling every game "without" him."""
+    answer = presence_split(
+        league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Joel Embiid", predicate="absent"),), span=Span(season=S, season_type=2))
+    ).text
+    assert answer.startswith("Jaylen Brown and Joel Embiid were never on the same team together")
 
 
 def test_a_player_who_left_and_came_back_has_two_spells_not_one(league: AnswerContext) -> None:

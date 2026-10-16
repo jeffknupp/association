@@ -23,6 +23,7 @@ import duckdb
 
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.conditions import UNGATED_ON_REBUILD
 from association.query.entities import resolved_team, slot_season
 from association.query.lines import MeasureFilter, measure_filters, threshold_of
 from association.query.measure import spelled
@@ -35,6 +36,7 @@ from association.query.reading import Line as ReadLine
 from association.query.reading import Span as ReadSpan
 from association.query.reading import Window as ReadWindow
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
+from association.query.season_line import full_line_asked
 from association.query.team_games import TeamNarrowed, unnarrowed_games
 from association.query.team_relation import team_games
 
@@ -82,6 +84,13 @@ headers behind each, and the key the row carries it under.
 """
 
 _LOG_BASE = ("MIN", "PTS", "REB", "AST")
+
+#: The rest of the box line a log shows where the words asked the line - no
+#: stat named, a shooting word, a stat outside points, rebounds and assists
+#: (``season_line.full_line_asked``, the season line's own rule): "klay
+#: thompson last 5 games away" showed no threes, "walker kessler vs dal last
+#: 25 games" no blocks (ISSUES.md #471, the feed sample's FS213 and FS240).
+_LOG_FULL_LINE = ("STL", "BLK", "TO", "FG%", "3PM", "3P%", "FT%")
 
 
 def log_key(header: str) -> str:
@@ -164,6 +173,16 @@ def _player_log_rows(rows: list[dict[str, Any]], needed: list[str], headers: lis
     return games, raws
 
 
+def _log_blanks_said(notes: list[Note], needed: list[str]) -> list[Note]:
+    """``notes`` with the rebuilt games' note naming the columns the log
+    shows that a rebuild never fills (``UNGATED_ON_REBUILD``: a rebuilt row
+    prints them blank), beside the minutes it always names."""
+    blank = [LOG_COLUMNS[h] for h in needed if LOG_COLUMNS[h] in UNGATED_ON_REBUILD]
+    if not blank:
+        return notes
+    return [replace(each, facts={**each.facts, "columns": blank}) if each.kind == "lines_rebuilt" and each.facts.get("what") == "shown" else each for each in notes]
+
+
 def _player_log_averages(headers: list[str], raws: list[dict[str, Any]]) -> dict[str, float | None]:
     """Per-game averages over exactly the rows being shown, made/attempted
     summed rather than a mean of the per-game percentages."""
@@ -171,7 +190,11 @@ def _player_log_averages(headers: list[str], raws: list[dict[str, Any]]) -> dict
     for h in headers:
         if h in LOG_PERCENTAGES:
             made_h, attempted_h, key = LOG_PERCENTAGES[h]
-            averages[key] = _pct(sum(r[made_h] or 0 for r in raws), sum(r[attempted_h] or 0 for r in raws))
+            # Over the games that carry both: a rebuilt line has its makes
+            # and no attempts, and summing its makes over everyone's
+            # attempts would inflate the rate.
+            both = [r for r in raws if r[made_h] is not None and r[attempted_h] is not None]
+            averages[key] = _pct(sum(r[made_h] for r in both), sum(r[attempted_h] for r in both))
         else:
             present = [r[h] for r in raws if r[h] is not None]
             averages[LOG_COLUMNS[h]] = sum(present) / len(present) if present else None
@@ -233,7 +256,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
     if asked and count < asked and not narrowed.date:
         notes.append(Note("window_short", {"found": count, "asked": asked, "season": None if span.career else span.season or current_season(), "season_type": span.season_type}))
     rebuilt_shown = sum(1 for g in games if g["reconstructed"])
-    notes += box_score_notes_read(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=compiled.rebuilt, rebuilt_shown=rebuilt_shown)
+    notes += _log_blanks_said(box_score_notes_read(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=compiled.rebuilt, rebuilt_shown=rebuilt_shown), needed)
     body = Rows(columns=tuple(headers), rows=tuple(games), total_before_window=total, summary=averages)
     return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts=LogFacts())
 
@@ -282,7 +305,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
         for note in box_score_notes_read(con, player, each.span, each.narrowed, career_note=False, rebuilt=each.rebuilt, rebuilt_shown=rebuilt_shown):
             if note not in seen:
                 seen.append(note)
-    notes += seen
+    notes += _log_blanks_said(seen, needed)
     body = Rows(columns=tuple(headers), rows=tuple(games), summary=averages, by_season_type=counts)
     return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts=LogFacts(mixed=True))
 
@@ -324,6 +347,8 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unansw
     # measure the question's words moved in instead is the compiler's point.
     if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.measure)]):
         return None
+    if full_line_asked(spelled(scope.measure)):
+        extras = (*extras, *_LOG_FULL_LINE)
     headers, needed = _player_log_columns(extras)
     limit = _log_limit(scope.window)
     # The log's point, with the columns it shows as the measures: the rebuilt

@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from routed import said
 
-from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_player_log, say_team_log
+from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_career_implied, say_player_log, say_team_log
 from association.query.notes import Note, collect
 from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
@@ -63,10 +63,35 @@ def test_a_log_with_no_rows_says_why() -> None:
     assert spoken.text == "No regular season game on 2026-04-11 found for Tyrese Maxey." and spoken.data["games"] == [] and spoken.data["message"] == spoken.text
 
 
+def test_the_career_the_words_imply_is_said_by_whose_it_is() -> None:
+    """Decision D13's default, said with the wording that reaches one
+    season: a player's career, two players' careers, or every season on
+    record for a team or the league."""
+    assert say_career_implied("player", 2026) == '(No season was named, so this reads his career - add one, "in 2026", to ask about that season alone.)'
+    assert "reads their careers" in say_career_implied("pair", 2026)
+    assert "reads every season on record" in say_career_implied("team", 2026)
+
+
 def test_each_note_kind_has_one_phrase() -> None:
     assert note_phrase(Note("window_short", {"found": 3, "asked": 5, "season_type": [2, 3]}), narrowing=" at home") == "Only 3 games at home found across the regular season and postseason."
     assert note_phrase(Note("window_short", {"found": 1, "asked": 5, "season": None, "season_type": 2})) == "Only 1 game in his box scores."
     assert note_phrase(Note("definition", {"term": "without", "names": ["Joel Embiid", "Paul George"]})).startswith("Without Joel Embiid and Paul George means games neither of them played")
+    # D15: over one season no tenure bounds the absence, and the sentences say so.
+    assert note_phrase(Note("definition", {"term": "without", "names": ["Dejounte Murray"], "what": "season"})).startswith(
+        "Without Dejounte Murray means games he did not play for his team, traded or injured alike - "
+    )
+    assert note_phrase(Note("definition", {"term": "without", "names": ["Dejounte Murray"]})).startswith("Without Dejounte Murray means games he did not play while on the same team - ")
+    assert (
+        note_phrase(Note("definition", {"term": "without", "names": ["LeBron James"], "what": "elsewhere", "whose": "Anthony Davis"}))
+        == "LeBron James played no game for Anthony Davis's team in the season asked, so every game is without him."
+    )
+    assert (
+        note_phrase(
+            Note("definition", {"term": "tenure_counted", "names": ["Dejounte Murray"], "stints": [], "what": "season"}),
+            about="every game Jeremiah Fears's team played in the 2026 regular season while he was on it",
+        )
+        == "Counted: every game Jeremiah Fears's team played in the 2026 regular season while he was on it; out is a game Dejounte Murray did not play for his team, traded or injured alike."
+    )
     assert note_phrase(Note("games_unseen", {"games": 2, "why": "empty_box_score"})) == "Not counted: 2 games in this span whose box score lists him with no minutes and no stats."
     # #282: the comparison's missing-season note says "have" of two names, joined by "and".
     assert note_phrase(Note("no_data_for", {"names": ["Joel Embiid"], "period": "2027 regular season"})) == "(Joel Embiid has no 2027 regular season numbers in the warehouse.)"
@@ -525,6 +550,24 @@ def test_every_key_the_grammar_names_is_said_in_words() -> None:
     assert all(phrase.startswith(("a ", "an ", "two ")) for phrase in phrases.values()), phrases
     assert nothing_answers("no team metric for stat 'rebounds allowed'", TEAM_RANKING) == "Nothing here answers this question as a ranking of teams: no team metric for stat 'rebounds allowed'."
     assert nothing_answers("the normalizer returned no usable reply") == "Nothing here answers this question: the normalizer returned no usable reply."
+
+
+def test_every_decline_reason_is_given_somewhere() -> None:
+    """A reason no row, cell or reader gives is dead weight a dead-code gate
+    cannot see (vulture reads no enum member): ``MEETINGS_TALLY_BOTH`` and
+    ``MEETINGS_TALLY_WINDOW`` outlived the declines they named (decision D14,
+    #446) until this. Every member is named in the package's source beside
+    its definition and its one phrase."""
+    import re
+    from pathlib import Path
+
+    from association.query.reading import DeclineReason
+
+    package = Path(__file__).resolve().parents[2] / "src" / "association"
+    source = "\n".join(path.read_text() for path in package.rglob("*.py"))
+    for member in DeclineReason:
+        given = re.findall(rf"DeclineReason\.{member.name}\b(?!:)", source)
+        assert given, f"DeclineReason.{member.name} is given by nothing: delete it and its phrase"
 
 
 def test_every_decline_reason_is_said_by_one_phrase_and_a_row_holds_no_sentence() -> None:
