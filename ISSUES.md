@@ -171,6 +171,22 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #470
 
+### A player's or a team's "last N games" against an opponent, at a venue or in a period reads the regular season only: "kyrie irving last 5 games vs thunder" leaves the playoff games out
+- **Found:** 2026-10-16, Jeff's reading of the feed sample's FS172, then measured by the lead over every recorded "last N" wording (352 in the feed and the corpus); decision D14.
+- **Evidence:** a bare "last N games" reads both season types (52 player and 14 team wordings: "Aaron Gordon, last 5 games (2 regular season and 3 postseason)"); with an opponent, a venue or both the span resolves through the career path, regular season only (74 player wordings: "Agbaji last 10 games vs denver" answers "last 10 games of his career (2023-2026 regular seasons)"; 10 team wordings: "spurs record vs thunder last 16 games" answers "their last 16 of 122 meetings ... regular seasons", with the 2026 West finals left out); with a named season the playoffs of that season are left out (12); a quarter or half over the last N games is capped at the current season (13: "derozan 2nd half stats vs lac by game last 10 games" shows the 4 games of 2026).
+- **User sees:** a fluent "last N" that is not the last N games played - the newest playoff games silently missing.
+- **Next step:** one rule in the span resolution: a games window (`reading.Window` with a count of games) spans both season types whatever else is set (`point.span_under`, `span.read_span`'s window rule, the period reads' season cap), the answer's heading saying the split as the bare case does; proven on the 109 wordings above moving to both types and the sample's FS172 re-graded.
+- **Priority:** P1 - a fluent wrong answer on about 100 recorded wordings.
+- **Source:** ours.
+
+### A window on a half's line is dropped silently: "cade cunningham 1st half stats in his last 4 games" answers all 64 games
+- **Found:** 2026-10-16, the lead, enumerating the recorded "last N" wordings.
+- **Evidence:** the reading holds `window.count=4, order=recent`; the answer is "Cade Cunningham scored 758 points in the 1st half over 64 games of the 2026 regular season" - the window typed and not applied. Sibling wordings honor it ("Ben simmons in 1st quarter last 5 games" answers 5 games), so the drop is in the half's read or in "in his last 4 games" after a period phrase. `tests/grammar_drops.py` and the research harness hold no such drop, so the window is read and lost after the parser.
+- **User sees:** the season's half-game line where the last four games' was asked, fluently.
+- **Next step:** reproduce through `Agent.ask` with the recorded reply, find where `player_periods/rows/date` loses the window (the period reader's `relation_window` or the planner's cells), add the wording as a parser and reader case watched to fail.
+- **Priority:** P1 - a fluent wrong answer, a silent narrowing of the window kind the grammar-drops rule exists to catch.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A team's games or count over a line, given up or its own, are named from the words only after a window: "celtics games where they gave up 120 points" is refused for an unread number, and "celtics game log when they score 120+ points" answers its record over the line
