@@ -22,7 +22,7 @@ from pathlib import Path
 
 import duckdb
 
-from association.nba.season import calendar_season, season_on_record
+from association.nba.season import calendar_season, current_season, season_on_record
 from association.query.answer import AnswerContext
 from association.query.coverage import check_coverage, coverage_caveat
 from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDeclined, key_path
@@ -30,7 +30,7 @@ from association.query.result import Refusal
 
 from .answer import Answer, AnsweredBy, Timing
 from .compose.plan import Verdict, plan_point, planned_shape, refusal_result
-from .compose.say import nothing_answers, say, say_left_out
+from .compose.say import nothing_answers, say, say_career_implied, say_left_out
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -62,6 +62,23 @@ def _noted(said: Answer, note: str) -> Answer:
     if isinstance(notes, list):
         data["notes"] = [*notes, note]
     return replace(said, text=f"{said.text}{chr(10) if chr(10) in said.text else ' '}{note}", data=data)
+
+
+def _career_implied(reading: Reading, composed: Answer) -> Answer:
+    """``composed`` with the career the parser read where no season was
+    named (decision D13, its ``span`` decision) said as the default it is,
+    with the wording that asks about this season instead - last, after the
+    coverage caveat and the name readings. The parser records the decision;
+    the answer has to state it (AGENTS.md, "A reasonable default beats a
+    question": visible, and correctable)."""
+    if not any(each.stage == "parser" and each.field == "span" and each.after == "career" for each in reading.decisions):
+        return composed
+    if "message" in (composed.data or {}):
+        # A refusal or a question back (the sayer's `message`, `say_refusal`'s
+        # and `say_clarify`'s data): nothing was read over the career, and a
+        # cause such as an unread number is not corrected by naming a season.
+        return composed
+    return _noted(composed, say_career_implied(reading.who.kind, current_season()))
 
 
 def refusal_text(why: str, asked: PointShape | None = None) -> str:
@@ -491,6 +508,7 @@ class Agent:
         if note:
             composed = _noted(composed, note)
         composed = self._unmatched_fingerprint(reading, composed)
+        composed = _career_implied(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if composed.data is not None and key in composed.data}
         history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(shape)} point={point}")
         return composed

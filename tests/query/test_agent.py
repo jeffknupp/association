@@ -453,6 +453,33 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     assert answer.data == {"name_readings": [reading], "notes": [reading]}
 
 
+def test_a_career_the_words_imply_is_said_with_the_wording_that_asks_one_season(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Decision D13 reads the career where the words imply one; the answer
+    says the default it took and the wording that reaches the season instead
+    (AGENTS.md, "A reasonable default beats a question": visible, and
+    correctable) - and says nothing of it beside a refusal, which read no
+    career."""
+    from association.query.answer import Answer
+    from association.query.decisions import Decision
+
+    said: dict[str, Any] = {"text": "Joel Embiid has scored 30 or more in 150 games over his career.", "data": {}}
+
+    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Answer:
+        return Answer(data=dict(said["data"]), text=str(said["text"]))
+
+    monkeypatch.setattr("association.query.compose.answer", composed)
+    implied = (Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"),)
+    route = Routed(PLAYER_LINE, Reading(who=Who(kind="player", players=("Joel Embiid",)), span=Span(career=True)), decisions=implied)
+    agent = _agent_with_players(tmp_path, "Joel Embiid")
+    answer = ask_routed(agent, "joel embiid 30 point games", route)
+    sentence = '(No season was named, so this reads his career - add one, "in 2026", to ask about that season alone.)'
+    assert answer.text == f"Joel Embiid has scored 30 or more in 150 games over his career. {sentence}"
+    assert [each.kind for each in answer.decisions if each.kind] == ["career_implied"]
+    said.update(text="No games found for Joel Embiid.", data={"message": "No games found for Joel Embiid."})
+    refused = ask_routed(agent, "joel embiid 30 point games", route)
+    assert refused.text == "No games found for Joel Embiid."
+
+
 def test_a_name_reading_beneath_a_table_is_a_line_of_its_own(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Appended to an answer of more than one line - a log, a line with its
     full box line beneath - the reading is a line of its own, never run on

@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from routed import said
 
-from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_player_log, say_team_log
+from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_career_implied, say_player_log, say_team_log
 from association.query.notes import Note, collect
 from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
@@ -61,6 +61,15 @@ def test_a_log_with_no_rows_says_why() -> None:
     empty = Refusal(kind="no_game_on_date", facts={"player": "Tyrese Maxey", "kind": "regular season", "date": "2026-04-11", "narrowing": ""})
     spoken = said(say(_player_result(parts=(Part(body=Rows()),), notes=(), empty=empty)))
     assert spoken.text == "No regular season game on 2026-04-11 found for Tyrese Maxey." and spoken.data["games"] == [] and spoken.data["message"] == spoken.text
+
+
+def test_the_career_the_words_imply_is_said_by_whose_it_is() -> None:
+    """Decision D13's default, said with the wording that reaches one
+    season: a player's career, two players' careers, or every season on
+    record for a team or the league."""
+    assert say_career_implied("player", 2026) == '(No season was named, so this reads his career - add one, "in 2026", to ask about that season alone.)'
+    assert "reads their careers" in say_career_implied("pair", 2026)
+    assert "reads every season on record" in say_career_implied("team", 2026)
 
 
 def test_each_note_kind_has_one_phrase() -> None:

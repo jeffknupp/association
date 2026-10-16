@@ -442,6 +442,19 @@ def _say_record_note(kind: str, facts: dict[str, Any]) -> str:
     return " - the first the warehouse holds every game of"
 
 
+def say_career_implied(kind: str, season: int) -> str:
+    """The career a question naming no season was read over because its
+    words imply one (decision D13), said with the wording that asks about
+    one season instead: whose career by the subject's ``kind`` (a player's,
+    two players', or every season on record for anything else), and
+    ``season`` the season the suggested wording names.
+
+    .. versionadded:: 7.0.0
+    """
+    whose = {"player": "his career", "pair": "their careers"}.get(kind, "every season on record")
+    return decision_phrase(Decided(kind="career_implied", field="season", chose="career", why="implied", facts={"season": season}), whose=whose)
+
+
 def decision_phrase(each: Decided, **said_with: Any) -> str:
     """ONE phrase per decision kind (:data:`~association.query.notes.DECISION_KINDS`),
     recorded through :func:`~association.query.notes.decided` as it is
@@ -459,6 +472,11 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
         text = f"{each.facts['total']} players qualified; the top {each.chose} are shown."
     elif each.kind == "season_default":
         text = season_phrase(int(each.chose), int(each.facts["season_type"]))
+    elif each.kind == "career_implied":
+        # The career D13 reads where the words imply one: the default said,
+        # with the wording that reaches the season instead (AGENTS.md, "A
+        # reasonable default beats a question").
+        text = f'(No season was named, so this reads {said_with["whose"]} - add one, "in {each.facts["season"]}", to ask about that season alone.)'
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "also_matched":
