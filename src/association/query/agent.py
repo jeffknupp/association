@@ -53,12 +53,15 @@ def _noted(said: Answer, note: str) -> Answer:
     """``said`` with a sentence appended to its text, and recorded on its
     ``data`` too, so a caller rendering from ``data`` (the web page) does not
     lose what the text-only reader is told: which name a default chose, how
-    much of a season the source holds. A new Answer: the said one is frozen."""
+    much of a season the source holds. A new Answer: the said one is frozen.
+    Beneath an answer of more than one line (a table, a log, a list), on a
+    line of its own: run on, it read as the table's last row ("... 83.0
+    (132-159) ('carmelo anthoyn' matches no player exactly ...)")."""
     data = dict(said.data or {})
     notes = data.setdefault("notes", [])
     if isinstance(notes, list):
         data["notes"] = [*notes, note]
-    return replace(said, text=f"{said.text} {note}", data=data)
+    return replace(said, text=f"{said.text}{chr(10) if chr(10) in said.text else ' '}{note}", data=data)
 
 
 def refusal_text(why: str, asked: PointShape | None = None) -> str:

@@ -453,6 +453,29 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     assert answer.data == {"name_readings": [reading], "notes": [reading]}
 
 
+def test_a_name_reading_beneath_a_table_is_a_line_of_its_own(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Appended to an answer of more than one line - a log, a line with its
+    full box line beneath - the reading is a line of its own, never run on
+    after the table's last row as though it were a cell of it."""
+    from association.query.answer import Answer
+    from association.query.entities import Entity, _note_name_reading
+
+    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Answer:
+        _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
+        return Answer(data={}, text="Tyrese Maxey, last 2 games:\n  2026-04-12  31\n  2026-04-10  24")
+
+    monkeypatch.setattr("association.query.compose.answer", composed_with_reading)
+
+    answer = ask_routed(
+        _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey"),
+        "maxey last 2 games",
+        Routed(PLAYER_LINE, Reading(who=Who(kind="player", players=("maxey",)), span=Span(since=2024))),
+    )
+
+    reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
+    assert answer.text == f"Tyrese Maxey, last 2 games:\n  2026-04-12  31\n  2026-04-10  24\n{reading}"
+
+
 def test_words_that_ask_for_no_shape_are_refused_saying_so(tmp_path: Path) -> None:
     """Words that name no shape a reader reads are refused saying so, in
     seconds."""
