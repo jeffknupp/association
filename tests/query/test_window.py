@@ -120,6 +120,9 @@ def test_the_words_read_as_one_window(question: str, shape: PointShape | None, e
         ("anthony davis vs orlando last 5 match", Window(order="recent", count=5)),
         ("last 5 matchs shai gilgeous alexander", Window(order="recent", count=5)),  # codespell:ignore matchs - the feed's question as typed
         ("suns vs jazz last 10 match ups", Window(order="recent", count=10)),
+        # ISSUES.md #446: two teams' "meetings" are their games too.
+        ("celtics vs heat last 4 meetings", Window(order="recent", count=4)),
+        ("last 3 meetings between knicks and nets", Window(order="recent", count=3)),
         ("tatum first 3 gmaes of the season", Window(order="first", count=3)),
         # A word of its own one edit from "games" is not one: a name stands there.
         ("lebron last 10 james harden games", Window()),

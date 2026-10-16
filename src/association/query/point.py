@@ -2321,27 +2321,72 @@ def _window_order(asked: PointShape | None, read: WindowCandidates, order: str |
 #: The career a key implies, by the words' rule it reads under
 #: (``span.SpanCandidates.implied``): a pair's record, a log's meetings with
 #: an opponent, a count asked of one player.
-_SPAN_IMPLIED: dict[PointShape, str] = {PLAYER_MEETINGS: "meetings", PLAYER_LOG: "log", GAMES_COUNTED: "count"}
+#: A player's games, each key a reader over them that reads every season
+#: on record: what an implied career stands under where the words name the
+#: player (decision D13).
+_PLAYER_GAMES_ASKS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_LINE, PLAYER_SPLITS, LINE_RECORD, GAMES_COUNTED, GAME_HIGHS, LINE_RUNS, PLAYER_MEETINGS})
+#: Each implied career (:data:`~association.query.span.IMPLIED_CAREERS`) by
+#: the keys it stands under: the words that imply it read a career only
+#: where the key is a read over games the career holds.
+_SPAN_IMPLIED: dict[str, frozenset[PointShape]] = {
+    "meetings": frozenset({PLAYER_MEETINGS}),
+    "log": frozenset({PLAYER_LOG}),
+    "count": frozenset({GAMES_COUNTED}),
+    "versus": _PLAYER_GAMES_ASKS,
+    "pair": frozenset({PLAYER_MEETINGS}),
+    "with": _PLAYER_GAMES_ASKS | {PRESENCE_SPLIT, TEAM_RECORD},
+    "annual": _PLAYER_GAMES_ASKS | {TEAM_RECORD},
+    "events": frozenset({GAMES_COUNTED}),
+    "high": frozenset({GAME_HIGHS, TEAM_GAME_HIGHS}),
+    "inactive": _PLAYER_GAMES_ASKS,
+    "minimum": frozenset({PLAYER_RANKING}),
+    "playoff_window": frozenset({PLAYER_LOG}),
+    "in_a_game": frozenset({GAME_HIGHS, TEAM_GAME_HIGHS, PLAYER_RANKING, PLAYER_LINE}),
+}
+
+
+#: The relations a stretch of the newest N games is read over in both
+#: season types (decision D14, Jeff's: the last N games are the last N
+#: played, whatever else is set): a player's and a team's games - not a
+#: season line's seasons, the declared relations' single game (a shot
+#: chart's or a fingerprint's "last game", which the words name the type
+#: of where they mean the postseason), and not yet a quarter's or a half's:
+#: the period reads label and caveat one season's games
+#: (``compose.periods``), and both types there step aside to a sentence
+#: that finds none where the season's own read falls back to the last
+#: season he played.
+_STRETCH_RELATIONS: frozenset[str] = frozenset({"player_games", "team_games"})
+#: The keys on those relations whose readers take no window at all: both
+#: types would only add a second clause to the decline the window gets
+#: (a team's with/without split).
+_STRETCH_UNREAD: frozenset[PointShape] = frozenset({PRESENCE_SPLIT})
 
 
 def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
     """The span under the key: a relative "past N seasons" a range of
     seasons, except where the key counts seasons (a history's window counts
-    them, :data:`LIMIT_COUNTS_SEASONS`); the career a pair's record, a log's
-    meetings with an opponent and a count asked of one player imply, each
-    under its own key; and both season types on a log of the newest N
-    games where no career or range stands.
+    them, :data:`LIMIT_COUNTS_SEASONS`); the careers the words imply where
+    no season is named (:data:`~association.query.span.IMPLIED_CAREERS`,
+    decision D13), each under the keys that read over the games a career
+    holds (:data:`_SPAN_IMPLIED`), said on the :class:`SpanRead`; and both
+    season types on a stretch of the newest N games, whatever else is set
+    (decision D14, :data:`_STRETCH_RELATIONS`).
 
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 7.0.0
+       Reads the careers of decision D13, and says which stood
+       (:attr:`SpanRead.implied <association.query.span.SpanRead.implied>`);
+       both season types on any stretch of games (decision D14).
     """
     asked = _ranked_as(asked)
     since = read.since if read.relative is None or asked in LIMIT_COUNTS_SEASONS else read.relative
     season, career = read.season, read.career
-    implied = _SPAN_IMPLIED.get(asked) if asked is not None else None
-    if implied is not None and implied in read.implied:
-        career, season = True, None
-    both = read.both or (asked == PLAYER_LOG and read.both_on_log and not career and since is None)
-    return SpanRead(Span(season=season, season_type=read.season_type, both=both, career=career, since=since, until=read.until), read.claims)
+    implied = tuple(sorted(rule for rule in read.implied if asked is not None and asked in _SPAN_IMPLIED[rule])) if not career and season is None else ()
+    if implied:
+        career = True
+    both = read.both or (asked is not None and asked.relation in _STRETCH_RELATIONS and asked not in _STRETCH_UNREAD and read.both_on_log)
+    return SpanRead(Span(season=season, season_type=read.season_type, both=both, career=career, since=since, until=read.until), read.claims, implied)
 
 
 def measure_under(asked: PointShape | None, words: MeasureWords, context: MeasureContext) -> MeasureRead:

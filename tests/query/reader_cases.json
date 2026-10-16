@@ -57,7 +57,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -106,6 +106,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/scalar/count",
      "reason": "the words '30 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -179,7 +186,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -6037,6 +6044,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words 'How many times' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -6206,7 +6220,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -6268,6 +6282,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the grammar's rules settle it from the question's words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -6358,7 +6379,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -6437,7 +6458,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -6497,6 +6518,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the grammar's rules settle it from the question's words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -6587,7 +6615,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -11663,7 +11691,7 @@
     "season": null,
     "season_type": 3,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -11716,6 +11744,13 @@
       "New York Knicks"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -11775,7 +11810,7 @@
      "season": null,
      "season_type": 3,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -11833,7 +11868,7 @@
     "season": null,
     "season_type": 3,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -11886,6 +11921,13 @@
       "New York Knicks"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -11945,7 +11987,7 @@
      "season": null,
      "season_type": 3,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -12003,7 +12045,7 @@
     "season": null,
     "season_type": 3,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -12056,6 +12098,13 @@
       "New York Knicks"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -12115,7 +12164,7 @@
      "season": null,
      "season_type": 3,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -12519,7 +12568,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -12580,6 +12629,13 @@
      "before": null,
      "after": "Denver Nuggets",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -12652,7 +12708,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -12681,7 +12737,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -24053,7 +24109,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -24113,6 +24169,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words '30 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -24211,7 +24274,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -32134,6 +32197,13 @@
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
      "reason": "the words 'in the last two years' name player_seasons/split/season, and the grammar's rules declined it"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -32361,6 +32431,13 @@
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
      "reason": "the words 'in the last 5 years' name player_seasons/split/season, and the grammar's rules declined it"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -34476,7 +34553,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -34528,6 +34605,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/rows/measure",
      "reason": "the words 'in a game' name player_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -34644,7 +34728,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -35545,7 +35629,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -35594,6 +35678,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/scalar/count",
      "reason": "the words 'games with less than 20 points' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -35678,7 +35769,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -35766,7 +35857,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -35817,6 +35908,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/scalar/count",
      "reason": "the words 'games with fewer than 5 turnovers' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -35901,7 +35999,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -36490,7 +36588,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -36550,6 +36648,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words 'games with 30 minutes' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -36634,7 +36739,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -41241,7 +41346,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -41298,6 +41403,13 @@
       "Anthony Davis"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -41366,7 +41478,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -41406,7 +41518,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42059,7 +42171,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -42114,6 +42226,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -42175,7 +42294,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42216,7 +42335,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42286,7 +42405,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -42341,6 +42460,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -42402,7 +42528,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42443,7 +42569,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42513,7 +42639,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -42569,6 +42695,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -42630,7 +42763,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42671,7 +42804,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42740,7 +42873,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -42795,6 +42928,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -42856,7 +42996,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42896,7 +43036,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -42965,7 +43105,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -43020,6 +43160,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -43081,7 +43228,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43121,7 +43268,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43190,7 +43337,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -43245,6 +43392,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -43306,7 +43460,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43346,7 +43500,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43415,7 +43569,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -43470,6 +43624,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -43531,7 +43692,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43571,7 +43732,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43640,7 +43801,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -43695,6 +43856,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -43756,7 +43924,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43796,7 +43964,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -43865,7 +44033,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -43920,6 +44088,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -43981,7 +44156,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -44021,7 +44196,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -44090,7 +44265,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -44147,6 +44322,13 @@
       "Anthony Davis"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -44215,7 +44397,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -44255,7 +44437,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -44324,7 +44506,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -44379,6 +44561,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -44547,7 +44736,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -44617,7 +44806,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -44672,6 +44861,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -44733,7 +44929,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -44774,7 +44970,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -52495,6 +52691,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the words 'How many 20+ point 5+ assist games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -52740,6 +52943,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words 'How many games did luka have with 20+ points and 5+' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -53732,6 +53942,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words 'how many times' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -54586,7 +54803,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -54637,6 +54854,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/scalar/count",
      "reason": "the words '50 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -54710,7 +54934,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -55078,6 +55302,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the words '30 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -55324,6 +55555,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/scalar/count",
      "reason": "the words 'how many games with 5+' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -59463,7 +59701,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -59525,6 +59763,13 @@
      "before": null,
      "after": "Portland Trail Blazers",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -59586,7 +59831,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -59615,7 +59860,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -59674,7 +59919,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -59734,6 +59979,13 @@
      "before": null,
      "after": "Detroit Pistons",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -59795,7 +60047,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -59824,7 +60076,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -59883,7 +60135,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -59943,6 +60195,13 @@
      "before": null,
      "after": "Washington Wizards",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -60016,7 +60275,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60045,7 +60304,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60104,7 +60363,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -60164,6 +60423,13 @@
      "before": null,
      "after": "Milwaukee Bucks",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -60237,7 +60503,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60266,7 +60532,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60325,7 +60591,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -60387,6 +60653,13 @@
      "before": null,
      "after": "Oklahoma City Thunder",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -60460,7 +60733,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60489,7 +60762,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60555,7 +60828,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -60628,6 +60901,13 @@
       "Joel Embiid"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -60701,7 +60981,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60737,7 +61017,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60796,7 +61076,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -60856,6 +61136,13 @@
      "before": null,
      "after": "Detroit Pistons",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -60917,7 +61204,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -60946,7 +61233,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -61005,7 +61292,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -61076,6 +61363,13 @@
      "before": null,
      "after": "Milwaukee Bucks",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -61137,7 +61431,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -61166,7 +61460,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -61225,7 +61519,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -61285,6 +61579,13 @@
      "before": null,
      "after": "Orlando Magic",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -61346,7 +61647,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -61375,7 +61676,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -61434,7 +61735,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -61494,6 +61795,13 @@
      "before": null,
      "after": "Toronto Raptors",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -61555,7 +61863,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -61584,7 +61892,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -61642,7 +61950,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -61706,6 +62014,13 @@
      "before": null,
      "after": "Golden State Warriors",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -61778,7 +62093,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -61807,7 +62122,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -63320,7 +63635,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -63381,6 +63696,13 @@
      "before": null,
      "after": "Detroit Pistons",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -63453,7 +63775,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -63482,7 +63804,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -65869,7 +66191,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -65930,6 +66252,13 @@
      "before": null,
      "after": "Denver Nuggets",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -66002,7 +66331,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -66031,7 +66360,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -66301,7 +66630,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -66359,6 +66688,13 @@
       "Kawhi Leonard"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -66385,7 +66721,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -66415,7 +66751,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -66477,7 +66813,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -66546,6 +66882,13 @@
       "Orlando Magic"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -66572,7 +66915,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -66604,7 +66947,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -69051,6 +69394,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words 'how many times' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -70565,6 +70915,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words 'how many times' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -70933,7 +71290,7 @@
     "season": null,
     "season_type": 2,
     "both": true,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -70993,6 +71350,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/scalar/count",
      "reason": "the words 'games with 2 threes' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -71083,7 +71447,7 @@
      "season": null,
      "season_type": 2,
      "both": true,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -72631,7 +72995,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -72682,6 +73046,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/rows/measure",
      "reason": "the words 'in a single game' name player_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -72786,7 +73157,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -80974,7 +81345,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -81034,6 +81405,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the words '42 point game' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -81124,7 +81502,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -82952,7 +83330,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -83035,6 +83413,13 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -83118,7 +83503,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -83200,7 +83585,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -83281,6 +83666,13 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -83364,7 +83756,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -83446,7 +83838,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -83528,6 +83920,13 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -83611,7 +84010,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -83693,7 +84092,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -83774,6 +84173,13 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -83857,7 +84263,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -90666,7 +91072,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -90748,6 +91154,13 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -90831,7 +91244,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -90964,6 +91377,13 @@
      "before": null,
      "after": "Philadelphia 76ers",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -91393,6 +91813,7 @@
    },
    "minimum": null,
    "unread": [
+    "record",
     "regular",
     "season"
    ],
@@ -91454,6 +91875,13 @@
       "Kevin Durant"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -91767,7 +92195,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -91840,6 +92268,13 @@
       "LeBron James"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -91913,7 +92348,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -91949,7 +92384,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -92445,7 +92880,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -92494,6 +92929,13 @@
      "before": null,
      "after": "everyone",
      "reason": ""
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -92562,7 +93004,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -92621,7 +93063,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -92671,6 +93113,13 @@
      "before": null,
      "after": "everyone",
      "reason": ""
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": null,
@@ -93178,6 +93627,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the words '40 point playoff games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -93409,6 +93865,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the words '40 point home games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -94417,7 +94880,7 @@
    "span": {
     "season": null,
     "season_type": 2,
-    "both": false,
+    "both": true,
     "career": true,
     "since": null,
     "until": null
@@ -94478,6 +94941,13 @@
      "before": null,
      "after": "sours",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -94550,7 +95020,7 @@
     "subject_span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -94579,7 +95049,7 @@
     "span": {
      "season": null,
      "season_type": 2,
-     "both": false,
+     "both": true,
      "career": true,
      "since": null,
      "until": null
@@ -95039,7 +95509,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -95094,6 +95564,13 @@
       "Spencer Hawes"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -95120,7 +95597,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -95150,7 +95627,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -95217,7 +95694,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -95272,6 +95749,13 @@
       "Philadelphia 76ers"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -95378,7 +95862,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -96100,7 +96584,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -96160,6 +96644,13 @@
      "before": "team_seasons/scalar/line",
      "after": "team_games/rows/measure",
      "reason": "the words 'highest scoring game' name team_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -96230,7 +96721,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -96698,7 +97189,7 @@
     "season": null,
     "season_type": 3,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -96747,6 +97238,13 @@
      "before": "player_seasons/ranking/player",
      "after": "player_games/scalar/count",
      "reason": "the words 'most playoff games with 2+ block and 2+' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -96831,7 +97329,7 @@
      "season": null,
      "season_type": 3,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -97182,6 +97680,13 @@
      "before": "team_games/split/presence",
      "after": "player_games/scalar/count",
      "reason": "the words '30 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -97633,18 +98138,18 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "own_team",
      "before": null,
      "after": "Los Angeles Lakers",
      "reason": "from the question; the model left it out"
-    },
-    {
-     "stage": "subject",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "a team named with no season is a tenure, not \"now\""
     }
    ],
    "point": {
@@ -99498,7 +100003,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -99560,6 +100065,13 @@
      "before": null,
      "after": "Brooklyn Nets",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -99621,7 +100133,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -99650,7 +100162,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -100186,18 +100698,18 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "own_team",
      "before": null,
      "after": "Chicago Bulls",
      "reason": "from the question; the model left it out"
-    },
-    {
-     "stage": "subject",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "a team named with no season is a tenure, not \"now\""
     }
    ],
    "point": {
@@ -100344,7 +100856,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -100404,6 +100916,13 @@
      "before": null,
      "after": "Golden State Warriors",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -100465,7 +100984,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -100494,7 +101013,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -100783,7 +101302,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -100843,6 +101362,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/rows/measure",
      "reason": "the words 'best scoring game' name player_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -100949,7 +101475,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -101016,7 +101542,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -101083,6 +101609,13 @@
      "before": "player_games/rows/date",
      "after": "player_games/rows/measure",
      "reason": "the words 'highest scoring games' name player_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -101189,7 +101722,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -101327,18 +101860,18 @@
      "reason": "the words 'highest scoring game' name player_games/rows/measure"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "own_team",
      "before": null,
      "after": "Cleveland Cavaliers",
      "reason": "from the question; the model left it out"
-    },
-    {
-     "stage": "subject",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "a team named with no season is a tenure, not \"now\""
     }
    ],
    "point": {
@@ -102228,7 +102761,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -102279,6 +102812,13 @@
      "before": "team_seasons/ranking/team",
      "after": "team_games/rows/measure",
      "reason": "the words 'in a single game' name team_games/rows/measure"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -102347,7 +102887,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -103101,9 +103641,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "doesnt"
-   ],
+   "unread": [],
    "subject": {
     "kind": "player",
     "players": [
@@ -103316,7 +103854,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -103389,6 +103927,13 @@
       "Joel Embiid"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -103475,7 +104020,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -103511,7 +104056,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -103600,7 +104145,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -103680,6 +104225,13 @@
      "before": "team_games/split/presence",
      "after": "player_games/split/line",
      "reason": "the grammar's rules settle it from the question's words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -103782,7 +104334,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -103871,7 +104423,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -103952,6 +104504,13 @@
      "before": "team_games/split/presence",
      "after": "player_games/split/line",
      "reason": "the grammar's rules settle it from the question's words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -104054,7 +104613,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -105987,6 +106546,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the words '40 point finals games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -107155,7 +107721,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -107217,6 +107783,13 @@
      "before": null,
      "after": "Minnesota Timberwolves",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -107374,7 +107947,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -108555,18 +109128,18 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "own_team",
      "before": null,
      "after": "Milwaukee Bucks",
      "reason": "from the question; the model left it out"
-    },
-    {
-     "stage": "subject",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "a team named with no season is a tenure, not \"now\""
     }
    ],
    "point": {
@@ -108784,18 +109357,18 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "own_team",
      "before": null,
      "after": "Brooklyn Nets",
      "reason": "from the question; the model left it out"
-    },
-    {
-     "stage": "subject",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "a team named with no season is a tenure, not \"now\""
     }
    ],
    "point": {
@@ -109013,18 +109586,18 @@
      "reason": "from the question's own words"
     },
     {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
      "stage": "subject",
      "field": "own_team",
      "before": null,
      "after": "New York Knicks",
      "reason": "from the question; the model left it out"
-    },
-    {
-     "stage": "subject",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "a team named with no season is a tenure, not \"now\""
     }
    ],
    "point": {
@@ -109435,7 +110008,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -109509,6 +110082,13 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -109575,7 +110155,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -110564,7 +111144,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -110617,6 +111197,13 @@
       "Philadelphia 76ers"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -110723,7 +111310,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -111469,21 +112056,263 @@
   }
  },
  {
-  "name": "a_count_of_games_after_a_halfs_stats_is_the_halfs_window",
-  "why": "#473: \"in his last 4 games\" after a half's stats is the window of the half's games - four, the newest - which the period reader cut the figure to (it read the whole season beneath a log of the last four).",
-  "question": "cade cunningham 1st half stats in his last 4 games",
-  "names": [],
-  "stat": "",
+  "name": "d13_a_count_of_line_games_with_no_season_is_his_career",
+  "why": "Decision D13: a count of a player's games over a line, no season named and no 'how many', is his career ('stephen curry 50 point games': 16 on record, none in 2026).",
+  "question": "stephen curry 50 point games",
+  "names": [
+   "stephen curry"
+  ],
+  "stat": "points",
   "expected": {
    "asked": {
-    "relation": "player_periods",
-    "shape": "rows",
-    "by": "date"
+    "relation": "player_games",
+    "shape": "scalar",
+    "by": "count"
    },
    "who": {
     "kind": "player",
     "players": [
-     "Cade Cunningham"
+     "Stephen Curry"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 50,
+     "period": null,
+     "as_typed": "50 point",
+     "keyed": true,
+     "narrows": false,
+     "per": "game",
+     "whose": "own"
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Stephen Curry"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "asked_reason": "the words '50 point games' name player_games/scalar/count",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Stephen Curry']; model players the question supports ['stephen curry']; question spells 'stephen curry' as 'Stephen Curry'; the words '50 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Stephen Curry"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "player_games/scalar/count",
+     "reason": "the words '50 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "count",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [
+     [
+      "points",
+      ">=",
+      50
+     ]
+    ],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Stephen Curry"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 50,
+      "period": null,
+      "as_typed": "50 point",
+      "keyed": true,
+      "narrows": false,
+      "per": "game",
+      "whose": "own"
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "d13_two_players_versus_with_no_season_are_their_meetings",
+  "why": "Decision D13: two players set against each other with no season named are every meeting on record.",
+  "question": "KEVIN GARNETT VS TIM DUNCAN GAMES",
+  "names": [
+   "KEVIN GARNETT",
+   "TIM DUNCAN"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "comparison",
+    "by": "met"
+   },
+   "who": {
+    "kind": "pair",
+    "players": [
+     "Kevin Garnett",
+     "Tim Duncan"
     ],
     "teams": [],
     "position": null
@@ -111500,46 +112329,33 @@
    },
    "companions": [],
    "lines": [],
-   "measure": {
-    "key": null,
-    "as_typed": null,
-    "how": "per_game",
-    "unit": null,
-    "whose": "own",
-    "side": null,
-    "shot_value": null,
-    "category": null,
-    "won": null,
-    "beside": []
-   },
+   "measure": null,
    "span": {
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
    "split": null,
-   "period": {
-    "number": 1,
-    "half": true
-   },
+   "period": null,
    "window": {
-    "order": "recent",
-    "count": 4,
+    "order": null,
+    "count": null,
     "of": "games",
     "rank": null,
     "by": null
    },
    "minimum": null,
    "unread": [
-    "stats"
+    "games"
    ],
    "subject": {
-    "kind": "player",
+    "kind": "pair",
     "players": [
-     "Cade Cunningham"
+     "Kevin Garnett",
+     "Tim Duncan"
     ],
     "teams": [],
     "position": null,
@@ -111549,9 +112365,9 @@
     "invented": [],
     "named_season": null,
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_games",
+     "shape": "comparison",
+     "by": "met"
     },
     "asked_reason": null,
     "conditions": [],
@@ -111563,64 +112379,60 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "player",
-     "reason": "question names players ['Cade Cunningham']"
+     "after": "pair",
+     "reason": "question names players ['Kevin Garnett', 'Tim Duncan']; model players the question supports ['KEVIN GARNETT', 'TIM DUNCAN']; question spells 'KEVIN GARNETT' as 'Kevin Garnett'; question spells 'TIM DUNCAN' as 'Tim Duncan'"
     },
     {
      "stage": "subject",
      "field": "players",
      "before": null,
      "after": [
-      "Cade Cunningham"
+      "Kevin Garnett",
+      "Tim Duncan"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
     "asked": {
-     "relation": "player_periods",
-     "shape": "rows",
-     "by": "date"
+     "relation": "player_games",
+     "shape": "comparison",
+     "by": "met"
     },
     "relation": "player",
-    "on": "player_periods",
-    "shape": "rows",
-    "by": "date",
-    "measures": [
-     {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     }
-    ],
+    "on": "player_games",
+    "shape": "comparison",
+    "by": "met",
+    "measures": [],
     "group": "none",
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 4,
+    "limit": null,
     "minimum_games": null,
     "available": {
-     "table": "shot_chart"
+     "table": "player_box_stats"
     },
     "subject_span": {
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
     "who": {
-     "kind": "player",
+     "kind": "pair",
      "players": [
-      "Cade Cunningham"
+      "Kevin Garnett",
+      "Tim Duncan"
      ],
      "teams": [],
      "position": null
@@ -111637,10 +112449,564 @@
     },
     "companions": [],
     "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "d13_a_record_with_a_companion_is_their_history",
+  "why": "Decision D13: a record with a companion who played, no season named, is the games the two shared.",
+  "question": "ADs record with lebron",
+  "names": [
+   "AD",
+   "lebron"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "split",
+    "by": "splits"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Anthony Davis"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "LeBron James",
+     "side": "own",
+     "predicate": "played",
+     "line": null
+    }
+   ],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Anthony Davis"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "LeBron James"
+    ],
+    "invented": [
+     "AD"
+    ],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "splits"
+    },
+    "asked_reason": null,
+    "conditions": [
+     {
+      "player": "LeBron James",
+      "side": "own",
+      "predicate": "played",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Anthony Davis', 'LeBron James']; model players the question supports ['lebron']; question spells 'lebron' as 'LeBron James'; model names the question never held ['AD']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Anthony Davis"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "LeBron James"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    },
+    {
+     "stage": "subject",
+     "field": "player",
+     "before": "AD",
+     "after": "Anthony Davis",
+     "reason": "the question never names the model's player; it names this one"
+    },
+    {
+     "stage": "subject",
+     "field": "conditions",
+     "before": null,
+     "after": [
+      {
+       "player": "LeBron James",
+       "side": "own",
+       "predicate": "played"
+      }
+     ],
+     "reason": "the role the question gives each player named beside the subject"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "split",
+     "by": "splits"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "split",
+    "by": "splits",
+    "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "steals",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "blocks",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "turnovers",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "threePointFieldGoalsMade",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "fieldGoalPct",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "venue",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Anthony Davis"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "LeBron James",
+      "side": "own",
+      "predicate": "played",
+      "line": null
+     }
+    ],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "d13_a_teams_players_single_game_high_is_every_season",
+  "why": "Decision D13: the most in a single game by a team's players, no season named, is the best game on record.",
+  "question": "most points in a single game on the magic",
+  "names": [],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "ranking",
+    "by": "player"
+   },
+   "who": {
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "Orlando Magic"
+    ],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "single"
+   ],
+   "subject": {
+    "kind": "team_players",
+    "players": [],
+    "teams": [
+     "Orlando Magic"
+    ],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "team_players",
+     "reason": "team word 'Orlando Magic'"
+    },
+    {
+     "stage": "subject",
+     "field": "teams",
+     "before": null,
+     "after": [
+      "Orlando Magic"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "ranking",
+     "by": "player"
+    },
+    "relation": "everyone",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "measure",
+    "direction": "desc",
+    "limit": 3,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "team_players",
+     "players": [],
+     "teams": [
+      "Orlando Magic"
+     ],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
     "measure": {
-     "key": null,
-     "as_typed": null,
-     "how": "per_game",
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
      "unit": null,
      "whose": "own",
      "side": null,
@@ -111653,18 +113019,443 @@
      "season": null,
      "season_type": 2,
      "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "d13_one_season_asked_stays_off_the_career",
+  "why": "Decision D13's guard: 'best season' asks one season, which no career answers.",
+  "question": "michael jordan's best season",
+  "names": [
+   "michael jordan"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Michael Jordan"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "best",
+    "season"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Michael Jordan"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Michael Jordan']; model players the question supports ['michael jordan']; question spells 'michael jordan' as 'Michael Jordan'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Michael Jordan"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "relation": "player",
+    "on": "player_seasons",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Michael Jordan"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
      "career": false,
      "since": null,
      "until": null
     },
     "split": null,
-    "period": {
-     "number": 1,
-     "half": true
-    },
+    "period": null,
     "window": {
-     "order": "recent",
-     "count": 4,
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "d13_a_season_named_wins_over_the_implied_career",
+  "why": "Decision D13: a season the words name wins over the career they imply.",
+  "question": "stephen curry 50 point games in 2026",
+  "names": [
+   "stephen curry"
+  ],
+  "stat": "points",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "scalar",
+    "by": "count"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Stephen Curry"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "points",
+     "op": ">=",
+     "value": 50,
+     "period": null,
+     "as_typed": "50 point",
+     "keyed": true,
+     "narrows": false,
+     "per": "game",
+     "whose": "own"
+    }
+   ],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": 2026,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Stephen Curry"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": 2026,
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "asked_reason": "the words '50 point games' name player_games/scalar/count",
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Stephen Curry']; model players the question supports ['stephen curry']; question spells 'stephen curry' as 'Stephen Curry'; the words '50 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Stephen Curry"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "asked",
+     "before": "player_seasons/scalar/line",
+     "after": "player_games/scalar/count",
+     "reason": "the words '50 point games' name player_games/scalar/count"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_games",
+     "shape": "scalar",
+     "by": "count"
+    },
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "count",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [
+     [
+      "points",
+      ">=",
+      50
+     ]
+    ],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": {
+     "table": "player_box_stats"
+    },
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "Stephen Curry"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "points",
+      "op": ">=",
+      "value": 50,
+      "period": null,
+      "as_typed": "50 point",
+      "keyed": true,
+      "narrows": false,
+      "per": "game",
+      "whose": "own"
+     }
+    ],
+    "measure": {
+     "key": "points",
+     "as_typed": "points",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": 2026,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
      "of": "games",
      "rank": null,
      "by": null

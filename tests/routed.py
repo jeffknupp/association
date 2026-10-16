@@ -221,7 +221,7 @@ def staged(
     settled = grammar.settle(named_lines.numbered(question), asked, subject=who or Subject(), opponent=opponent, companions=companions, stat=stat, lines=named_lines)
     if settled.coach:
         return Staged(settled.asked, claims=claimed(list(settled.claims)))
-    scope, claims = parse._tagged(question, settled, companions, lines=lines, model_stat=stat, side=side, shot_value=shot_value, fields=fields)
+    scope, claims, _ = parse._tagged(question, settled, companions, lines=lines, model_stat=stat, side=side, shot_value=shot_value, fields=fields)
     return Staged(settled.asked, scope, claimed([*settled.claims, *claims]))
 
 

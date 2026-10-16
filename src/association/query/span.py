@@ -51,6 +51,9 @@ class SpanContext:
     record: bool = False
     order: str | None = None
     limit: int | None = None
+    #: What the window counts - ``games`` or ``seasons``: only a stretch of
+    #: games reads both season types (decision D14); "last 3 seasons" stays.
+    window_of: str = "games"
     date: str | None = None
     game_n: int | None = None
     season_n: int | None = None
@@ -61,6 +64,46 @@ class SpanContext:
     #: Whether that range can hold a postseason game: naming no season
     #: type, it reads both.
     dated_both: bool = False
+    #: Whether an opponent was read - a team the cuts read, whatever word
+    #: led it ("v portland"), or a player on the other side ("bron stats vs
+    #: gobert"): a player's games against one opponent with no season
+    #: named are every meeting on record (decision D13).
+    opponent: bool = False
+    #: Whether a companion stands beside the subject who PLAYED - with him,
+    #: started, came off the bench ("ADs record with lebron", "when AD
+    #: plays"): the games two players shared are their history together
+    #: (D13). An absence alone is no such reading: "without Y" is read over
+    #: the question's span (D15).
+    companion_played: bool = False
+    #: Whether a companion stands beside the subject who reached a line
+    #: ("when robinson has 4 fta"): a condition on this season's games
+    #: ("76ers record when maxey scores 20+" is this season's 35-28, the
+    #: yardstick's F087), and the postseasons' history where the postseason
+    #: is named ("knicks record in playoff games when mitchell robinson has
+    #: 4 fta": 16-5 over 2023-2026, where 2026's holds 9).
+    companion_reached: bool = False
+    #: Whether a companion stands beside the subject who was ABSENT
+    #: ("without Y", "when Y is out").
+    companion_absent: bool = False
+    #: Whether the situation is a day that comes once a season - a
+    #: holiday ("Christmas Day") - which one season holds once at most.
+    annual_day: bool = False
+    #: Whether every player the subject names is inactive - no box score in
+    #: the latest season on record (:class:`~association.query.names.ActivePlayers`):
+    #: the current season holds nothing of his, so no season named is his
+    #: career ("kobe bryant playoff stats", "tim duncan threes made").
+    inactive: bool = False
+    #: Whether a team the question names is a former franchise's name
+    #: ("supersonics"): its era is the question's seasons, which the
+    #: subject reading writes (ISSUES.md #420), never a career.
+    former_era: bool = False
+    #: Whether the subject names two players or more (a pair's meetings,
+    #: a comparison): "kevin garnett vs tim duncan games" is every meeting.
+    pair: bool = False
+    #: A ranking's stated floor of games, where the words state one: more
+    #: games than one season holds is a career's floor ("plus minus per
+    #: game leaders minimum 100 games played").
+    minimum_games: int | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +116,10 @@ class SpanRead:
 
     span: Span
     claims: tuple[Claim, ...]
+    #: The careers the words implied that stand under the key, by name
+    #: (:data:`IMPLIED_CAREERS`): what the parser records as its decision
+    #: to read the career where no season was named (decision D13).
+    implied: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -95,13 +142,13 @@ class SpanCandidates:
     until: int | None
     relative: int | None
     claims: tuple[Claim, ...]
-    #: The implied careers the words hold, by the key each is read under:
-    #: ``meetings`` (a pair's record), ``log`` (a log's meetings with an
-    #: opponent), ``count`` (a count asked of one player with no season).
+    #: The implied careers the words hold, by the key each is read under
+    #: (:data:`IMPLIED_CAREERS`; which stands is
+    #: :func:`~association.query.point.span_under`'s).
     implied: frozenset[str]
-    #: A newest-N window with a real count naming no type, no series game
-    #: and no day: a log reads both types there, where no career or range
-    #: stands.
+    #: A newest-N window of games with a real count naming no type, no
+    #: series game and no day: a stretch of games reads both types there,
+    #: whatever else is set (decision D14).
     both_on_log: bool
 
 
@@ -150,8 +197,8 @@ def read_span(question: str, context: SpanContext) -> SpanCandidates:
         since=since,
         until=until,
         relative=relative,
-        claims=claimed(claims),
-        implied=_implied_career(question, context, career),
+        claims=claimed([*claims, *_implied_guard_claims(question, context, career), *([] if career else _his_line_guard(question, context))]),
+        implied=_implied_career(question, context, career, ranged=ranged),
         both_on_log=_reads_both_types(question, context),
     )
 
@@ -370,45 +417,207 @@ def relative_seasons(question: str) -> int | None:
     return None if found is None else current_season() - found[0] + 1
 
 
-def _implied_career(question: str, context: SpanContext, career: bool) -> frozenset[str]:
+def _implied_versus(question: str, context: SpanContext) -> bool:
+    """A player's, or two players', games against one opponent: every meeting on record."""
+    del question
+    return (context.player_named or context.pair) and (context.opponent or context.versus)
+
+
+def _implied_pair(question: str, context: SpanContext) -> bool:
+    """Two players named together: under the key of their meetings, every meeting on record ("kobe and ray allen head to head")."""
+    del question
+    return context.pair
+
+
+def _implied_with(question: str, context: SpanContext) -> bool:
+    """A companion who played beside the subject: the games the two shared;
+    one who reached a line, in the postseasons the words name."""
+    reached_in_playoffs = context.companion_reached and bool(lexicon.PLAYOFF_WORDS.search(question))
+    return context.companion_played or reached_in_playoffs
+
+
+def _implied_annual(question: str, context: SpanContext) -> bool:
+    """A day that comes once a season, a holiday: every one on record."""
+    del question
+    return context.annual_day
+
+
+def _implied_always(question: str, context: SpanContext) -> bool:
+    """A key that is a career's by itself - a count of games over a line or
+    a yes/no stat ("stephen curry 50 point games"), the single game's high:
+    which keys these are is the key's reading."""
+    del question, context
+    return True
+
+
+def _implied_inactive(question: str, context: SpanContext) -> bool:
+    """A player with no game in the latest season, asked his line, his
+    record or his games: the seasons he played."""
+    asks_his_line = lexicon.HIS_LINE_ASKED.search(question) or lexicon.STAT_WORDS.search(question)
+    return context.player_named and context.inactive and not _his_line_guard(question, context) and bool(asks_his_line)
+
+
+def _implied_in_a_game(question: str, context: SpanContext) -> bool:
+    """One game's top figure ("most points in a game"), not an average: the best game on record."""
+    del context
+    return bool(lexicon.TOP_IN_A_GAME.search(question)) and not lexicon.PER_GAME_WORDS.search(question)
+
+
+def _implied_minimum(question: str, context: SpanContext) -> bool:
+    """A ranking's floor of more games than one season holds."""
+    del question
+    return context.minimum_games is not None and context.minimum_games > SEASON_GAMES_MOST
+
+
+def _implied_playoff_window(question: str, context: SpanContext) -> bool:
+    """The newest N playoff games: the last N he played, whichever postseasons hold them."""
+    recent = context.order == "recent" and isinstance(context.limit, int) and context.limit > 0
+    return recent and bool(lexicon.PLAYOFF_WORDS.search(question)) and not lexicon.BOTH_SEASON_TYPES_WORDS.search(question)
+
+
+IMPLIED_CAREERS: dict[str, Callable[[str, SpanContext], bool]] = {
+    "versus": _implied_versus,
+    "pair": _implied_pair,
+    "with": _implied_with,
+    "annual": _implied_annual,
+    "events": _implied_always,
+    "high": _implied_always,
+    "inactive": _implied_inactive,
+    "in_a_game": _implied_in_a_game,
+    "minimum": _implied_minimum,
+    "playoff_window": _implied_playoff_window,
+}
+"""The careers a question implies where it names no season (decision D13,
+Jeff's: a question naming no season reads the career where its words imply
+history), each by the name :attr:`SpanCandidates.implied` holds it under,
+with the rule that reads it from the words and the facts beside them; the
+keys each stands under are the key's reading
+(:func:`~association.query.point.span_under`). Each holds only where no
+season, range, date, game of a series or ordinal season is named, and
+where nothing guards the question off them (:func:`_implied_guard_claims`).
+
+.. versionadded:: 7.0.0
+"""
+
+SEASON_GAMES_MOST = 85
+"""The most games one player can play in a regular season - 82, and a few
+more for a player traded to a team that had played fewer: a floor of games
+above it is no season's.
+
+.. versionadded:: 7.0.0
+"""
+
+
+def _implied_career(question: str, context: SpanContext, career: bool, *, ranged: bool = False) -> frozenset[str]:
     """A career the question implies without a career word, each a measured
     rule: a pair's record with no season named is their meetings across
-    their careers ("steph curry record vs lebron regular season without kd",
-    yardstick-v2 F114: the model's default season held no such teammate);
-    a log's last N meetings with an opponent, or every meeting over both
-    season types, with no season named is wherever they fall ("last 8 games
-    vs pistons" answered from the current season found four and said so);
-    and a count asked of one player with no season in sight is his career
-    ("how many times has embiid fouled out?" is 0 this season and 9 in his
-    career, and only the second is the question - a product decision). A
-    season the question names, this one included, still wins.
-    Returns the rules whose words hold, by the key each reads under; which
-    stands is the key's (:func:`~association.query.point.span_under`)."""
+    their careers ("steph curry record vs lebron regular season without
+    kd", yardstick-v2 F114); a log's last N meetings with an opponent; a
+    count asked of one player ("how many times has embiid fouled out?" is 0
+    this season and 9 in his career, and only the second is the question);
+    and the careers of decision D13 (:data:`IMPLIED_CAREERS`): a player's
+    games against one opponent ("scottie barnes points vs bulls": 17 games,
+    not this season's 3); a companion who played ("ADs record with
+    lebron": none in 2026, 158-92 together); a holiday ("lebron james
+    Christmas Day game record"); a count of games over a line ("stephen
+    curry 50 point games"); the single game's high ("lebron james most
+    threes in a game", "most points in a single game on the magic"); a
+    player with no game this season ("kobe bryant playoff stats"); a
+    ranking's floor of more games than a season holds; and the newest N
+    playoff games ("kawhi last 10 playoff games": his last ten, 2023-2025,
+    where 2026's postseason holds none). A season the question names, this
+    one included, still wins, and so do a range of seasons, a former
+    franchise's era, a date, a game of a series and an ordinal season, each
+    a narrower question. Returns the rules whose words
+    hold, by the key each reads under; which stands is the key's
+    (:func:`~association.query.point.span_under`)."""
     if lexicon.season_from_text(question) is not None or lexicon.SEASON_WORDS.search(question):
         return frozenset()
     held: set[str] = set()
     if context.record:
         held.add("meetings")
-    if context.versus and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
+    if (context.versus or context.opponent) and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
         held.add("log")
     if context.player_named and context.how_many and not career and not context.season_n:
         held.add("count")
+    if not (career or ranged):
+        held.update(_implied_careers_d13(question, context))
     return frozenset(held)
 
 
+def _implied_careers_d13(question: str, context: SpanContext) -> set[str]:
+    """The careers of decision D13 the words imply (:data:`IMPLIED_CAREERS`),
+    with no career word and no range read: none beside a former
+    franchise's era, a date, a game of a series or an ordinal season (each
+    a narrower question), or where a guard word keeps them off
+    (:func:`_implied_guard_claims`)."""
+    if context.former_era or context.date or context.game_n or context.season_n or _implied_guard_claims(question, context, False):
+        return set()
+    return {name for name, rule in IMPLIED_CAREERS.items() if rule(question, context)}
+
+
+def _his_line_guard(question: str, context: SpanContext) -> list[Claim]:
+    """The words that keep an inactive player's career off a question
+    (decision D13), as the span's claims, since their presence is what the
+    span read: "how many" (a count of what the words name: "how many rings
+    does jeremy lin have"), a ranking word ("michael jordan lowest scoring
+    games") and a question word asking a fact ("what position did moses
+    malone play") - each a question a line of his would answer fluently
+    past the word no reader reads. The questions his career answers ask
+    his line, his record or his games
+    (:data:`~association.query.lexicon.HIS_LINE_ASKED`, or a stat)."""
+    if not (context.player_named and context.inactive and (lexicon.HIS_LINE_ASKED.search(question) or lexicon.STAT_WORDS.search(question))):
+        return []
+    found = [lexicon.HOW_MANY_GAMES.search(question), lexicon.WH_QUESTION.search(question), lexicon.RANKING_WORDS.search(question)]
+    return [Claim(match.start(), match.end(), "span") for match in found if match is not None]
+
+
+def _implied_guard_claims(question: str, context: SpanContext, career: bool) -> list[Claim]:
+    """The words that keep the careers of decision D13 off a question, as
+    the span's claims (their presence is what the span read, so they are
+    read): words asking about ONE season the question does not name
+    (:data:`~association.query.lexicon.ONE_SEASON_ASKED`: "michael
+    jordan's best season" is no career line), and a versus word with
+    nobody read on its other side ("ron artest vs carmelo anthony", the
+    first name on no record, or "kobe stats against jordan", the second
+    one of many) - a reading short of the question, which a career would
+    answer fluently about the one side read; and a denial beside companions
+    read as playing, none absent ("Lakers record when AD plays and lebron
+    doesn't": :data:`~association.query.lexicon.COMPANION_DENIED`), a role the
+    reading missed. None under a career word, or
+    where no career the words imply stands behind the guard (a career a
+    key implies by itself is the key's reading, not the words')."""
+    if career or not any(rule(question, context) for rule in IMPLIED_CAREERS.values() if rule is not _implied_always):
+        # (Claimed only where a career the words imply stands behind the
+        # guard: there is nothing else for it to have read.)
+        return []
+    one_season = lexicon.ONE_SEASON_ASKED.search(question)
+    if one_season is not None:
+        return [Claim(one_season.start(), one_season.end(), "span")]
+    versus = lexicon.VERSUS_OR_AGAINST_WORD.search(question)
+    if versus is not None and not (context.opponent or context.pair):
+        return [Claim(versus.start(), versus.end(), "span")]
+    denied = lexicon.COMPANION_DENIED.search(question)
+    if denied is not None and context.companion_played and not context.companion_absent:
+        return [Claim(denied.start(), denied.end(), "span")]
+    return []
+
+
 def _reads_both_types(question: str, context: SpanContext) -> bool:
-    """A "last N games" log naming no season type reads both and takes the
-    newest N by date, rather than silently defaulting to the regular season
-    ("Show me the Knicks last 5 games" in the regular season alone would
-    list games through 2026-04-12 while their real last five were the 2026
-    Finals). Only for
-    the shape: a newest-first window with a real count, and nothing already
-    fixing which games are meant - a game of a KNOWN playoff series, a
-    career (no single year to mix two types within), a range of seasons,
-    one calendar day - and no type named either way. A log's alone, and
-    only where no career or range stands: the key's reading
+    """A stretch of the newest N games naming no season type reads both and
+    takes the newest N by date, rather than silently defaulting to the
+    regular season ("Show me the Knicks last 5 games" in the regular season
+    alone would list games through 2026-04-12 while their real last five
+    were the 2026 Finals; "kyrie irving last 5 games vs thunder" left out
+    the 2024 West finals, decision D14). Only for the shape: a newest-first
+    window of GAMES with a real count ("last 3 seasons" stays the regular
+    season), and nothing already fixing which games are meant - a game of a
+    known playoff series, one calendar day - and no type named either way.
+    An opponent, a venue, a companion, a period, a career or a named season
+    beside it changes nothing: the last N games are the last N he played.
+    Which keys read it is the key's reading
     (:func:`~association.query.point.span_under`)."""
-    if context.order != "recent":
+    if context.order != "recent" or context.window_of != "games":
         return False
     if not isinstance(context.limit, int) or context.limit < 1:
         return False

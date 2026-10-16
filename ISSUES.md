@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A companion denied in the words is read as playing: "boston celtics record in games in which jaylen brown played and jayson tatum did not" answers the games both played
+- **Found:** 2026-10-16, lane p6-span, guarding D13's companion career (FS339).
+- **Evidence:** the subject reading reads every name of "when AD plays and lebron doesnt", "jaylen brown played and jayson tatum did not in the 2025/26 regular season" (two feed wordings) as a companion who PLAYED (`Companion.predicate == "played"`), the denial left in `Reading.unread`; the with/without split then answers "Jaylen Brown and Jayson Tatum played" against "either out", never the row asked (Brown on, Tatum off). #248 is the same misread of "doesnt start". The span tagger now keeps D13's career off such a question (`lexicon.COMPANION_DENIED`), so the no-season wording refuses as before; the wordings that name a season answer the wrong split fluently. <!-- codespell:ignore doesnt - the feed's question as typed -->
+- **User sees:** the team's record with both players, where its record with one and without the other was asked.
+- **Next step:** the subject reading (`subject._conditions_read`) reads a denial after a companion's name or verb ("doesnt", "did not", "isn't playing") as the absent role; the split then answers the mixed row (`compose.presence`, `_with_without_played` already divides by each predicate); a test per wording; the span's guard then reads nothing and leaves. <!-- codespell:ignore doesnt - the feed's question as typed -->
+- **Priority:** P1 - a different question answered fluently, two feed wordings and #248's.
+- **Source:** ours.
+- **GitHub:** #479
+
 ### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
 - **Evidence:** on `p5s6-L` (feed, no names), "Westbrook wins per season" answers "Russell Westbrook, points, rebounds and assists per game by regular season, 2023-2026 ..." (before the fix his 2026 line), "wins" unread: `measure.named("wins")` reads nothing outside a record's games won (`lexicon.GAMES_WON` under `LINE_RECORD`), so step 1's `unread_stat` cannot fire on it, and the players' ranking ("most wins by player nba 2010s", 14 of the 2,082) is refused by `ranking_needs_stat` since #421's fix. A player's wins are the games his team won with him playing (`won` is a yes/no measure of the player-games relation).
@@ -108,15 +117,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #445
 
-### "last N meetings" ignores N: "celtics vs heat last 4 meetings" answers the last 10
-- **Found:** 2026-10-14, the Phase 5 review, probing the meetings window landed in step 7 (`bd5a9aee`).
-- **Evidence:** "celtics vs heat last 4 meetings" answers their last 10 meetings, and "last 3 meetings between knicks and nets" the Knicks' last 10 games against everyone: "meetings" is no games word to the window tagger (`lexicon.MEANING_WINDOW_NEXT` has it for step 1's class, the tagger's own count rule does not), so the count is dropped and the log's default ten stands; the second wording loses the opponent too ("between X and Y").
-- **User sees:** ten meetings where four were asked; the wrong team's games on the "between" form.
-- **Next step:** the window tagger reads "last/past/first N meetings|matchups|games between" as the count on two teams' meetings, and "between X and Y" as the pair; the meetings read already takes the window (step 7); a test per wording.
-- **Priority:** P1 - a different set of games than asked, fluently.
-- **Source:** ours.
-- **GitHub:** #446
-
 ### "may" is read as the player Sean May: "how many points may luka score tonight" answers a Sean May comparison
 - **Found:** 2026-10-14, the Phase 5 review, probing step 1's date class.
 - **Evidence:** the subject reading reads "may" as a whole word of Sean May's name (`players_named_in`'s rule, one whole word of exactly one player) and the question becomes a comparison of Luka Doncic and Sean May; the verb "may" before another verb names nobody. Step 1's date class read "may" as a month on the same wording until its narrowing (2026-10-14, the lead); the subject reading's half is this entry.
@@ -171,21 +171,21 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #457
 
-### A question naming no season defaults to 2026 where its words read the career: "stephen curry 50 point games" answers "none in 2026"
-- **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1), the lead's hand pass; Jeff's ruling D13 the same day.
-- **Evidence:** 47 of the sample's 133 wrong or false-cause verdicts, the largest class: 17 fluent wrong answers ("stephen curry 50 point games" - none in 2026, 16 in his career; "lebron james Christmas Day game record" - 0-1 in 2026, 11-9 in 20 games; "most points in a single game on the magic" - Banchero 39, McGrady 62; "lebron james most threes in a game" - 4, career 9; "knicks record in playoff games when mitchell robinson has 4 fta" - 9-0 in 2026, 16-5 over 2023-2026; "ADs record with lebron" - none in 2026, 158-92 together), 30 refusals that said "no 2026 games" where the career holds them ("kobe bryant playoff stats", "kevin garnett vs tim duncan games", "dwayne wade stats vs nets", "tim duncan threes made", "michael jordan's best season"), 7 logs cut at 2026 ("mike conley game log vs the lakers": 2 of 62 games). Scaled to the feed's 2,082, about 230 questions.
-- **User sees:** a fluent answer about the wrong span, or a refusal naming a season the question never named.
-- **Next step:** the span tagger's default (`span.read_span`, `point.span_under`) reads the career where the words imply history - a record with or against, a count of events ("50 point games", "triple doubles"), a single-game record ("most ... in a game"), a series between two players or teams, "playoff stats" of a player not active - and the current season only where the words ask a current line; a test per wording class; the sample's 47 re-graded `correct` as the proof; the yardstick not lower.
-- **Priority:** P1 - the largest wrong-answer class the sample found.
+### A question naming no season defaults to 2026 where its words read the career: the remainder after D13's first pass
+- **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1), the lead's hand pass; Jeff's ruling D13 the same day. Rewritten 2026-10-16 by lane p6-span, which read the career for ten wording classes (`span.IMPLIED_CAREERS`, `CHANGES.md`): of the sample's 54 verdicts in the class (`season-default` and its log variant), 41 now read the span the key reads; FS225 and FS032 wait on D14 and D15 (their own entries below), and FS391 ("jalen brown vs pacer playoff double team") now answers his 8 playoff games against Indiana fluently past "double team", a defense nothing in the warehouse records (the key's own reading: not answerable as asked, then the whole record) - no meaning class holds the word.
+- **Evidence (what remains, the sample's ids):** a quarter's or half's read against an opponent or without a teammate (FS027 "kyrie Irving second half stats vs denver", FS177 "tatum 2h game log vs pacers", FS354 "kyrie second half game log without luka") - the period reads refuse a career outright (`DeclineReason.PERIOD_CAVEAT_CAREER`: the accuracy caveat is measured per season), so the span keeps the season there and they say "no 2026 games"; one season asked across years, which no reader takes (FS162 "michael jordan's best season", FS332 "highest plus minus season by an active player", FS327 "... on a season": #441's shape for players); a team's all-time roster ranking (FS214 "least games played with lakers"); a floor of attempts one season could hold (FS310 "worst 3pt% with atleast 1000 3pt attempted": Harden attempted 1,028 in 2018-19, so the floor alone does not imply the career); an active player's playoff log (FS043 "anthony edward's playoff game log": the newest 10 rows are 2026's either way, the key's 52-game career a page further); a first name nobody resolves before "vs" (FS095 "ron artest vs carmelo anthony": Metta World Peace's old name, guarded so his career is not answered for Carmelo alone). The answer says the span it read ("over his career (2004-2025 regular seasons)") but states no decision with the wording that reaches the season ("add 'in 2026'"): the decision phrase is the sayer's (`say.decision_phrase`), outside the span lane.
+- **User sees:** a refusal naming 2026 where the career holds the games (the period reads, the season superlatives), or a 2026 ranking where an all-time one was asked.
+- **Next step:** the period reads over a career once the caveat is measured across one (or the caveat per season beside a career read); a decision kind for the implied career with its phrase in the sayer; the season superlative as #441's shape for a player; each re-graded against the sample's key.
+- **Priority:** P1 - the remainder of the largest wrong-answer class the sample found.
 - **Source:** ours.
 - **GitHub:** #470
 
-### A player's or a team's "last N games" against an opponent, at a venue or in a period reads the regular season only: "kyrie irving last 5 games vs thunder" leaves the playoff games out
-- **Found:** 2026-10-16, Jeff's reading of the feed sample's FS172, then measured by the lead over every recorded "last N" wording (352 in the feed and the corpus); decision D14.
-- **Evidence:** a bare "last N games" reads both season types (52 player and 14 team wordings: "Aaron Gordon, last 5 games (2 regular season and 3 postseason)"); with an opponent, a venue or both the span resolves through the career path, regular season only (74 player wordings: "Agbaji last 10 games vs denver" answers "last 10 games of his career (2023-2026 regular seasons)"; 10 team wordings: "spurs record vs thunder last 16 games" answers "their last 16 of 122 meetings ... regular seasons", with the 2026 West finals left out); with a named season the playoffs of that season are left out (12); a quarter or half over the last N games is capped at the current season (13: "derozan 2nd half stats vs lac by game last 10 games" shows the 4 games of 2026).
-- **User sees:** a fluent "last N" that is not the last N games played - the newest playoff games silently missing.
-- **Next step:** one rule in the span resolution: a games window (`reading.Window` with a count of games) spans both season types whatever else is set (`point.span_under`, `span.read_span`'s window rule, the period reads' season cap), the answer's heading saying the split as the bare case does; proven on the 109 wordings above moving to both types and the sample's FS172 re-graded.
-- **Priority:** P1 - a fluent wrong answer on about 100 recorded wordings.
+### A quarter's or a half's "last N games" reads the current season alone: "derozan 2nd half stats vs lac by game last 10 games" shows 2026's 4
+- **Found:** 2026-10-16, Jeff's reading of the feed sample's FS172, measured by the lead over every recorded "last N" wording; decision D14. Rewritten 2026-10-16 by lane p6-span, which read both season types on every stretch of a player's or a team's games and on two teams' meetings (`CHANGES.md`: 82 feed answers, 9 corpus).
+- **Evidence (what remains):** the period reads (`player_periods`, `team_periods`; 14 player and 4 team wordings on the populations) read the season the span names or the current one - `compose.periods` labels the answer and its accuracy caveat by one season (`scope.span.season or current_season()`), and the planner declines a career and a range on them (`DeclineReason.PERIOD_CAVEAT_CAREER`, `PERIOD_CAVEAT_RANGE`), so a stretch of games is capped at the current season ("derozan 2nd half stats vs lac by game last 10 games": 4 games of 2026 where the key's 10 reach 2024, FS225), and both types there step aside to a sentence that finds none where the season's own read falls back to his last season ("Ben simmons in 1st quarter last 5 games" answers 5 games of 2025; with both types it said "No games ... in the 2026 regular season and postseason"), so the span reads one type there.
+- **User sees:** a quarter's line over this season's few meetings where the last N games across seasons were asked.
+- **Next step:** in the period reader (`compose/periods.py`, lane p6-sayer's file in Phase 6, step 2): label and caveat a stretch of games by the seasons it holds, then lift `PERIOD_CAVEAT_CAREER` for a window and add the period relations to `point._STRETCH_RELATIONS`; FS225 re-graded.
+- **Priority:** P1 - a fluent narrower answer on 18 recorded wordings.
 - **Source:** ours.
 - **GitHub:** #472
 
@@ -193,12 +193,40 @@ before that commit needs re-checking against the current warehouse.
 - **Found:** 2026-10-16, Jeff's reading of the feed sample's FS227; decision D15.
 - **Evidence:** the with/without split and the pair relation read the games the two shared as teammates (`conditions._teammate_games`, the time together as the box scores show it): Fears without Murray answers 63 games at 13.2 points where every 2025-26 game Murray did not play for New Orleans is 68 at 14.5 (the key); "james harden stats with no paul george" (FS111) pins the pair to 2023-24 and refuses 2026 where George plays for Philadelphia; "terrance mann without kawhi leonard" (FS032) likewise.
 - **User sees:** a fluent "without" line over the wrong set of games, the games after the trade - the ones most asked about - missing, with a sentence that makes the cut sound like the answer.
-- **Next step:** D15 - within the question's span, "without Y" is every game of X that Y did not play for X's team, traded away or injured alike; the tenure cut only over a career span where the two shared a team in part of it, said in the answer; the sample's FS227, FS111 and FS032 re-graded as the proof.
+- **Measured 2026-10-16 (lane p6-span, a prototype not committed):** the reader's half is two lines - the player relation's absence (`player_relation._absence_condition`) carries no tenure clause over a single season (`condition_clause` then reads "no row of Y's for X's team in the game", D15's own definition), and the with/without split's windows over a single season are the subject's own stints (`compose.presence._with_without_windows`), the overlap kept over a career. On the feed it moves 29 answers (FS227 then answers 68 games at 14.5, the key's exactly; FS032 every one of Mann's 63 Brooklyn games, the key's reading b; "AD win percentage without Lebron james", "luke kornet without kristap porzingis gamelog", "John Collin's record without Trae young" answer where they said "was not his teammate"), the corpus none. It is not committed because two sentences the sayer writes would then be false, and the sayer is lane p6-sayer's file: `say._say_tenure_counted` with the heading's `whose` ("Counted: games inside the time Terance Mann and Kawhi Leonard were both on the team (...)", `say._with_without_heading`), and the "without" definition ("Without Y means games he did not play while on the same team", `say._say_definition`). One hazard the prototype showed: "rui hachimura stats without reeves" resolves "reeves" to Antonio Reeves (no Lakers teammate) rather than Austin Reaves, a refusal today and a fluent split over the wrong player under D15 - the teammate's resolution should prefer a near spelling who shared the subject's team.
+- **Next step:** D15 - the two reader lines above, landed with the sayer's two sentences for a single season ("Counted: every game of <subject>'s in the 2026 regular season; out is a game <Y> did not play for his team, traded or injured alike" and the definition's "while on the same team" said only over a career, where the tenure cut stays and says so), in one change across the two lanes' files; the teammate's resolution narrowed to who shared the subject's team first; the sample's FS227, FS111 and FS032 re-graded as the proof.
 - **Priority:** P1 - a fluent wrong answer on a shape people ask often.
 - **Source:** ours.
 - **GitHub:** #474
 
 ## P2: misleading or incomplete
+
+### A team's best single game lists three of the teams tied at the top and says "by" them as if all: "most 3s made in a single game by a team" leaves out Milwaukee's 29
+- **Found:** 2026-10-16, lane p6-span, re-reading the feed sample's FS334 under D13 (now read over every season on record).
+- **Evidence:** "The most 3-pointers made in a single game by a team in the regular season since 1993-94: 29, by the Boston Celtics on 2026-04-10 ... the Memphis Grizzlies on 2026-04-06 ... and the Boston Celtics on 2024-10-22" - the key holds four games at 29, the fourth Milwaukee vs Miami on 2020-12-30 (event 401267211, `team_box_stats` holds the 29); the reader's default limit of 3 rows cuts the tie and the sentence names the cut list as the holders.
+- **User sees:** a record shared four ways said as shared three ways.
+- **Next step:** the team high's reader (`compose.highs`/`compose.team`, TEAM_GAME_HIGHS) reads past the limit while the next row ties the last, or says "and N more"; a test with a four-way tie.
+- **Priority:** P2 - an incomplete answer said as complete.
+- **Source:** ours.
+- **GitHub:** #476
+
+### "None of them" over a career counts only the games with box scores and names their seasons as his career: "Anthony Davis played 398 games over his career (2019-2026 regular seasons)"
+- **Found:** 2026-10-16, lane p6-span, reading the feed's moves under D13 ("Anthony Davis plays 45 minutes against the jazz").
+- **Evidence:** `player_relation.no_narrowed_games` counts `COUNT(*), MIN(season), MAX(season)` over the narrowed games' base clauses, and a minutes line keeps the games with a minutes figure: Davis's New Orleans seasons 2013-2018 (DATA.md, the empty Pelicans box scores) carry NULL minutes on every row, so the sentence says "398 games over his career (2019-2026)" where `player_box_stats` holds 902 rows from 2013 (627 played). The `none_matched` refusal says nothing of the games it could not see.
+- **User sees:** a career that starts in 2019 and a game count short by 350, beside a true "none of them" - a wrong fact in a refusal.
+- **Next step:** count the career's games without the line's own clause (or say the unseen games, as `_empty_box_scores` does for a per-game answer); a test with a fixture in the shape of the empty seasons.
+- **Priority:** P2 - a wrong figure in a refusal's sentence.
+- **Source:** ESPN's empty box scores (DATA.md); the sentence is ours.
+- **GitHub:** #477
+
+### A per-game figure under 0.5 is said as "averaged 0": "Tim Duncan averaged 0 3-pointers per game in 1,392 games"
+- **Found:** 2026-10-16, lane p6-span, reading the sample's FS292 under D13 ("tim duncan threes made").
+- **Evidence:** the career line reads 30 of 168 over 1,392 games (0.02 a game) and the sayer rounds the per-game figure to a whole number for a counting stat, so the sentence leads with "averaged 0 3-pointers per game" before "That is 30 of 168 (17.9%)". The key (the sample's) answers "30 three-pointers in his regular-season career".
+- **User sees:** a false zero leading the answer, the true total after it.
+- **Next step:** in the sayer (`compose/say.py`, the season line's sentence), a per-game figure that rounds to 0 from a non-zero total is said to one decimal or led by the total; a test per wording.
+- **Priority:** P2 - a misleading figure, the right one beside it.
+- **Source:** ours.
+- **GitHub:** #478
 
 ### A team's games or count over a line, given up or its own, are named from the words only after a window: "celtics games where they gave up 120 points" is refused for an unread number, and "celtics game log when they score 120+ points" answers its record over the line
 - **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), probing #348's neighbors; the record half fixed by lane T2 (`Line.whose`, the team's record over a line split by the opponents' score or box row); the log half by Phase 5, step 6's lane T (`p5s6-T`): a team's log keeps its games past a line on its own score or box row or its opponents' (`TeamNarrowed.narrow_line`, `compose.logs._team_log_lines`) - "celtics last 10 games when allowing 120+ points" lists the 7 games of 2026 the Celtics allowed 120+, where it was declined "relation: a line on a box-score stat keeps a PLAYER's games; a team's log has no such column".
@@ -249,15 +277,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **Priority:** P2 - the asked figure silently missing.
 - **GitHub:** #403
-
-### A matchup of two players who did not play this season answers "<player> has no games in the 2026 regular season"
-- **Found:** 2026-10-10, Phase 3, step 2's subject slice: the "vs Tim Duncan" fix (`0f87652`) moved two refusals to this sentence.
-- **Evidence:** 14 of the 2,082 feed answers on `player_matchup` say "<first player> has no games in the 2026 regular season in the warehouse." - "TIM DUNCAN VS SHAQ GAME STATS", "tim duncan VS KEVIN GARNETT games", "KEVIN GARNETT VS TIM DUNCAN GAMES", "SHAQ VS TIM DUNCAN GAME STATS", "kobe vs jason williams", "kobe stats against lebron", "lebron stats against kobe", "allen iverson vs michael jordan vs bulls", "bulls michael jordan vs allen iverson", "dwight howard vs Marc gasol", "Jamal Crawford vs. Lou Williams", "lamarcus aldridge vs marc gasol", "kyrie irving vs steph curry", "Nba Anthony Edwards stats vs kyrie Irving" (and its playoffs wording). The matchup's span defaults to this season (`point._default_player_matchup`: `subject_span` is the scope's span unless a date names the game), and its "no games" sentence names the season the question never asked; the redirect a single player's line takes ("no games this season, so his most recent") is not applied to a pair.
-- **User sees:** a true but useless sentence about the default season, where the question asks for every meeting of two (often retired) players.
-- **Next step:** read a matchup with no season named over the two players' shared career (the meetings they had), or redirect to the seasons both played, stated as a decision; enumerate the moved answers.
-- **Source:** ours.
-- **Priority:** P2 - a sentence short of the question, 14 feed answers.
-- **GitHub:** #366
 
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
 - **Found:** 2026-10-05, the Phase 2 review

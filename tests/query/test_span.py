@@ -22,14 +22,18 @@ from association.query.compose.plan import cells_stated
 from association.query.player_relation import condition_scope, span_of
 from association.query.point import span_under
 from association.query.reading import (
+    GAME_HIGHS,
     GAMES_COUNTED,
+    PERIOD_LOG,
     PLAYER_COMPARISON,
     PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_MEETINGS,
     PLAYER_RANKING,
+    PLAYER_SPLITS,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
+    TEAM_MEETINGS,
     TEAM_RANKING,
     TEAM_RECORD,
     Claim,
@@ -173,12 +177,137 @@ def test_a_count_a_pair_and_a_log_imply_a_career_without_a_career_word() -> None
     assert _read("jaylen brown last 8 games vs pistons", shape=PLAYER_LOG, versus=True, window_named=True).career
     assert _read("prichard stats vs 76ers including playoffs game log", shape=PLAYER_LOG, versus=True).career
     assert not _read("jaylen brown last 8 games vs pistons this season", shape=PLAYER_LOG, versus=True, window_named=True).career
+    # The opponent read with no versus word beside it (ISSUES.md #446).
+    assert _read("last 3 meetings between knicks and nets", shape=PLAYER_LOG, opponent=True, window_named=True).career
+
+
+@pytest.mark.parametrize(
+    ("question", "shape", "context"),
+    [
+        # A player's games against one opponent: every meeting.
+        ("scottie barnes points vs bulls", PLAYER_LINE, {"player_named": True, "opponent": True, "versus": True}),
+        ("norman powell v portland last 20 games", PLAYER_LOG, {"player_named": True, "opponent": True, "order": "recent", "limit": 20}),
+        # Two players set against each other: their meetings.
+        ("kevin garnett vs tim duncan games", PLAYER_MEETINGS, {"pair": True, "versus": True}),
+        ("Kobe and Ray Allen stats head to head stats", PLAYER_MEETINGS, {"pair": True}),
+        # A companion who played: the games the two shared.
+        ("ADs record with lebron", PLAYER_SPLITS, {"player_named": True, "companion_played": True, "record": True}),
+        ("Lakers record when AD plays and lebron doesnt", PRESENCE_SPLIT, {"companion_played": True, "companion_absent": True, "record": True}),  # codespell:ignore doesnt - read whole
+        # A companion who reached a line, in the postseasons named.
+        ("knicks record in playoff games when mitchell robinson has 4 fta", PLAYER_SPLITS, {"companion_reached": True, "record": True}),
+        # A holiday: every one on record.
+        ("lebron james Christmas Day game record", PLAYER_SPLITS, {"player_named": True, "annual_day": True, "record": True}),
+        # A count of games over a line, with no "how many".
+        ("stephen curry 50 point games", GAMES_COUNTED, {"player_named": True}),
+        # The single game's high, a player's and a team's players'.
+        ("lebron james most threes in a game", GAME_HIGHS, {"player_named": True}),
+        ("most points in a single game on the magic", PLAYER_RANKING, {}),
+        # A player with no game this season, asked his line.
+        ("kobe bryant playoff stats", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        ("tim duncan threes made", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        # A ranking's floor of more games than a season holds.
+        ("nba plus minus per game leaders minimum 100 games played", PLAYER_RANKING, {"minimum_games": 100}),
+        # The newest N playoff games.
+        ("kawhi last 10 playoff games", PLAYER_LOG, {"player_named": True, "order": "recent", "limit": 10}),
+    ],
+)
+def test_the_words_imply_a_career_where_no_season_is_named(question: str, shape: PointShape, context: dict[str, Any]) -> None:
+    """Decision D13: a question naming no season reads the career where its
+    words imply history - and a season named, this one included, wins."""
+    read = span_under(shape, read_span(question, SpanContext(**context)))
+    assert read.span.career and read.span.season is None and read.implied
+    assert not _read(f"{question} in 2026", shape=shape, **context).career
+    assert not _read(f"{question} this season", shape=shape, **context).career
+
+
+@pytest.mark.parametrize(
+    ("question", "shape", "context"),
+    [
+        # An active player's own line: the current season stays.
+        ("james harden stats", PLAYER_LINE, {"player_named": True}),
+        ("tyrese maxey ppg", PLAYER_LINE, {"player_named": True}),
+        ("jokic last 5 games", PLAYER_LOG, {"player_named": True, "order": "recent", "limit": 5}),
+        # A companion's line on this season's games (the yardstick's F087).
+        ("what was the sixers record when maxey scored 20+ points?", PLAYER_SPLITS, {"companion_reached": True, "record": True}),
+        # An absence alone is read over the question's span (D15).
+        ("jeremiah fears stats without dejounte murray", PRESENCE_SPLIT, {"player_named": True}),
+        # One season asked for, which no career answers.
+        ("michael jordan's best season", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        ("michael jordan rookie stats", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        # A denial the companions' roles do not hold (the reading read both as playing).
+        ("Lakers record when AD plays and lebron doesnt", PRESENCE_SPLIT, {"companion_played": True, "record": True}),  # codespell:ignore doesnt - the feed's question as typed
+        # A versus word with nobody read on its other side.
+        ("ron artest vs carmelo anthony", PLAYER_LINE, {"player_named": True, "inactive": True, "versus": True}),
+        # An inactive player asked what no line of his answers.
+        ("how many rings does jeremy lin have", PLAYER_LINE, {"player_named": True, "inactive": True, "how_many": True}),
+        ("what position did moses malone play", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        ("vince carter teammates", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        ("michael jordan lowest scoring games", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        # A floor one season can hold, and an average "in a game".
+        ("plus minus leaders minimum 50 games", PLAYER_RANKING, {"minimum_games": 50}),
+        ("who averages the most points in a game", PLAYER_RANKING, {}),
+        # A range named wins.
+        ("jayson tatum's games against the knicks in the past two seasons", PLAYER_LOG, {"player_named": True, "opponent": True, "versus": True}),
+    ],
+)
+def test_the_words_imply_no_career(question: str, shape: PointShape, context: dict[str, Any]) -> None:
+    """Decision D13's other half: the current season stays where the words
+    ask a current line, and the careers stay off a question whose words
+    ask one season, or read short of it."""
+    read = span_under(shape, read_span(question, SpanContext(**context)))
+    assert not read.implied and not read.span.career
+
+
+def test_a_guard_word_is_claimed_where_it_keeps_a_career_off() -> None:
+    """The words that keep an implied career off are what the span read."""
+    question = "michael jordan's best season stats"
+    read = span_under(PLAYER_LINE, read_span(question, SpanContext(player_named=True, inactive=True)))
+    assert [(c.what, question[c.start : c.end]) for c in read.claims] == [("span", "best")]
+    # Nothing to keep off, nothing read: no line asked of him.
+    read = span_under(PLAYER_LINE, read_span("michael jordan's best season", SpanContext(player_named=True, inactive=True)))
+    assert read.claims == ()
+    question = "how many rebounds does jeremy lin have"
+    read = span_under(PLAYER_LINE, read_span(question, SpanContext(player_named=True, inactive=True, how_many=True)))
+    assert [(c.what, question[c.start : c.end]) for c in read.claims] == [("span", "how many")]
 
 
 def test_a_bare_last_n_games_log_reads_both_types() -> None:
     assert _read("knicks last 5 games", shape=PLAYER_LOG, order="recent", limit=5).both
     assert not _read("knicks last 5 regular season games", shape=PLAYER_LOG, order="recent", limit=5).both
     assert not _read("knicks last 5 games", shape=PLAYER_LOG, order="first", limit=5).both
+
+
+@pytest.mark.parametrize(
+    ("question", "shape", "context"),
+    [
+        # An opponent and the career it implies.
+        ("kyrie irving last 5 games vs thunder", PLAYER_LOG, {"player_named": True, "opponent": True, "versus": True}),
+        # A venue beside it.
+        ("jalen brunson last 5 home games vs 76ers", PLAYER_LOG, {"player_named": True, "opponent": True, "versus": True}),
+        # A named season.
+        ("brook lopez last 10 games against washington in 2024", PLAYER_LOG, {"player_named": True, "opponent": True, "versus": True}),
+        # Two teams' meetings.
+        ("spurs record vs thunder last 16 games", TEAM_MEETINGS, {"opponent": True, "versus": True, "record": True}),
+    ],
+)
+def test_a_stretch_of_games_reads_both_types_whatever_else_is_set(question: str, shape: PointShape, context: dict[str, Any]) -> None:
+    """Decision D14: the last N games are the last N played, both season
+    types, with an opponent, a venue, a career or a named season beside the
+    window - and a type named, or a stretch of seasons, keeps one."""
+    window = {"order": "recent", "limit": int(next(w for w in question.split() if w.isdigit()))}
+    assert _read(question, shape=shape, **context, **window).both
+    assert not _read(question.replace("games", "regular season games"), shape=shape, **context, **window).both
+    assert not _read(question.replace("games", "playoff games"), shape=shape, **context, **window).both
+    assert not _read(question, shape=shape, **context, **window, window_of="seasons").both
+
+
+def test_a_stretch_of_games_stays_one_type_where_its_reader_reads_one() -> None:
+    """Not yet a quarter's or a half's (the period reads label and caveat one
+    season's games), nor a declared relation's single game, nor a team's
+    with/without split, which takes no window."""
+    window = {"order": "recent", "limit": 10}
+    assert not _read("derozan 2nd half stats vs lac last 10 games", shape=PERIOD_LOG, player_named=True, opponent=True, **window).both
+    assert not _read("piston vs heat last 15 games without ausar thompson", shape=PRESENCE_SPLIT, opponent=True, **window).both
 
 
 # ---------------- the claims ----------------

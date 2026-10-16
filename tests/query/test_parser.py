@@ -561,14 +561,36 @@ def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyC
 # than a game log, beside who the question is about.
 
 
+def test_a_player_with_no_game_this_season_is_read_over_his_career(con: duckdb.DuckDBPyConnection) -> None:
+    """Decision D13: a player with no box score in the latest season on
+    record, asked his line with no season named, is read over his career -
+    the season it stays where he played this season, or where the words name
+    one. Read from the names index's active players, never a statement of
+    the reader's."""
+    con.execute("CREATE TABLE games (season INTEGER, season_type INTEGER, winner_team_id VARCHAR)")
+    con.execute("INSERT INTO games VALUES (2026, 2, '1')")
+    con.execute("CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER)")
+    con.execute("INSERT INTO player_box_stats VALUES ('1', 2026), ('2', 2025), ('3', 2026)")
+    assert read_route(names_of(con), "nikola jokic playoff stats", ["nikola jokic"], "").span.career
+    assert not read_route(names_of(con), "nikola jokic playoff stats in 2024", ["nikola jokic"], "").span.career
+    assert not read_route(names_of(con), "joel embiid playoff stats", ["joel embiid"], "").span.career
+    # A name that reaches an active player too (Nikola Jovic) is no inactive one.
+    assert not read_route(names_of(con), "nikola playoff stats", ["nikola"], "").span.career
+
+
 def test_each_move_of_the_key_off_the_grammars_parent_is_a_decision(con: duckdb.DuckDBPyConnection) -> None:
     """The ways the key leaves the parent the grammar named, each with its
     own reason: the words naming a child for the subject's kind, the
     grammar's rules settling another key, a team's record in the games a
     companion reached a line, and a child the rules declined. A question
-    whose key is the parent's carries none."""
+    whose key is the parent's carries none. A career the words imply where
+    no season is named is the span tagger's decision, after them."""
     route = _route(con, "How many times did embiid score 30+ points", ["embiid"], "points")
-    assert route.decisions == (Decision("parser", "asked", "player_games/rows/date", "player_games/scalar/count", "the words 'How many times did embiid score 30+' name player_games/scalar/count"),)
+    career = Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)")
+    assert route.decisions == (
+        Decision("parser", "asked", "player_games/rows/date", "player_games/scalar/count", "the words 'How many times did embiid score 30+' name player_games/scalar/count"),
+        career,
+    )
     route = _route(con, "rebounds allowed per team", [], "rebounds")
     assert route.decisions == (Decision("parser", "asked", "player_seasons/ranking/player", "team_seasons/ranking/team", "the grammar's rules settle it from the question's words"),)
     route = _route(con, "what was the sixers record when maxey scored 15+ points?", ["sixers", "maxey"], "points")

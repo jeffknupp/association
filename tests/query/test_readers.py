@@ -2554,6 +2554,24 @@ def test_team_meetings_keeps_the_window_of_newest_meetings(gl_con: AnswerContext
     assert "their last 1 of 2 meetings" in result.text
 
 
+def test_a_stretch_of_team_meetings_reads_both_season_types(gl_con: AnswerContext) -> None:
+    """Decision D14: the last N meetings are the last N the two played, the
+    playoffs included ("spurs record vs thunder last 16 games" holds the
+    2026 West finals) - and the regular season alone where the span reads
+    one type."""
+    from association.query.reading import Window as AskedWindow
+
+    s = current_season()
+    gl_con.con.execute("INSERT INTO games VALUES ('p1',?,3,'2026-05-01T23:00Z','18','2',101,99,'18',false,'New York')", [s])
+    gl_con.con.execute("INSERT INTO team_box_stats VALUES ('p1',?,3,'18','2','home')", [s])
+    real_games.build_table(gl_con.con, {"games", "teams"})
+    teams = Who(kind="teams", teams=("Knicks", "Celtics"))
+    both = team_meetings(gl_con, Reading(who=teams, span=Span(season=s, both=True), window=AskedWindow(count=2, order="recent")))
+    assert both.data["games"] == 2 and "their last 2 of 3 meetings" in both.text
+    regular = team_meetings(gl_con, Reading(who=teams, span=Span(season=s), window=AskedWindow(count=2, order="recent")))
+    assert regular.data["games"] == 2 and "their last 2 meetings in the 2026 regular season" in regular.text
+
+
 def test_team_meetings_counts_only_rows_that_are_games(gl_con: AnswerContext) -> None:
     """Only rows that are games count: "how many times did the Mavs play the
     76ers in 2003" is 2, never 3 for one game stored under two event ids, and
