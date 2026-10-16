@@ -1213,6 +1213,16 @@ rings does jeremy lin have", which no line of his answers.
 .. versionadded:: 7.0.0
 """
 
+COMPANION_DENIED = re.compile(r"\b(?:does|did|do|is|was)(?:n'?t|\s+not)\b", re.IGNORECASE)
+"""A denial beside a companion's phrase ("when AD plays and lebron does not",
+"jaylen brown played and jayson tatum did not"): where the companions read
+hold no absence, the denial is a role the reading missed, and the career a
+companion who played implies (decision D13) would answer the games they
+both played - a different question, fluently.
+
+.. versionadded:: 7.0.0
+"""
+
 WH_QUESTION = re.compile(r"^\s*(?:what|which|who|whom|whose|when|where|why)\b", re.IGNORECASE)
 """A question that opens on a question word asking for a fact, not a figure
 ("what position did moses malone play"): no line of a player answers it.

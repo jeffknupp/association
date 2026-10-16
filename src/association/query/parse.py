@@ -1032,6 +1032,7 @@ class _SpanImplied:
     opponent: bool = False
     companion_played: bool = False
     companion_reached: bool = False
+    companion_absent: bool = False
     annual_day: bool = False
     inactive: bool = False
     minimum_games: int | None = None
@@ -1048,6 +1049,7 @@ class _SpanImplied:
             opponent=cuts.cuts.opponent is not None or any(c.side == "opponent" for c in companions),
             companion_played=any(c.predicate not in ("absent", "reached") for c in companions),
             companion_reached=any(c.predicate == "reached" for c in companions),
+            companion_absent=any(c.predicate == "absent" for c in companions),
             annual_day=calendar is not None and calendar in HOLIDAYS.values(),
             inactive=inactive,
             minimum_games=minimum.count if minimum is not None and minimum.unit == "games" else None,
@@ -1079,6 +1081,7 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         opponent=implied.opponent,
         companion_played=implied.companion_played,
         companion_reached=implied.companion_reached,
+        companion_absent=implied.companion_absent,
         annual_day=implied.annual_day,
         inactive=implied.inactive,
         pair=len(settled.subject.players) >= 2,

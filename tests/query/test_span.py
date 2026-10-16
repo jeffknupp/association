@@ -192,7 +192,7 @@ def test_a_count_a_pair_and_a_log_imply_a_career_without_a_career_word() -> None
         ("Kobe and Ray Allen stats head to head stats", PLAYER_MEETINGS, {"pair": True}),
         # A companion who played: the games the two shared.
         ("ADs record with lebron", PLAYER_SPLITS, {"player_named": True, "companion_played": True, "record": True}),
-        ("Lakers record when AD plays and lebron doesnt", PRESENCE_SPLIT, {"companion_played": True, "record": True}),  # codespell:ignore doesnt - the feed's question as typed
+        ("Lakers record when AD plays and lebron doesnt", PRESENCE_SPLIT, {"companion_played": True, "companion_absent": True, "record": True}),  # codespell:ignore doesnt - read whole
         # A companion who reached a line, in the postseasons named.
         ("knicks record in playoff games when mitchell robinson has 4 fta", PLAYER_SPLITS, {"companion_reached": True, "record": True}),
         # A holiday: every one on record.
@@ -234,6 +234,8 @@ def test_the_words_imply_a_career_where_no_season_is_named(question: str, shape:
         # One season asked for, which no career answers.
         ("michael jordan's best season", PLAYER_LINE, {"player_named": True, "inactive": True}),
         ("michael jordan rookie stats", PLAYER_LINE, {"player_named": True, "inactive": True}),
+        # A denial the companions' roles do not hold (the reading read both as playing).
+        ("Lakers record when AD plays and lebron doesnt", PRESENCE_SPLIT, {"companion_played": True, "record": True}),  # codespell:ignore doesnt - the feed's question as typed
         # A versus word with nobody read on its other side.
         ("ron artest vs carmelo anthony", PLAYER_LINE, {"player_named": True, "inactive": True, "versus": True}),
         # An inactive player asked what no line of his answers.

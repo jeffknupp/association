@@ -103342,7 +103342,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": true,
+    "career": false,
     "since": null,
     "until": null
    },
@@ -103415,13 +103415,6 @@
       "Joel Embiid"
      ],
      "reason": "from the question's own words"
-    },
-    {
-     "stage": "parser",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -103508,7 +103501,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": true,
+     "career": false,
      "since": null,
      "until": null
     },
@@ -103544,7 +103537,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": true,
+     "career": false,
      "since": null,
      "until": null
     },
@@ -103634,7 +103627,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": true,
+    "career": false,
     "since": null,
     "until": null
    },
@@ -103648,9 +103641,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "doesnt"
-   ],
+   "unread": [],
    "subject": {
     "kind": "player",
     "players": [
@@ -103707,13 +103698,6 @@
       "Joel Embiid"
      ],
      "reason": "from the question's own words"
-    },
-    {
-     "stage": "parser",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -103804,7 +103788,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": true,
+     "career": false,
      "since": null,
      "until": null
     },

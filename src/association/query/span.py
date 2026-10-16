@@ -82,6 +82,9 @@ class SpanContext:
     #: is named ("knicks record in playoff games when mitchell robinson has
     #: 4 fta": 16-5 over 2023-2026, where 2026's holds 9).
     companion_reached: bool = False
+    #: Whether a companion stands beside the subject who was ABSENT
+    #: ("without Y", "when Y is out").
+    companion_absent: bool = False
     #: Whether the situation is a day that comes once a season - a
     #: holiday ("Christmas Day") - which one season holds once at most.
     annual_day: bool = False
@@ -578,7 +581,10 @@ def _implied_guard_claims(question: str, context: SpanContext, career: bool) -> 
     nobody read on its other side ("ron artest vs carmelo anthony", the
     first name on no record, or "kobe stats against jordan", the second
     one of many) - a reading short of the question, which a career would
-    answer fluently about the one side read. None under a career word, or
+    answer fluently about the one side read; and a denial beside companions
+    read as playing, none absent ("Lakers record when AD plays and lebron
+    doesn't": :data:`~association.query.lexicon.COMPANION_DENIED`), a role the
+    reading missed. None under a career word, or
     where no career the words imply stands behind the guard (a career a
     key implies by itself is the key's reading, not the words')."""
     if career or not any(rule(question, context) for rule in IMPLIED_CAREERS.values() if rule is not _implied_always):
@@ -591,6 +597,9 @@ def _implied_guard_claims(question: str, context: SpanContext, career: bool) -> 
     versus = lexicon.VERSUS_OR_AGAINST_WORD.search(question)
     if versus is not None and not (context.opponent or context.pair):
         return [Claim(versus.start(), versus.end(), "span")]
+    denied = lexicon.COMPANION_DENIED.search(question)
+    if denied is not None and context.companion_played and not context.companion_absent:
+        return [Claim(denied.start(), denied.end(), "span")]
     return []
 
 
