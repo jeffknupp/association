@@ -5734,6 +5734,25 @@ def test_a_quarter_is_summed_from_the_shots_position_not_its_label(period_ctx: A
     assert "12 points in the 1st quarter over 5 games" in (result.text or "")
 
 
+def test_a_period_line_with_no_stat_named_says_the_whole_line_beneath_its_figure(period_ctx: AnswerContext) -> None:
+    """ "lebron james 4th qtr stats 2026" said his 4th-quarter points alone
+    where the feed sample's key required the rest of the line (ISSUES.md
+    #471): with no stat named, the period's whole line per game is beneath
+    the figure - every column but the points it said, the shooting with its
+    makes and attempts summed over the games, and "-" for a column this
+    warehouse rebuilt nothing for (the fixture holds shots and no plays)."""
+    result = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON, season_type=2), period=Period(number=1)))
+    assert result.text == (
+        f"Stephen Curry scored 12 points in the 1st quarter over 5 games of the {SEASON} regular season, averaging 2.4.\n"
+        "  REB  AST  STL  BLK  TOV  PF         FG%        3PT%      FT%\n"
+        "    -    -    -    -    -   -  57.1 (4-7)  57.1 (4-7)  - (0-0)"
+    )
+    named = period_log(
+        period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON, season_type=2), period=Period(number=1), measure=Measure(key="points", as_typed="points"))
+    )
+    assert "\n" not in (named.text or "")
+
+
 def test_a_half_is_the_two_quarters_it_holds_and_never_overtime(period_ctx: AnswerContext) -> None:
     """First half is periods 1 and 2; second half is 3 and 4. e4's overtime
     three belongs to neither - a game that went to overtime still had a second

@@ -1653,6 +1653,10 @@ def full_line_said(full: Scalar, said: Collection[str], games: int) -> tuple[lis
     cells: list[str] = []
     data: dict[str, Any] = {}
     for stat in FULL_LINE_STATS:
+        if stat not in full.values:
+            # A line that has no such column at all (a period's has no
+            # minutes), rather than one whose figure is missing.
+            continue
         value = rounded(full.values.get(stat))
         data[PLAYER_STAT_COLUMNS[stat][0]] = value
         if stat not in said:
@@ -1964,6 +1968,11 @@ def say_period_split(result: Result) -> Answer:
         return Answer(data={**data, "message": message, "headline": message}, text=message)
     data |= dict(body.summary)
     header = _period_header(result, games, season_label, vs, at)
+    full = _full_line(result)
+    if full is not None:
+        # The period's whole line, beneath the figure and above any log.
+        figure, *rest = header.split("\n")
+        header = "\n".join([figure, *full_line_said(full, {_facts(result, PeriodFacts).stat}, len(games))[0], *rest])
     extra = None
     for each in result.decisions:
         extra = decision_phrase(each, games=len(games), at=at, season_label=season_label)

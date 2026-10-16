@@ -44,6 +44,7 @@ from association.query.metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASO
 from association.query.notes import Note
 from association.query.player_games import (
     PERIOD_COLUMNS,
+    PERIOD_LOG_COLUMNS,
     PERIOD_PLAYS_COLUMNS,
     PERIOD_RATES,
     PERIOD_REFUSE_BELOW,
@@ -252,23 +253,46 @@ def _period_log_result(
     per_game = scope.measure is not None and scope.measure.how == "per_game"
     named = spelled(scope.measure)
     if games:
-        notes = period_agreement_notes(season, measure, full_line=per_game and named is None and len(games) > 1)
+        # The whole line is shown beneath the figure wherever no stat was
+        # named (``_period_full_line``), so its caveat names every column.
+        notes = period_agreement_notes(season, measure, full_line=named is None)
     cells, also = where
     facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, also=also)
     # The log beneath a per-game figure: the newest N, or the first N.
     window = Window(limit=_clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.window.count, ascending=scope.window.order == "first")
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {})
+    full = _period_full_line(games) if games and named is None else None
     return Result(
         subject=compiled.player.name,
         relation="player",
         span=Span(season=season, season_type=season_type, date=None if fallback else scope.cuts.date),
         narrowing=_period_narrowing(compiled.narrowed, scope.cuts.venue, (Period(label=period_label), *cells)),
         window=window,
-        parts=(Part(body=body),),
+        parts=(Part(body=body), *((Part(role="detail", body=full),) if full is not None else ())),
         notes=tuple(notes),
         decisions=(fallback,) if fallback is not None else (),
         facts=facts,
     )
+
+
+def _period_full_line(games: list[dict[str, Any]]) -> Scalar:
+    """The period's whole line over ``games``, said beneath its figure where
+    the words named no stat (ISSUES.md #471: "lebron james 4th qtr stats
+    2026" said his 4th-quarter points alone): each
+    :data:`~association.query.player_games.PERIOD_LOG_COLUMNS` column per
+    game (``values``; ``None`` where a game's could not be rebuilt), each
+    shooting split's makes and attempts summed (``sums``, by the season
+    line's stable keys, which are the period line's own columns)."""
+
+    def summed(column: str) -> int | None:
+        """The column summed over the games, or ``None`` where a game's
+        could not be rebuilt."""
+        figures = [g[column] for g in games]
+        return None if any(figure is None for figure in figures) else sum(figures)
+
+    values = {column: None if (total := summed(column)) is None else total / len(games) for column in PERIOD_LOG_COLUMNS}
+    sums = {column: summed(column) for rate in PERIOD_RATES.values() for column in rate}
+    return Scalar(games=len(games), values=values, sums=sums)
 
 
 def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Compiled, period_label: str, measure: str) -> Result | Unanswered | None:
