@@ -552,6 +552,24 @@ def test_every_key_the_grammar_names_is_said_in_words() -> None:
     assert nothing_answers("the normalizer returned no usable reply") == "Nothing here answers this question: the normalizer returned no usable reply."
 
 
+def test_every_decline_reason_is_given_somewhere() -> None:
+    """A reason no row, cell or reader gives is dead weight a dead-code gate
+    cannot see (vulture reads no enum member): ``MEETINGS_TALLY_BOTH`` and
+    ``MEETINGS_TALLY_WINDOW`` outlived the declines they named (decision D14,
+    #446) until this. Every member is named in the package's source beside
+    its definition and its one phrase."""
+    import re
+    from pathlib import Path
+
+    from association.query.reading import DeclineReason
+
+    package = Path(__file__).resolve().parents[2] / "src" / "association"
+    source = "\n".join(path.read_text() for path in package.rglob("*.py"))
+    for member in DeclineReason:
+        given = re.findall(rf"DeclineReason\.{member.name}\b(?!:)", source)
+        assert given, f"DeclineReason.{member.name} is given by nothing: delete it and its phrase"
+
+
 def test_every_decline_reason_is_said_by_one_phrase_and_a_row_holds_no_sentence() -> None:
     """A shape's reason for a cell it cannot honor is a closed key
     (``reading.DeclineReason``), worded once by the sayer, never a sentence
