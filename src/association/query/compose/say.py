@@ -359,6 +359,22 @@ _STAT_WITHHELD_WHY: dict[str, str] = {
 }
 
 
+def _none_matched_unread(facts: Mapping[str, Any]) -> str:
+    """The games "none of them" could not read (ISSUES.md #477): those with
+    only a line rebuilt from play-by-play, which the read's figures (minutes,
+    attempts, turnovers) are never taken from, so the narrowing was looked
+    for in the rest alone."""
+    if "read" not in facts:
+        return ""
+    unread = facts["games"] - facts["read"]
+    first, last = facts["unread_first"], facts["unread_last"]
+    seasons = "" if first is None else f" ({first})" if first == last else f" ({first}-{last})"
+    return (
+        f" That is of the {facts['read']:,} with a box score from ESPN: the other {unread:,}{seasons} {'have' if unread != 1 else 'has'} only a line rebuilt from play-by-play,"
+        " which the figures asked are not read from, so they could not be checked."
+    )
+
+
 def _say_stat_withheld(facts: dict[str, Any]) -> str:
     """A stat outside the rebuilt set, with rebuilt lines in scope: a
     DECISION, not a gap - a count says it was not counted, a single-game
@@ -4937,7 +4953,7 @@ _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "no_games_in_span": _say_no_games_in_span,
     "no_shots": _say_no_shots,
     "not_teammates_then": lambda facts: f"{facts['teammate']} was not {facts['player']}'s teammate in any of his {count_games(facts['games'])} {facts['during']}.",
-    "none_matched": lambda facts: f"{facts['player']} played {count_games(facts['games'])} {facts['during']}, none of them{facts['narrowing']}.",
+    "none_matched": lambda facts: f"{facts['player']} played {count_games(facts['games'])} {facts['during']}, none of them{facts['narrowing']}." + _none_matched_unread(facts),
     "listed_not_played": _say_player_listed,
     "no_player_games": _say_player_listed,
     "no_team_games": lambda facts: f"The warehouse has no games with a result for the {facts['team']} {facts['where']}.",

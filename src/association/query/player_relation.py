@@ -1393,8 +1393,20 @@ def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     if narrowed.date:
         # One named day: the rest of his career is not the fact that is missing.
         return Refusal(kind="no_game_on_date", facts={"player": player.name, "kind": span.kind, "date": narrowed.date, "narrowing": narrowed.filters(dated=False)}, shown={})
-    where, params = narrowed.clauses(narrowed=False, rebuilt=rebuilt)
-    total, first, last = con.execute(f"SELECT COUNT(*), MIN(pgl.season), MAX(pgl.season) {_PLAYER_GAMES} WHERE {where}", params).fetchone() or (0, None, None)
+    # A read whose figures a rebuilt line does not carry (minutes, a rate
+    # over attempts) counts only the games with a box score; the games he
+    # played are counted beside them, so "none of them" is said over his
+    # games and the ones it could not read (ISSUES.md #477).
+    widened = not rebuilt and box_source(con).rebuilt
+    where, params = narrowed.clauses(narrowed=False, rebuilt=rebuilt or widened)
+    read = "FILTER (WHERE NOT pgl.reconstructed)" if widened else ""
+    unread = "FILTER (WHERE pgl.reconstructed)" if widened else "FILTER (WHERE FALSE)"
+    row = con.execute(
+        f"SELECT COUNT(*) {read}, MIN(pgl.season) {read}, MAX(pgl.season) {read}, COUNT(*), MIN(pgl.season), MAX(pgl.season), MIN(pgl.season) {unread}, MAX(pgl.season) {unread} "
+        f"{_PLAYER_GAMES} WHERE {where}",
+        params,
+    ).fetchone() or (0, None, None, 0, None, None, None, None)
+    total, first, last = row[:3]
     if not total:
         return _no_narrowed_games_in_span(con, player, span, narrowed, rebuilt=rebuilt)
     during = span.during(first, last)
@@ -1402,10 +1414,15 @@ def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     # which of them never shared a team with him, and saying "one of them did
     # not" sends the reader to look in the wrong place.
     for mate, (tenure, tenure_params) in zip(narrowed.without, narrowed.tenure, strict=True):
-        together = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where} AND {tenure}", [*params, *tenure_params]).fetchone()
+        together = con.execute(f"SELECT COUNT(*) {read} {_PLAYER_GAMES} WHERE {where} AND {tenure}", [*params, *tenure_params]).fetchone()
         if not together or not together[0]:
             return Refusal(kind="not_teammates_then", facts={"teammate": mate.name, "player": player.name, "games": total, "during": during}, shown={})
-    return Refusal(kind="none_matched", facts={"player": player.name, "games": total, "during": during, "narrowing": narrowed.filters()}, shown={})
+    facts = {"player": player.name, "games": total, "during": during, "narrowing": narrowed.filters()}
+    played, played_first, played_last, unread_first, unread_last = row[3:]
+    if played > total:
+        # The games he played, the ones read and the seasons of the rest.
+        facts |= {"games": played, "during": span.during(played_first, played_last), "read": total, "unread_first": unread_first, "unread_last": unread_last}
+    return Refusal(kind="none_matched", facts=facts, shown={})
 
 
 def _no_narrowed_games_in_span(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed, *, rebuilt: bool) -> Refusal:

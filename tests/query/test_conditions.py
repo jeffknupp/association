@@ -43,6 +43,7 @@ from association.query.player_games import REBUILT_STATS
 from association.query.reading import (
     LINE_RECORD,
     LINE_RUNS,
+    PLAYER_LINE,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
     SPLIT_KINDS,
@@ -2398,3 +2399,24 @@ def test_a_tie_too_big_for_the_room_is_left_out_whole() -> None:
     assert [games for (games,) in kept] == [5, 3, 2]
     top = con.execute("SELECT games FROM t WHERE games = 1" + ordered_cut("games DESC, who", 2, ("games", "DESC NULLS LAST"))).fetchall()
     assert len(top) == 2 + TIE_ROOM
+
+
+def test_none_of_his_games_says_the_games_it_could_not_read(rebuilt_league: AnswerContext) -> None:
+    """ISSUES.md #477: "Anthony Davis plays 45 minutes against the jazz" said
+    "Anthony Davis played 398 games over his career (2019-2026)", the games
+    with a minutes figure, where he played 808 from 2013 - his New Orleans
+    seasons rebuilt from play-by-play, which recovers no minutes. Tatum
+    played four games, e5 rebuilt: none reached 50 minutes, and the answer
+    says the four, the three it read, and the one it could not."""
+    result = answered_as(PLAYER_LINE)(
+        rebuilt_league,
+        Reading(
+            who=Who(kind="player", players=("Jayson Tatum",)),
+            lines=(TypedLine(measure="minutes", value=50, as_typed="50 minutes", narrows=True),),
+            measure=Measure(key="minutes", as_typed="minutes"),
+            span=Span(season_type=2),
+        ),
+    )
+    text = result.text or ""
+    assert "Jayson Tatum played 4 games" in text
+    assert f"That is of the 3 with a box score from ESPN: the other 1 ({S}) has only a line rebuilt from play-by-play" in text
