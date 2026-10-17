@@ -96,6 +96,11 @@ def _situation(text: str) -> Situation:
         ("lebron ppg as an 18 year old", PLAYER_LINE, Cuts(situation=_situation("18 year old"))),
         ("tatum stats in the 2024 finals", PLAYER_LINE, Cuts(round="finals")),
         ("knicks second round record", TEAM_RECORD, Cuts(round="second round")),
+        # A round's abbreviation is the round (#475): it answered the regular season.
+        ("lebron 2014-2016 ecf", PLAYER_LINE, Cuts(round="ecf")),
+        ("Caleb martin ecf", PLAYER_LINE, Cuts(round="ecf")),
+        ("jokic wcf stats", PLAYER_LINE, Cuts(round="wcf")),
+        ("tatum ecsf stats", PLAYER_LINE, Cuts(round="ecsf")),
         ("Ayton stats in game 4 playoff games", PLAYER_LOG, Cuts(game_n=4)),
         ("his 18th season", PLAYER_LINE, Cuts(season_n=18)),
         ("most points in 15th season played", PLAYER_RANKING, Cuts(season_n=15)),

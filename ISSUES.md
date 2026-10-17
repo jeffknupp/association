@@ -135,15 +135,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #454
 
-### "ecf" is read by nothing: "lebron 2014-2016 ecf" answers his 2014-2016 regular seasons
-- **Found:** 2026-10-16, lane p6-sayer, reading the full-line moves on the feed at `7317141a` (`player_games/scalar/line` answers carrying an unread round word).
-- **Evidence:** 2 feed wordings answer fluently with "ecf" in `Reading.unread`: "lebron 2014-2016 ecf" ("25.9 points ... in 222 games from 2014 through 2016 (2014-2016 regular seasons)") and "Caleb martin ecf" (his 2026 regular-season line). The spelled-out round is refused by the round's cause ("lebron 2009-2014 eastern conference finals": "The games are not labeled by playoff round ..."); the abbreviation reaches no round word in the lexicon, and the unread-meaning harness has no class for a round.
-- **User sees:** a regular season's line where a conference final's was asked, fluently.
-- **Next step:** "ecf", "wcf" (and "ecsf"/"wcsf" if the population holds them) read as the conference finals round in the lexicon's round words, refused by the round's cause as "eastern conference finals" is; the two wordings re-run.
-- **Priority:** P1 - a fluent wrong answer.
-- **Source:** ours.
-- **GitHub:** #475
-
 ### "nba final stats" is not read as the Finals: "jaylen brown 2022 nba final stats" answers his 2021-22 regular season
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627` (the Phase 5 review had called "final" a window word in its Finals sense and the narrowing dropped it from the class; the answer was wrong either way).
 - **Evidence:** "jaylen brown 2022 nba final stats" answers "23.6 points, 6.1 rebounds and 3.5 assists per game in 66 games" of the regular season; "jayson tatum 2024 nba final stats" likewise (74 games). The round reader matches "finals" and "the finals", not "nba final"; "final" is unread.

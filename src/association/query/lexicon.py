@@ -563,7 +563,7 @@ count, a pair's record or a single game from being read over a career.
 # from the text for the same reason the year is: the question is the source,
 # and the model is wrong in both directions. "Title" and "championship" are left
 # out on purpose - "title odds" is a regular-season projection.
-PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
+PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|[ew]cs?f|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
 """The postseason, named outright.
 
 .. versionadded:: 6.0.0
@@ -1395,8 +1395,9 @@ VENUE_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
 # One round of the postseason. No table carries a round, so no reader can
 # narrow to one: "tatum stats in the 2024 finals" was answered with his whole
 # 2024 postseason, 19 games where the Finals were 5. A cut, so every reader
-# refuses it rather than widening the question.
-ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b", re.IGNORECASE)
+# refuses it rather than widening the question. The abbreviations are rounds
+# too: "lebron 2014-2016 ecf" answered his regular seasons (ISSUES #475).
+ROUND_WORDS = re.compile(r"\bfinals\b|\b[ew]cs?f\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b", re.IGNORECASE)
 """A playoff round, as worded.
 
 .. versionadded:: 6.0.0
