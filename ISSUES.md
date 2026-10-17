@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A count over made shots leaves the rebuilt games out: "jamal murray games with 2 threes including playoffs" counts 426 where the box scores hold 434
+- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (`live_parser32`, the yardstick's F160, graded `wrong`).
+- **Evidence:** `player_game_log` holds 376 regular-season and 58 playoff games of Murray's with 2+ threes, 8 of the regular-season ones rebuilt from play-by-play (`reconstructed`); the count's rebuilt-line rule leaves the 8 out and says "11 empty box scores may make the count low". A made-shot figure is one the rebuild has (the plays hold every made shot); attempts and minutes are what it lacks.
+- **User sees:** a count 8 short, fluently, with a caveat that names the wrong thing.
+- **Next step:** the rebuilt-line rule (`compose.core._rebuilt_for`, `core.unread_on_rebuilt`) keeps a rebuilt game under a line on a MADE figure (points, made field goals, made threes, made free throws, rebounds, assists, steals, blocks) and leaves it out only under attempts, minutes, turnovers and percentages, as the causes lane did for the yes/no stats (`2ab6fe82`); the caveat names the figures the rebuild lacks.
+- **Priority:** P1 - a fluent wrong count on a graded wording.
+- **Source:** ours.
+- **GitHub:** #501
+
 ### A singular "game" against a team is read as the career's log: "D'Angelo Russell game against the Timberwolves" lists his last 10 of 21 meetings
 - **Found:** 2026-10-17, the lead, the keyed score (`~/association-research/stages/score_keyed.py`) over step 2 (runs 79 -> 86): the feed sample's FS331, graded `correct` when it answered his most recent game, moved under decision D13's "versus" career rule to "D'Angelo Russell vs the Minnesota Timberwolves, last 10 of 21 games of his career (2016-2026 regular seasons)".
 - **Evidence:** the key reads the singular "game" as his most recent game vs Minnesota (2025-11-17 for DAL, L 96-120: 8 pts, 4 ast, 2 reb in 22 min); the reading has no window, so the log's default of ten stands over the career the versus rule implied. The yardstick's F028 ("How many points did Jokic score in the 3rd quarter against Boston?", the key's dominant reading the most recent meeting) moved the same way, to a career total.
@@ -93,6 +102,24 @@ before that commit needs re-checking against the current warehouse.
 - **GitHub:** #470
 
 ## P2: misleading or incomplete
+
+### "vs <player>" on a game log reads the games both played, not the subject's games against his team: "jay huff game log vs Embiid" shows 4 of 6
+- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F142, `partial`).
+- **Evidence:** the key has 6 games Huff played against Embiid's team; the answer's 4 are the games Embiid himself played (the pair relation's meetings). A log "vs <player>" asks the subject's games against that player's team; the meetings reading is a comparison's, not a log's.
+- **User sees:** a log two games short, fluently.
+- **Next step:** on a log (not a matchup or a comparison), "vs <player>" narrows by the opponent's team over the player's tenure there (`subject._versus_companions`, the `opponent` cut from the companion's team by season), not by his presence.
+- **Priority:** P2.
+- **Source:** ours.
+- **GitHub:** #502
+
+### A log asked game by game shows its newest ten: "Rudy gobert first half games this season" lists 10 of 76
+- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade: 6 yardstick wordings (F060, F149, F153, F156, F158, F159) and 11 sample ids (FS016, FS058, FS068, FS098, FS132, FS208, FS096, FS126, FS282, FS378, FS400) were graded `partial` for showing the newest ten of N rows where the reading asked every game; held at the yardstick's standing standard (correct with N said) for the run-to-run comparison.
+- **Evidence:** the log's default limit is ten; "each game", "every game", "game log", "gamelog" and a count of games asked ("last 15 games") are the wordings that want all N.
+- **User sees:** a log cut at ten with the total said - fine for a bare log, short where every game was asked.
+- **Next step:** a log whose words ask each game or name a count shows every row up to a page's worth (the web page paginates; the CLI prints all), with the limit a window of the words alone.
+- **Priority:** P2 - a partial answer on 17 graded wordings.
+- **Source:** ours.
+- **GitHub:** #503
 
 ### "final" beside a year is not the Finals: "Leonard final 2013" is refused for an unread window word
 - **Found:** 2026-10-17, lane p6-causes (step 3), the sample's FS059; "leonard 2019 final", "Brunson final 2026" the same.
@@ -1909,6 +1936,15 @@ those were found.
 - **GitHub:** #467
 
 ## P3: refusal or gap
+
+### A period read leaves 2016 out where the key counts it: "harrison barnes 1st quarter stats each game vs magic" says 24 games of 26
+- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F028, F058, F059, each `partial`; the sample's FS027).
+- **Evidence:** the period reads trust a season only where its rebuilt quarter figures agree with the box score often enough (2016 is at 76.5%, under the threshold), leave it out and say so ("Not counted: 2 games from 2016 ..."); the key counts those games.
+- **User sees:** a figure a game or two short, said.
+- **Next step:** Jeff's call: count the untrusted season with its caveat (the figure approximate), or keep it out and said as now; either way the key and the reader agree.
+- **Priority:** P3 - a stated limit, Jeff's policy.
+- **Source:** ours.
+- **GitHub:** #504
 
 ### "shooting percentages" names no measure: "nba current best shooting percentages" is refused for a ranking stat
 - **Found:** 2026-10-17, lane p6-causes, the sample's FS072.

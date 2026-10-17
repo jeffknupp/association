@@ -2157,6 +2157,19 @@ with nothing to read fills the silence from its own weights), and more data
     at a high's cutoff, #476's class). Issues #448, #483, #484 closed; ten
     findings filed.
 
+59. **Step 5's live run and re-grades (2026-10-17).** `live_parser32` on
+    `ea6695b1`; 99 of 277 moved against parser31; four blind graders over
+    the yardstick's 71 graded moved wordings and the sample's 205 moved
+    answers; 12 unsure rows settled against the warehouse. The sample's
+    rates since step 1: wrong 23.1% -> 13.9%, partial 26.4% -> 21.5%,
+    correct 50.4% -> 64.6%; false cause 46.7% -> 27.6%, true limit 36.1%
+    -> 41.8%, right cause 17.2% -> 30.6%. The yardstick 167 -> 161 of 175
+    and 156 -> 150 of 166: seven ten-row logs held at the standing
+    standard and filed, eight real moves down named in the row (three a
+    period read's 2016 exclusion, Jeff's call; a made-threes count over
+    rebuilt games, P1; "vs <player>" on a log, P2; two Jeff's calls on D13
+    and D15; one unsure).
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
