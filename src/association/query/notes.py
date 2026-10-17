@@ -71,6 +71,7 @@ DECISION_KINDS: dict[str, str] = {
     "minimum": "the fewest games or attempts a ranking required",
     "cut": "how many qualified, and how many are shown",
     "spelling_read": "a near spelling of a word the reader reads by, read as that word",
+    "stat_default": "a single game's high named no stat, so points were read - said with the wording that names another",
 }
 """Every kind a decision the answer states may have, with what it says.
 
@@ -112,6 +113,7 @@ FACTS: dict[str, frozenset[str]] = {
     "minimum": frozenset({"of", "column"}),
     "cut": frozenset({"total"}),
     "spelling_read": frozenset(),
+    "stat_default": frozenset(),
 }
 """The facts each kind may carry, by name - closed, as the kinds are. A
 writer needing another name adds it here, deliberately, where the next

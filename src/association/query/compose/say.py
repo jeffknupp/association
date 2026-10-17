@@ -497,6 +497,10 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
         # wording that reaches the whole game instead (AGENTS.md, "A
         # reasonable default beats a question").
         text = f"('{each.before}' was read as '{each.chose}' - leave the {each.chose} out to ask about whole games.)"
+    elif each.kind == "stat_default":
+        # A single game's high whose words name no stat, read by points (the
+        # feed sample's FS362): said, with the wording that names another.
+        text = f'(No stat was named, so this reads {each.chose} - name one, "career high in rebounds", to ask about another.)'
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "also_matched":
@@ -523,6 +527,16 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     else:
         raise ValueError(f"no phrase for decision kind {each.kind!r}")
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
+
+
+def say_stat_default(read_as: str) -> str:
+    """The stat a single game's high was read by where its words named none
+    (the parser's ``measure`` decision), said with the wording that names
+    another.
+
+    .. versionadded:: 7.0.0
+    """
+    return decision_phrase(Decided(kind="stat_default", field="measure", chose=read_as, why="no stat named"))
 
 
 def say_spelling_read(typed: str, read_as: str) -> str:
@@ -5006,6 +5020,12 @@ _FACT_NOT_READ: dict[str, str] = {
         "(his record, or with and without a teammate) - so {words!r} cannot be ranked. Ask for the teams' best record, or one player's record, instead."
     ),
     "birth": "No birth date is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by season, team or position instead.",
+    "age": "No birth date is on file here - the player records carry none - so a player's age ({words!r}) cannot be read. Ask for his stats in a season instead.",
+    "player efficiency rating": (
+        "No player efficiency rating is on file here - it needs league pace and team factors the warehouse does not hold per season - "
+        "so {words!r} cannot be read. Ask for a player's line by season, or his NetPoints, instead."
+    ),
+    "double team": ("No double team is on file here - the warehouse records no defensive coverage or player tracking - so {words!r} cannot be read. Ask for the player's line over the games instead."),
     "death": "No date of death is on file here - the player records carry none - so {words!r} cannot be read. Ask for a player's seasons or games instead.",
     "height": "No height is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by position instead (centers, forwards or guards).",
     "jersey": (
@@ -5575,6 +5595,11 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
     "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
+    "subject_not_read": lambda facts: _subject_not_read(facts["opponent"]),
+    "roster_not_read": lambda facts: _roster_not_read(facts["team"], facts["group"]),
+    "own_best_season": lambda facts: (
+        f"A player's best single season across his career ({facts['words']!r}) is read by nothing here yet - ask for his seasons one by one ('{facts['player']} stats by season'), or name the season."
+    ),
     "measures_combined": lambda facts: _measures_combined(facts["words"]),
 }
 
@@ -5590,6 +5615,27 @@ def _ranking_needs_stat() -> str:
     reads (ISSUES.md #421): the stat is the missing fact, and the sentence
     says how to name one rather than ranking by points unasked."""
     return "A ranking of players needs a stat to rank them by, and the words name none read here - name one ('most points', 'best 3pt%', 'most triple-doubles')."
+
+
+def _subject_not_read(opponent: str | None) -> str:
+    """The refusal for a question that names nobody the reading could place
+    and asks for no ranking (ISSUES.md #448): who the question is about is
+    the missing fact - never a ranking's stat - and the sentence says how to
+    name him."""
+    if opponent is not None:
+        return f"The words set someone against the {opponent}, but no player or team is read as who played them - name the player or the team in full, as the warehouse spells it."
+    return (
+        "No player or team is read from these words, and they ask for no ranking - name the player or the team in full, as the warehouse spells it, or the stat to rank the league by ('most points')."
+    )
+
+
+def _roster_not_read(team: str | None, group: str) -> str:
+    """The refusal for a team's or a position's players asked with no
+    ranking word and no stat: the list itself is what nothing reads, and
+    the players ranked by a stat is the wording that answers."""
+    whose = f"the {team}' {group}" if team else f"the league's {group}"
+    example = f"{team} {group}" if team else group
+    return f"A list of {whose} - a roster - is read by nothing here yet, and no stat was named to rank them by - ask for them ranked by one ('{example} most games played', '{example} most points')."
 
 
 def _single_season_ranking(words: str) -> str:

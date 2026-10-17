@@ -234,8 +234,6 @@ def test_the_words_imply_a_career_where_no_season_is_named(question: str, shape:
         # One season asked for, which no career answers.
         ("michael jordan's best season", PLAYER_LINE, {"player_named": True, "inactive": True}),
         ("michael jordan rookie stats", PLAYER_LINE, {"player_named": True, "inactive": True}),
-        # A denial the companions' roles do not hold (the reading read both as playing).
-        ("Lakers record when AD plays and lebron doesnt", PRESENCE_SPLIT, {"companion_played": True, "record": True}),  # codespell:ignore doesnt - the feed's question as typed
         # A versus word with nobody read on its other side.
         ("ron artest vs carmelo anthony", PLAYER_LINE, {"player_named": True, "inactive": True, "versus": True}),
         # An inactive player asked what no line of his answers.
@@ -266,7 +264,7 @@ def test_a_guard_word_is_claimed_where_it_keeps_a_career_off() -> None:
     # Nothing to keep off, nothing read: no line asked of him.
     read = span_under(PLAYER_LINE, read_span("michael jordan's best season", SpanContext(player_named=True, inactive=True)))
     assert read.claims == ()
-    question = "how many rebounds does jeremy lin have"
+    question = "how many games did jeremy lin have 10 rebounds"
     read = span_under(PLAYER_LINE, read_span(question, SpanContext(player_named=True, inactive=True, how_many=True)))
     assert [(c.what, question[c.start : c.end]) for c in read.claims] == [("span", "how many")]
 

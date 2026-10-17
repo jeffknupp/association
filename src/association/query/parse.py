@@ -38,6 +38,7 @@ from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_P
 from association.query.period import read_period, respelled
 from association.query.point import cuts_under, lines_under, measure_under, minimum_under, period_under, read_point, span_under, window_under
 from association.query.reading import (
+    GAME_HIGHS,
     NETPOINTS_FINGERPRINT,
     NETPOINTS_RATINGS,
     PERIOD_LOG,
@@ -920,7 +921,7 @@ def _tagged(
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
 
     window = window_under(asked, read_window(_tagged_window_words(question, asked, cuts_context, split.split), window_context))
-    implied = _SpanImplied.of(companions, cuts, kept.minimum, inactive=inactive, teams=settled.subject.teams)
+    implied = _SpanImplied.of(companions, cuts, kept.minimum, inactive=inactive, teams=settled.subject.teams, yes_no_stat=window_context.boolean_stat)
     span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts, implied=implied)))
     scope = Reading(
         who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span, minimum=kept.minimum
@@ -1043,9 +1044,10 @@ class _SpanImplied:
     inactive: bool = False
     minimum_games: int | None = None
     former_era: bool = False
+    yes_no_stat: bool = False
 
     @classmethod
-    def of(cls, companions: tuple[Companion, ...], cuts: CutsRead, minimum: Minimum | None, *, inactive: bool, teams: tuple[str, ...]) -> _SpanImplied:
+    def of(cls, companions: tuple[Companion, ...], cuts: CutsRead, minimum: Minimum | None, *, inactive: bool, teams: tuple[str, ...], yes_no_stat: bool = False) -> _SpanImplied:
         """The facts from the typed companions, cuts, minimum and teams."""
         situation = cuts.cuts.situation
         calendar = situation.calendar if situation is not None else None
@@ -1059,6 +1061,7 @@ class _SpanImplied:
             annual_day=calendar is not None and calendar in HOLIDAYS.values(),
             inactive=inactive,
             minimum_games=minimum.count if minimum is not None and minimum.unit == "games" else None,
+            yes_no_stat=yes_no_stat,
         )
 
 
@@ -1093,6 +1096,7 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         pair=len(settled.subject.players) >= 2,
         minimum_games=implied.minimum_games,
         former_era=implied.former_era,
+        yes_no_stat=implied.yes_no_stat,
     )
 
 
@@ -1133,7 +1137,10 @@ def _reading(
         misread=tuple(applied.dropped),
         claims=claimed_once(found),
     )
-    pointed = with_point(question, reading)
+    pointed, high_claims = _reading_high_by_points(
+        question, reading, with_point(question, reading), found, (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked)), model_stat
+    )
+    found += high_claims
     # What the words name that nothing reads, read once, here: a refusal
     # said before any reader runs, and the shapes recognized and read by
     # nothing, said where the answer side declines (the question as it was
@@ -1159,10 +1166,27 @@ def _reading(
     # word there is no refusal).
     read_by_model = (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked))
     defaulted, defaulted_claims = _reading_from_route_defaulted(asked, pointed, [(c.start, c.end) for c in found], read_by_model, model_stat)
-    if defaulted is not None and defaulted.kind == "ranking_needs_stat" and unsupported:
+    if refused is None and not unsupported and defaulted is not None and defaulted.kind == "ranking_needs_stat":
+        # Where the words asked no ranking, nobody read (or a roster) is the cause, said
+        # before any reader runs (ISSUES.md #448); where a ranking word
+        # stands, the word is what keeps the ranking's own cause, and is read.
+        # Not past what the words name that nothing reads (a playoff round,
+        # an age): that is the deeper cause, said where the ranking declines.
+        refused, ranking_claims = _refused_subject_not_read(asked, pointed)
+        defaulted_claims = [*defaulted_claims, *ranking_claims]
+    if defaulted is not None and defaulted.kind == "ranking_needs_stat" and (unsupported or (refused is not None and refused.kind in ("subject_not_read", "roster_not_read"))):
         # What the words name that nothing reads (an age) is the refusal the
-        # answering loop says where the ranking declines; it is the cause.
+        # answering loop says where the ranking declines; it is the cause -
+        # as nobody read is, where the words asked no ranking.
         defaulted = None
+    aged = next((cause for cause in unsupported if cause.kind == "non_calendar_situation" and cause.facts.get("reads_as") == "age"), None)
+    if refused is None and aged is not None:
+        # An age as a narrowing ("by a 35 year old") is a fact no table
+        # holds - no birth date is on file - so nothing could answer past
+        # it: said before any reader, ahead of a shape's own refusal ("Most
+        # 30 point games by a 35 year old in a season" was told the best
+        # single season is read by nothing, the feed sample's FS114).
+        refused, unsupported = aged, tuple(cause for cause in unsupported if cause is not aged)
     found = list(claimed_once([*found, *defaulted_claims]))
     return replace(
         pointed,
@@ -1175,6 +1199,32 @@ def _reading(
         # question as it was asked (the fold keeps every position).
         unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], read_by_model, model_stat),
     )
+
+
+def _reading_high_by_points(question: str, reading: Reading, pointed: Reading, found: list[Claim], names: tuple[str, ...], stat: str) -> tuple[Reading, list[Claim]]:
+    """A single game's high whose words name no stat at all, read by points
+    and said so (the feed sample's FS362, FS379, FS219): "gilbert arenas
+    career high vs kobe" and "bryce mcgowens career high vs dallas" were
+    refused for want of a stat to rank games by (``needs_stat``), where a
+    career high with no stat is his scoring high - the sample's keys each
+    read points. A default, so it is visible and correctable (AGENTS.md, "A
+    reasonable default beats a question"): the parser records the
+    ``measure`` decision and the answer says it, with the wording that
+    names another stat. Only where the words name a high as one
+    (:data:`~association.query.lexicon.CAREER_HIGH`: "career high", "season
+    high" - a "best game" by what is the question's to say). A word no
+    reader reads may be the stat misspelled ("brice sensabaugh career high
+    asistss"): the refusal names it as the stat it cannot rank by
+    (``unknown_stat``) and claims it, since the refusal turns on it."""
+    refusal = pointed.point_refusal
+    if refusal is None or refusal.kind != "needs_stat" or refusal.facts.get("shape") != GAME_HIGHS or reading.measure is not None or not lexicon.CAREER_HIGH.search(question):
+        return pointed, []
+    unread = [(start, end, word) for start, end, word in lexicon.content_words(question, names, stat) if not any(c.start < end and c.end > start for c in found)]
+    if unread:
+        named_as = " ".join(word for _, _, word in unread)
+        return replace(pointed, point_refusal=Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": named_as})), [Claim(start, end, "refused") for start, end, _ in unread]
+    decided = Decision("parser", "measure", None, "points", "a single game's high names no stat, so points are read")
+    return with_point(question, replace(reading, measure=Measure(key="points", as_typed="points"), decisions=(*reading.decisions, decided))), []
 
 
 def _reading_from_route_point(reading: Reading) -> tuple[Reading | None, str | None, Cause | None]:
@@ -1306,12 +1356,18 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       words name nothing else that nothing reads (bench points), whose
       cause is said where the answer side declines, as before.
 
-    The championship first, as the answering loop asked them, then a fact
-    nothing reads, then a coach named by "under", then the window's ends, then a window per season, then a
+    A fact no table holds first (an age asked beside a title is the age),
+    then the championship, then points by play nothing reads, then a coach named by "under", then the window's ends, then a window per season, then a
     career's own seasons, then a ranking's own conference."""
+    fact = _refused_fact_not_read(question)
+    if fact is not None:
+        # Before the championship: "how old was shaq when he won a
+        # championship in miami" asks an age, which no table holds, and the
+        # title is derivable from the games.
+        return fact
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
-    fact = _refused_fact_not_read(question) or _refused_play_type_points(question, reading)
+    fact = _refused_play_type_points(question, reading)
     if fact is not None:
         return fact
     coach = _refused_coach_under(teams, question)
@@ -1331,6 +1387,9 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         # Where the words name something else nothing reads ("bench points
         # allowed in the west"), that cause is said, as it was.
         return Cause(kind="own_alignment", facts={"shape": reading.asked, "alignment": aligned})
+    best = _refused_own_best_season(players, question, reading)
+    if best is not None:
+        return best
     denied = _reading_from_route_denied(question, reading)
     if denied is not None:
         return denied
@@ -1347,6 +1406,72 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)
     return Cause(kind="no_player_reading", facts={"player": player, "shape": reading.asked}) if player is not None else None
+
+
+def _refused_subject_not_read(question: str, reading: Reading) -> tuple[Cause | None, list[Claim]]:
+    """A question that names nobody the reading could place and asks for no
+    ranking (``subject_not_read``, ISSUES.md #448): with no player, team or
+    position read, the parent grammar's last row reads any words as the
+    league's ranking of players, and where the words name no stat to rank
+    by either, that ranking's own cause (``ranking_needs_stat``) was said -
+    "chrry vs rockets", "Kumminga logs vs wizards", "What position did Larry
+    Bird play?" were each told a ranking needs a stat, and "11/29/24 Al
+    Horford" that the game would answer a different span. What is missing
+    is who the question is about: the sentence says so, beside the opponent
+    a versus word set him against. Where a ranking word stands ("most 10+
+    pointd regular season games") the ranking was asked, and its cause
+    stands - the word claimed, since the cause turns on it. Asked only of a
+    ranking with no stat read (``ranking_needs_stat``) and no other cause:
+    a number, a stat, a window or a date the reading defaulted past names
+    the word it lost, which is the sharper sentence."""
+    # (Not against anyone, nor over a window of games: "guards vs jokic this
+    # season" asks their lines against him, "san antonio spurs last two game
+    # player stats" a box score, no list of them.)
+    roster = (
+        reading.who.kind in ("team_players", "position") and not reading.who.players and not lexicon.VERSUS_OR_AGAINST_WORD.search(question) and not reading.companions and reading.window.count is None
+    )
+    if not roster and (reading.who.kind != "everyone" or reading.who.players or reading.who.teams):
+        return None, []
+    ranked = [Claim(match.start(), match.end(), "refused") for match in lexicon.RANKING_ASKED.finditer(question)]
+    if ranked:
+        return None, ranked
+    if roster:
+        # A team's or a position's players with no ranking word and no stat
+        # ask a roster ("nba players from the 76ers in the 2000s", the feed
+        # sample's FS151), which no reader lists: the ranking's stat is not
+        # what is missing.
+        group = lexicon.POSITION_GROUP_NAMES.get(reading.who.position or "", "players")
+        return Cause(kind="roster_not_read", facts={"team": reading.who.teams[0] if reading.who.teams else None, "group": group}), []
+    return Cause(kind="subject_not_read", facts={"opponent": reading.cuts.opponent}), []
+
+
+def _refused_own_best_season(players: names.PlayerIndex, question: str, reading: Reading) -> Cause | None:
+    """One player's best single season across his career ("michael jordan's
+    best season", "Klay Thompson most free throw attempts in a season", the
+    feed sample's FS162) is a superlative over his seasons that no reader
+    takes (decision D13's remainder): the line read the current season, so
+    "Michael Jordan has no 2026 regular season numbers" named a missing
+    season nobody asked about - and once the season line read the attempts,
+    Klay's answered his 2026 average, fluently. Refused by a cause naming
+    the words, with the wording that lists his seasons
+    (``own_best_season``); a season named ("michael jordan best season
+    1988") is that season's line. Only for a name the index reads as one
+    player, every word of it his: a name it reads as nobody, or backs off
+    to a surname ("trace jokic's mark from his best season"), keeps the
+    refusal by that name, said where the name is resolved."""
+    if reading.asked != PLAYER_LINE or reading.who.kind != "player" or len(reading.who.players) != 1:
+        return None
+    span = reading.span
+    if span.season is not None or span.since is not None or span.until is not None:
+        return None
+    found = lexicon.OWN_BEST_SEASON.search(question)
+    if found is None:
+        return None
+    typed = reading.who.players[0]
+    matched = find_players(players, typed, limit=None)
+    if len(matched) != 1 or not set(typed.casefold().split()) <= set(matched[0].name.casefold().split()):
+        return None
+    return Cause(kind="own_best_season", facts={"words": found.group(0), "player": matched[0].name})
 
 
 def _refused_fact_not_read(question: str) -> Cause | None:
@@ -1411,18 +1536,37 @@ def _reading_from_route_denied(question: str, reading: Reading) -> Cause | None:
     when embiid doesn't start" - which the role reader reads as the role
     itself, so a filter on it narrows to the very games the question
     excludes (ISSUES.md #248: his games WITH Embiid starting were listed):
-    refused by a cause naming the words, on every key but the with/without
-    split, which shows both halves and keeps it (:func:`_read_route_beside`)."""
-    if reading.asked == PRESENCE_SPLIT:
+    refused by a cause naming the words and the companion whose clause
+    denies it, on every key but the with/without split over one companion,
+    which shows both halves and keeps it (:func:`_read_route_beside`); over
+    two ("sixers record when embiid starts and maxey doesn't start", ISSUES.md
+    #484) the split answered both starting, the games the question rules
+    out."""
+    if reading.asked == PRESENCE_SPLIT and len(reading.companions) < 2:
         return None
     roles = tuple(c for c in reading.companions if c.predicate in ("started", "bench"))
     for match, predicate in role_phrases(roles, question):
-        if lexicon.DENIED_ROLE.search(match.group(2)):
-            player = next(c.player for c in roles if c.predicate == predicate)
+        denial = lexicon.DENIED_ROLE.search(match.group(2))
+        if denial:
+            player = _denied_companion(roles, predicate, match.group(2)[: denial.start()])
             return Cause(
                 kind="denied_role", facts={"player": player, "words": question[match.start() : match.end()].strip(), "role": "start" if predicate == "started" else "bench", "shape": reading.asked}
             )
     return None
+
+
+def _denied_companion(roles: tuple[Companion, ...], predicate: str, before: str) -> str:
+    """The companion whose own clause the denial ends (ISSUES.md #484): the
+    words before the denial cut at the last joiner between two names
+    (:data:`~association.query.lexicon.NAME_JOINERS`) - "embiid starts and
+    maxey doesn't start" denies Maxey's start, where the first companion with
+    the role named Embiid - and the first companion with the role where no
+    clause names one."""
+    words = before.split()
+    cut = max((i for i, word in enumerate(words) if word.lower().strip(",") in lexicon.NAME_JOINERS or word.endswith(",")), default=-1)
+    clause = " ".join(words[cut + 1 :])
+    named = [c.player for c in roles if c.predicate == predicate and question_supports(c.player, clause)]
+    return named[0] if named else next(c.player for c in roles if c.predicate == predicate)
 
 
 _DEFAULTED_ORDER: tuple[str, ...] = ("number", "stat", "window", "date")

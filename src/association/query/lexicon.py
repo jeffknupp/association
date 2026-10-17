@@ -933,10 +933,17 @@ grammar, the window and the span read a misspelling alike.
 # already leads with the one asked about and adds "Next: ..." (a ranking, a
 # count over a line, a single game's high), and a limit of 1 would cost those
 # answers their runners-up.
+# "last" misspelled before a count of games - the feed's "jalen brunson
+# lasst 5 games" (the feed sample's FS007) and "aaron gorodn lat 5 games",
+# each refused for an unread number where the key reads the last 5 games.
+# Only spellings that are no word of their own: "least" ("at least 5
+# games"), "lost", "list", "past" (read as itself) and "ast" (assists:
+# "hield ast 5 games") are not "last".
+_LAST_NEAR = "lasst|lastt|laast|lsat|alst|lat"  # codespell:ignore lsat - a misspelling of "last" the window reads
 WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
     (
         re.compile(
-            rf"\b(last|past|previous|most recent|latest|final)\s+{COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}({WINDOW_GAMES}|outings?|contests?|starts?)\b",
+            rf"\b(last|past|previous|most recent|latest|final|{_LAST_NEAR})\s+{COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}({WINDOW_GAMES}|outings?|contests?|starts?)\b",
             re.IGNORECASE,
         ),
         "recent",
@@ -944,6 +951,12 @@ WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
     ),
     # A bare count closing the question is games: "magic vs nets last 10".
     (re.compile(rf"\b(last|past|previous)\s+{COUNT}\s*[?.!]*\s*\Z", re.IGNORECASE), "recent", 0),
+    # And a bare count before "stats": "Sengun last 5 stats vs knicks" (the
+    # feed sample's FS015) was refused for an unread number where the key
+    # reads his last 5 games against New York. Not before a versus word:
+    # "last 10 vs denver" would make the "games" of every "last 10 games vs
+    # denver" a word the window reads without.
+    (re.compile(rf"\b(last|past|previous)\s+{COUNT}\s+(?=stats?\b)", re.IGNORECASE), "recent", 0),
     (re.compile(rf"\bfirst\s+{COUNT}\s+{WINDOW_GAMES}\b", re.IGNORECASE), "first", 0),
     (re.compile(r"\b(last|most recent|latest|final)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", re.IGNORECASE), "recent", 1),
     (re.compile(r"\b(first|opening)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b|\b(season\s+)?opener\b", re.IGNORECASE), "first", 1),
@@ -1215,10 +1228,11 @@ rings does jeremy lin have", which no line of his answers.
 
 COMPANION_DENIED = re.compile(r"\b(?:does|did|do|is|was)(?:n'?t|\s+not)\b", re.IGNORECASE)
 """A denial beside a companion's phrase ("when AD plays and lebron does not",
-"jaylen brown played and jayson tatum did not"): where the companions read
-hold no absence, the denial is a role the reading missed, and the career a
-companion who played implies (decision D13) would answer the games they
-both played - a different question, fluently.
+"jaylen brown played and jayson tatum did not"), which the subject reading
+reads as that companion's absence (ISSUES.md #479). Decision D13's span
+kept a companion's career off where a denial stood beside companions read
+as playing; since the subject reading reads the absence, that guard fired
+on no recorded wording and is gone.
 
 .. versionadded:: 7.0.0
 """
@@ -2297,6 +2311,13 @@ opponents score 120+") - searched over the words before the line
 # carries "under 14 fta" and "less than 15 fga and with less than 35 minutes"
 # is two lines, not one.
 
+SCORED_BEFORE = re.compile(r"\bscor(?:e|es|ed|ing)\s+\Z", re.IGNORECASE)
+"""A scoring verb right before a below or above phrase that names no stat
+("score below 10"): the line is on points. Searched over the question up
+to the phrase.
+
+.. versionadded:: 7.0.0
+"""
 BELOW = re.compile(
     r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
     r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b"
@@ -2787,10 +2808,16 @@ NAME_SHAPED = re.compile(r"[A-Za-z][A-Za-z.'\-]*")
 
 .. versionadded:: 6.0.0
 """
-NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "&", "+", ","})
+# "but" joins two clauses as "and" does: "lakers record when AD plays but
+# lebron doesn't" read "but lebron" as no name and the split answered the
+# games both played (ISSUES.md #483, measured by lane p6-homographs).
+NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "but", "&", "+", ","})
 """The joiners between two names in one phrase.
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 7.0.0
+   "but" is one (ISSUES.md #483).
 """
 
 
@@ -3169,6 +3196,18 @@ question (ISSUES.md #390).
 
 .. versionadded:: 6.0.0"""
 
+OWN_BEST_SEASON = re.compile(
+    r"\bbest\s+(?:season|year)s?\b"
+    r"|\b(?:most|highest|best|fewest|lowest|worst)\b.{0,60}?(?:\b(?:in|for|during|of)\s+(?:a|one|1|any)\s+(?:single[- ])?(?:(?:regular|playoffs?)[- ]|post)?season\b|\bsingle[- ](?:post)?season\b)",
+    re.IGNORECASE,
+)
+"""One player's best season across his career asked: "best season",
+"best year", or a superlative over "a (single) season" or "a single
+postseason" - which no reader takes, refused by name where no season is
+named (``point._own_best_season_refused``, the ``own_best_season`` cause).
+
+.. versionadded:: 7.0.0"""
+
 SEASON_BY_SEASON = re.compile(r"\b(?:by|every|each|per)\s+(?:season|year)s?\b|\b(?:season|year)[- ]by[- ](?:season|year)\b", re.IGNORECASE)
 """A history asked season by season ("stats by season", "every season",
 "per season", "year by year") - kept the history where no stat is named,
@@ -3384,6 +3423,18 @@ CAMEL_CASE_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 .. versionadded:: 6.0.0
 """
 
+HOW_MANY_OF_A_STAT = re.compile(
+    r"\bhow\s+many\s+(?:(?:total|career|regular[- ]season|playoff|postseason)\s+)?(?:points|rebounds|assists|steals|blocks|turnovers|fouls|minutes|threes|3-pointers|3s|"
+    r"field\s+goals|free\s+throws|free\s+throw\s+attempts|field\s+goal\s+attempts|3-point\s+attempts|three\s+pointers)\b",
+    re.IGNORECASE,
+)
+""""how many" right before a stat the season line holds ("how many free
+throws", "how many career points"): a count of that stat, which an
+inactive player's career answers - no guard on his career (decision D13,
+``span._his_line_guard``).
+
+.. versionadded:: 7.0.0
+"""
 HOW_MANY_GAMES = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 """A count asked outright ("how many") - beside a games key, a line's count of games rather than a log of one.
 
@@ -4637,6 +4688,37 @@ RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|worst|fewest|leas
 
 .. versionadded:: 6.0.0
 """
+CAREER_HIGH = re.compile(r"\b(?:career|season|game)[\s-]+highs?\b", re.IGNORECASE)
+"""A player's high named as one ("career high", "season high"): with no
+stat named, his scoring high, as the feed sample's keys read "gilbert
+arenas career high vs kobe" and "bryce mcgowens career high vs dallas". A
+best game names no such default - by what is the question's to say.
+
+.. versionadded:: 7.0.0
+"""
+POSITION_GROUP_NAMES: dict[str, str] = {
+    "C": "centers",
+    "F": "forwards",
+    "G": "guards",
+    "PG": "point guards",
+    "SG": "shooting guards",
+    "PF": "power forwards",
+    "SF": "small forwards",
+}
+"""A position group's players by name, by the code the subject reading
+writes (``Subject.position``): what a roster's refusal calls them.
+
+.. versionadded:: 7.0.0
+"""
+RANKING_ASKED = re.compile(r"\b(leaders?|leading|led|most|highest|top|best|worst|fewest|least|lowest|rank(?:s|ed|ings?)?)\b", re.IGNORECASE)
+"""A ranking asked in words, :data:`RANKING_WORDS` and the words that name
+a ranking or a leader outright ("ranked", "rankings", "leading"): where
+none stands, the league's ranking of players is only the parent grammar's
+last row, and a question that names nobody the reading could place asked
+for no ranking (the ``subject_not_read`` cause, ISSUES.md #448).
+
+.. versionadded:: 7.0.0
+"""
 LOG_OR_STATS_WORDS = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.IGNORECASE)
 """A log asked, or the bare "stats" a position's log and a team's players
 are asked by.
@@ -4686,7 +4768,28 @@ championship.
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
 ABSENT_FACTS: tuple[
-    tuple[Literal["draft", "award", "birth", "death", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots", "betting line"], re.Pattern[str]], ...
+    tuple[
+        Literal[
+            "draft",
+            "award",
+            "birth",
+            "age",
+            "death",
+            "height",
+            "jersey",
+            "lead",
+            "four-point play",
+            "role",
+            "wins",
+            "clutch",
+            "defended shots",
+            "betting line",
+            "player efficiency rating",
+            "double team",
+        ],
+        re.Pattern[str],
+    ],
+    ...,
 ] = (
     (
         "draft",
@@ -4711,6 +4814,15 @@ ABSENT_FACTS: tuple[
         ),
     ),
     ("birth", re.compile(r"\bborn\b|\bbirth(?:\s?(?:days?|dates?|places?|years?))?\b", re.IGNORECASE)),
+    # A player's age asked outright (the feed sample's FS053, FS202): "how
+    # old was shaq when he won in miami" was refused as a team no read
+    # placed and "... a championship in miami" as the championship, where
+    # the age is what no table holds; "active nba players youngest to
+    # oldest" likewise. An age as a narrowing ("27 year old", "before
+    # turning 33", ``AGE_WORDS``) is the cuts' situation, said by its own
+    # sentence. A bare "age" is left alone: "Luka career age by season" is
+    # as likely a clipped "average".
+    ("age", re.compile(r"\bhow\s+old\b|\b(?:youngest|oldest)\b", re.IGNORECASE)),
     # A player's death: unread, "when did brandon clarke die" would read
     # "when ... brandon clarke" as a teammate's games and answer his line.
     ("death", re.compile(r"\b(?:die|dies|died|death|deceased|passed\s+away)\b", re.IGNORECASE)),
@@ -4741,13 +4853,25 @@ ABSENT_FACTS: tuple[
     # "spread" is a line's ("point spread" as a margin of victory is no
     # wording either population holds); "odds" is left alone - "celtics
     # playoff odds" is the power index's projection, and answered so.
+    # A player efficiency rating (the feed sample's FS323): no table stores
+    # one - it needs league pace and team factors held per season - and
+    # "Cousins player efficiency rating by year" was told a ranking needs a
+    # stat. Its abbreviation only in capitals: a lowercase "per" is a unit
+    # ("per game") or ambiguous ("jaren jackson per career" is read by the
+    # sample's keyer both as the rating and as his line per game).
+    ("player efficiency rating", re.compile(r"(?i:\bplayer\s+efficiency\s+ratings?\b)|\bPER\b")),
+    # A double team (the feed sample's FS416, FS391): no defensive coverage
+    # or tracking is fetched, and "jalen brown vs pacer playoff double team"
+    # answered his line over the games, the words unread.
+    ("double team", re.compile(r"\bdouble[\s-]?team(?:ed|s|ing)?\b", re.IGNORECASE)),
     (
         "betting line",
         re.compile(r"\bats\b|\bagainst\s+the\s+spread\b|\b(?:point\s+)?spreads?\b|\bover\s*[/-]\s*under\b|\bo/u\b|\bunderdogs?\b|\bmoney\s?lines?\b|\bbetting\b", re.IGNORECASE),
     ),
 )
 """The facts a question can name that no table here holds (a draft
-position, an award or an All-Star selection, a birth date, a height), holds only as a dateless snapshot (a
+position, an award or an All-Star selection, a birth date or an age, a height, a player
+efficiency rating, a double team), holds only as a dateless snapshot (a
 jersey number) or that nothing here reads from what it holds (a lead within
 a game, a four-point play, a player's role on his team, an opponent's win
 total, the last minutes of a game, a defender's field-goal percentage) or that
@@ -4757,6 +4881,9 @@ reads the first into the ``fact_not_read`` cause before any point
 (:attr:`~association.query.reading.Reading.refused`).
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 7.0.0
+   An age asked outright, a player efficiency rating and a double team.
 """
 # Points scored one way - off turnovers, on second chances, on the fast
 # break, in the paint - each a figure of its own that its last word is not:

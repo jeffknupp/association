@@ -30,7 +30,7 @@ from association.query.result import Refusal
 
 from .answer import Answer, AnsweredBy, Timing
 from .compose.plan import Verdict, plan_point, planned_shape, refusal_result
-from .compose.say import nothing_answers, say, say_career_implied, say_left_out, say_spelling_read
+from .compose.say import nothing_answers, say, say_career_implied, say_left_out, say_spelling_read, say_stat_default
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -73,12 +73,35 @@ def _career_implied(reading: Reading, composed: Answer) -> Answer:
     question": visible, and correctable)."""
     if not any(each.stage == "parser" and each.field == "span" and each.after == "career" for each in reading.decisions):
         return composed
-    if "message" in (composed.data or {}):
+    if _read_nothing(composed):
         # A refusal or a question back (the sayer's `message`, `say_refusal`'s
         # and `say_clarify`'s data): nothing was read over the career, and a
         # cause such as an unread number is not corrected by naming a season.
         return composed
     return _noted(composed, say_career_implied(reading.who.kind, current_season()))
+
+
+def _read_nothing(composed: Answer) -> bool:
+    """Whether ``composed`` read nothing a default could be said of: a
+    refusal or a question back (the sayer's ``message``), or a name that
+    matched nobody (``unmatched``: "No player found matching 'bill Russell'
+    ...", which carried "(No season was named, so this reads every season
+    on record ...)" beside it)."""
+    return bool({"message", "unmatched"} & set(composed.data or {}))
+
+
+def _stat_default(reading: Reading, composed: Answer) -> Answer:
+    """``composed`` with the stat a single game's high was read by where its
+    words named none (the parser's ``measure`` decision: points) said as the
+    default it is, with the wording that names another (AGENTS.md, "A
+    reasonable default beats a question": visible, and correctable). Not
+    beside a refusal or a question back, which read no stat."""
+    if _read_nothing(composed):
+        return composed
+    for each in reading.decisions:
+        if each.stage == "parser" and each.field == "measure":
+            composed = _noted(composed, say_stat_default(str(each.after)))
+    return composed
 
 
 def _spelling_read(reading: Reading, composed: Answer) -> Answer:
@@ -520,6 +543,7 @@ class Agent:
             composed = _noted(composed, note)
         composed = self._unmatched_fingerprint(reading, composed)
         composed = _spelling_read(reading, composed)
+        composed = _stat_default(reading, composed)
         composed = _career_implied(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if composed.data is not None and key in composed.data}
         history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(shape)} point={point}")

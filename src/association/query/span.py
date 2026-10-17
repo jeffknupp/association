@@ -104,6 +104,10 @@ class SpanContext:
     #: games than one season holds is a career's floor ("plus minus per
     #: game leaders minimum 100 games played").
     minimum_games: int | None = None
+    #: Whether the measure read is a yes or a no of a game (a triple-double):
+    #: a log of the games it holds in is every one on record ("lebron james
+    #: triple double log", the feed sample's FS073), as their count is.
+    yes_no_stat: bool = False
 
 
 @dataclass(frozen=True)
@@ -475,6 +479,12 @@ def _implied_playoff_window(question: str, context: SpanContext) -> bool:
     return recent and bool(lexicon.PLAYOFF_WORDS.search(question)) and not lexicon.BOTH_SEASON_TYPES_WORDS.search(question)
 
 
+def _implied_yes_no(question: str, context: SpanContext) -> bool:
+    """A named player's games where a yes/no stat holds - every one on record."""
+    del question
+    return context.player_named and context.yes_no_stat
+
+
 IMPLIED_CAREERS: dict[str, Callable[[str, SpanContext], bool]] = {
     "versus": _implied_versus,
     "pair": _implied_pair,
@@ -486,6 +496,7 @@ IMPLIED_CAREERS: dict[str, Callable[[str, SpanContext], bool]] = {
     "in_a_game": _implied_in_a_game,
     "minimum": _implied_minimum,
     "playoff_window": _implied_playoff_window,
+    "yes_no": _implied_yes_no,
 }
 """The careers a question implies where it names no season (decision D13,
 Jeff's: a question naming no season reads the career where its words imply
@@ -568,7 +579,14 @@ def _his_line_guard(question: str, context: SpanContext) -> list[Claim]:
     (:data:`~association.query.lexicon.HIS_LINE_ASKED`, or a stat)."""
     if not (context.player_named and context.inactive and (lexicon.HIS_LINE_ASKED.search(question) or lexicon.STAT_WORDS.search(question))):
         return []
-    found = [lexicon.HOW_MANY_GAMES.search(question), lexicon.WH_QUESTION.search(question), lexicon.RANKING_WORDS.search(question)]
+    # "how many" before a stat the line holds is a count of that stat, his
+    # career's total: "How many free throws have Kobe attempt" (the feed
+    # sample's FS064) answered "Kobe Bryant has no 2026 regular season
+    # numbers", where the key reads his 10,011.
+    how_many = lexicon.HOW_MANY_GAMES.search(question)
+    if how_many is not None and lexicon.HOW_MANY_OF_A_STAT.search(question):
+        how_many = None
+    found = [how_many, lexicon.WH_QUESTION.search(question), lexicon.RANKING_WORDS.search(question)]
     return [Claim(match.start(), match.end(), "span") for match in found if match is not None]
 
 
@@ -581,10 +599,11 @@ def _implied_guard_claims(question: str, context: SpanContext, career: bool) -> 
     nobody read on its other side ("ron artest vs carmelo anthony", the
     first name on no record, or "kobe stats against jordan", the second
     one of many) - a reading short of the question, which a career would
-    answer fluently about the one side read; and a denial beside companions
-    read as playing, none absent ("Lakers record when AD plays and lebron
-    doesn't": :data:`~association.query.lexicon.COMPANION_DENIED`), a role the
-    reading missed. None under a career word, or
+    answer fluently about the one side read. (A denial beside companions
+    read as playing was a guard too, while the subject reading read a denied
+    companion as playing; it reads him absent since ISSUES.md #479, and the
+    guard fired on none of the 2,698 readings, the 2,070 feed or the 628
+    corpus questions, so it is gone.) None under a career word, or
     where no career the words imply stands behind the guard (a career a
     key implies by itself is the key's reading, not the words')."""
     if career or not any(rule(question, context) for rule in IMPLIED_CAREERS.values() if rule is not _implied_always):
@@ -597,9 +616,6 @@ def _implied_guard_claims(question: str, context: SpanContext, career: bool) -> 
     versus = lexicon.VERSUS_OR_AGAINST_WORD.search(question)
     if versus is not None and not (context.opponent or context.pair):
         return [Claim(versus.start(), versus.end(), "span")]
-    denied = lexicon.COMPANION_DENIED.search(question)
-    if denied is not None and context.companion_played and not context.companion_absent:
-        return [Claim(denied.start(), denied.end(), "span")]
     return []
 
 

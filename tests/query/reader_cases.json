@@ -1289,7 +1289,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "league"
    ],
    "subject": {
@@ -2218,7 +2217,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "league"
    ],
    "subject": {
@@ -2384,7 +2382,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "rookie",
     "year"
    ],
@@ -10186,7 +10183,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "rebounding"
    ],
    "subject": {
@@ -17153,14 +17149,10 @@
    },
    "point_declined": null,
    "point_refusal": null,
-   "defaulted": {
-    "kind": "ranking_needs_stat",
+   "refused": {
+    "kind": "subject_not_read",
     "facts": {
-     "shape": {
-      "relation": "player_seasons",
-      "shape": "ranking",
-      "by": "player"
-     }
+     "opponent": null
     }
    }
   }
@@ -18383,7 +18375,6 @@
    },
    "minimum": null,
    "unread": [
-    "best",
     "defense",
     "league"
    ],
@@ -41513,20 +41504,18 @@
    "point": null,
    "point_declined": "a leaderboard cannot answer about one named player ('LeBron James')",
    "point_refusal": null,
-   "unsupported": [
-    {
-     "kind": "non_calendar_situation",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "ranking",
-       "by": "player"
-      },
-      "situation": "before turning 27",
-      "reads_as": "age"
-     }
+   "refused": {
+    "kind": "non_calendar_situation",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "situation": "before turning 27",
+     "reads_as": "age"
     }
-   ]
+   }
   }
  },
  {
@@ -41739,20 +41728,18 @@
    },
    "point_declined": null,
    "point_refusal": null,
-   "unsupported": [
-    {
-     "kind": "non_calendar_situation",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "situation": "18 year old",
-      "reads_as": "age"
-     }
+   "refused": {
+    "kind": "non_calendar_situation",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "scalar",
+      "by": "line"
+     },
+     "situation": "18 year old",
+     "reads_as": "age"
     }
-   ]
+   }
   }
  },
  {
@@ -57514,14 +57501,10 @@
    },
    "point_declined": null,
    "point_refusal": null,
-   "defaulted": {
-    "kind": "ranking_needs_stat",
+   "refused": {
+    "kind": "subject_not_read",
     "facts": {
-     "shape": {
-      "relation": "player_seasons",
-      "shape": "ranking",
-      "by": "player"
-     }
+     "opponent": "New York Knicks"
     }
    }
   }
@@ -103239,7 +103222,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -103312,6 +103295,13 @@
       "Joel Embiid"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -103398,7 +103388,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -103434,7 +103424,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -103524,7 +103514,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
@@ -103538,7 +103528,9 @@
     "by": null
    },
    "minimum": null,
-   "unread": [],
+   "unread": [
+    "doesnt"
+   ],
    "subject": {
     "kind": "player",
     "players": [
@@ -103595,6 +103587,13 @@
       "Joel Embiid"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     },
     {
      "stage": "subject",
@@ -103685,7 +103684,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": false,
+     "career": true,
      "since": null,
      "until": null
     },
@@ -112987,10 +112986,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "best",
-    "season"
-   ],
+   "unread": [],
    "subject": {
     "kind": "player",
     "players": [
@@ -113128,7 +113124,14 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "refused": {
+    "kind": "own_best_season",
+    "facts": {
+     "words": "best season",
+     "player": "Michael Jordan"
+    }
+   }
   }
  },
  {

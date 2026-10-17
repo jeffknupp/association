@@ -264,7 +264,26 @@ def streak_column(measure: Measure | None, threshold: int | None) -> str | None:
     return column
 
 
-PLAYER_STAT_NAMES: frozenset[str] = frozenset({"turnovers", "fouls", "rebounds", "threePointFieldGoalsMade", "fieldGoalsMade", "points", "freeThrowsMade", "minutes", "steals", "blocks", "assists"})
+PLAYER_STAT_NAMES: frozenset[str] = frozenset(
+    {
+        "turnovers",
+        "fouls",
+        "rebounds",
+        "threePointFieldGoalsMade",
+        "fieldGoalsMade",
+        "points",
+        "freeThrowsMade",
+        "minutes",
+        "steals",
+        "blocks",
+        "assists",
+        "fieldGoalsAttempted",
+        "threePointFieldGoalsAttempted",
+        "freeThrowsAttempted",
+        "offensiveRebounds",
+        "defensiveRebounds",
+    }
+)
 """The stats the season line reads for one player, by name
 (``season_line.PLAYER_STAT_COLUMNS`` says the columns).
 

@@ -885,7 +885,11 @@ def _default_game_log(scope: Filtered) -> Reading:
     date's."""
     if not _named_player_in(scope):
         raise Unsupported("a team's log is the team relation's")
-    if _named_stat(scope) and stat_column(scope.measure) is None:
+    # A yes/no stat of a game ("lebron james triple double log", the feed
+    # sample's FS073) keeps the games it holds in, where it was refused as a
+    # stat the log has no column for.
+    boolean = scope.measure.key if scope.measure is not None and scope.measure.key in BOOLEAN_MEASURES and scope.measure.whose == "own" else None
+    if _named_stat(scope) and stat_column(scope.measure) is None and boolean is None:
         log_extras(scope.measure)
     date = scope.cuts.date
     return Reading(
@@ -893,7 +897,7 @@ def _default_game_log(scope: Filtered) -> Reading:
         read_as=PLAYER_LOG,
         measures=_measured(*LINE),
         group="none",
-        predicates=_threshold_line(scope),
+        predicates=[(boolean, "=", True)] if boolean is not None else _threshold_line(scope),
         order="date",
         direction="asc" if scope.window.order == "first" else "desc",
         limit=_clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT),
@@ -2355,6 +2359,7 @@ _SPAN_IMPLIED: dict[str, frozenset[PointShape]] = {
     "minimum": frozenset({PLAYER_RANKING}),
     "playoff_window": frozenset({PLAYER_LOG}),
     "in_a_game": frozenset({GAME_HIGHS, TEAM_GAME_HIGHS, PLAYER_RANKING, PLAYER_LINE}),
+    "yes_no": frozenset({PLAYER_LOG}),
 }
 
 

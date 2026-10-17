@@ -3,14 +3,14 @@ the rules' own cases on the small fixture warehouse."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import duckdb
 import pytest
 from routed import Routed, reading_of, with_subject
 from routed import staged as settle
 
-from association.query.compose.plan import aggregate_of, plan_point
+from association.query.compose.plan import aggregate_of, plan_point, refusal_result
 from association.query.compose.say import refusal_phrase
 from association.query.decisions import Decision
 from association.query.entities import names_of
@@ -41,6 +41,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    Cause,
     Companion,
     PointShape,
     Reading,
@@ -779,9 +780,7 @@ def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:
     """ "Tatum rec" and bare names are a user hitting enter early, and are refused with a generic sentence rather than
     guessed at. Three words is a question ("76ers away record"). The
     parser's first verdict, a cause the planner says."""
-    from association.query.compose.plan import refusal_result
     from association.query.parse import MIN_QUESTION_WORDS, too_short
-    from association.query.reading import Cause
 
     assert MIN_QUESTION_WORDS == 3
     assert too_short("Tatum rec") == Cause(kind="too_short", facts={"asked": "Tatum rec"})
@@ -1347,7 +1346,6 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
 @pytest.mark.parametrize(
     ("question", "names", "stat", "kind", "words"),
     [
-        ("aaron gorodn lat 5 games", ["Aaron Gordon"], "points", "unread_number", ("5",)),
         # Two edits from "quarter" is no near spelling of it: the ordinal stays unread ("1st quater" is the quarter, #457).
         ("Bam adeboyo 1st quinter average", ["Bam Adebayo"], "points", "unread_number", ("1st",)),
         ("sga scored 20 points in the 2nd quarter", ["Shai Gilgeous-Alexander"], "points", "unread_number", ("20",)),
@@ -1372,8 +1370,8 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
 def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, kind: str, words: tuple[str, ...]) -> None:
     """An unread number, window word or month the reading took a default past
     is a ``defaulted`` cause naming the words, which the planner says where
-    it would otherwise answer past them ("aaron gorodn lat 5 games" with the
-    5 unread). The cause claims its words, so they leave
+    it would otherwise answer past them ("sga scored 20 points in the 2nd
+    quarter" with the 20 unread). The cause claims its words, so they leave
     ``Reading.unread``."""
     reading = _read(con, question, names, stat)
     assert reading.defaulted is not None and reading.defaulted.kind == kind and reading.defaulted.facts["words"] == words
@@ -1512,7 +1510,7 @@ def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.D
 
 @pytest.mark.parametrize(
     "question",
-    ["best shooting percentages 2023", "Cousins player efficiency rating by year", "nba pg highest win games"],
+    ["best shooting percentages 2023", "most efficienr nba game", "nba pg highest win games"],
 )
 def test_a_players_ranking_with_no_measure_read_is_refused_naming_the_stat(con: duckdb.DuckDBPyConnection, question: str) -> None:
     """#421: where the words name a measure nothing reads and the model none
@@ -1521,6 +1519,206 @@ def test_a_players_ranking_with_no_measure_read_is_refused_naming_the_stat(con: 
     says where the ranking would answer."""
     reading = _read(con, question)
     assert reading.defaulted is not None and reading.defaulted.kind == "ranking_needs_stat"
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["chrry vs rockets", "Kumminga logs vs wizards", "What position did Larry Bird play?", "11/29/24 Al Horford", "Lyngby bk total corners last 5 games average"],
+)
+def test_a_question_naming_nobody_read_and_no_ranking_is_refused_by_who_it_is_about(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """#448: with nobody read and no ranking word, the league's ranking is
+    only the parent grammar's last row - the missing fact is who the
+    question is about, never a ranking's stat (``ranking_needs_stat``) or a
+    span the ranking would answer for (a decline)."""
+    reading = _read(con, question)
+    assert reading.refused is not None and reading.refused.kind == "subject_not_read"
+    assert reading.defaulted is None
+    assert refusal_result(reading.refused).text.startswith(("No player or team is read", "The words set someone against"))
+
+
+def test_a_teams_players_asked_with_no_ranking_word_and_no_stat_are_refused_as_a_roster() -> None:
+    """The feed sample's FS151, "nba players from the 76ers in the 2000s",
+    was told a ranking needs a stat: a team's or a position's players asked
+    with no ranking word ask a roster, which no reader lists - said with the
+    wordings that rank them, which answer."""
+    from association.query.parse import _refused_subject_not_read
+
+    team_players = Reading(who=Who(kind="team_players", teams=("Philadelphia 76ers",)), read_as=PLAYER_RANKING)
+    cause, _ = _refused_subject_not_read("nba players from the 76ers in the 2000s", replace(team_players, point=team_players))
+    assert cause == Cause(kind="roster_not_read", facts={"team": "Philadelphia 76ers", "group": "players"})
+    assert "'Philadelphia 76ers players most games played'" in refusal_result(cause).text
+    assert refusal_phrase("roster_not_read", {"team": "Chicago Bulls", "group": "forwards"}).startswith("A list of the Chicago Bulls' forwards - a roster -")
+    # A ranking word asks the ranking: its own cause stands.
+    assert _refused_subject_not_read("most 76ers players in the 2000s", replace(team_players, point=team_players))[0] is None
+
+
+def test_nobody_read_is_said_beside_the_opponent_a_versus_word_read() -> None:
+    """#448: the opponent a versus word set the unread subject against is
+    said, so the sentence names what was read and what was not."""
+    said = refusal_phrase("subject_not_read", {"opponent": "Houston Rockets"})
+    assert said.startswith("The words set someone against the Houston Rockets, but no player or team is read")
+    assert "ranking" in refusal_phrase("subject_not_read", {"opponent": None})
+
+
+@pytest.mark.parametrize(
+    ("question", "points"),
+    [
+        ("jokic career high vs maxey", True),
+        ("tyrese maxey career high", True),
+        ("tyrese maxey career high asistss", False),
+        ("show me last season's best game for maxey", False),
+    ],
+)
+def test_a_named_high_with_no_stat_reads_points_and_says_so(con: duckdb.DuckDBPyConnection, question: str, points: bool) -> None:
+    """The feed sample's FS362, FS379, FS219: a career high whose words name
+    no stat was refused for want of one (``needs_stat``), where the keys
+    read his scoring high. Points are read, and the parser records the
+    ``measure`` decision the answer says; a word no reader reads may be the
+    stat misspelled, and is named as the stat the refusal cannot rank by;
+    a best game names no default and keeps its refusal."""
+    reading = _read(con, question)
+    if points:
+        assert reading.point is not None and reading.measure is not None and reading.measure.key == "points"
+        assert any(each.stage == "parser" and each.field == "measure" and each.after == "points" for each in reading.decisions)
+    else:
+        assert reading.point_refusal is not None and reading.point_refusal.kind == ("unknown_stat" if "asistss" in question else "needs_stat")
+        assert not any(each.field == "measure" for each in reading.decisions)
+        if "asistss" in question:
+            # The word no reader reads is named as the stat, and claimed.
+            assert reading.point_refusal.facts["stat"] == "asistss" and "asistss" not in reading.unread
+
+
+@pytest.mark.parametrize(
+    ("question", "count"),
+    [
+        ("tyrese maxey lasst 5 games", 5),
+        ("tyrese maxey lat 5 games", 5),
+        ("tyrese maxey last 5 stats vs knicks", 5),
+        ("tyrese maxey games with at least 5 assists", None),
+        ("tyrese maxey ast 5 games", None),
+    ],
+)
+def test_last_misspelled_or_before_stats_reads_the_window_of_games(con: duckdb.DuckDBPyConnection, question: str, count: int | None) -> None:
+    """The feed sample's FS007 ("jalen brunson lasst 5 games") and FS015
+    ("Sengun last 5 stats vs knicks") were refused for an unread number,
+    where the keys read the last 5 games: a near spelling of "last" that is
+    no word of its own, and a bare count before "stats", read the window.
+    "at least" and "ast" (assists) are not "last"."""
+    reading = _read(con, question)
+    if count is None:
+        assert reading.window.order != "recent" or reading.window.count != 5
+    else:
+        assert reading.window.order == "recent" and reading.window.count == count
+        assert reading.defaulted is None
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("tyrese maxey's best season", "best season"),
+        ("tyrese maxey most free throw attempts in a season", "most free throw attempts in a season"),
+        ("tyrese maxey most points per game in a single postseason", "most points per game in a single postseason"),
+        ("tyrese maxey best season 2024", None),
+        ("tyrese maxey free throw attempts", None),
+        ("trace maxey best season", None),
+    ],
+)
+def test_a_players_best_season_across_his_career_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, words: str | None) -> None:
+    """The feed sample's FS162, "michael jordan's best season", was told he
+    has no 2026 numbers: a player's best single season across his career is
+    a superlative over his seasons no reader takes, refused by a cause
+    naming the words and the wording that lists his seasons. A season
+    named is that season's line; a line asked plainly is the line; a name
+    the index backs off to a surname keeps its refusal by name."""
+    # The model's spelling of a name the index backs off to a surname.
+    reading = _read(con, question, ["trace maxey"] if question.startswith("trace") else None)
+    if words is None:
+        assert reading.refused is None or reading.refused.kind != "own_best_season"
+    else:
+        assert reading.refused == Cause(kind="own_best_season", facts={"words": words, "player": "Tyrese Maxey"})
+        assert "'Tyrese Maxey stats by season'" in refusal_result(reading.refused).text
+
+
+@pytest.mark.parametrize("stat", ["freeThrowsAttempted", "fieldGoalsAttempted", "threePointFieldGoalsAttempted", "offensiveRebounds", "defensiveRebounds"])
+def test_the_season_line_reads_the_attempts_and_the_rebounds_halves(stat: str) -> None:
+    """The feed sample's FS064, "How many free throws have Kobe attempt",
+    was refused "no per-game column for stat 'freeThrowsAttempted'": the
+    season table holds each per game and in total, and the line reads it."""
+    from association.query.season_line import CAREER_TOTALS, PLAYER_STAT_COLUMNS
+
+    assert stat in PLAYER_STAT_COLUMNS and CAREER_TOTALS[stat] == stat
+
+
+@pytest.mark.parametrize(("question", "career"), [("how many free throws has tyrese maxey attempted", True), ("how many games did tyrese maxey score 30 points", False)])
+def test_how_many_of_a_stat_is_no_guard_on_an_inactive_players_career(question: str, career: bool) -> None:
+    """ "How many free throws have Kobe attempt" (FS064) is a count of a stat
+    his career holds; decision D13's guard keeps "how many" of anything else
+    ("how many games did he score 30 points") off his career."""
+    from association.query.span import SpanContext, _his_line_guard
+
+    assert bool(_his_line_guard(question, SpanContext(player_named=True, inactive=True))) is not career
+
+
+@pytest.mark.parametrize(
+    ("question", "roles"),
+    [
+        ("lakers record when AD plays but lebron doesnt", [("Anthony Davis", "played"), ("LeBron James", "absent")]),  # codespell:ignore doesnt - as typed
+        ("lakers record when AD plays but lebron doesn't play", [("Anthony Davis", "played"), ("LeBron James", "absent")]),
+        ("lakers record when lebron sits but AD plays", [("LeBron James", "absent"), ("Anthony Davis", "played")]),
+    ],
+)
+def test_but_joins_two_companions_clauses_as_and_does(question: str, roles: list[tuple[str, str]]) -> None:
+    """ISSUES.md #483 (measured by lane p6-homographs): "but" between two
+    companions' clauses is a joiner (``lexicon.NAME_JOINERS``), so each
+    name takes its own clause's role and the split answers LeBron out."""
+    from association.query.subject import _conditions
+
+    assert [(c.player, c.predicate) for c in _conditions(question, ("Anthony Davis", "LeBron James"), Reading())] == roles
+
+
+@pytest.mark.parametrize(
+    ("question", "asked", "player"),
+    [
+        ("sixers record when embiid starts and maxey doesnt start", PRESENCE_SPLIT, "Tyrese Maxey"),  # codespell:ignore doesnt - as typed
+        ("sixers record when maxey doesnt start and embiid starts", PRESENCE_SPLIT, "Tyrese Maxey"),  # codespell:ignore doesnt - as typed
+        ("maxey game log when embiid doesn't start", PLAYER_LOG, "Joel Embiid"),
+        ("sixers record when maxey doesnt start", PRESENCE_SPLIT, None),  # codespell:ignore doesnt - as typed
+    ],
+)
+def test_a_denied_role_names_the_companion_whose_clause_denies_it(question: str, asked: PointShape, player: str | None) -> None:
+    """ISSUES.md #484: over two companions the with/without split cannot
+    show a denied start (it answered both starting), so it is refused - by
+    the companion whose own clause denies it, never the first with the
+    role. Over one, the split shows both halves and keeps it."""
+    from association.query.parse import _reading_from_route_denied
+    from association.query.reading import Companion
+
+    companions = tuple(Companion(player=name, predicate="started") for name in ("Joel Embiid", "Tyrese Maxey") if name.split()[1].lower() in question)
+    cause = _reading_from_route_denied(question, Reading(asked=asked, companions=companions))
+    assert (cause.facts["player"] if cause is not None else None) == player
+
+
+@pytest.mark.parametrize("question", ["tyrese maxey triple double log", "tyrese maxey games with a double double"])
+def test_a_log_of_a_yes_no_stat_keeps_the_games_it_holds_in_over_the_career(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """The feed sample's FS073, "lebron james triple double log", was
+    refused "A game log has no per-game column for 'triple_double'": a yes or
+    a no of a game keeps the games it holds in, and over every one on record
+    with no season named, as their count is (decision D13)."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.read_as == PLAYER_LOG
+    assert reading.point.predicates == [(reading.measure.key if reading.measure else None, "=", True)]
+    assert reading.span.career
+
+
+@pytest.mark.parametrize(("question", "op"), [("how many times did tyrese maxey score below 10", "<"), ("tyrese maxey games he scored under 15", "<")])
+def test_a_scoring_verb_names_the_stat_a_below_phrase_does_not(con: duckdb.DuckDBPyConnection, question: str, op: str) -> None:
+    """The feed sample's FS241, "How many times did bill Russell score below
+    10", was refused "'below 10' names no box-score stat": the verb before
+    the phrase names points, and the refusal that is the missing thing - no
+    such player - is said where his name is resolved."""
+    reading = _read(con, question)
+    assert [(line.measure, line.op) for line in reading.lines] == [("points", op)]
+    assert reading.point_refusal is None
 
 
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])

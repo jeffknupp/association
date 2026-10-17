@@ -310,7 +310,16 @@ def _read_lines_phrases(question: str) -> list[LineCandidate]:
                 # "10 or fewer": the words that keep it under stand after the
                 # number, and the stat after them (ISSUES.md #325).
                 lead, stat = (trailing.start(), trailing.end() - 1), (trailing.end(), m.end())
-            found.append(LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase", phrase_number, stat, lead))
+            line, start = phrase_line(m.group(0), below=below), m.start()
+            scored = lexicon.SCORED_BEFORE.search(question, 0, m.start()) if line.measure is None else None
+            if scored is not None:
+                # "How many times did bill Russell score below 10" (the feed
+                # sample's FS241): the verb names the stat the phrase does
+                # not, where the line was refused as naming none.
+                # The verb is the grammar's to claim (a count's "score"), so
+                # the line claims its own phrase alone.
+                line = replace(line, measure="points", as_typed=f"{question[scored.start() : m.start()]}{m.group(0)}".casefold())
+            found.append(LineCandidate(line, start, Claim(m.start(), m.end(), "line"), "phrase", phrase_number, stat, lead))
     return found
 
 

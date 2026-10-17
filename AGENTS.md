@@ -245,7 +245,7 @@ The rules:
   the question have said it differently?"). Both hand the sentence back
   unchanged and, inside `Agent.ask`, record the kind and facts on the
   answer (`Answer.notes`, `Answer.decisions`) and in the snapshot's
-  `remarks`. The kinds (21 notes, 10 decisions) and each kind's fact names
+  `remarks`. The kinds (21 notes, 11 decisions) and each kind's fact names
   are closed (`NOTE_KINDS`, `DECISION_KINDS`, `FACTS`): a new remark uses
   one, and adding a kind or a fact name is a deliberate edit there. Facts
   are plain values, never a sentence or an object. Wrap at the writer,
@@ -1072,7 +1072,7 @@ ollama, and it narrows a relation only through the shared steps.
   point reader refuses (a ranking by a stat nothing ranks, a shape over a
   line missing its stat, its number or its subject, a matchup without two
   players, ...), the Reading carries a `reading.Cause` - a kind from the
-  closed `CAUSES` (63 kinds) and plain facts - and the planner says it
+  closed `CAUSES` (66 kinds) and plain facts - and the planner says it
   (`compose.plan.refusal_result`): the reader builds no sentence, and a new
   cause is an entry in `CAUSES` and a phrase in the sayer. It is raised as
   `reading.PointRefused`, a kind of `Unsupported`, so a shared helper the

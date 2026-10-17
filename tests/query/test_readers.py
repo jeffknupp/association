@@ -2471,6 +2471,29 @@ def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebu
     assert readable(["MIN", "TO"]) is False
 
 
+def test_a_yes_no_stat_of_columns_a_rebuild_gets_right_reads_a_rebuilt_line(rebuilt_ctx: AnswerContext) -> None:
+    """A double- or triple-double is made of points, rebounds, assists,
+    steals and blocks, each a column a rebuild gets right: read on a rebuilt
+    line as its columns are. Excluded, "how many triple-doubles did lebron
+    james achieve in the regular season" counted 122 where the key reads
+    125, and Clint Capela's rebuilt 18-point, 16-rebound game of 2018-03-24
+    was no double-double. A column the rebuild never fills beside it still
+    keeps the read to fetched lines."""
+    from association.query.compose.core import Query, _rebuilt_for
+    from association.query.conditions import box_source
+
+    box = box_source(rebuilt_ctx.con)
+    assert box.rebuilt
+
+    def readable(measures: list[str], predicates: list[tuple[str, str, object]], skeleton: str = "scalar") -> bool:
+        point = Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), skeleton=skeleton, order="date", measures=measures, predicates=predicates)
+        return _rebuilt_for(box, point)
+
+    assert readable([], [("triple_double", "=", True)]) is True
+    assert readable(["points", "rebounds", "assists"], [("double_double", "=", True)], skeleton="rows") is True
+    assert readable(["turnovers"], [("double_double", "=", True)]) is False
+
+
 def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: AnswerContext) -> None:
     """The column arrives with a `data load`. An older warehouse has no such
     column, and the query must not be written as though it were always there -
