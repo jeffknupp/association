@@ -1575,6 +1575,39 @@ class Cause:
             raise ValueError(f"{self.kind!r} is not a cause a point reading refuses by: {sorted(CAUSES)}")
 
 
+@dataclass(frozen=True)
+class PointDeclined:
+    """The point reader read no point of the question
+    (:attr:`Reading.point_verdict`): ``why``, the decline's sentence, which
+    the planner's decline carries
+    (:func:`~association.query.compose.plan.plan_point`).
+
+    .. versionadded:: 7.0.0
+    """
+
+    why: str
+
+
+POINT_FIELDS: tuple[str, ...] = ("read_as", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span", "relation")
+"""The fields of a :class:`Reading` the point reader writes beside the
+filters (:func:`~association.query.point.read_point`): what the point is
+read as and the compiler's skeleton for it. The parser's own fields (the
+claims, the decisions, the refusals the words come to) are never the
+point reader's.
+
+.. versionadded:: 7.0.0
+"""
+
+
+PointVerdict = Literal["read"] | PointDeclined | Cause
+"""What the point reader came to (:attr:`Reading.point_verdict`): the point
+read (``"read"``: the Reading is the point), no reading of it
+(:class:`PointDeclined`) or a refusal by a :class:`Cause`.
+
+.. versionadded:: 7.0.0
+"""
+
+
 @dataclass(frozen=True, kw_only=True)
 class LeftOut:
     """A question setting two players against each other ("embiid vs jolic")
@@ -2025,6 +2058,15 @@ class Reading(Filtered):
        that named it (``SHAPE_NAMES``, ``asked_label``, ``labeled``). What
        the words ask is :attr:`asked`; :func:`key_path` names it in the
        trace and the records.
+
+    .. versionchanged:: 7.0.0
+       Breaking: one Reading per question. ``point``, the compiler's point
+       nested as a second Reading, and ``point_declined`` and
+       ``point_refusal`` beside it are gone: the point reader writes the
+       point's fields (:data:`POINT_FIELDS`) and its filters onto the
+       Reading itself, and its verdict is one field,
+       :attr:`point_verdict` (Phase 6, the order of work after step 5,
+       item 2).
     """
 
     #: What the point IS read as (:class:`PointShape`): the relation it is
@@ -2119,19 +2161,22 @@ class Reading(Filtered):
     #:
     #: .. versionadded:: 6.0.0
     unread: tuple[str, ...] = ()
-    #: The compiler's point for the question - its word tables' reading of it
-    #: on the relation it names (:func:`~association.query.point.read_point`),
-    #: read once, by the parser, so the compiler only plans and runs it
-    #: (:func:`~association.query.compose.answer`). A Reading of its
-    #: own, since it reads words the default point does not: its scope may carry
-    #: a career the question's "ever" or "how many times" implies. ``None``
-    #: where the compiler has no reading of the point - ``point_declined``
-    #: says why - or a refusal of its own to give (``point_refusal``: its
-    #: :class:`Cause` - a stat nothing ranks, a floor no ranking applies -
-    #: which the planner says, :func:`~association.query.compose.plan.refusal_result`).
-    point: Reading | None = None
-    point_declined: str | None = None
-    point_refusal: Cause | None = None
+    #: The point reader's verdict on the question
+    #: (:func:`~association.query.point.read_point`, read once, by the parser,
+    #: ``parse.with_point``, so the compiler only plans and runs it): ``"read"``
+    #: where the Reading IS the compiler's point - its filters as the point
+    #: reader read them (its span may carry a career the question's "ever" or
+    #: "how many times" implies) and the point's own fields beside them
+    #: (:data:`POINT_FIELDS`) - :class:`PointDeclined` with why where the
+    #: compiler has no reading of the point, or the :class:`Cause` the
+    #: reading refuses by (a stat nothing ranks, a floor no ranking applies),
+    #: which the planner says
+    #: (:func:`~association.query.compose.plan.refusal_result`). ``None``
+    #: before the point is read: a Reading the parser is still reading, or
+    #: one a caller built by hand.
+    #:
+    #: .. versionadded:: 7.0.0
+    point_verdict: PointVerdict | None = None
     #: A refusal the question's words come to that no point answers past -
     #: a championship, or a player named on a question whose shape has no
     #: reading for one (:data:`CAUSES`: ``championship``,
@@ -2178,6 +2223,16 @@ class Reading(Filtered):
     #:
     #: .. versionadded:: 6.0.0
     defaulted: Cause | None = None
+
+    @property
+    def has_point(self) -> bool:
+        """Whether the point reader read the question's point
+        (:attr:`point_verdict` ``"read"``): the Reading is the point the
+        planner plans.
+
+        .. versionadded:: 7.0.0
+        """
+        return self.point_verdict == "read"
 
     def describe(self) -> str:
         """The one trace line: every field that decides the answer, the
@@ -2423,7 +2478,7 @@ class Unsupported(Exception):
 class PointRefused(Unsupported):
     """The point reader's refusal, carrying its :class:`Cause`: raised where
     the reading comes to one, caught by the parser (``parse.with_point``),
-    which puts the cause on the Reading as ``point_refusal``.
+    which puts the cause on the Reading as its :attr:`Reading.point_verdict`.
 
     A kind of :class:`Unsupported`, so the reader's shared helpers that
     raise it (``lines.measure_filters``, ``measures.streak_column``,

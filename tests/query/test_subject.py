@@ -39,6 +39,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    Cause,
     Companion,
     Cuts,
     Filtered,
@@ -285,7 +286,7 @@ def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConne
     if reading.asked in PLAYER_ASKS and team_subject and player:
         # A record over a line with no stat is refused by the cause naming
         # the stat missing ("celtics record when jayson tatum has 30", #340).
-        no_line = reading.asked == LINE_RECORD and not (threshold_of(reading) and reading.measure is not None and reading.measure.named) and reading.point_refusal is None
+        no_line = reading.asked == LINE_RECORD and not (threshold_of(reading) and reading.measure is not None and reading.measure.named) and not isinstance(reading.point_verdict, Cause)
         assert not find_teams(teams_of(con), player) and not no_line, (question, reading.asked, player)
 
 
@@ -301,7 +302,7 @@ def test_a_companions_number_with_no_stat_is_refused_by_the_stat_missing(con: du
     from association.query.parse import read_route
 
     reading = read_route(names_of(con), question, [], "points")
-    assert reading.asked == LINE_RECORD and reading.point_refusal is not None and reading.point_refusal.kind == "threshold_needs_stat", (question, reading.asked, reading.point_refusal)
+    assert reading.asked == LINE_RECORD and isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == "threshold_needs_stat", (question, reading.asked, reading.point_verdict)
 
 
 def test_a_word_after_versus_near_a_team_and_a_player_is_kept_for_the_resolution_to_ask(con: duckdb.DuckDBPyConnection) -> None:

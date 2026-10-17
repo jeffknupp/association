@@ -50,6 +50,7 @@ from association.query.reading import (
     PLAYER_RANKING,
     PLAYER_SPLITS,
     PLAYERS_COUNTED,
+    POINT_FIELDS,
     PRESENCE_SPLIT,
     SHOT_CHART,
     TEAM_COACH,
@@ -69,6 +70,7 @@ from association.query.reading import (
     Line,
     Measure,
     Minimum,
+    PointDeclined,
     PointRefused,
     PointShape,
     Reading,
@@ -1223,20 +1225,23 @@ def _reading_high_by_points(question: str, reading: Reading, pointed: Reading, f
     reader reads may be the stat misspelled ("brice sensabaugh career high
     asistss"): the refusal names it as the stat it cannot rank by
     (``unknown_stat``) and claims it, since the refusal turns on it."""
-    refusal = pointed.point_refusal
-    if refusal is None or refusal.kind != "needs_stat" or refusal.facts.get("shape") != GAME_HIGHS or reading.measure is not None or not lexicon.CAREER_HIGH.search(question):
+    refusal = pointed.point_verdict
+    if not isinstance(refusal, Cause) or refusal.kind != "needs_stat" or refusal.facts.get("shape") != GAME_HIGHS or reading.measure is not None or not lexicon.CAREER_HIGH.search(question):
         return pointed, []
     unread = [(start, end, word) for start, end, word in lexicon.content_words(question, names, stat) if not any(c.start < end and c.end > start for c in found)]
     if unread:
         named_as = " ".join(word for _, _, word in unread)
-        return replace(pointed, point_refusal=Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": named_as})), [Claim(start, end, "refused") for start, end, _ in unread]
+        return replace(pointed, point_verdict=Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": named_as})), [Claim(start, end, "refused") for start, end, _ in unread]
     decided = Decision("parser", "measure", None, "points", "a single game's high names no stat, so points are read")
     return with_point(question, replace(reading, measure=Measure(key="points", as_typed="points"), decisions=(*reading.decisions, decided))), []
 
 
-def _reading_from_route_point(reading: Reading) -> tuple[Reading | None, str | None, Cause | None]:
-    """What the point reader wrote: the point, or why there is none."""
-    return reading.point, reading.point_declined, reading.point_refusal
+def _reading_from_route_point(reading: Reading) -> tuple[object, ...]:
+    """What the point reader wrote: its verdict, and the point it read - its
+    filters, its own fields (:data:`~association.query.reading.POINT_FIELDS`)
+    and its evidence - which a read of the question with a word deleted is
+    compared by."""
+    return (reading.point_verdict, reading.filters(), *(getattr(reading, name) for name in POINT_FIELDS), reading.evidence)
 
 
 def _reading_from_route_names(scope: Filtered, subject: Subject, asked: PointShape | None) -> tuple[str, ...]:
@@ -1262,10 +1267,12 @@ def _reading_from_route_names(scope: Filtered, subject: Subject, asked: PointSha
 
 def with_point(question: str, reading: Reading) -> Reading:
     """``reading`` with the compiler's point read from the question's words
-    (:func:`~association.query.point.read_point`) - or with why
-    there is none: no reading of the point (``point_declined``), or a
-    refusal the reading itself comes to (``point_refusal``: its cause, which
-    the planner says). Read here,
+    onto it (:func:`~association.query.point.read_point`; its
+    :attr:`~association.query.reading.Reading.point_verdict` ``"read"``) - or
+    with why there is none: no reading of the point
+    (:class:`~association.query.reading.PointDeclined`), or a refusal the
+    reading itself comes to (its :class:`~association.query.reading.Cause`,
+    which the planner says). Read here,
     once, so nothing after the parser reads the question; the point is
     PLANNED after the parser, once, by the answering loop
     (:func:`~association.query.compose.plan.plan_point`), which is where a
@@ -1282,22 +1289,20 @@ def with_point(question: str, reading: Reading) -> Reading:
 
     .. versionchanged:: 6.0.0
        Takes no connection: the point reader reads the Reading and the words.
+
+    .. versionchanged:: 7.0.0
+       Returns one Reading: the point's fields and filters on ``reading``
+       itself and the verdict in one field, where it nested the point as a
+       second Reading (``point``) beside ``point_declined`` and
+       ``point_refusal``.
     """
     try:
-        point = read_point(reading, question)
+        return read_point(reading, question)
     except PointRefused as exc:
         # Before the decline: a refusal with a cause is a kind of decline.
-        return replace(reading, point_refusal=exc.cause)
+        return replace(reading, point_verdict=exc.cause)
     except Unsupported as exc:
-        return replace(reading, point_declined=str(exc))
-    if point.span.career and not reading.span.career:
-        # The count's career (``point._career_scope``: "how many ... has he
-        # won", a yes/no stat counted) where no season is named: a default
-        # of decision D13, recorded as the parser's span decision so the
-        # answer says it with the wording that asks one season, as every
-        # D13 career is - never a career read past the words unsaid.
-        reading = replace(reading, decisions=(*reading.decisions, Decision("parser", "span", None, "career", "no season named, and a count of his games reads the career (decision D13)")))
-    return replace(reading, point=point)
+        return replace(reading, point_verdict=PointDeclined(str(exc)))
 
 
 # --- What the words name that nothing reads ------------------------------------
@@ -1641,8 +1646,7 @@ def _defaulted_ranking(reading: Reading) -> Cause | None:
     rating by year" as the league's scorers, fluently. A cause the planner
     says where the ranking would answer, as every defaulted class is - so a
     decline or a refusal the planning comes to first keeps its sentence."""
-    point = reading.point
-    if point is None or point.read_as not in (PLAYER_RANKING, PointShape("player_games", "ranking", "player")) or point.predicates or reading.lines:
+    if not reading.has_point or reading.read_as not in (PLAYER_RANKING, PointShape("player_games", "ranking", "player")) or reading.predicates or reading.lines:
         # (A line names the ranking's stat: "players who averaged 25 ppg".)
         return None
     if reading.measure is not None and reading.measure.key is not None:
@@ -1688,7 +1692,7 @@ class _DefaultedContext:
         if reading.period is not None and reading.period.number is not None:
             # "4th quarter stats 4th quarter": the second names the period read.
             values |= {str(reading.period.number), *lexicon.ordinal_forms(reading.period.number)}
-        shape = reading.point.read_as if reading.point is not None else reading.asked
+        shape = reading.read_as if reading.has_point else reading.asked
         return cls(key, read_words, years, frozenset(values), reading.window, reading.cuts, shape)
 
 

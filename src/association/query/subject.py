@@ -1070,7 +1070,7 @@ def team_not_read(teams: names.TeamIndex, question: str, reading: reading.Readin
 
     .. versionadded:: 6.0.0
     """
-    if reading.who.kind not in ("player", "pair") or reading.subject is None or reading.point is None:
+    if reading.who.kind not in ("player", "pair") or reading.subject is None or not reading.has_point:
         # No point, nothing answered over every game: the reading refuses
         # by its own cause ("steve kerr coaching record ... as a warrior").
         return None

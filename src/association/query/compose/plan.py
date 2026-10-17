@@ -28,6 +28,7 @@ from association.query.reading import (
     DeclineReason,
     Filtered,
     Measure,
+    PointDeclined,
     PointShape,
     Reading,
     ShapeCells,
@@ -655,11 +656,12 @@ def refusal_result(cause: Cause) -> Answer:
 
 def plan_point(reading: Reading) -> Verdict:
     """The PLAN stage for one question: the point
-    the parser read (:attr:`Reading.point <association.query.reading.Reading.point>`)
+    the parser read onto the Reading
+    (:attr:`~association.query.reading.Reading.point_verdict` ``"read"``)
     planned onto its relation, once, by the answering loop - never by the
     parser, which only reads. The parser's own verdict stands where it read
-    no point (:attr:`~association.query.reading.Reading.point_declined`,
-    :attr:`~association.query.reading.Reading.point_refusal`); the planner's
+    no point (:attr:`~association.query.reading.Reading.point_verdict`: a
+    :class:`~association.query.reading.PointDeclined` or a cause); the planner's
     refusal of a narrowing the relation cannot honor is a decline, with
     its reason.
 
@@ -681,17 +683,17 @@ def plan_point(reading: Reading) -> Verdict:
         # The words' own refusal, before any point: a championship, a player
         # named on a question whose shape has no reading for one.
         return refusal_of(reading.refused)
-    if reading.point_refusal is not None and reading.point_refusal.kind in POINT_DECLINES:
+    verdict = reading.point_verdict
+    if isinstance(verdict, Cause) and verdict.kind in POINT_DECLINES:
         # The point reader's decline by a cause: said at a decline's place -
         # after the floor and what the words name that nothing reads.
-        cause = reading.point_refusal
-        return ShapeDeclined(cause.kind, cause.facts, POINT_DECLINES[cause.kind])
-    if reading.point_refusal is not None:
-        return refusal_of(reading.point_refusal)
-    if reading.point is None:
-        return Unsupported(reading.point_declined or NO_READING)
+        return ShapeDeclined(verdict.kind, verdict.facts, POINT_DECLINES[verdict.kind])
+    if isinstance(verdict, Cause):
+        return refusal_of(verdict)
+    if verdict != "read":
+        return Unsupported(verdict.why if isinstance(verdict, PointDeclined) else NO_READING)
     try:
-        query = plan(reading.point)
+        query = plan(reading)
     except Unsupported as exc:
         # A decline, with its sentence - by its cause where the planner says
         # one (ShapeDeclined: the answering loop puts the key the words ask
@@ -724,6 +726,6 @@ def planned_shape(reading: Reading, planned: Verdict) -> PointShape | None:
 
     .. versionadded:: 6.0.0
     """
-    if reading.refused is not None or reading.point_refusal is not None or reading.point is None or reading.asked is None:
+    if reading.refused is not None or not reading.has_point or reading.asked is None:
         return None
-    return point_shape(reading.point, planned if isinstance(planned, Query) else None)
+    return point_shape(reading, planned if isinstance(planned, Query) else None)

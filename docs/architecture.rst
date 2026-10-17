@@ -211,7 +211,9 @@ not yet typed, and guessing at "Tatum rec" answered something else.
    constant in :mod:`association.query.lexicon`, with its reason beside it;
    no other module of the query package calls ``re``.
 5. **The point reader** (:func:`association.query.point.read_point`) reads
-   the point the answer is computed from: the key's default point, moved by
+   the point the answer is computed from onto the Reading itself - one
+   Reading per question, its verdict one field,
+   ``Reading.point_verdict``: the key's default point, moved by
    what the words say (a measure, a skeleton), declaring the
    shape it is read and said as, one field, ``Reading.read_as`` (a
    :class:`~association.query.reading.PointShape`: its relation, one of
@@ -235,8 +237,9 @@ series, an ordinal season), ``companions``, ``lines``, ``measure``,
 ``span`` (a season, a career, a range, both season types), ``split``,
 ``period`` (a quarter or a half), ``window`` (an end of the span and a
 count) and ``minimum`` (a ranking's stated qualifier). Beside them: the key
-the words ask; the point; the causes the words came to (``refused``, before
-any point; ``point_refusal``; ``unsupported``, what the words name that
+the words ask; the point's own fields and the point reader's verdict
+(``point_verdict``: read, declined with why, or its cause); the causes the
+words came to (``refused``, before any point; ``unsupported``, what the words name that
 nothing reads); the decisions made on the way; the names the question never
 supported (``misread``); and ``left_out``, the names a "vs" fingerprint held
 that no polygon drew.

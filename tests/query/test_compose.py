@@ -2177,7 +2177,7 @@ def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(
 
 def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: AnswerContext, monkeypatch: pytest.MonkeyPatch) -> None:
     """``parse.reading_from_route`` reads the compiler's point from the
-    question's words (``Reading.point``), and ``compose.answer`` plans and
+    question's words onto the Reading (``Reading.point_verdict``), and ``compose.answer`` plans and
     runs it without the question: with the point reader disabled outright,
     the answer is the one the same point gives read the test's own way
     (``compose_answer`` above, the subject and the point built by hand)."""
@@ -2199,7 +2199,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
             ),
         ),
     )
-    assert reading.point is not None and (reading.point.read_as.shape, aggregate_of(reading.point)) == ("scalar", "count")
+    assert reading.has_point and (reading.read_as.shape, aggregate_of(reading)) == ("scalar", "count")
     by_hand = compose_answer(
         cx_ctx,
         GAMES_COUNTED,
@@ -2225,8 +2225,8 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     :class:`~association.query.result.Refusal`), worded by the sayer."""
 
     declined = reading_of(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", Routed(PLAYER_LOG)))
-    assert declined.point is None and declined.point_declined is None
-    assert declined.point_refusal == Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG})
+    assert not declined.has_point
+    assert declined.point_verdict == Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG})
     # Declined by that cause, which the answering loop says at a decline's
     # place, after the floor and what the words name that nothing reads.
     why: list[str] = []
@@ -2236,7 +2236,7 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     assert causes == [Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG})]
 
     refused = reading_of(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", Routed(GAME_HIGHS, Reading(measure=Measure(as_typed="gizmos")))))
-    assert refused.point is None and refused.point_refusal == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
+    assert not refused.has_point and refused.point_verdict == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
     planned = plan_point(refused)
     answered = compose.answer(cx_ctx, refused, planned=planned)
     assert planned == Refusal(kind="no_ranking_measure", facts={"stat": "gizmos"}, shown={"stat": "gizmos"}) and answered is not None
@@ -2319,7 +2319,7 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
             ),
         ),
     )
-    assert reading.point is not None and reading.point_declined is None and reading.point_refusal is None
+    assert reading.point_verdict == "read"
     planned = plan_point(reading)
     assert isinstance(planned, Unsupported) and str(planned).startswith("a rate per 36 cannot be read here")
     why: list[str] = []
@@ -2552,8 +2552,8 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
     reading = with_point(
         "top 10 in points / 90", Reading(**(Reading(measure=Measure(key="points", as_typed="points", how="per_90", unit="/ 90"))).filters(), asked=PLAYER_RANKING, subject=Subject("everyone"))
     )
-    assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
-    assert refusal_result(reading.point_refusal).text == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."
+    assert not reading.has_point and reading.point_verdict == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
+    assert refusal_result(reading.point_verdict).text == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."
 
 
 def test_a_team_season_readers_decline_is_a_cause_the_planner_says() -> None:

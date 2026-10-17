@@ -952,6 +952,32 @@ otherwise.
     from a character - the #383 test holds the reading with one typed in
     equal to the reading with a space there.
 
+- **Declared in code by Phase 6, item 2 of the order of work after step 5**
+  (2026-10-17, lane p6-flatten; a draft change for Jeff's review): the
+  Reading no longer nests a second one. "No `point`: the Reading IS the
+  point" (the draft, under "The four records") holds - the point reader
+  writes the point's filters and its own fields (`reading.POINT_FIELDS`:
+  `read_as`, `measures`, `group`, `predicates`, `order`, `direction`,
+  `limit`, `minimum_games`, `available`, `subject_span`, `relation`) onto
+  the parser's Reading, and `Reading.point`, `point_declined` and
+  `point_refusal` are one field, `Reading.point_verdict: PointVerdict |
+  None`, where `PointVerdict = Literal["read"] | PointDeclined | Cause`
+  (`PointDeclined(why)`, the decline's sentence; `None` before the point is
+  read). Not in the draft, which has no verdict on the Reading: it is the
+  place `Reading.refused` was waiting for (above), kept apart from it
+  because a refusal the words come to is planned ahead of the point's own.
+  Measured before the change over the 2,698 readings and the 578 reader
+  cases: the outer Reading and its point never disagreed on `who`, `cuts`,
+  `companions`, `split`, `period`, `window` or `minimum`; they disagreed on
+  `span` (14 of the readings and 3 of the cases: the point's career "how
+  many times" implies), `lines` (5 readings: the line's stat, the record's
+  own line keyed) and `measure` (10 readings: the league's measure the
+  point reader names), the point's standing in every
+  one because the planner planned from it; the point's own fields were
+  never set on the outer Reading. The four populations held identical
+  under the mapping from the old record to the flat one
+  (`~/association-research/stages/flatten_map.py`).
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |

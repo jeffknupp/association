@@ -30,6 +30,7 @@ from association.query.reading import (
     TEAM_OUTLOOK,
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
+    Cause,
     Cuts,
     Line,
     Measure,
@@ -451,9 +452,9 @@ def test_a_players_rating_is_refused_by_name(con: duckdb.DuckDBPyConnection, que
     for teams alone, so the point reader refuses it by name - and a team's
     rating is read."""
     reading = read_route(names_of(con), question, [], "")
-    assert reading.point_refusal is not None and reading.point_refusal.facts == {"fact": "player rating", "words": words}
+    assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.facts == {"fact": "player rating", "words": words}
     team = read_route(names_of(con), "Lowest defensive rating by a team this season", [], "")
-    assert team.point_refusal is None
+    assert not isinstance(team.point_verdict, Cause)
 
 
 @pytest.mark.parametrize(

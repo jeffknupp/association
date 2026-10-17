@@ -13,9 +13,10 @@ The record is what the stages hold today:
 ``reading``
     What the parser settled (:func:`~association.query.parse.read_route`):
     the key the words asked, the typed filters, who the question is about,
-    the names it could not place, each decision it made, and the point it
-    read (:attr:`Reading.point <association.query.reading.Reading.point>`)
-    - the typed Reading.
+    the names it could not place, each decision it made, the point read
+    onto it and the point reader's verdict
+    (:attr:`~association.query.reading.Reading.point_verdict`) - the typed
+    Reading.
 ``query``
     What the planner built from that point
     (:func:`~association.query.compose.plan.plan_point`, the Query-or-Cause):
@@ -92,17 +93,17 @@ note is compared by its kind instead.
 _SUBJECT_LEFT_OUT = frozenset({"evidence", "claims", "companion_phrases", "supported"})
 
 # The point's own fields - the algebra as the reader read it - in the order
-# the trace prints them, after the key the words asked; the
-# point's typed filters follow them (``_filters_record``), since the point
-# reader may move one (a team read as the opponent, a position group the
-# move does not honor).
+# the trace prints them (``reading.POINT_FIELDS``, the fields the point
+# reader writes beside the filters), recorded where the point was read; the
+# filters are recorded once, the point's (``_filters_record``), since the
+# point reader writes them onto the Reading it reads.
 # ``shape``, ``by`` and ``on`` are the point reader's declaration, one
 # field (``Reading.read_as``, D9) recorded by its three parts under the
 # names they are compared by (``_DECLARED``), so records compare across
 # trees; the compiler's skeleton and source are derived by the planner and
 # recorded on the query record. ``subject_span`` is the
 # one typed override of the span the subject is settled in.
-_POINT_FIELDS = ("asked", "relation", "on", "shape", "by", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
+_POINT_FIELDS = ("relation", "on", "shape", "by", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
 
 
 #: The point's declaration (``Reading.read_as``, one ``PointShape``, D9) by
@@ -200,12 +201,10 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         # the parser's beside them, the evidence prose and the claims left out.
         subject = {f.name: plain(getattr(reading.subject, f.name), mask=mask) for f in fields(reading.subject) if f.name not in _SUBJECT_LEFT_OUT}
     point = None
-    if reading.point is not None:
-        # The point's own fields, then its typed filters: the point reader
-        # may have moved one off the reading's (a team as the opponent, a
-        # position group the move does not honor).
-        point = {name: plain(_point_field(reading.point, name), mask=mask) for name in _POINT_FIELDS}
-        point.update(_filters_record(reading.point, mask))
+    if reading.has_point:
+        # The point's own fields, which the point reader wrote beside the
+        # filters (the filters are the point's, recorded once, above).
+        point = {name: plain(_point_field(reading, name), mask=mask) for name in _POINT_FIELDS}
     return {
         # The key the words asked (``Reading.asked``).
         "asked": plain(reading.asked, mask=mask),
@@ -222,12 +221,11 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         "misread": list(reading.misread),
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],
         "point": point,
-        # The reader's own verdict where it read no point: why it declined,
-        # or the cause it refuses by - recorded so a
+        # The point reader's verdict: "read", why it declined, or the cause
+        # it refuses by - recorded so a
         # decline that moves between the reader and the planner with the
         # same sentence is a difference in this stage, not only in the next.
-        "point_declined": reading.point_declined,
-        "point_refusal": plain(reading.point_refusal, mask=mask),
+        "point_verdict": plain(reading.point_verdict, mask=mask),
         # What the words come to before any point, and what they name that
         # nothing reads: recorded where the Reading holds one.
         **({"refused": plain(reading.refused, mask=mask)} if reading.refused is not None else {}),
@@ -255,7 +253,7 @@ def _query_record(reading: Reading, planned: Verdict, mask: Mapping[str, str] | 
 
         said = say(planned)
         return {"refused": plain(said.data, mask=mask), "said": _masked(said.text, mask)}
-    if isinstance(planned, Unsupported) or reading.point is None:
+    if isinstance(planned, Unsupported) or not reading.has_point:
         return {"declined": str(planned) if isinstance(planned, Unsupported) else None}
     # A TeamQuery has no ``subject``: the team IS the relation. Read by
     # shape rather than imported, so this module stays clear of the compiler.

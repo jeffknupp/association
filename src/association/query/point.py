@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from association.nba.season import current_season
 from association.query import lexicon
 from association.query.cuts import CutsRead
+from association.query.decisions import Decision
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
 from association.query.line import LineCandidate, LineCandidates, LinesRead
 from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
@@ -83,6 +84,7 @@ from association.query.reading import (
     PLAYER_RANKING,
     PLAYER_SPLITS,
     PLAYERS_COUNTED,
+    POINT_FIELDS,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
     SHOT_CHART,
@@ -1659,6 +1661,12 @@ def read_point(reading: Reading, question: str) -> Reading:
     .. versionchanged:: 6.0.0
        The three are one field, ``Reading.read_as``, a ``PointShape``
        (Phase 5, step 4, D9).
+
+    .. versionchanged:: 7.0.0
+       Returns ``reading`` itself with the point read onto it - the point's
+       filters and its own fields (``reading.POINT_FIELDS``), its verdict
+       ``"read"`` - where it returned the point as a second Reading the
+       parser nested in its own (``Reading.point``).
     """
     subject = reading.subject
     if subject is None:
@@ -1691,7 +1699,27 @@ def read_point(reading: Reading, question: str) -> Reading:
         # that reader first, the team compiler's sum where it declines.
         key = _team_season_key(reading, question)
         point = replace(point, read_as=key)
-    return replace(point, asked=reading.asked, subject=subject, evidence=(*point.evidence, *subject.evidence))
+    decisions = reading.decisions
+    if point.span.career and not reading.span.career:
+        # The count's career (``_career_scope``: "how many ... has he won", a
+        # yes/no stat counted) where no season is named: a default of
+        # decision D13, recorded as the parser's span decision so the answer
+        # says it with the wording that asks one season, as every D13 career
+        # is - never a career read past the words unsaid.
+        decisions = (*decisions, Decision("parser", "span", None, "career", "no season named, and a count of his games reads the career (decision D13)"))
+    # The point onto the Reading itself: its filters as the point reader
+    # read them (a career the question's "ever" implies, a line's stat, the
+    # league's measure) and its own fields beside them - one Reading per
+    # question, the parser's fields (its claims, decisions and refusals)
+    # kept as they stand.
+    return replace(
+        reading,
+        **point.filters(),
+        **{name: getattr(point, name) for name in POINT_FIELDS},
+        evidence=(*point.evidence, *subject.evidence),
+        decisions=decisions,
+        point_verdict="read",
+    )
 
 
 def _leaderboard_declines(scope: Filtered, subject: Subject) -> None:

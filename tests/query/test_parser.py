@@ -225,9 +225,9 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
     against = Companion(player="Jayson Tatum", side="opponent", predicate="played")
     high = _read(con, "most points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
     assert high.asked == PLAYER_LINE and high.who.player == "Tyrese Maxey" and high.companions == (against,)
-    assert high.point is not None and high.point.read_as.shape == "rows" and high.point.order == "measure" and high.point.direction == "desc"
+    assert high.has_point and high.read_as.shape == "rows" and high.order == "measure" and high.direction == "desc"
     fewest = _read(con, "fewest points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
-    assert fewest.point is not None and fewest.point.order == "measure" and fewest.point.direction == "asc"
+    assert fewest.has_point and fewest.order == "measure" and fewest.direction == "asc"
     count = _read(con, "how many times did tyrese maxey score 30 vs tatum", ["tyrese maxey", "tatum"], "points")
     assert count.asked == GAMES_COUNTED and count.companions == (against,) and threshold_of(count) == 30
     log = _read(con, "tyrese maxey game log vs tatum", ["tyrese maxey", "tatum"], "")
@@ -391,8 +391,8 @@ def test_a_companions_line_is_never_the_subjects(con: duckdb.DuckDBPyConnection)
     record = _route(con, "maxey record when embiid scores 20+ points", ["Tyrese Maxey", "Joel Embiid"], "points")
     assert (record.asked, record.lines) == (LINE_RECORD, ()) and record.who.player in ("Maxey", "Tyrese Maxey")
     assert [(c.player, c.predicate, c.line.as_typed if c.line else None) for c in record.companions] == [("Joel Embiid", "reached", "20+ points")]
-    assert record.point_refusal is not None and record.point_refusal.kind == "line_is_a_companions"
-    assert record.point_refusal.facts["companion"] == "Joel Embiid" and record.point_refusal.facts["line"] == "20+ points"
+    assert isinstance(record.point_verdict, Cause) and record.point_verdict.kind == "line_is_a_companions"
+    assert record.point_verdict.facts["companion"] == "Joel Embiid" and record.point_verdict.facts["line"] == "20+ points"
     count = _route(con, "In his 18th season, how many games with 40+ points did Lebron James have?", ["Lebron James"], "points")
     assert (count.asked, [line.value for line in count.lines], count.companions) == (GAMES_COUNTED, [40], ())
     team = _route(con, "sixers record when maxey scored 20+ points", ["Tyrese Maxey"], "points")
@@ -810,7 +810,7 @@ def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.
     assert reading.asked == asked and reading.measure is not None and reading.measure.as_typed == "plus_minus"
     planned = plan_point(reading)
     if asked == PERIOD_LOG:
-        assert reading.point_refusal is not None and reading.point_refusal.kind == "no_period_stat"
+        assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == "no_period_stat"
         assert isinstance(planned, Refusal) and "no per-period 'plus_minus'" in refusal_phrase(planned.kind, planned.facts)
     else:
         assert [cause.kind for cause in reading.unsupported] == ["period_stat"] and reading.unsupported[0].facts["stat"] == "plus_minus"
@@ -989,7 +989,7 @@ def test_a_line_on_a_percentage_is_the_points_cause_on_every_key(con: duckdb.Duc
     """#371: a line on a percentage is the point reader's cause on every
     key - a log kept past one as well as a count - not a decline."""
     reading = _read(con, question, names)
-    assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts["phrase"] == phrase
+    assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == kind and reading.point_verdict.facts["phrase"] == phrase
 
 
 @pytest.mark.parametrize(
@@ -1015,9 +1015,9 @@ def test_a_line_on_a_season_is_read_by_the_season_ranking(con: duckdb.DuckDBPyCo
     reading = _read(con, question)
     # "How many players ..." is the ranking counted (PLAYERS_COUNTED, the next key).
     counted = question.casefold().startswith("how many")
-    assert reading.point is not None and reading.point.read_as == (PointShape("player_seasons", "scalar", "count") if counted else PointShape("player_seasons", "ranking", "player"))
+    assert reading.has_point and reading.read_as == (PointShape("player_seasons", "scalar", "count") if counted else PointShape("player_seasons", "ranking", "player"))
     assert reading.asked == (PLAYERS_COUNTED if counted else PLAYER_RANKING)
-    assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
+    assert [(line.measure, line.op, line.value, line.per) for line in reading.lines] == lines
 
 
 @pytest.mark.parametrize(
@@ -1035,8 +1035,8 @@ def test_a_count_of_seasons_over_a_season_line_ranks_the_players_by_it(con: duck
     asked as the ranking, as a count of games over a line ranks by
     ``games``."""
     reading = _read(con, question)
-    assert reading.asked == PLAYER_RANKING and reading.point is not None and reading.point.read_as == PointShape("player_seasons", "ranking", "seasons")
-    assert [(line.measure, line.op, line.value, line.per) for line in reading.point.lines] == lines
+    assert reading.asked == PLAYER_RANKING and reading.has_point and reading.read_as == PointShape("player_seasons", "ranking", "seasons")
+    assert [(line.measure, line.op, line.value, line.per) for line in reading.lines] == lines
 
 
 @pytest.mark.parametrize(
@@ -1052,14 +1052,14 @@ def test_a_count_of_seasons_or_a_season_line_the_ranking_cannot_hold_is_refused_
     line holds, and a percentage beside a season line, are each refused by a
     cause naming the words, never the unfiltered ranking."""
     reading = _read(con, question)
-    assert reading.point_refusal is not None and reading.point_refusal.kind == kind and reading.point_refusal.facts == {"words": words}
+    assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == kind and reading.point_verdict.facts == {"words": words}
 
 
 @pytest.mark.parametrize("question", ["who averaged the most points in 2024", "who has the highest average 1st quarter points this season?", "who was leading the league in average 3-point distance?"])
 def test_an_average_with_no_line_is_not_refused_as_a_season_line(con: duckdb.DuckDBPyConnection, question: str) -> None:
     """The words of a season's line need a number beside the average."""
     reading = _read(con, question)
-    assert reading.point_refusal is None or reading.point_refusal.kind not in ("season_line_unread", "seasons_counted")
+    assert not isinstance(reading.point_verdict, Cause) or reading.point_verdict.kind not in ("season_line_unread", "seasons_counted")
 
 
 def test_how_many_players_a_season_line_holds_is_the_ranking_counted(con: duckdb.DuckDBPyConnection) -> None:
@@ -1087,7 +1087,7 @@ def test_a_league_count_counts_the_games_past_every_bare_line(con: duckdb.DuckDB
     takes every bare line as a predicate, none dropped, counting its first
     line's stat."""
     reading = _read(con, question)
-    assert reading.point is not None and reading.point.predicates == predicates
+    assert reading.has_point and reading.predicates == predicates
     assert reading.measure is not None and reading.measure.key == "points"
 
 
@@ -1107,7 +1107,7 @@ def test_worst_ranks_from_the_worse_end_of_a_stat_the_words_name(con: duckdb.Duc
     wants more of and from the top of one he wants less of (turnovers), and
     a ranking whose stat the words do not name keeps its order."""
     reading = _read(con, question)
-    assert reading.point is not None and reading.point.direction == direction
+    assert reading.has_point and reading.direction == direction
 
 
 @pytest.mark.parametrize(
@@ -1125,9 +1125,9 @@ def test_a_teams_record_under_a_number_is_keyed_on_that_line(con: duckdb.DuckDBP
     comparison, which the team's record reader reads
     (``compile_team_line(op=)``) - no narrowing beside a keyed line."""
     reading = _read(con, question, ["celtics"], "turnovers")
-    assert reading.asked == LINE_RECORD and reading.point is not None and reading.point.read_as.relation == "team_games"
-    keyed = [each for each in reading.point.lines if each.keyed]
-    assert [(each.measure, each.op, each.value) for each in keyed] == [line] and not any(each.narrows for each in reading.point.lines)
+    assert reading.asked == LINE_RECORD and reading.has_point and reading.read_as.relation == "team_games"
+    keyed = [each for each in reading.lines if each.keyed]
+    assert [(each.measure, each.op, each.value) for each in keyed] == [line] and not any(each.narrows for each in reading.lines)
 
 
 @pytest.mark.parametrize("question", ["Gabe Vincent 3\u2019s as a laker", "steph curry 3's per season", "jokic 3's this season"])
@@ -1226,10 +1226,10 @@ def test_a_win_percentage_is_the_teams_standings_or_a_players_record(con: duckdb
     reading = _read(con, question, names)
     assert reading.asked == asked
     if asked == TEAM_RANKING:
-        assert reading.measure is not None and reading.measure.key == "record" and reading.point_refusal is None
+        assert reading.measure is not None and reading.measure.key == "record" and not isinstance(reading.point_verdict, Cause)
     if asked == PLAYER_RANKING:
-        assert reading.point_refusal is not None and reading.point_refusal.facts["fact"] == "player win percentage"
-        assert "No ranking of players by win percentage is read here" in refusal_phrase(reading.point_refusal.kind, reading.point_refusal.facts)
+        assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.facts["fact"] == "player win percentage"
+        assert "No ranking of players by win percentage is read here" in refusal_phrase(reading.point_verdict.kind, reading.point_verdict.facts)
 
 
 @pytest.mark.parametrize(
@@ -1248,8 +1248,8 @@ def test_a_teams_line_over_more_than_one_season_is_its_history(con: duckdb.DuckD
     """#372: a team's season line reads one season; over more than one it is
     the team's history season by season."""
     reading = _read(con, question, names)
-    assert reading.point is not None
-    assert reading.point.read_as == PointShape("team_seasons", "split", "season")
+    assert reading.has_point
+    assert reading.read_as == PointShape("team_seasons", "split", "season")
 
 
 @pytest.mark.parametrize(
@@ -1262,8 +1262,8 @@ def test_a_teams_line_over_more_than_one_season_is_its_history(con: duckdb.DuckD
 )
 def test_a_teams_line_ranked_or_of_one_season_is_not_its_history(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> None:
     reading = _read(con, question, names)
-    assert reading.point is not None
-    assert reading.point.read_as != PointShape("team_seasons", "split", "season")
+    assert reading.has_point
+    assert reading.read_as != PointShape("team_seasons", "split", "season")
 
 
 @pytest.mark.parametrize(
@@ -1303,8 +1303,8 @@ def test_a_ranking_by_games_played_is_read_as_games_played(con: duckdb.DuckDBPyC
     assert reading.asked == asked
     assert (reading.measure.key if reading.measure is not None else None) == key
     if key is not None:
-        point = reading.point
-        assert point is not None and aggregate_of(point) == "count" and point.measures == () and point.predicates == [] and point.order == "measure"
+        point = reading
+        assert point.has_point and aggregate_of(point) == "count" and point.measures == () and point.predicates == [] and point.order == "measure"
 
 
 @pytest.mark.parametrize(
@@ -1458,8 +1458,8 @@ def test_a_total_asked_on_the_game_level_ranking_is_the_measures_own(con: duckdb
     measure, which the planner derives the ranking's sum from (D5) - a
     measure of no key where the words name none the catalog holds."""
     reading = _read(con, question)
-    assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "player")
-    assert reading.point.measure is not None and reading.point.measure.how == how
+    assert reading.has_point and reading.read_as == PointShape("player_games", "ranking", "player")
+    assert reading.measure is not None and reading.measure.how == how
 
 
 @pytest.mark.parametrize(
@@ -1477,15 +1477,15 @@ def test_the_best_single_season_across_years_is_refused_by_name(con: duckdb.Duck
     or the career list. It is refused naming the words; a season named
     reads that season."""
     reading = _read(con, question)
-    assert reading.point is None
-    assert reading.point_refusal is not None and reading.point_refusal.kind == "single_season_ranking"
-    assert reading.point_refusal.facts["words"] == words
+    assert not reading.has_point
+    assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == "single_season_ranking"
+    assert reading.point_verdict.facts["words"] == words
 
 
 def test_the_best_single_season_of_a_named_season_reads_that_season(con: duckdb.DuckDBPyConnection) -> None:
     """The words name the one season: no refusal, its leaders."""
     reading = _read(con, "highest single season 3pt percent in 2016")
-    assert reading.point_refusal is None and reading.point is not None
+    assert not isinstance(reading.point_verdict, Cause) and reading.has_point
     assert reading.span.season == 2016
 
 
@@ -1504,8 +1504,8 @@ def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.D
     game ("highest career ppg"), the measure is the per-game figure (the
     season line's career points per game); unasked, the career total."""
     reading = _read(con, question, [], "assists" if "assist" in question else "points")
-    assert reading.point is not None and reading.point.read_as == PLAYER_RANKING
-    assert reading.point.measure is not None and reading.point.measure.how == how
+    assert reading.has_point and reading.read_as == PLAYER_RANKING
+    assert reading.measure is not None and reading.measure.how == how
 
 
 @pytest.mark.parametrize(
@@ -1544,12 +1544,12 @@ def test_a_teams_players_asked_with_no_ranking_word_and_no_stat_are_refused_as_a
     from association.query.parse import _refused_subject_not_read
 
     team_players = Reading(who=Who(kind="team_players", teams=("Philadelphia 76ers",)), read_as=PLAYER_RANKING)
-    cause, _ = _refused_subject_not_read("nba players from the 76ers in the 2000s", replace(team_players, point=team_players))
+    cause, _ = _refused_subject_not_read("nba players from the 76ers in the 2000s", replace(team_players, point_verdict="read"))
     assert cause == Cause(kind="roster_not_read", facts={"team": "Philadelphia 76ers", "group": "players"})
     assert "'Philadelphia 76ers players most games played'" in refusal_result(cause).text
     assert refusal_phrase("roster_not_read", {"team": "Chicago Bulls", "group": "forwards"}).startswith("A list of the Chicago Bulls' forwards - a roster -")
     # A ranking word asks the ranking: its own cause stands.
-    assert _refused_subject_not_read("most 76ers players in the 2000s", replace(team_players, point=team_players))[0] is None
+    assert _refused_subject_not_read("most 76ers players in the 2000s", replace(team_players, point_verdict="read"))[0] is None
 
 
 def test_nobody_read_is_said_beside_the_opponent_a_versus_word_read() -> None:
@@ -1578,14 +1578,14 @@ def test_a_named_high_with_no_stat_reads_points_and_says_so(con: duckdb.DuckDBPy
     a best game names no default and keeps its refusal."""
     reading = _read(con, question)
     if points:
-        assert reading.point is not None and reading.measure is not None and reading.measure.key == "points"
+        assert reading.has_point and reading.measure is not None and reading.measure.key == "points"
         assert any(each.stage == "parser" and each.field == "measure" and each.after == "points" for each in reading.decisions)
     else:
-        assert reading.point_refusal is not None and reading.point_refusal.kind == ("unknown_stat" if "asistss" in question else "needs_stat")
+        assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == ("unknown_stat" if "asistss" in question else "needs_stat")
         assert not any(each.field == "measure" for each in reading.decisions)
         if "asistss" in question:
             # The word no reader reads is named as the stat, and claimed.
-            assert reading.point_refusal.facts["stat"] == "asistss" and "asistss" not in reading.unread
+            assert reading.point_verdict.facts["stat"] == "asistss" and "asistss" not in reading.unread
 
 
 @pytest.mark.parametrize(
@@ -1705,8 +1705,8 @@ def test_a_log_of_a_yes_no_stat_keeps_the_games_it_holds_in_over_the_career(con:
     a no of a game keeps the games it holds in, and over every one on record
     with no season named, as their count is (decision D13)."""
     reading = _read(con, question)
-    assert reading.point is not None and reading.point.read_as == PLAYER_LOG
-    assert reading.point.predicates == [(reading.measure.key if reading.measure else None, "=", True)]
+    assert reading.has_point and reading.read_as == PLAYER_LOG
+    assert reading.predicates == [(reading.measure.key if reading.measure else None, "=", True)]
     assert reading.span.career
 
 
@@ -1718,7 +1718,7 @@ def test_a_scoring_verb_names_the_stat_a_below_phrase_does_not(con: duckdb.DuckD
     such player - is said where his name is resolved."""
     reading = _read(con, question)
     assert [(line.measure, line.op) for line in reading.lines] == [("points", op)]
-    assert reading.point_refusal is None
+    assert not isinstance(reading.point_verdict, Cause)
 
 
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
@@ -1745,8 +1745,8 @@ def test_a_players_wins_rank_the_players_by_the_games_they_won(con: duckdb.DuckD
     "most triple doubles since 2020" ranks - where it was refused for want
     of a stat."""
     reading = _read(con, question)
-    assert reading.defaulted is None and reading.point is not None
-    assert reading.point.read_as == PointShape("player_games", "ranking", "count") and list(reading.point.predicates) == [("won", "=", True)]
+    assert reading.defaulted is None and reading.has_point
+    assert reading.read_as == PointShape("player_games", "ranking", "count") and list(reading.predicates) == [("won", "=", True)]
 
 
 @pytest.mark.parametrize("question", ["nba players who averaged 25 ppg in 2001", "most ppg in the 2024 playoffs", "top 10 scorers in 2024", "who led the league in assists in 2019"])
@@ -1755,7 +1755,7 @@ def test_a_players_ranking_whose_words_name_its_stat_is_no_default(con: duckdb.D
     the ranking's stat: no cause, and "ppg" reads points per game."""
     reading = _read(con, question)
     assert reading.defaulted is None
-    assert reading.point is not None and reading.point.measure is not None and reading.point.measure.key is not None
+    assert reading.has_point and reading.measure is not None and reading.measure.key is not None
 
 
 @pytest.mark.parametrize(("question", "stat"), [("most triple doubles since 2020", "triple_double"), ("most double doubles 2020-2023", "double_double")])
@@ -1765,8 +1765,8 @@ def test_a_yes_no_measure_over_a_range_of_seasons_ranks_each_players_count(con: 
     or a whole career, so the point is the game-level ranking with the
     predicate kept."""
     reading = _read(con, question)
-    assert reading.point is not None and reading.point.read_as == PointShape("player_games", "ranking", "count")
-    assert reading.point.predicates == [(stat, "=", True)]
+    assert reading.has_point and reading.read_as == PointShape("player_games", "ranking", "count")
+    assert reading.predicates == [(stat, "=", True)]
     assert reading.defaulted is None
 
 
@@ -1786,7 +1786,7 @@ def test_a_history_with_no_stat_named_is_the_whole_line_season_by_season(con: du
     season on record, not the history's default four."""
     reading = _read(con, question, names)
     assert reading.asked == SEASON_HISTORY
-    assert reading.point is not None and [m.key for m in reading.point.measures] == ["points", "rebounds", "assists"]
+    assert reading.has_point and [m.key for m in reading.measures] == ["points", "rebounds", "assists"]
     assert reading.span.career is career
 
 
@@ -1837,7 +1837,7 @@ def test_a_teams_figure_given_up_is_the_team_compilers_total(con: duckdb.DuckDBP
     the opponents' box rows - not the team's season line, which has no
     opponent metric."""
     reading = _read(con, question)
-    assert reading.point is not None and reading.point.relation == "team"
+    assert reading.has_point and reading.relation == "team"
     assert reading.measure is not None and reading.measure.whose == "opponent"
 
 
@@ -1854,8 +1854,8 @@ def test_a_count_of_a_yes_no_measure_over_a_line_keeps_both(con: duckdb.DuckDBPy
     the count's child grammar reads "N stat triple doubles" as its games,
     and the line is a second predicate on the same game."""
     reading = _read(con, question, names)
-    assert reading.point is not None and reading.point.read_as == read_as
-    assert ("triple_double", "=", True) in reading.point.predicates and ("points", ">=", 30) in reading.point.predicates
+    assert reading.has_point and reading.read_as == read_as
+    assert ("triple_double", "=", True) in reading.predicates and ("points", ">=", 30) in reading.predicates
 
 
 @pytest.mark.parametrize(
@@ -1872,15 +1872,15 @@ def test_two_measures_combined_are_refused_naming_both(con: duckdb.DuckDBPyConne
     game by Knicks this season") is read by nothing, and refused naming
     both - never the first measure alone."""
     reading = _read(con, question)
-    assert reading.point_refusal is not None and reading.point_refusal.kind == "measures_combined"
-    assert reading.point_refusal.facts["words"] == words
+    assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == "measures_combined"
+    assert reading.point_verdict.facts["words"] == words
 
 
 @pytest.mark.parametrize("question", ["jokic points+rebounds game log", "lebron +/- this season", "most 20+ point games"])
 def test_a_log_of_two_columns_and_a_plus_sign_are_no_combined_measure(con: duckdb.DuckDBPyConnection, question: str) -> None:
     """A log shows each game's columns; "+/-" and "20+" are no pair."""
     reading = _read(con, question, ["Nikola Jokic"] if "jokic" in question else None)
-    assert reading.point_refusal is None or reading.point_refusal.kind != "measures_combined"
+    assert not isinstance(reading.point_verdict, Cause) or reading.point_verdict.kind != "measures_combined"
 
 
 @pytest.mark.parametrize(
@@ -1901,7 +1901,7 @@ def test_a_counts_career_the_point_reader_reads_is_the_parsers_span_decision(con
     reads no career and decides nothing."""
     career = Decision("parser", "span", None, "career", "no season named, and a count of his games reads the career (decision D13)")
     reading = _read(con, question, names, stat)
-    assert reading.span.career or (reading.point is not None and reading.point.span.career)
+    assert reading.has_point and reading.span.career
     assert career in reading.decisions
     named = _read(con, f"{question.rstrip('?')} in 2024", names, stat)
     assert career not in named.decisions

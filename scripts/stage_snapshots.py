@@ -51,7 +51,7 @@ sentences out (``stages.WORDING``): for a change allowed to reword an answer
 but not to move a number. ``--ignore <stage.path>`` (repeatable) leaves one
 field out of the comparison and lists its values on each side by count -
 only for a field the commit names as added to, or deleted from, a record
-(``reading.point.by``, say); everything else stays compared
+(``reading.point_verdict``, say); everything else stays compared
 whole. Run the baseline twice and compare it with itself before reading
 anything into a difference.
 

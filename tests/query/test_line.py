@@ -367,8 +367,8 @@ def test_a_count_over_several_lines_reads_the_first_as_the_points_not_the_models
     question = "most games with 20 pt,s 10 reb, 5 ast"
     route = read_route(names_of(league.con), question, [], "rebounds")
     reading = route
-    assert reading.asked == GAMES_COUNTED and reading.point is not None
-    assert reading.point.predicates[0][:2] == ("points", ">=") and reading.point.predicates[0][2] == 20
+    assert reading.asked == GAMES_COUNTED and reading.has_point
+    assert reading.predicates[0][:2] == ("points", ">=") and reading.predicates[0][2] == 20
     assert [_shape(line)[:3] for line in reading.lines] == [("points", ">=", 20), ("rebounds", ">=", 10), ("assists", ">=", 5)]
 
 

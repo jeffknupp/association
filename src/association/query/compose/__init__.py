@@ -4,8 +4,8 @@ the last step before a refusal naming why.
 
 The pipeline is parser -> planner -> a reader and the sayer, or the
 compiler's own sentence -> refusal. :func:`answer`
-is handed the point the parser read from the question's words
-(:attr:`Reading.point <association.query.reading.Reading.point>`), plans it
+is handed the Reading the parser read from the question's words, the
+point read onto it (:attr:`~association.query.reading.Reading.point_verdict`), plans it
 (:mod:`~association.query.compose.plan`) and answers it one of three ways,
 chosen by the shape the point reader declared and the planner settled
 (:class:`~association.query.reading.PointShape`: the relation, the
@@ -130,8 +130,9 @@ def answer(
     declined: Callable[[str], None] | None = None,
     declined_by: Callable[[Cause], None] | None = None,
 ) -> Answer | None:
-    """The point the parser read for a question (:attr:`Reading.point`,
-    in the parser's last step, ``parse._reading``), answered - run,
+    """The point the parser read for a question onto its Reading
+    (:attr:`~association.query.reading.Reading.point_verdict` ``"read"``, in
+    the parser's last step, ``parse._reading``), answered - run,
     never read from the question again. ``planned`` is the point planned
     onto its relation (:func:`~association.query.compose.plan.plan_point`):
     the PLAN stage's verdict, made once by whoever calls - the answering
@@ -208,7 +209,7 @@ def answer(
     if isinstance(planned, Unanswered):
         # The planner's refusal, worded where it is answered.
         return say(planned)
-    if isinstance(planned, Unsupported) or reading.point is None:
+    if isinstance(planned, Unsupported) or not reading.has_point:
         if declined is not None:
             declined((str(planned) if isinstance(planned, Unsupported) else "") or NO_READING)
         if declined_by is not None and isinstance(planned, ShapeDeclined):
@@ -216,7 +217,7 @@ def answer(
         return None
     shape = planned_shape(reading, planned)
     assert shape is not None
-    return _answer_point(ctx, reading.point, planned, shape, trace, declined, declined_by)
+    return _answer_point(ctx, reading, planned, shape, trace, declined, declined_by)
 
 
 def _read_log(read: Callable[[], Result | Unanswered | None]) -> Answer | None:

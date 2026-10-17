@@ -462,17 +462,16 @@ class Agent:
         ``no_reading_of_point``), at the decline's place in this order,
         answered: a refusal that names why is an answer."""
         t0 = time.monotonic()
-        scope = reading
         if reading.defaulted is not None and isinstance(self.query, Refusal):
             # A defaulted-word refusal is said
             # after the coverage floor and the words nothing reads have had
             # their look, as a decline is - a season under the floor and a
             # playoff round are the truer causes, and both are checked
             # below for a decline; this is the same order for a refusal.
-            refused = check_coverage(self._planned_shape(), reading.point if reading.point is not None else scope)
+            refused = check_coverage(self._planned_shape(), reading)
             if refused is not None:
                 history.log(f"  -> (coverage) {refused}")
-                return Answer(data={"message": refused, "season": scope.span.season}, text=refused)
+                return Answer(data={"message": refused, "season": reading.span.season}, text=refused)
             if reading.unsupported:
                 history.log(f"  -> (refusal) {reading.unsupported[0].kind} said before the defaulted word's")
                 return refusal_result(reading.unsupported[0])
@@ -485,10 +484,10 @@ class Agent:
         why = declined[0] if declined else "the compiler has no reading of this point"
         # The floor of the point the words named (planned_shape, declared on
         # every verdict), over the point's own scope; no point, no floor.
-        refused = check_coverage(self._planned_shape(), reading.point if reading.point is not None else scope)
+        refused = check_coverage(self._planned_shape(), reading)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
-            return Answer(data={"message": refused, "season": scope.span.season}, text=refused)
+            return Answer(data={"message": refused, "season": reading.span.season}, text=refused)
         if reading.unsupported:
             # What the words name that nothing reads, said in place of the
             # plain decline - only here, where the answer side declined, so
@@ -538,7 +537,7 @@ class Agent:
         if readings:
             composed = replace(composed, data={**(composed.data or {}), "name_readings": list(readings)})
         shape = self._planned_shape()
-        note = coverage_caveat(shape, reading.point if reading.point is not None else reading)
+        note = coverage_caveat(shape, reading)
         if note:
             composed = _noted(composed, note)
         composed = self._unmatched_fingerprint(reading, composed)
@@ -557,7 +556,7 @@ class Agent:
         - after the coverage caveat, and only where the reader answered:
         never beside the coverage floor's refusal, which read no name (the
         floor, then the answer and this note)."""
-        if reading.left_out is None or check_coverage(self._planned_shape(), reading.point if reading.point is not None else reading) is not None:
+        if reading.left_out is None or check_coverage(self._planned_shape(), reading) is not None:
             return composed
         return _noted(composed, say_left_out(reading.left_out))
 

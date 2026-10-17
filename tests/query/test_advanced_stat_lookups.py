@@ -157,7 +157,7 @@ def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx:
             subject=Subject("player", players=("Klay Thompson",)),
         ),
     )
-    assert reading.point is not None and reading.point.read_as.relation == "player_games" and reading.point.measures == (Measure(key="ts_pct"),)
+    assert reading.has_point and reading.read_as.relation == "player_games" and reading.measures == (Measure(key="ts_pct"),)
 
 
 def test_an_advanced_stat_is_charged_its_own_floor_not_the_season_lines() -> None:

@@ -64,6 +64,7 @@ from association.query.reading import (
     SHOT_DISTANCE,
     TEAM_LINE,
     TEAM_RANKING,
+    Cause,
     Claim,
     Filtered,
     Measure,
@@ -396,7 +397,7 @@ def test_the_planner_declines_the_rate_cell_where_no_reader_states_it(con: Any) 
     assert str(plan_point(reading)) == "a rate per 100 cannot be read here - it would answer for a different span than was asked"
     route = read_route(names_of(con), "who were the top 10 in defensive netpoints / 90", [], "netpoints")
     reading = route
-    assert reading.point_refusal is not None and reading.point_refusal.kind == "ranking_unit" and reading.point_refusal.facts == {"metric": "netpoints_defense", "rate": "/ 90"}
+    assert isinstance(reading.point_verdict, Cause) and reading.point_verdict.kind == "ranking_unit" and reading.point_verdict.facts == {"metric": "netpoints_defense", "rate": "/ 90"}
     assert reading.span == Span(season_type=2) or reading.span.season_type == 2
 
 

@@ -56,10 +56,10 @@ def test_the_planned_shape_is_what_the_point_is_read_as_but_the_game_level_move(
         verdict = plan_point(reading)
         key = planned_shape(reading, verdict)
         if key is None:
-            assert reading.point is None or reading.refused is not None or reading.point_refusal is not None, case["question"]
+            assert not reading.has_point or reading.refused is not None, case["question"]
             continue
-        assert reading.point is not None
-        declared = reading.point.read_as
+        assert reading.has_point
+        declared = reading.read_as
         planned += 1
         if isinstance(verdict, Query) and verdict.source == "games" and declared.relation == "player_seasons":
             moved += 1

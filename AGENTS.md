@@ -179,8 +179,8 @@ The rules:
     `--values-only` (sentences left out) is only for a change the roadmap
     allows to reword an answer. One permitted move (Jeff's): a
     decline the user sees becoming a `reading.Cause` the planner says -
-    which moves the reading's verdict (`point_declined` ->
-    `point_refusal`) and the answer's `answered_by` - is done as ONE
+    which moves the point reader's verdict (`Reading.point_verdict`, a
+    `PointDeclined` -> a `Cause`) and the answer's `answered_by` - is done as ONE
     commit of its own, every moved reading and answer enumerated in the
     commit message and `CHANGES.md` (the population, the count, before
     and after), the sentence identical or the change named. A decline or
@@ -1026,7 +1026,7 @@ families), and every key is the compiler's.
 - **A refusal names the missing thing, never only the slot.** A shape the
   warehouse has no column for is a cause the READER comes to from the
   words - a kind in `reading.CAUSES` with plain facts, carried on the
-  Reading (`point_refusal`, `refused`, `unsupported`, `defaulted`) and said
+  Reading (`point_verdict`, `refused`, `unsupported`, `defaulted`) and said
   by the planner through `say.refusal_phrase` - never a sentence built
   where the question is re-read after the parser. Before writing the
   refusal, check what the source actually serves ("ESPN does not publish
@@ -1036,15 +1036,24 @@ families), and every key is the compiler's.
 
 **Every shape the words ask is the compiler's, and the answering loop asks
 it once.** `agent.py`'s `_run_compiled` hands `compose.answer(ctx,
-reading)` the point the parser read once (`Reading.point`) and the
-planner's verdict, planned once per question AFTER the parser
+reading)` the Reading with the point the parser read once written onto it
+and the planner's verdict, planned once per question AFTER the parser
 (`compose.plan.plan_point`; the parser reads and does not plan). The
 planning is ONE value, `compose.plan.Verdict` (kept on `Agent.query`): the
 planned query, the refusal it came to unworded (a `result.Refusal`) or the
 decline it gave the point up with; what the point is read and said as is
 `compose.plan.planned_shape`'s. The compiler runs the planned point and
-never reads the question. A caller with a Reading of its own reads the
-point into it with `parse.with_point`. Nothing in the package may reach
+never reads the question. **One Reading per question**: the point reader
+(`point.read_point`) writes the point's filters and its own fields
+(`reading.POINT_FIELDS`: `read_as`, `measures`, `predicates`, `limit`, ...)
+onto the parser's Reading, and its verdict is ONE field,
+`Reading.point_verdict` - `"read"` (`Reading.has_point`), a
+`reading.PointDeclined` with why, or the `Cause` it refuses by; `None`
+before the point is read. Where the point reader moves a filter (a career
+"how many times" implies, a line's stat), the Reading holds the moved one,
+which is what the planner plans. No Reading nests another. A caller with a
+Reading of its own reads the point onto it with `parse.with_point`.
+Nothing in the package may reach
 ollama, and it narrows a relation only through the shared steps.
 
 - **The point declares what it is read and said as: ONE field,

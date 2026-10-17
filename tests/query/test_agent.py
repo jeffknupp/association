@@ -945,7 +945,7 @@ def test_the_point_readers_decline_by_a_cause_waits_for_what_the_words_name(monk
 
     reading = Reading(
         asked=PLAYER_LOG,
-        point_refusal=Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG}),
+        point_verdict=Cause(kind="no_subject_reading", facts={"shape": PLAYER_LOG}),
         unsupported=(Cause(kind="playoff_round", facts={"shape": PLAYER_LOG, "round": "finals"}),),
     )
     monkeypatch.setattr("association.query.parse.read_route", lambda *args, **kwargs: reading)
