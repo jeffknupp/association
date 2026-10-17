@@ -86021,7 +86021,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",
@@ -86238,7 +86238,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",
@@ -86455,7 +86455,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "rebounds",
@@ -95647,7 +95647,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",
@@ -95873,7 +95873,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",
@@ -96099,7 +96099,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",
@@ -111110,7 +111110,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",
@@ -111343,7 +111343,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",
@@ -112819,7 +112819,7 @@
     "relation": "everyone",
     "on": "player_games",
     "shape": "rows",
-    "by": "",
+    "by": "measure",
     "measures": [
      {
       "key": "points",

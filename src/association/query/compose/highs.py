@@ -82,7 +82,9 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Result | 
     season, season_type = compiled.span.season, player_relation_season_type(scope)
     span, notes = box_score_span(con, season, season_type, player)
     player_id = player.id if player is not None else None
-    empty = empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=compiled.rebuilt)
+    # The league's high narrowed to one team's players: that team's empty games alone.
+    team = compiled.narrowed.team if player is None else None
+    empty = empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=compiled.rebuilt, team_id=team.id if team is not None else None)
     withheld = 0 if games or column in REBUILT_STATS else rebuilt_in_scope(con, season, season_type, player_id)
     stat = spelled(scope.measure)
     notes += _single_game_high_notes(games, STAT_LABELS.get(stat or "", stat or ""), season, name, empty, withheld)
@@ -95,7 +97,6 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Result | 
     # ("... in a single game for the Cleveland Cavaliers ..."): the games
     # are theirs alone, and a sentence naming no team reads as the
     # league's (ISSUES.md #167).
-    team = compiled.narrowed.team if player is None else None
     return Result(
         subject=name or "every player",
         relation="player" if player is not None else "everyone",

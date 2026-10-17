@@ -132,9 +132,11 @@ if TYPE_CHECKING:
 #: was read under - what one row is said BY: a log's and a line's games by date
 #: (``compose.logs``, which reads a line asked of a single game too), a single
 #: game's high by the measure, a count's games by the count
-#: (``compose.counts``); ``""`` under any other words - no reader takes the
-#: point, and the compiler's own sentence states what it lists. Keyed by
-#: what the words asked (the grammar's key).
+#: (``compose.counts``). Keyed by what the words asked (the grammar's key);
+#: under any other words the move's own rows say what they are - the top
+#: games by a measure a single game's high (``GAME_HIGHS``, decision D17:
+#: "most points in a game by a knicks player" asks a ranking and reads one
+#: game), a position group's games by date a log.
 _ROWS_BY: dict[PointShape | None, PointShape] = {PLAYER_LOG: PLAYER_LOG, PLAYER_LINE: PLAYER_LOG, GAME_HIGHS: GAME_HIGHS, GAMES_COUNTED: PointShape("player_games", "rows", "count")}
 #: The same for a count a shared move reads ("how many ... won", a boolean
 #: measure counted): his line (``compose.stats``), his count
@@ -142,9 +144,8 @@ _ROWS_BY: dict[PointShape | None, PointShape] = {PLAYER_LOG: PLAYER_LOG, PLAYER_
 #: over a line the count is said as (``compose.records``, a split by the
 #: line); a scalar nothing reads otherwise.
 _COUNT_SHAPES: dict[PointShape | None, PointShape] = {PLAYER_LINE: PointShape("player_games", "scalar", "line"), GAMES_COUNTED: GAMES_COUNTED, LINE_RECORD: LINE_RECORD}
-#: The rows and the count no reader takes under any other words (``by`` is
-#: ``""``): the compiler's own sentence states what it reads.
-_ROWS_UNREAD = PointShape("player_games", "rows", "")
+#: The count no reader takes under any other words (``by`` is ``""``): the
+#: compiler's own sentence states what it reads.
 _COUNT_UNREAD = PointShape("player_games", "scalar", "")
 #: A team's (or the league's teams') run of wins or losses, read by
 #: ``compose.runs.read_team_streak``.
@@ -289,7 +290,7 @@ def _everyone_single_game(asked: PointShape | None, scope: Filtered, question: s
         return None
     return Reading(
         **scope.filters(),
-        read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
+        read_as=_ROWS_BY.get(asked, GAME_HIGHS),
         measures=_led_by(measure),
         group="none",
         predicates=predicates,
@@ -342,7 +343,7 @@ def _everyone_boolean_game_ranking(asked: PointShape | None, question: str, scop
     measure = _boolean_game_measure(question)
     return Reading(
         **scope.filters(),
-        read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
+        read_as=_ROWS_BY.get(asked, GAME_HIGHS),
         measures=_led_by(measure),
         group="none",
         predicates=predicates,
@@ -691,7 +692,7 @@ def _everyone_position_log(asked: PointShape | None, scope: Filtered, question: 
         return None
     return Reading(
         **scope.filters(),
-        read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
+        read_as=_ROWS_BY.get(asked, PLAYER_LOG),
         measures=_measured(*LINE),
         group="none",
         predicates=[],
@@ -768,7 +769,7 @@ def _move_single_game(asked: PointShape | None, scope: Filtered, question: str, 
         return None
     return Reading(
         **scope.filters(),
-        read_as=_ROWS_BY.get(asked, _ROWS_UNREAD),
+        read_as=_ROWS_BY.get(asked, GAME_HIGHS),
         measures=_led_by(measure),
         group="none",
         predicates=[],

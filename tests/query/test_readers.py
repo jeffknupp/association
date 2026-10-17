@@ -38,7 +38,7 @@ from association.query.measures import PERIOD_RATE_STATS
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
 from association.query.player_games import BOTH_SEASON_TYPES, PERIOD_COLUMNS, PERIOD_RATES, Narrowed, period_distrust
-from association.query.player_relation import scoped_games, scoped_player, span_of
+from association.query.player_relation import empty_box_scores, scoped_games, scoped_player, span_of
 from association.query.point import default_point
 from association.query.reading import (
     GAME_HIGHS,
@@ -2406,6 +2406,27 @@ def test_fouls_are_never_read_from_a_rebuilt_line(rebuilt_ctx: AnswerContext) ->
     answer = game_highs(rebuilt_ctx, Reading(who=Who(kind="player", players=("Anthony Davis",)), measure=Measure(key="fouls", as_typed="fouls"))).text or ""
     assert "5" in answer
     assert "rebuilt from its play-by-play" not in answer
+
+
+@pytest.mark.parametrize("rebuilt", [False, True])
+def test_a_teams_empty_box_scores_are_its_own_games(rebuilt: bool) -> None:
+    """The league's high narrowed to one team's players counts that team's
+    empty games alone (decision D17's routing): the one empty game of
+    2015-16, Washington at Chicago, was said beside the 76ers' high as a
+    game that might hide a bigger 76ers game. Both branches - the stored
+    box scores, and the filled log that rebuilt lines stand in."""
+    c = duckdb.connect(":memory:")
+    s = current_season()
+    # e1 is empty for both its teams; e2 is a real box score.
+    rows = [("e1", s, 2, "WSH", "1", None, False), ("e1", s, 2, "CHI", "2", None, False), ("e2", s, 2, "PHI", "3", 30, False), ("e2", s, 2, "CHI", "2", 31, False)]
+    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
+    c.executemany("INSERT INTO player_box_stats VALUES (?,?,?,?,?,?,?)", rows)
+    if rebuilt:
+        c.execute("CREATE VIEW player_game_log AS SELECT *, FALSE AS reconstructed FROM player_box_stats")
+        c.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_game_log")
+    assert empty_box_scores(c, s, 2, None, covered_by_rebuild=rebuilt) == (1, s, s)
+    assert empty_box_scores(c, s, 2, None, covered_by_rebuild=rebuilt, team_id="CHI") == (1, s, s)
+    assert empty_box_scores(c, s, 2, None, covered_by_rebuild=rebuilt, team_id="PHI") == (0, None, None)
 
 
 def test_a_withheld_stat_says_it_was_withheld_not_missing(rebuilt_ctx: AnswerContext) -> None:

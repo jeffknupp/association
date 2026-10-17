@@ -1641,7 +1641,9 @@ def rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_
     return int(row[0]) if row else 0
 
 
-def empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None, *, covered_by_rebuild: bool = False) -> tuple[int, int | None, int | None]:
+def empty_box_scores(
+    con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None, *, covered_by_rebuild: bool = False, team_id: str | None = None
+) -> tuple[int, int | None, int | None]:
     """Games in scope whose box score is empty: (count, first season, last season).
 
     Every game from 2012-13 through 2017-18 has a box score, but 161-166 a
@@ -1657,6 +1659,11 @@ def empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_
     beside "68 of his games have an empty box score, so a bigger game may be
     missing", where those 68 are the very games the 43 came from.
 
+    ``team_id`` keeps the league's count to one team's games: a high read
+    over the 76ers' players cannot be missing a game the 76ers did not play
+    (Washington at Chicago on 2016-03-16, the one empty game of 2015-16, was
+    said beside every team's high).
+
     .. versionchanged:: 5.0.0
        Public (``_empty_box_scores`` until then): the count's and the
        high's readers take it.
@@ -1664,6 +1671,9 @@ def empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_
     if covered_by_rebuild and box_source(con).rebuilt:
         # What is still unseen: no minutes AND no rebuild to stand in for them.
         scope, params = scope_without_guard("l", season, season_type)
+        if team_id is not None:
+            scope += " AND l.team_id = ?"
+            params.append(team_id)
         if athlete_id is None:
             sql = (
                 f"SELECT COUNT(*), MIN(season), MAX(season) FROM (SELECT l.season FROM player_game_log l WHERE {scope} "
@@ -1679,6 +1689,9 @@ def empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_
         return (int(row[0]), row[1], row[2]) if row else (0, None, None)
 
     scope, params = scope_without_guard("b", season, season_type)
+    if team_id is not None:
+        scope += " AND b.team_id = ?"
+        params.append(team_id)
     empty = f"SELECT b.event_id, b.season FROM player_box_stats b WHERE {scope} GROUP BY b.event_id, b.season HAVING MAX(b.minutes) IS NULL"
     if athlete_id is None:
         sql = f"SELECT COUNT(*), MIN(season), MAX(season) FROM ({empty})"

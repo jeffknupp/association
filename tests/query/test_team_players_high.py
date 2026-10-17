@@ -61,7 +61,9 @@ def agent(tmp_path: Path) -> Agent:
             ("3", S, "Joel Embiid", f"{S - 1}-01-22T00:30Z", "20", 70, "e3"),
         ],
     )
-    con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
+    # The warehouse's box scores carry each row's team, which a team's high
+    # counts its own empty games by.
+    con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     con.close()
     return Agent(str(tmp_path / "test.duckdb"), tmp_path / "out", history_dir=tmp_path / ".history")
 
