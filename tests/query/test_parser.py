@@ -1698,6 +1698,18 @@ def test_a_denied_role_names_the_companion_whose_clause_denies_it(question: str,
     assert (cause.facts["player"] if cause is not None else None) == player
 
 
+@pytest.mark.parametrize("question", ["tyrese maxey triple double log", "tyrese maxey games with a double double"])
+def test_a_log_of_a_yes_no_stat_keeps_the_games_it_holds_in_over_the_career(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """The feed sample's FS073, "lebron james triple double log", was
+    refused "A game log has no per-game column for 'triple_double'": a yes or
+    a no of a game keeps the games it holds in, and over every one on record
+    with no season named, as their count is (decision D13)."""
+    reading = _read(con, question)
+    assert reading.point is not None and reading.point.read_as == PLAYER_LOG
+    assert reading.point.predicates == [(reading.measure.key if reading.measure else None, "=", True)]
+    assert reading.span.career
+
+
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
 def test_a_total_asked_of_the_season_ranking_ranks_the_total(con: duckdb.DuckDBPyConnection, question: str, source: str) -> None:
     """#435: "total" asks the season ranking for the season's total (its

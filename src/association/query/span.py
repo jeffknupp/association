@@ -104,6 +104,10 @@ class SpanContext:
     #: games than one season holds is a career's floor ("plus minus per
     #: game leaders minimum 100 games played").
     minimum_games: int | None = None
+    #: Whether the measure read is a yes or a no of a game (a triple-double):
+    #: a log of the games it holds in is every one on record ("lebron james
+    #: triple double log", the feed sample's FS073), as their count is.
+    yes_no_stat: bool = False
 
 
 @dataclass(frozen=True)
@@ -475,6 +479,12 @@ def _implied_playoff_window(question: str, context: SpanContext) -> bool:
     return recent and bool(lexicon.PLAYOFF_WORDS.search(question)) and not lexicon.BOTH_SEASON_TYPES_WORDS.search(question)
 
 
+def _implied_yes_no(question: str, context: SpanContext) -> bool:
+    """A named player's games where a yes/no stat holds - every one on record."""
+    del question
+    return context.player_named and context.yes_no_stat
+
+
 IMPLIED_CAREERS: dict[str, Callable[[str, SpanContext], bool]] = {
     "versus": _implied_versus,
     "pair": _implied_pair,
@@ -486,6 +496,7 @@ IMPLIED_CAREERS: dict[str, Callable[[str, SpanContext], bool]] = {
     "in_a_game": _implied_in_a_game,
     "minimum": _implied_minimum,
     "playoff_window": _implied_playoff_window,
+    "yes_no": _implied_yes_no,
 }
 """The careers a question implies where it names no season (decision D13,
 Jeff's: a question naming no season reads the career where its words imply

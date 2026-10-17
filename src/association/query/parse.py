@@ -921,7 +921,7 @@ def _tagged(
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
 
     window = window_under(asked, read_window(_tagged_window_words(question, asked, cuts_context, split.split), window_context))
-    implied = _SpanImplied.of(companions, cuts, kept.minimum, inactive=inactive, teams=settled.subject.teams)
+    implied = _SpanImplied.of(companions, cuts, kept.minimum, inactive=inactive, teams=settled.subject.teams, yes_no_stat=window_context.boolean_stat)
     span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts, implied=implied)))
     scope = Reading(
         who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span, minimum=kept.minimum
@@ -1044,9 +1044,10 @@ class _SpanImplied:
     inactive: bool = False
     minimum_games: int | None = None
     former_era: bool = False
+    yes_no_stat: bool = False
 
     @classmethod
-    def of(cls, companions: tuple[Companion, ...], cuts: CutsRead, minimum: Minimum | None, *, inactive: bool, teams: tuple[str, ...]) -> _SpanImplied:
+    def of(cls, companions: tuple[Companion, ...], cuts: CutsRead, minimum: Minimum | None, *, inactive: bool, teams: tuple[str, ...], yes_no_stat: bool = False) -> _SpanImplied:
         """The facts from the typed companions, cuts, minimum and teams."""
         situation = cuts.cuts.situation
         calendar = situation.calendar if situation is not None else None
@@ -1060,6 +1061,7 @@ class _SpanImplied:
             annual_day=calendar is not None and calendar in HOLIDAYS.values(),
             inactive=inactive,
             minimum_games=minimum.count if minimum is not None and minimum.unit == "games" else None,
+            yes_no_stat=yes_no_stat,
         )
 
 
@@ -1094,6 +1096,7 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         pair=len(settled.subject.players) >= 2,
         minimum_games=implied.minimum_games,
         former_era=implied.former_era,
+        yes_no_stat=implied.yes_no_stat,
     )
 
 
