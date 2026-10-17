@@ -665,6 +665,8 @@ def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate
     s = current_season()
     cx_ctx.con.execute("INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)", ["g9", s, f"{s}-03-15T20:00Z", BOS, GS, 90, 101, GS])
     cx_ctx.con.execute(f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})", _box("g9", s, GS, BOS, PODZ, minutes=31, pts=24, reb=6, ast=5))
+    # A teammate's stints are read over the shared filtered game list (#480).
+    real_games.build_table(cx_ctx.con, {"games", "teams"})
     result = compose_answer(
         cx_ctx,
         PLAYER_LOG,

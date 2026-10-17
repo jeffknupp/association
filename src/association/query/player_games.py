@@ -36,12 +36,13 @@ already resolved, and never a name.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
-from association.nba.season import eastern_date_sql
+from association.nba.season import eastern_date_sql, eastern_day_utc_range
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, alignment_clause, calendar_clause
 from association.query.measures import PERIOD_COLUMNS as PERIOD_COLUMNS
 
@@ -559,10 +560,6 @@ def _teammate_played(box: BoxSource) -> str:
     return f"EXISTS (SELECT 1 FROM {box.table} m WHERE m.athlete_id = ? AND m.event_id = pgl.event_id AND m.season = pgl.season AND NOT m.did_not_play AND {appeared})"
 
 
-# An open end of a stint, as a string that sorts before or after any date.
-_OPEN_START, _OPEN_END = "0000", "9999"
-
-
 def _joined(names: list[str], word: str = "and") -> str:
     """ "A", "A and B", "A, B and C" - a list of names as a sentence holds it."""
     if len(names) <= 1:
@@ -592,7 +589,7 @@ class Condition:
     (opponent, played) were special cases of.
 
     ``tenure`` bounds an OWN-side absence to the games inside the player's
-    time on the subject's team (:func:`_teammate_stints`): "Nets record
+    time on the subject's team (:func:`_tenure_clause`): "Nets record
     without KD" must not count the decades before he arrived.
 
     .. versionadded:: 5.0.0
@@ -1359,70 +1356,45 @@ def scope_without_guard(alias: str, season: int | None, season_type: int) -> tup
     return f"{alias}.season = ? AND {type_clause}", [season, *type_params]
 
 
-def _teammate_stints(con: duckdb.DuckDBPyConnection, athlete_id: str) -> list[tuple[int, str, str, str]]:
-    """When a player was on each team: ``(season, team_id, start, end)``, with
-    ``start``/``end`` compared against ``games.date``.
-
-    There is no roster table, so this is read off his own box-score rows, and
-    the one fact that makes that hard is that an injured player mostly has NO
-    row: Stephen Curry's 2026 is 43 rows, none of them did-not-play, for an
-    82-game Warriors season. So a stint runs from his first row for a team to
-    his last, and then:
-
-    - it is open at the start of the season when he ended the previous one on
-      that team (or has no earlier rows at all) - LeBron James's first 2026 row
-      is 2025-11-19, and the Lakers' 14 games before it were played without
-      him;
-    - it is open at the end when no later row that season is for another team,
-      so an injury that ends a season still counts.
-
-    A mid-season arrival from another team is not extended backwards: Seth
-    Curry's first 2026 Warriors row is 2025-12-03, and their October games were
-    not played "without" somebody who was in Charlotte's plans. The gap between
-    a traded player's last game for one team and his first for the next belongs
-    to neither, which undercounts rather than guesses."""
-    phantom = COVERAGE["player_game_log"].phantom
-    excluded = f" AND season NOT IN ({', '.join('?' for _ in phantom)})" if phantom else ""
-    rows = con.execute(
-        f"SELECT season, team_id, MIN(game_date), MAX(game_date) FROM player_game_log WHERE athlete_id = ?{excluded} GROUP BY season, team_id ORDER BY season, MIN(game_date)",
-        [athlete_id, *phantom],
-    ).fetchall()
-    by_season: dict[int, list[tuple[str, str, str]]] = {}
-    for season, team_id, first, last in rows:
-        by_season.setdefault(int(season), []).append((str(team_id), str(first), str(last)))
-    stints: list[tuple[int, str, str, str]] = []
-    carried: str | None = None  # the team he ended the previous season on
-    for season in sorted(by_season):
-        spells = by_season[season]
-        final = max(range(len(spells)), key=lambda i: spells[i][2])
-        for index, (team_id, first, last) in enumerate(spells):
-            start = _OPEN_START if index == 0 and carried in (None, team_id) else first
-            end = _OPEN_END if index == final else last
-            stints.append((season, team_id, start, end))
-        carried = spells[final][0]
-    return stints
-
-
 def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | None, *, side: str = "own") -> tuple[str, list[Any]]:
     """SQL keeping the games ``pgl`` played on a team ``mate`` was on at the
-    time - see _teammate_stints for how "was on" is read - or, with ``side``
+    time - his stints (:func:`~association.query.conditions.stints`, the one
+    reading of a teammate's time on a team) - or, with ``side``
     ``"opponent"``, the games played AGAINST a team he was on at the time
     ("vs lakers without lebron": the Lakers games of his Lakers years).
-    ``season`` is the one season asked about, or None for
-    a career.
+    ``season`` is the one season asked about, or None for a career; the
+    span's own clause keeps the games to it, so it only drops the stints
+    outside it.
 
     .. versionchanged:: 5.0.0
        Takes ``side``.
+
+    .. versionchanged:: 7.0.0
+       Reads the stints the with/without split reads (ISSUES.md #480): a
+       stint ends at the day before his first row for his next team, not at
+       his last row for this one.
     """
-    stints = [s for s in _teammate_stints(con, mate.id) if season is None or s[0] == season]
-    if not stints:
+    from association.query.conditions import stints as read_stints
+
+    spells = read_stints(con, mate.id, COVERAGE["player_game_log"].phantom)
+    if season is not None:
+        spells = [spell for spell in spells if _tenure_clause_reaches(spell.first, spell.last, season)]
+    if not spells:
         return "FALSE", []
-    rows = ", ".join("(?, ?, ?, ?)" for _ in stints)
+    # A stint's Eastern days as the stamps ``pgl.game_date`` holds: from
+    # the first day's first stamp up to, not including, the day after the last's.
+    bounds = [(spell.team_id, eastern_day_utc_range(spell.first.isoformat())[0], eastern_day_utc_range(spell.last.isoformat())[1]) for spell in spells]
+    rows = ", ".join("(?, ?, ?)" for _ in bounds)
     team = "pgl.team_id" if side == "own" else "pgl.opponent_team_id"
     return (
-        f"EXISTS (SELECT 1 FROM (VALUES {rows}) AS stint(season, team_id, start_date, end_date) "
-        f"WHERE stint.season = pgl.season AND stint.team_id = {team} AND pgl.game_date BETWEEN stint.start_date AND stint.end_date)"
-    ), [value for stint in stints for value in stint]
+        f"EXISTS (SELECT 1 FROM (VALUES {rows}) AS stint(team_id, start_stamp, end_stamp) WHERE stint.team_id = {team} AND pgl.game_date >= stint.start_stamp AND pgl.game_date < stint.end_stamp)"
+    ), [value for bound in bounds for value in bound]
+
+
+def _tenure_clause_reaches(first: date, last: date, season: int) -> bool:
+    """Whether a stint from ``first`` to ``last`` reaches into ``season``
+    (named for the year it ends, its games from July of the year before)."""
+    return first <= date(season, 6, 30) and last >= date(season - 1, 7, 1)
 
 
 # Stat key -> real player_box_stats column. A whitelist, not a passthrough:

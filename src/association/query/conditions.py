@@ -63,7 +63,7 @@ from __future__ import annotations
 import weakref
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
 import duckdb
@@ -543,23 +543,47 @@ class _Stint:
     last: date
 
 
-def _stints(con: duckdb.DuckDBPyConnection, athlete_id: str, phantoms: tuple[int, ...]) -> list[_Stint]:
-    """Every stint of one player's career, earliest first.
+def stints(con: duckdb.DuckDBPyConnection, athlete_id: str, phantoms: tuple[int, ...]) -> list[_Stint]:
+    """Every stint of one player's career, earliest first: when he was on
+    each team, in Eastern days. The one reading of a teammate's time on a
+    team - the player relation's tenure (``player_games._tenure_clause``)
+    and the with/without split (``compose.presence``) both read it, where
+    each once read its own and the two disagreed (ISSUES.md #480).
 
-    A stint is a run of his box-score rows (in every season type) for one
-    team, and it ends in one of two ways. The next row is for another team:
-    LeBron James' two Cleveland spells are two stints, so the Cavaliers' Miami
-    years do not count as games they played "without" him. Or a whole season
-    passes with no row at all, which the box scores cannot tell from his having
-    left and come back: counting the gap would put a player's years abroad on
-    his old team's without-him record. That costs a season-long injury (Klay
-    Thompson's 2020 and 2021 are outside his Warriors stints), which is the
-    safe direction - the answer prints the stint dates, so what was left out
-    is on the page, where a wrong count would not be.
+    There is no roster table, so this is read off his own box-score rows
+    (DNP rows included, the box score saying he was on the roster), and the
+    one fact that makes that hard is that an injured player mostly has NO
+    row: Stephen Curry's 2026 is 43 rows, none of them did-not-play, for an
+    82-game Warriors season.
 
-    An offseason is not a gap. Tatum's last 2025 row is a May playoff game and
-    his first 2026 row is in March, so the Celtics' games in between - the
-    Achilles - are inside his stint, where they belong."""
+    A run of his rows for one team is a stint, broken where the next row is
+    for another team (LeBron James' two Cleveland spells are two stints, so
+    the Cavaliers' Miami years are not games played "without" him) or where
+    a whole season passes with no row at all, which the box scores cannot
+    tell from his having left and come back. An offseason is not a gap:
+    Tatum's last 2025 row is a May playoff game and his first 2026 row is in
+    March, so the Celtics' games in between - the Achilles - are his.
+
+    A stint runs from his first row for the team - never opened back before
+    it: "Nets record without KD all-time" once counted the decades of Nets
+    games before he arrived, and a rookie's games before his first row are
+    no surer - and it ends at
+    his team's last game of the season of his last row - an injury that
+    ends a season still counts - or, where his next stint begins before then, the day
+    before his first row for the next team. A traded player's games missed
+    between his last row and the trade are his old team's: Luka Doncic's
+    last Dallas row is 2024-12-25 and his first for the Lakers is in
+    February, so the Mavericks' January games are games Kyrie Irving played
+    without him, where ending the stint at his last row counted 18 of the
+    30. A mid-season arrival is not extended backwards: Seth Curry's first
+    2026 Warriors row is 2025-12-03, and their October games were not
+    played "without" somebody who was in Charlotte's plans.
+
+    .. versionadded:: 7.0.0
+       One definition, where ``player_games._teammate_stints`` (per season,
+       to his last row before a trade) and ``conditions._stints`` (to his
+       last row) were two.
+    """
     excluded = f" AND pbs.season NOT IN ({', '.join(str(int(p)) for p in phantoms)})" if phantoms else ""
     rows = con.execute(
         f"""
@@ -572,11 +596,22 @@ def _stints(con: duckdb.DuckDBPyConnection, athlete_id: str, phantoms: tuple[int
             FROM r WINDOW w AS (ORDER BY {_GAME_ORDER})
         ), n AS (
             SELECT m.*, SUM(starts) OVER (ORDER BY {_GAME_ORDER} ROWS UNBOUNDED PRECEDING) AS stint FROM m
+        ), runs AS (
+            SELECT team_id, MAX(season) AS last_season, MIN(day) AS first, MAX(day) AS last FROM n GROUP BY team_id, stint
+        ), closing AS (
+            SELECT runs.team_id, runs.last_season, MAX({_eastern_day("g.date")}) AS closed FROM runs
+            JOIN real_games g ON g.season = runs.last_season AND runs.team_id IN (g.home_team_id, g.away_team_id) GROUP BY runs.team_id, runs.last_season
         )
-        SELECT team_id, MIN(day), MAX(day) FROM n GROUP BY team_id, stint ORDER BY 2""",
+        SELECT runs.team_id, runs.first, runs.last, closing.closed FROM runs
+        JOIN closing ON closing.team_id = runs.team_id AND closing.last_season = runs.last_season ORDER BY runs.first""",
         {"player": athlete_id},
     ).fetchall()
-    return [_Stint(str(team), first, last) for team, first, last in rows]
+    found: list[_Stint] = []
+    for index, (team, first, _last, closed) in enumerate(rows):
+        # The day before the next team's first row, where that comes first.
+        ends = min(closed, rows[index + 1][1] - timedelta(days=1)) if index + 1 < len(rows) else closed
+        found.append(_Stint(str(team), first, ends))
+    return found
 
 
 def _overlaps(ours: Sequence[_Stint], theirs: Sequence[_Stint]) -> list[_Stint]:

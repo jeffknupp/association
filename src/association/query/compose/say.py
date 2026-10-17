@@ -268,7 +268,12 @@ def _say_tenure_counted(facts: dict[str, Any], about: str) -> str:
     stints = list(facts["stints"])
     several = len({stint["team"] for stint in stints}) > 1
     spelled = "; ".join(f"{stint['team']} {stint['from']} to {stint['to']}" if several else f"{stint['from']} to {stint['to']}" for stint in stints)
-    return f"Counted: games inside {about} ({spelled}), which runs from the first box score that lists {'him' if len(facts['names']) == 1 else 'them'} there to the last."
+    # The stint's own rule (``conditions.stints``, ISSUES.md #480): from
+    # the first box score there to the next team's first, or to the end of
+    # the season of the last.
+    whom = "him" if len(facts["names"]) == 1 else "them"
+    runs = f"from the first box score that lists {whom} there until a box score lists {whom} for another team, or to the team's last game of the season of the last"
+    return f"Counted: games inside {about} ({spelled}), which runs {runs}."
 
 
 #: What a run is counted over, by who has it - the rule beneath a streak.
