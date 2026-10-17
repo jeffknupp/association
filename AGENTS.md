@@ -1772,6 +1772,17 @@ rediscover, or never does.
   is technically right and within the agent's files, otherwise stated in
   the report with its measured tradeoff. Silence is the one outcome not
   allowed. (history)
+- **A lane that widens a reading owns what the widening exposes.** A
+  change that widens a span or a default (a career where a season stood,
+  both season types, a stint cut dropped) moves answers into readers
+  written for one season, and the faults are the same each time: a
+  limit that cuts a tie, an empty-result count taken under the line
+  filter, a per-game figure under 0.5 said as 0, a floor read from one
+  season, a caveat said per season, a stint ended at a box score. The
+  lane traces its moved answers through all five stages and fixes those
+  in the same lane and push, never as follow-up P1s (Jeff, 2026-10-17);
+  `~/association-research/stages/widening_checks.py BEFORE AFTER` flags
+  them on a push's moved answers, and `--all` inventories a run.
 - **Parallelism is for disjoint, bounded, measurable work** - a fix with
   its own tests and a proof to check it against, a relation over its own
   tables. The parser-compiler seam is one agent's at a time: two branches
