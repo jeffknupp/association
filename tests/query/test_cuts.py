@@ -101,6 +101,12 @@ def _situation(text: str) -> Situation:
         ("Caleb martin ecf", PLAYER_LINE, Cuts(round="ecf")),
         ("jokic wcf stats", PLAYER_LINE, Cuts(round="wcf")),
         ("tatum ecsf stats", PLAYER_LINE, Cuts(round="ecsf")),
+        # The Finals in the singular, where it names the series (#455): it answered the regular season.
+        ("jaylen brown 2022 nba final stats", PLAYER_LINE, Cuts(round="nba final")),
+        ("kobe stats in the final", PLAYER_LINE, Cuts(round="the final")),
+        # ... and not where a count, a game or a stretch of play follows it.
+        ("kobe stats in the final 5 games", PLAYER_LINE, Cuts()),
+        ("kobe stats in the final quarter", PLAYER_LINE, Cuts()),
         ("Ayton stats in game 4 playoff games", PLAYER_LOG, Cuts(game_n=4)),
         ("his 18th season", PLAYER_LINE, Cuts(season_n=18)),
         ("most points in 15th season played", PLAYER_RANKING, Cuts(season_n=15)),

@@ -135,15 +135,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #454
 
-### "nba final stats" is not read as the Finals: "jaylen brown 2022 nba final stats" answers his 2021-22 regular season
-- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627` (the Phase 5 review had called "final" a window word in its Finals sense and the narrowing dropped it from the class; the answer was wrong either way).
-- **Evidence:** "jaylen brown 2022 nba final stats" answers "23.6 points, 6.1 rebounds and 3.5 assists per game in 66 games" of the regular season; "jayson tatum 2024 nba final stats" likewise (74 games). The round reader matches "finals" and "the finals", not "nba final"; "final" is unread.
-- **User sees:** the regular season's line where the Finals' was asked, fluently.
-- **Next step:** "nba final(s)", "the final(s)", "finals" read as the Finals round, refused by the round's cause as every round is (`Reading.unsupported`, `round`).
-- **Priority:** P1 - a fluent wrong answer on two recorded questions.
-- **Source:** ours.
-- **GitHub:** #455
-
 ### A compound stat nothing holds is read as its last word: "toronto raptors points off turnovers" answers the Raptors' turnovers
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
 - **Evidence:** "toronto raptors points off turnovers" answers "The Toronto Raptors' turnovers per game was 13.7 in the 2026 regular season"; "points off turnovers" is a team stat the warehouse does not carry, the measure tagger reads "turnovers", and "points" is unread (a leftover guard applies only to the read measure's own words).
