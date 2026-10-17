@@ -91,7 +91,6 @@ from association.query.reading import (
     TEAM_SEASON_HISTORY,
     Claim,
     Companion,
-    Cuts,
     Filtered,
     LeftOut,
     Line,
@@ -1853,10 +1852,14 @@ def _apply_team_record_when(subject: Subject, scope: Filtered, asked: PointShape
     rewritten = replace(
         scope,
         span=scope.span,
-        # The venue stands; a model filed the subject's own team as the
-        # opponent ("sixers" beside its invented Joel Embiid), and the
-        # question sets the team against nobody.
-        cuts=Cuts(venue=scope.cuts.venue, opponent=scope.cuts.opponent if subject.opponent is not None else None),
+        # Every cut stands - the venue, a date, a situation, a playoff round,
+        # a game of a series - for the planner to honor or refuse: rebuilt
+        # from the venue alone, "celtics record when tatum scores 30 points
+        # in the 2024 finals" read his whole 2024 postseason. The opponent
+        # stands only where the subject reading read one: a model filed the
+        # subject's own team as the opponent ("sixers" beside its invented
+        # Joel Embiid), and the question sets the team against nobody.
+        cuts=replace(scope.cuts, opponent=scope.cuts.opponent if subject.opponent is not None else None),
         # The companion is the player the record is keyed on, beside the
         # team it is the record of.
         who=reading.Subject(kind=subject.kind, players=(condition.player,), teams=subject.teams[:1], position=subject.position),

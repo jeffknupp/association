@@ -399,6 +399,16 @@ def test_a_companions_line_is_never_the_subjects(con: duckdb.DuckDBPyConnection)
     assert (team.asked, team.who.kind, [line.value for line in team.lines]) == (LINE_RECORD, "team", [20])
 
 
+def test_a_teams_record_over_a_companions_line_keeps_every_cut(con: duckdb.DuckDBPyConnection) -> None:
+    """The team's record in the games a companion reached a line is
+    rewritten around him, and the cuts stand for the planner to honor or
+    refuse: rebuilt from the venue alone, "on tuesdays" was dropped and the
+    record read every game."""
+    team = _route(con, "sixers record when maxey scored 20+ points on tuesdays at home", ["Tyrese Maxey"], "points")
+    assert team.who.kind == "team" and team.cuts.venue == "home"
+    assert team.cuts.situation is not None and team.cuts.situation.calendar is not None and team.cuts.situation.calendar.label == "on Tuesdays"
+
+
 def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> None:
     """One number table, every count pattern built from it: "last twelve
     games" reads the log as "last 12 games" does."""
