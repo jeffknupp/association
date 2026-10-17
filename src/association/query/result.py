@@ -651,6 +651,9 @@ class GameRankingFacts:
     total: int | None = None
     stated_minimum: int | None = None
     most_played: int | None = None
+    #: How many players past the rows shown tie the last of them, whom the
+    #: count cut (a "limit that cuts a tie").
+    tied_past: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)

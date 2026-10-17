@@ -1464,6 +1464,19 @@ def test_a_ranking_by_games_played_counts_each_players_games(cx_ctx: AnswerConte
     assert [line.split()[-2] for line in said.splitlines()[1:]] == ["22", "22", "4", "4", "2", "2"]
 
 
+def test_a_ranking_says_the_players_its_count_cut_from_a_tie(cx_ctx: AnswerContext) -> None:
+    """A widening's trap: "least games played with lakers" listed ten, seven
+    of the nine with two games among them, and said nothing of the other
+    two (the feed sample's FS214). The players past the count who tie the
+    last one shown are said; a count that cut no tie says nothing more."""
+    q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="games_played", as_typed="games played"), span=Span(season_type=2)), "most games played this season")
+    assert isinstance(q, Query)
+    said = _ranked(cx_ctx.con, replace(q, limit=3))
+    assert [line.split()[-2] for line in said.splitlines()[1:4]] == ["22", "22", "4"]
+    assert said.splitlines()[-1] == "  and 1 more tied at 4 G"
+    assert "tied" not in _ranked(cx_ctx.con, replace(q, limit=2))
+
+
 @pytest.mark.parametrize(
     ("measure", "span", "aggregate", "minimum"),
     [

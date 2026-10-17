@@ -1387,6 +1387,12 @@ def say_game_ranking(result: Result) -> Answer:
     else:
         head = f"{result.subject}{where}, {span}{predicates_phrase(facts.predicates, grouped=True)}, by player" + _game_ranking_by(result, facts)
         lines = [_game_ranking_line(facts, row) for row in body.rows]
+        if facts.tied_past:
+            # The count cut a tie: the players past it who tie the last
+            # shown are said, never silently left out.
+            last = body.rows[-1]
+            tied_at = f"{last.get('games')} G" if not facts.measures else f"{LABELS.get(facts.measures[0], facts.measures[0])} {_fmt(last['values'].get(facts.measures[0]), facts.measures[0])}"
+            lines.append(f"  and {facts.tied_past} more tied at {tied_at}")
         if body.ranked_by == "count" and len(body.rows) > 1 and facts.total is not None:
             # A count by player is usually asked for its total too ("thunder
             # all-time triple doubles": 193, then who had them) - the whole
