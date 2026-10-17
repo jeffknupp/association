@@ -38,6 +38,7 @@ from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_P
 from association.query.period import read_period, respelled
 from association.query.point import cuts_under, lines_under, measure_under, minimum_under, period_under, read_point, span_under, window_under
 from association.query.reading import (
+    GAME_HIGHS,
     NETPOINTS_FINGERPRINT,
     NETPOINTS_RATINGS,
     PERIOD_LOG,
@@ -1133,7 +1134,10 @@ def _reading(
         misread=tuple(applied.dropped),
         claims=claimed_once(found),
     )
-    pointed = with_point(question, reading)
+    pointed, high_claims = _reading_high_by_points(
+        question, reading, with_point(question, reading), found, (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked)), model_stat
+    )
+    found += high_claims
     # What the words name that nothing reads, read once, here: a refusal
     # said before any reader runs, and the shapes recognized and read by
     # nothing, said where the answer side declines (the question as it was
@@ -1190,6 +1194,32 @@ def _reading(
         # question as it was asked (the fold keeps every position).
         unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], read_by_model, model_stat),
     )
+
+
+def _reading_high_by_points(question: str, reading: Reading, pointed: Reading, found: list[Claim], names: tuple[str, ...], stat: str) -> tuple[Reading, list[Claim]]:
+    """A single game's high whose words name no stat at all, read by points
+    and said so (the feed sample's FS362, FS379, FS219): "gilbert arenas
+    career high vs kobe" and "bryce mcgowens career high vs dallas" were
+    refused for want of a stat to rank games by (``needs_stat``), where a
+    career high with no stat is his scoring high - the sample's keys each
+    read points. A default, so it is visible and correctable (AGENTS.md, "A
+    reasonable default beats a question"): the parser records the
+    ``measure`` decision and the answer says it, with the wording that
+    names another stat. Only where the words name a high as one
+    (:data:`~association.query.lexicon.CAREER_HIGH`: "career high", "season
+    high" - a "best game" by what is the question's to say). A word no
+    reader reads may be the stat misspelled ("brice sensabaugh career high
+    asistss"): the refusal names it as the stat it cannot rank by
+    (``unknown_stat``) and claims it, since the refusal turns on it."""
+    refusal = pointed.point_refusal
+    if refusal is None or refusal.kind != "needs_stat" or refusal.facts.get("shape") != GAME_HIGHS or reading.measure is not None or not lexicon.CAREER_HIGH.search(question):
+        return pointed, []
+    unread = [(start, end, word) for start, end, word in lexicon.content_words(question, names, stat) if not any(c.start < end and c.end > start for c in found)]
+    if unread:
+        named_as = " ".join(word for _, _, word in unread)
+        return replace(pointed, point_refusal=Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": named_as})), [Claim(start, end, "refused") for start, end, _ in unread]
+    decided = Decision("parser", "measure", None, "points", "a single game's high names no stat, so points are read")
+    return with_point(question, replace(reading, measure=Measure(key="points", as_typed="points"), decisions=(*reading.decisions, decided))), []
 
 
 def _reading_from_route_point(reading: Reading) -> tuple[Reading | None, str | None, Cause | None]:

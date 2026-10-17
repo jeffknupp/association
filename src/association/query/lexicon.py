@@ -4637,6 +4637,14 @@ RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|worst|fewest|leas
 
 .. versionadded:: 6.0.0
 """
+CAREER_HIGH = re.compile(r"\b(?:career|season|game)[\s-]+highs?\b", re.IGNORECASE)
+"""A player's high named as one ("career high", "season high"): with no
+stat named, his scoring high, as the feed sample's keys read "gilbert
+arenas career high vs kobe" and "bryce mcgowens career high vs dallas". A
+best game names no such default - by what is the question's to say.
+
+.. versionadded:: 7.0.0
+"""
 RANKING_ASKED = re.compile(r"\b(leaders?|leading|led|most|highest|top|best|worst|fewest|least|lowest|rank(?:s|ed|ings?)?)\b", re.IGNORECASE)
 """A ranking asked in words, :data:`RANKING_WORDS` and the words that name
 a ranking or a leader outright ("ranked", "rankings", "leading"): where

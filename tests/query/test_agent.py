@@ -11,6 +11,7 @@ from routed import Routed, ask_routed
 from association.query.agent import Agent
 from association.query.compose.plan import planned_shape
 from association.query.reading import (
+    GAME_HIGHS,
     GAMES_COUNTED,
     LINE_RECORD,
     NETPOINTS_FINGERPRINT,
@@ -498,6 +499,24 @@ def test_a_near_spelling_the_parser_read_as_a_word_is_said(monkeypatch: pytest.M
     answer = ask_routed(_agent_with_players(tmp_path, "LeBron James"), "lebron james first quater log", route)
     assert answer.text == "LeBron James scored 301 points in the 1st quarter over 60 games. ('quater' was read as 'quarter' - leave the quarter out to ask about whole games.)"
     assert [each.kind for each in answer.decisions if each.kind] == ["spelling_read"]
+
+
+def test_a_high_read_by_points_where_no_stat_was_named_is_said(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The feed sample's FS362: a career high whose words name no stat is
+    read by points (the parser's ``measure`` decision); the answer says it,
+    with the wording that names another stat."""
+    from association.query.answer import Answer
+    from association.query.decisions import Decision
+
+    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Answer:
+        return Answer(data={}, text="Gilbert Arenas's highest point total in a single game was 60.")
+
+    monkeypatch.setattr("association.query.compose.answer", composed)
+    defaulted = (Decision("parser", "measure", None, "points", "a single game's high names no stat, so points are read"),)
+    route = Routed(GAME_HIGHS, Reading(who=Who(kind="player", players=("Gilbert Arenas",)), measure=Measure(key="points", as_typed="points")), decisions=defaulted)
+    answer = ask_routed(_agent_with_players(tmp_path, "Gilbert Arenas"), "gilbert arenas career high", route)
+    assert answer.text == 'Gilbert Arenas\'s highest point total in a single game was 60. (No stat was named, so this reads points - name one, "career high in rebounds", to ask about another.)'
+    assert [each.kind for each in answer.decisions if each.kind] == ["stat_default"]
 
 
 def test_a_name_reading_beneath_a_table_is_a_line_of_its_own(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -1545,6 +1545,34 @@ def test_nobody_read_is_said_beside_the_opponent_a_versus_word_read() -> None:
     assert "ranking" in refusal_phrase("subject_not_read", {"opponent": None})
 
 
+@pytest.mark.parametrize(
+    ("question", "points"),
+    [
+        ("jokic career high vs maxey", True),
+        ("tyrese maxey career high", True),
+        ("tyrese maxey career high asistss", False),
+        ("show me last season's best game for maxey", False),
+    ],
+)
+def test_a_named_high_with_no_stat_reads_points_and_says_so(con: duckdb.DuckDBPyConnection, question: str, points: bool) -> None:
+    """The feed sample's FS362, FS379, FS219: a career high whose words name
+    no stat was refused for want of one (``needs_stat``), where the keys
+    read his scoring high. Points are read, and the parser records the
+    ``measure`` decision the answer says; a word no reader reads may be the
+    stat misspelled, and is named as the stat the refusal cannot rank by;
+    a best game names no default and keeps its refusal."""
+    reading = _read(con, question)
+    if points:
+        assert reading.point is not None and reading.measure is not None and reading.measure.key == "points"
+        assert any(each.stage == "parser" and each.field == "measure" and each.after == "points" for each in reading.decisions)
+    else:
+        assert reading.point_refusal is not None and reading.point_refusal.kind == ("unknown_stat" if "asistss" in question else "needs_stat")
+        assert not any(each.field == "measure" for each in reading.decisions)
+        if "asistss" in question:
+            # The word no reader reads is named as the stat, and claimed.
+            assert reading.point_refusal.facts["stat"] == "asistss" and "asistss" not in reading.unread
+
+
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
 def test_a_total_asked_of_the_season_ranking_ranks_the_total(con: duckdb.DuckDBPyConnection, question: str, source: str) -> None:
     """#435: "total" asks the season ranking for the season's total (its
