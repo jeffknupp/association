@@ -2170,6 +2170,27 @@ with nothing to read fills the silence from its own weights), and more data
     rebuilt games, P1; "vs <player>" on a log, P2; two Jeff's calls on D13
     and D15; one unsure).
 
+60. **Post-step-5 lanes 1 and 3 landed (2026-10-17, master `777032d9`).**
+    Jeff took the external review as Phase 6's review. Lane p6-sentence
+    (D17, merged `99a6452c`): the unread rows shape deleted - its sample
+    ids were 5 of 5 correct after D13, so they were routed to the highs
+    reader, not refused as D17 said - and the game-level ranking of
+    players read by `rankings.read_game_ranking` and said by
+    `say.say_game_ranking`; keyed score 12 graded moves, 4 flagged
+    (FS247/263/403/415, each the key's figures, columns dropped), FS214
+    and FS392 to the key, no refusal<->fluent move. Lane p6-traps
+    (merged `777032d9`): #501, #476, #477, #478, #480 and the widening
+    inventory's span_vs_body and caveat_repeated, inventory 28 -> 24 on
+    the feed (13 whole-tie false positives, 11 floor flags) and 3 -> 0 on
+    the corpus; keyed score 40 graded moves, 9 flagged and each read
+    against its key (F160 434, FS334 all four 29s, FS354 33 of 30 - no
+    trade dates). The lanes met on one rule at the merge (a whole tie
+    listed; one too big to list said by its count) - no textual
+    conflict, one combined-tree test. Found in passing: `check_fast.sh`
+    exited with pytest's status whatever the hooks said (fixed
+    `9f9d557b`); two of p6-sentence's commits are red on the complexity
+    hook in history.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

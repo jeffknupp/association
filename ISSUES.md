@@ -46,14 +46,29 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### A count over made shots leaves the rebuilt games out: "jamal murray games with 2 threes including playoffs" counts 426 where the box scores hold 434
-- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (`live_parser32`, the yardstick's F160, graded `wrong`).
-- **Evidence:** `player_game_log` holds 376 regular-season and 58 playoff games of Murray's with 2+ threes, 8 of the regular-season ones rebuilt from play-by-play (`reconstructed`); the count's rebuilt-line rule leaves the 8 out and says "11 empty box scores may make the count low". A made-shot figure is one the rebuild has (the plays hold every made shot); attempts and minutes are what it lacks.
-- **User sees:** a count 8 short, fluently, with a caveat that names the wrong thing.
-- **Next step:** the rebuilt-line rule (`compose.core._rebuilt_for`, `core.unread_on_rebuilt`) keeps a rebuilt game under a line on a MADE figure (points, made field goals, made threes, made free throws, rebounds, assists, steals, blocks) and leaves it out only under attempts, minutes, turnovers and percentages, as the causes lane did for the yes/no stats (`2ab6fe82`); the caveat names the figures the rebuild lacks.
-- **Priority:** P1 - a fluent wrong count on a graded wording.
+### "before / until / through <bare year>" is read as that one season: "most 3s in an nba game before 2010" answers 2010's high
+- **Found:** 2026-10-17, lane p6-sentence (D17), measuring the feed sample's FS142 after the game-level ranking moved to its reader.
+- **Evidence:** the span tagger reads a bare year after "before", "until", "through" as the season itself, not a range bound. Feed wordings: "most 3s in an nba game before 2010" (FS142; the key: Kobe Bryant and Donyell Marshall, 12 each), "most made 3 pointers before 1991", "Most made 3 pointers before 1995", "which team has made the most three pointers in a season before 2015". A closing date ("prior to 02/03/2024") is a different entry, refused by value.
+- **User sees:** a fluent answer over one season where a range was asked.
+- **Next step:** `span.read_span` reads a bare year after these words as a range bound (`until`), deciding whether "before" excludes the year named (it should: "before 2010" ends with 2009); a reader case per wording; the feed moves enumerated.
+- **Priority:** P1 - a fluent answer for the wrong span, on four feed wordings.
 - **Source:** ours.
-- **GitHub:** #501
+
+### "most points without missing in a nba game" answers the plain high, past "without missing"
+- **Found:** 2026-10-17, lane p6-sentence (D17), reading its feed moves.
+- **Evidence:** the reading leaves ['without', 'missing'] unread and the answer is the plain single-game high (Bam Adebayo, 83). The question asks the most points in a game with no missed shot.
+- **User sees:** a fluent answer to a different question.
+- **Next step:** read a perfect-shooting condition (field goals attempted = made, or free throws too) as a line on the games, or refuse it by a cause naming the words; until then `Reading.defaulted` should refuse the unread "without missing".
+- **Priority:** P1 - fluent wrong.
+- **Source:** ours.
+
+### Two adjacent bare years are read as a two-season range: "nba most steals player 2023 2024" answers the two seasons' total where the key reads 2023-24
+- **Found:** 2026-10-17, lane p6-sentence (D17), FS243 against its key.
+- **Evidence:** `lexicon.RANGE_BARE_YEARS` (deliberate since #289) reads "2023 2024" as 2023 through 2024. The sample's key reads the one season 2023-24 (Shai Gilgeous-Alexander and De'Aaron Fox, 150 each); the answer is the two-season total (Gilgeous-Alexander 262). Three feed wordings ("nba most blocks / steals / steals player 2023 2024").
+- **User sees:** a two-season figure where one season was meant (the heading shows the range).
+- **Next step:** Jeff's call between the two readings; if one season, "YYYY YYYY+1" reads as that season (the name it ends in), a reader case per wording.
+- **Priority:** P1 pending Jeff's call - fluent, the span visible in the heading.
+- **Source:** ours.
 
 ### A singular "game" against a team is read as the career's log: "D'Angelo Russell game against the Timberwolves" lists his last 10 of 21 meetings
 - **Found:** 2026-10-17, the lead, the keyed score (`~/association-research/stages/score_keyed.py`) over step 2 (runs 79 -> 86): the feed sample's FS331, graded `correct` when it answered his most recent game, moved under decision D13's "versus" career rule to "D'Angelo Russell vs the Minnesota Timberwolves, last 10 of 21 games of his career (2016-2026 regular seasons)".
@@ -103,6 +118,22 @@ before that commit needs re-checking against the current warehouse.
 
 ## P2: misleading or incomplete
 
+### "best 3 point shooters" is read as made threes, not the percentage: "nba best 3 point shooters last 5 years" ranks 3PM
+- **Found:** 2026-10-17, lane p6-sentence (D17), FS253 against its key.
+- **Evidence:** the key ranks 3P% with a floor of 1,000+ attempts over the five seasons; the measure tagger reads "3 point" as made threes, and the game-level ranking qualifies by games only, not attempts.
+- **User sees:** a ranking of volume where accuracy was asked.
+- **Next step:** "best <stat> shooters" reads the stat's percentage, with an attempts qualifier the ranking states (`Reading.minimum` by attempts on the game-level ranking).
+- **Priority:** P2 - a fluent answer to a neighboring question, its measure in the heading.
+- **Source:** ours.
+
+### Three wrong causes on rankings: "nba best shooting percentages 2023", "most career points by a point guard below 8000", "most 10+ pointd regular season games"
+- **Found:** 2026-10-17, lane p6-sentence (D17), the sample's ranking ids.
+- **Evidence:** FS072 gets the generic `ranking_needs_stat` though "shooting percentages" names a stat family; FS137 gets `line_names_no_stat` though "points" stands before the subject - it is a career-total line no reader keeps; FS395's "pointd" is a misspelled stat word no near-spelling reader handles.
+- **User sees:** a refusal naming the wrong missing thing.
+- **Next step:** per id: name which percentage (FG%, 3P%, TS%) the ranking needs; refuse FS137 by the career-total line; a near spelling of a stat word reads as the stat, as a name's does.
+- **Priority:** P2 - wrong causes.
+- **Source:** ours.
+
 ### "vs <player>" on a game log reads the games both played, not the subject's games against his team: "jay huff game log vs Embiid" shows 4 of 6
 - **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F142, `partial`).
 - **Evidence:** the key has 6 games Huff played against Embiid's team; the answer's 4 are the games Embiid himself played (the pair relation's meetings). A log "vs <player>" asks the subject's games against that player's team; the meetings reading is a comparison's, not a log's.
@@ -147,44 +178,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P2 - nine wrong-cause refusals on graded wordings.
 - **Source:** ours.
 - **GitHub:** #493
-
-### A teammate's stint ends at his last box score, so over a career the games he sat out before a trade are not "without" him: "kyrie second half game log without luka" counts 18 of the key's 30
-- **Found:** 2026-10-16, lane p6-d15, reading the feed sample's FS354 against its key.
-- **Evidence:** over a career the absence keeps the teammate's tenure (decision D15), and a stint runs from his first box-score row for the team to his last (`player_games._teammate_stints`, `conditions._stints`; "the gap between a traded player's last game for one team and his first for the next belongs to neither, which undercounts rather than guesses"). Luka Doncic's last Dallas row is 2024-12-25 (the injury he was traded during), so Kyrie Irving's January 2025 Dallas games before the 2025-02-01 trade are outside the stint: the period log answers 18 games at 14.7 second-half points where the key's 30 Dallas games without Luka are 14.4. The whole-game log, the line and the with/without split read the same stint.
-- **User sees:** a career "without" line over fewer games than the teammate actually missed while on the team, the stint dates said only on the with/without split.
-- **Next step:** end a stint at the day before the teammate's first row for his next team (or the trade's date where the warehouse holds it), not at his last row for this one; measure the moves on the career "without" wordings; FS354 re-graded.
-- **Two definitions:** (lane p6-homographs, 2026-10-17) the stint is read twice, by different rules - `player_games._teammate_stints` per season, open at a season's start where he ended the last on the team and at its end where no later row is another team's; `conditions._stints` as runs of his rows across seasons, cut at a team change or a season with no row - so the player relation and the with/without split can disagree on one teammate's time on a team. The fix lands in both, or makes one the other's (`player_games.py` is neither the subject lane's nor the lexicon lane's file; `conditions.py` is the subject lane's).
-- **Priority:** P2 - a correct-looking count short by the games the question is most about.
-- **Source:** ours.
-- **GitHub:** #480
-
-### A team's best single game lists three of the teams tied at the top and says "by" them as if all: "most 3s made in a single game by a team" leaves out Milwaukee's 29
-- **Found:** 2026-10-16, lane p6-span, re-reading the feed sample's FS334 under D13 (now read over every season on record).
-- **Evidence:** "The most 3-pointers made in a single game by a team in the regular season since 1993-94: 29, by the Boston Celtics on 2026-04-10 ... the Memphis Grizzlies on 2026-04-06 ... and the Boston Celtics on 2024-10-22" - the key holds four games at 29, the fourth Milwaukee vs Miami on 2020-12-30 (event 401267211, `team_box_stats` holds the 29); the reader's default limit of 3 rows cuts the tie and the sentence names the cut list as the holders.
-- **User sees:** a record shared four ways said as shared three ways.
-- **Next step:** the team high's reader (`compose.highs`/`compose.team`, TEAM_GAME_HIGHS) reads past the limit while the next row ties the last, or says "and N more"; a test with a four-way tie.
-- **Also (the lead, 2026-10-17, `widening_checks.py` on run 87):** a player's single-game highs cut a tie the same way - "chris paul career high as a spur" lists 19, 18, 18 and "gilbert arenas career high vs kobe" 45, 37, 37, each a fourth row at the cutoff's figure possibly cut.
-- **Priority:** P2 - an incomplete answer said as complete.
-- **Source:** ours.
-- **GitHub:** #476
-
-### "None of them" over a career counts only the games with box scores and names their seasons as his career: "Anthony Davis played 398 games over his career (2019-2026 regular seasons)"
-- **Found:** 2026-10-16, lane p6-span, reading the feed's moves under D13 ("Anthony Davis plays 45 minutes against the jazz").
-- **Evidence:** `player_relation.no_narrowed_games` counts `COUNT(*), MIN(season), MAX(season)` over the narrowed games' base clauses, and a minutes line keeps the games with a minutes figure: Davis's New Orleans seasons 2013-2018 (DATA.md, the empty Pelicans box scores) carry NULL minutes on every row, so the sentence says "398 games over his career (2019-2026)" where `player_box_stats` holds 902 rows from 2013 (627 played). The `none_matched` refusal says nothing of the games it could not see.
-- **User sees:** a career that starts in 2019 and a game count short by 350, beside a true "none of them" - a wrong fact in a refusal.
-- **Next step:** count the career's games without the line's own clause (or say the unseen games, as `_empty_box_scores` does for a per-game answer); a test with a fixture in the shape of the empty seasons.
-- **Priority:** P2 - a wrong figure in a refusal's sentence.
-- **Source:** ESPN's empty box scores (DATA.md); the sentence is ours.
-- **GitHub:** #477
-
-### A per-game figure under 0.5 is said as "averaged 0": "Tim Duncan averaged 0 3-pointers per game in 1,392 games"
-- **Found:** 2026-10-16, lane p6-span, reading the sample's FS292 under D13 ("tim duncan threes made").
-- **Evidence:** the career line reads 30 of 168 over 1,392 games (0.02 a game) and the sayer rounds the per-game figure to a whole number for a counting stat, so the sentence leads with "averaged 0 3-pointers per game" before "That is 30 of 168 (17.9%)". The key (the sample's) answers "30 three-pointers in his regular-season career".
-- **User sees:** a false zero leading the answer, the true total after it.
-- **Next step:** in the sayer (`compose/say.py`, the season line's sentence), a per-game figure that rounds to 0 from a non-zero total is said to one decimal or led by the total; a test per wording.
-- **Priority:** P2 - a misleading figure, the right one beside it.
-- **Source:** ours.
-- **GitHub:** #478
 
 ### A team's games or count over a line, given up or its own, are named from the words only after a window: "celtics games where they gave up 120 points" is refused for an unread number, and "celtics game log when they score 120+ points" answers its record over the line
 - **Found:** 2026-10-13, the P1 sweep's lane L (`sweep-L-325`), probing #348's neighbors; the record half fixed by lane T2 (`Line.whose`, the team's record over a line split by the opponents' score or box row); the log half by Phase 5, step 6's lane T (`p5s6-T`): a team's log keeps its games past a line on its own score or box row or its opponents' (`TeamNarrowed.narrow_line`, `compose.logs._team_log_lines`) - "celtics last 10 games when allowing 120+ points" lists the 7 games of 2026 the Celtics allowed 120+, where it was declined "relation: a line on a box-score stat keeps a PLAYER's games; a team's log has no such column".
@@ -1856,6 +1849,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the coverage check reads a range's seasons: refuse by the floor's sentence where the range's last season is under the floor, and say the seasons it could not read (a `floor` note) where only its first is - `coverage.py`, the answer side's (lane T's in the sweep).
 - **Priority:** P2 - a refusal naming the wrong cause, or a narrower answer with the cut shown only in the heading.
 - **Source:** ours.
+- **Also (lane p6-traps, 2026-10-17, the widening inventory):** a span reaching below the box-score floor on a games relation is answered over the covered part, the floor said only in the heading: "highest ppg scored in the 1990s decade" answers "career (1994-1999)", "highest scoring games of supersonics players" 1994-2008, "most wins by player nba 1990s" 1994-1999 (`widening_checks.py`'s floor_crossed).
 - **GitHub:** #413
 
 ### A line on a percentage is refused rather than read, and a bare or glued percentage line is read by nothing: "kobe bryant career games with 40 field goal percentage" lists his last 10 of 1,331 games
@@ -1936,6 +1930,38 @@ those were found.
 - **GitHub:** #467
 
 ## P3: refusal or gap
+
+### The warehouse holds no trade dates, so a teammate's stint ends at his next team's first game: "kyrie second half game log without luka" counts 33 of the key's 30
+- **Found:** 2026-10-17, lane p6-traps, fixing #480 (a stint now runs to the day before his first row for his next team).
+- **Evidence:** FS354 answers 33 games at 14.4 second-half points, the key 30 at 14.4: the Mavericks' games of 2025-02-02 to 02-08 fall after the trade (2025-02-01) and before Doncic's first Lakers game. Grimes with Luka is off by 1-2 the same way. `information_schema` holds no transactions table.
+- **User sees:** a "without" count a few games high around a trade.
+- **Next step:** Phase 8: read ESPN's transactions and end a stint at the trade date (`conditions.stints`).
+- **Priority:** P3 - a published fact not pulled; the error is a few games.
+- **Source:** the pull (ESPN publishes transactions).
+
+### A waived player's stint runs to his team's last game of the season
+- **Found:** 2026-10-17, lane p6-traps, writing `conditions.stints`.
+- **Evidence:** a stint ends at the earlier of his next team's first game and his team's last game of the season of his last row; a player waived who never appears for another team keeps the stint to season's end, so games after the waiver count as "without" him. It is the price of counting a season-ending injury as absence.
+- **User sees:** a "without" split counting games after a release.
+- **Next step:** measure on the feed's "without" wordings how often each rule is wrong; transactions (above) settle both.
+- **Priority:** P3.
+- **Source:** ours.
+
+### The highs reader reads no offensive or defensive rebounds, nor a high under a yes/no predicate
+- **Found:** 2026-10-17, lane p6-sentence (D17), measuring what `compose/sentence.py` still answers.
+- **Evidence:** `THRESHOLD_STAT_COLUMNS` holds no rebound side; those highs and a high under a predicate (F124's triple-doubles) fall to the compiler's rows: 33 feed answers on `rows/measure`. The rows are right; the sentence is the compiler's table, not the high's.
+- **User sees:** a table where a sentence naming the record holder is said elsewhere.
+- **Next step:** the highs reader takes the rebound sides and a predicate's games.
+- **Priority:** P3.
+- **Source:** ours.
+
+### A career ranking by position reads the box scores only, so a pre-1994 career is short: "most career rebounds by a small forward" leaves out Pippen
+- **Found:** 2026-10-17, lane p6-sentence (D17), FS026.
+- **Evidence:** the answer is Pierce 7,520, Bryant 7,026, Gay 6,283 (the key 7,527, 7,047, 6,283); Scottie Pippen's 7,494 is missing because most of it predates the box scores. The season line (`player_season_stats`, from 1977) holds it, but a ranking by position cannot use it.
+- **User sees:** a career ranking missing a player whose career began before 1994, with the 1994 floor in the heading.
+- **Next step:** a ranking by position over a career reads the season line where it holds the position; otherwise say the floor in the sentence.
+- **Priority:** P3.
+- **Source:** ours.
 
 ### A period read leaves 2016 out where the key counts it: "harrison barnes 1st quarter stats each game vs magic" says 24 games of 26
 - **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F028, F058, F059, each `partial`; the sample's FS027).
@@ -2867,6 +2893,30 @@ those were found.
 - **GitHub:** #469
 
 ## P4: tooling, docs, low impact
+
+### The rebuild's attempts and rebound sides are measured but nothing reads them
+- **Found:** 2026-10-17, lane p6-traps, fixing #501.
+- **Evidence:** `reconstructed_box.py` measures FGA 99.5%, FTA 100% and OREB/DREB 99.8% exact per game; `conditions.UNGATED_ON_REBUILD`'s comment said no attempt column was measured. So FG% and FT% are read over fetched games only and per-game attempts leave rebuilt games out.
+- **User sees:** a percentage or attempts figure over fewer games than it could (said by the `lines_rebuilt` note).
+- **Next step:** decide whether FGA, FTA, OREB, DREB join `player_games.REBUILT_STATS`.
+- **Priority:** P4.
+- **Source:** ours.
+
+### A tie for the top larger than TIE_ROOM is cut at limit + 10
+- **Found:** 2026-10-17, lane p6-traps, writing `player_games.ordered_cut`.
+- **Evidence:** a tie at the cut too big for the room is left out whole (and the game-level ranking says it, "and N more tied"), but a tie for the TOP has nothing ahead of it and is cut at the room, said as whole. No case in either population.
+- **User sees:** nothing yet.
+- **Next step:** say "and N more" where a top tie is cut.
+- **Priority:** P4.
+- **Source:** ours.
+
+### Research tooling: the widening harness flags whole ties; page_renders pulls an unpinned playwright
+- **Found:** 2026-10-17, lanes p6-traps and p6-sentence.
+- **Evidence:** `widening_checks.py`'s tie_at_cutoff flags the last two listed rows sharing a figure; since #476 a tie at the cut is listed whole, so all 13 feed inventory flags are whole ties ("luka highest scoring games vs suns": top 4 of 3 asked). `stages/page_renders.py` under `uv run --with playwright` pulls a playwright whose Chromium is not installed.
+- **User sees:** nothing.
+- **Next step:** the tie check reads whether the NEXT row past the listing ties (the warehouse) or skips rows listed beyond the asked count; pin `playwright==1.63.0`.
+- **Priority:** P4.
+- **Source:** ours.
 
 ### A module-level constant reassigned in its own module is caught by no gate
 - **Found:** 2026-10-17, lane p6-causes: `lexicon.POSITION_GROUPS` assigned twice in the lexicon; ruff, mypy and `check_duplicate_names.py` (cross-module only) said nothing, and one test failed.
