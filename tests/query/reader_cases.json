@@ -23207,6 +23207,13 @@
       "Luka Doncic"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and a count of his games reads the career (decision D13)"
     }
    ],
    "point": {
@@ -62097,6 +62104,13 @@
       "Luka Doncic"
      ],
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and a count of his games reads the career (decision D13)"
     }
    ],
    "point": {
@@ -89095,6 +89109,13 @@
      "before": "player_seasons/scalar/line",
      "after": "player_games/split/line",
      "reason": "the words 'how many playoff games has embiid won' name player_games/split/line"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and a count of his games reads the career (decision D13)"
     }
    ],
    "point": {

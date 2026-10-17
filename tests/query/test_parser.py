@@ -1881,3 +1881,27 @@ def test_a_log_of_two_columns_and_a_plus_sign_are_no_combined_measure(con: duckd
     """A log shows each game's columns; "+/-" and "20+" are no pair."""
     reading = _read(con, question, ["Nikola Jokic"] if "jokic" in question else None)
     assert reading.point_refusal is None or reading.point_refusal.kind != "measures_combined"
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "stat"),
+    [
+        ("how many triple doubles does luka have", ["luka"], "triple_double"),
+        ("luka td3s home", ["luka"], "triple_double"),
+        ("how many playoff games has embiid won?", ["embiid"], "won"),
+    ],
+)
+def test_a_counts_career_the_point_reader_reads_is_the_parsers_span_decision(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str) -> None:
+    """A count of his games the point reader reads over the career where no
+    season is named ("how many ... has he won", a yes/no stat counted) is a
+    default of decision D13, recorded as the parser's span decision, so the
+    answer says it with the wording that asks one season - it was read
+    unsaid ("Scottie Barnes had 9 games with a triple-double in the regular
+    season career", 14 of the 2,698 readings). A season the words name
+    reads no career and decides nothing."""
+    career = Decision("parser", "span", None, "career", "no season named, and a count of his games reads the career (decision D13)")
+    reading = _read(con, question, names, stat)
+    assert reading.span.career or (reading.point is not None and reading.point.span.career)
+    assert career in reading.decisions
+    named = _read(con, f"{question.rstrip('?')} in 2024", names, stat)
+    assert career not in named.decisions

@@ -868,8 +868,13 @@ by its `PointShape` key. The populations record the typed Reading
     `point.span_under` read the seasons and the season type into
     `reading.Span`, returning `Claim`s (`(start, end, what)`). It runs LAST,
     because its rules read the typed window. The point reader writes no
-    span of its own: a span it settles apart from the scope's is
-    `Reading.subject_span`, the one typed override. Where no season is
+    span of its own but one: a span it settles apart from the scope's is
+    `Reading.subject_span`, the one typed override, and a count of a
+    player's games ("how many ... has he won", a yes/no stat counted) reads
+    his career where no season is named (`point._career_scope`) - recorded
+    as the parser's span decision, so the answer says it as every D13
+    career is said (14 of the 2,698 readings read it unsaid until
+    2026-10-17). Where no season is
     named, the words that imply history read the career (decision D13,
     Jeff's: `span.IMPLIED_CAREERS` - an opponent, a pair, a companion who
     played, a holiday, a count over a line, the single game's high, an

@@ -1290,6 +1290,13 @@ def with_point(question: str, reading: Reading) -> Reading:
         return replace(reading, point_refusal=exc.cause)
     except Unsupported as exc:
         return replace(reading, point_declined=str(exc))
+    if point.span.career and not reading.span.career:
+        # The count's career (``point._career_scope``: "how many ... has he
+        # won", a yes/no stat counted) where no season is named: a default
+        # of decision D13, recorded as the parser's span decision so the
+        # answer says it with the wording that asks one season, as every
+        # D13 career is - never a career read past the words unsaid.
+        reading = replace(reading, decisions=(*reading.decisions, Decision("parser", "span", None, "career", "no season named, and a count of his games reads the career (decision D13)")))
     return replace(reading, point=point)
 
 
