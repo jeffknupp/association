@@ -2133,6 +2133,19 @@ with nothing to read fills the silence from its own weights), and more data
     span's downstream traps, a keyed-score proof, a token-stream reader)
     are the work after step 5, with seven calls put to Jeff.
 
+57. **The seven calls decided (Jeff, 2026-10-17): D16-D22 and the order
+    of work after step 5.** The proof moves to the keyed score over the 702
+    graded questions with the ungraded moves classed (D16); the compiler's
+    own sentence stops answering the unread shapes (D17); a flat table may
+    pass the complexity gate with a reason (D18); the five slow hooks move
+    to the push and every ratchet is one-way (D19, the ratchets landed the
+    same day); the changelog is generated from the commits at release
+    (D20); a day's constrained-AST experiment, offline (D21); Phase 7 is
+    the token-stream reader, gated by the keyed score and required to cut
+    net lines (D22). After step 5: the keyed-score script and the
+    `sentence.py` fix, `Reading.point` flattened, the widened-span traps
+    as one vertical lane, the playoff round lifted and wired.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
