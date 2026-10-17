@@ -2108,6 +2108,17 @@ with nothing to read fills the silence from its own weights), and more data
     matches the key. Four entries filed for the lexicon lane with the lines
     they need (#482-#485).
 
+55. **The lexicon-seam P1 lane landed (2026-10-16, master `659f6fee`),**
+    the last of step 2's five lanes: four refusals by name (a round's
+    abbreviation, the Finals in the singular, points scored one way, a
+    misspelled quarter read and said), two stats on a one-stat shape, a
+    player's wins, "total" on the season ranking, "top N games" as the
+    highs, "with no X", and a coverage floor over a whole range. Feed 57
+    moved, 41 in the answer, no graded answer; the unread-meaning list 16
+    to 3. The merge's keep-both resolution of ISSUES.md brought back four
+    entries the subject lane had deleted; cross-checked against GitHub and
+    removed (`f7a97f1c`). Open P1s: 6, three of them Jeff's lifting.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
