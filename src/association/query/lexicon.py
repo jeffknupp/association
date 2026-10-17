@@ -2006,6 +2006,23 @@ WHICH_QUARTER = re.compile(
 
 .. versionadded:: 6.0.0
 """
+# Quarters named together, which no read sees as one: "excluding 4th
+# quarter", "including the 4th quarter", "1-3rd quarter" (the feed's LeBron
+# Finals wordings, one of them typed "exncluding"). Read as the one quarter they name, "lebron stats vs heat
+# excluding 4th quarter" answered his 4th quarters alone and "1-3rd quarter"
+# his 3rd; the parser refuses them by a cause naming the words
+# (``periods_together``, ``period.periods_together``).
+PERIODS_TOGETHER = re.compile(
+    r"\b(?:ex[a-z]?clud(?:ing|es?)|exlud(?:ing|es?)|except(?:\s+for)?|without|not\s+counting|minus|including|includes?|plus|other\s+than)\s+(?:the\s+)?"
+    r"(?:first|second|third|fourth|1st|2nd|3rd|4th|final|last)[\s-]+(?:quarters?|qtrs?|q)\b"
+    r"|\b(?:first|1st|[1-4])\s*(?:-|to|through|thru)\s*(?:third|fourth|2nd|3rd|4th|[2-4])(?:rd|th|nd)?[\s-]+(?:quarters?|qtrs?|q)\b",  # codespell:ignore nd - an ordinal suffix
+    re.IGNORECASE,
+)
+"""Quarters named together - one excluded or included beside the rest, or
+a range of them.
+
+.. versionadded:: 7.0.0
+"""
 WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<hn>[12])h\b", re.IGNORECASE)
 """Which half the words name, by ordinal or by number.
 

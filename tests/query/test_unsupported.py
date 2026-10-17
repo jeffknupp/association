@@ -516,3 +516,12 @@ def test_under_before_a_number_or_no_name_is_no_coach(con: duckdb.DuckDBPyConnec
     """#431: "under" before a number is a line or an age, and before
     words that are no two-word name (a stopword, a team, one word) no coach."""
     assert by_question(question, PLAYER_RANKING, con) is None
+
+
+def test_quarters_named_together_are_refused_before_any_reader(con: duckdb.DuckDBPyConnection) -> None:
+    """ "lebron stats vs heat excluding 4th quarter" answered his 4th
+    quarters alone: quarters named together are refused by a cause naming
+    the words, before any reader runs."""
+    refusal = by_question("lebron stats vs heat excluding 4th quarter", PLAYER_LINE, con)
+    assert refusal is not None and refusal.text.startswith("'excluding 4th quarter' names quarters together")
+    assert by_question("lebron stats vs heat in the 4th quarter", PLAYER_LINE, con) is None

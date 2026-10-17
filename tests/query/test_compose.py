@@ -2498,6 +2498,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_only_question": {"shape": TEAM_RECORD},
     "no_subject_reading": {"shape": PLAYER_LOG},
     "own_seasons_window": {"seasons": ["first 9 seasons"]},
+    "periods_together": {"words": "excluding 4th quarter"},
     "own_alignment": {"shape": PLAYER_RANKING, "alignment": "in the western conference"},
     "single_season_ranking": {"shape": PLAYER_RANKING, "words": "in a single season"},
     "ranking_needs_stat": {"shape": PLAYER_RANKING},

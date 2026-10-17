@@ -5750,6 +5750,10 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "window_ends_contradict": lambda facts: _window_ends_contradict(facts["ends"]),
     "window_per_season": lambda facts: _window_per_season(facts["window"], facts["per"]),
     "own_seasons_window": lambda facts: _own_seasons_window(facts["seasons"]),
+    "periods_together": lambda facts: (
+        f"'{facts['words']}' names quarters together, and a read sees one quarter or one half of each game, or the whole game - "
+        'ask for one ("in the 4th quarter", "in the first half") or for whole games.'
+    ),
     "own_alignment": lambda facts: _own_alignment(facts["alignment"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),

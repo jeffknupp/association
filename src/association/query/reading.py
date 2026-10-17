@@ -1370,6 +1370,7 @@ CAUSES: frozenset[str] = frozenset(
         "window_per_season",
         "fact_not_read",
         "own_seasons_window",
+        "periods_together",
         "own_alignment",
         "no_player_reading",
         "denied_role",

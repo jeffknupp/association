@@ -84,6 +84,19 @@ def respelled(question: str) -> str | None:
     return quarter.group("near") if quarter is not None else None
 
 
+def periods_together(question: str) -> str | None:
+    """The words naming quarters together ("excluding 4th quarter",
+    "1-3rd quarter"; :data:`~association.query.lexicon.PERIODS_TOGETHER`),
+    or None: a read sees one quarter or one half of each game, so the
+    parser refuses them by name (``periods_together``) rather than read the
+    one quarter in them.
+
+    .. versionadded:: 7.0.0
+    """
+    match = lexicon.PERIODS_TOGETHER.search(question)
+    return None if match is None else match.group(0)
+
+
 def read_period(question: str) -> PeriodRead:
     """The period ``question``'s words name, with the claim; the whole game
     and no claim where they name none. Whether the reader takes it is the

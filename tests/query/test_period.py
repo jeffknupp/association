@@ -18,7 +18,7 @@ from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two r
 
 from association.query.compose.plan import cells_stated, cells_unhonored
 from association.query.line import read_period_line
-from association.query.period import PeriodRead, read_period, respelled, which_period
+from association.query.period import PeriodRead, periods_together, read_period, respelled, which_period
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period
 from association.query.point import PERIOD_ASKS, period_under
@@ -207,3 +207,25 @@ def test_the_period_cell_changes_what_the_team_relation_reads(team_con: duckdb.D
     half = _team_score(team_con, Reading(period=Period(number=1, half=True)))
     assert [row[0] for row in whole] == [row[0] for row in half] == ["g1", "g2"], "the same games, each seen as its first half"
     assert half == [("g1", 50), ("g2", 50)] and whole != half
+
+
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("Lebron total total stats nba finals vs heat including 4th quarter", "including 4th quarter"),
+        ("lebron stats vs heat excluding 4th quarter", "excluding 4th quarter"),
+        ("Lebron total 1-3rd quarter total stats nba finals vs heat", "1-3rd quarter"),
+        ("tatum points except the fourth quarter", "except the fourth quarter"),
+        ("lebron total total stats nba finals vs heat exncluding 4th quarter", "exncluding 4th quarter"),
+    ],
+)
+def test_quarters_named_together_are_words_no_read_sees_as_one(question: str, words: str) -> None:
+    """Read as the one quarter they name, "excluding 4th quarter" answered
+    his 4th quarters alone and "1-3rd quarter" his 3rd: the parser refuses
+    them by a cause naming the words (``periods_together``)."""
+    assert periods_together(question) == words
+
+
+@pytest.mark.parametrize("question", ["lebron 4th quarter stats", "tatum stats in the final quarter", "curry first half points", "jokic q4 points"])
+def test_one_quarter_or_half_is_no_quarters_together(question: str) -> None:
+    assert periods_together(question) is None

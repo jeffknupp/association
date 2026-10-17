@@ -35,7 +35,7 @@ from association.query.grammar import Asked, absent, settle
 from association.query.line import LinesNamed, LinesRead, lines_named, read_lines, read_period_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
-from association.query.period import read_period, respelled
+from association.query.period import periods_together, read_period, respelled
 from association.query.point import cuts_under, lines_under, measure_under, minimum_under, period_under, read_point, span_under, window_under
 from association.query.reading import (
     GAME_HIGHS,
@@ -1366,6 +1366,10 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       seasons" answered his 2026 line (ISSUES.md #392) - which seasons are
       his first nine is a fact of his career the reader does not hold
       (:func:`~association.query.window.own_seasons_window`).
+    - quarters named together (``periods_together``): "lebron stats vs heat
+      excluding 4th quarter" answered his 4th quarters alone, and "1-3rd
+      quarter" his 3rd - a read sees one quarter or half of each game
+      (:func:`~association.query.period.periods_together`).
 
     - a conference or division a ranking's subject belongs to
       (``own_alignment``): "top scorers in the western conference this
@@ -1377,7 +1381,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
 
     A fact no table holds first (an age asked beside a title is the age),
     then the championship, then points by play nothing reads, then a coach named by "under", then the window's ends, then a window per season, then a
-    career's own seasons, then a ranking's own conference."""
+    career's own seasons, then quarters together, then a ranking's own conference."""
     fact = _refused_fact_not_read(question)
     if fact is not None:
         # Before the championship: "how old was shaq when he won a
@@ -1401,6 +1405,9 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     own = own_seasons_window(question)
     if own:
         return Cause(kind="own_seasons_window", facts={"seasons": [question[claim.start : claim.end] for claim in own]})
+    together = periods_together(question)
+    if together is not None:
+        return Cause(kind="periods_together", facts={"words": together})
     aligned = own_alignment(reading.asked, reading.cuts)
     if aligned is not None and not _reading_from_route_unsupported(question, reading):
         # Where the words name something else nothing reads ("bench points
