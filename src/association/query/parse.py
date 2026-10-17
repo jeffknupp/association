@@ -1543,6 +1543,9 @@ def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedCon
     present"); "may" only in a date ("in may", "may 10" - not "who may
     lead"); and a token holding a digit that is no number as written
     ("3ot", "20222-23") is an unread number too."""
+    if lexicon.RESULT_WORD.fullmatch(lower) and _reads_no_result(context):
+        names_read[lower] = "games lost" if lower.startswith("los") else "games won"
+        return "stat"
     named = measure.named(lower)
     if named is not None and named[0] != context.key and not _leftover(lower, context.read_words):
         if not _one_stat_shape(context.shape, context.key):
@@ -1558,6 +1561,17 @@ def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedCon
     if _defaulted_date(lower, before, after, context):
         return "date"
     return None
+
+
+def _reads_no_result(context: _DefaultedContext) -> bool:
+    """Whether the point is a player's line or his history by season with
+    no result read: neither holds his games won or lost (ISSUES.md #440:
+    "Westbrook wins per season" answered his points, rebounds and assists
+    by season)."""
+    shape = context.shape
+    if shape is None or not shape.relation.startswith("player_") or context.key in ("wins", "losses", "record"):
+        return False
+    return (shape.shape == "scalar" and shape.by == "line") or (shape.shape == "split" and shape.by == "season")
 
 
 def _one_stat_shape(shape: PointShape | None, key: str | None) -> bool:

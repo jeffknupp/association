@@ -2550,6 +2550,24 @@ TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
 
 .. versionadded:: 6.0.0
 """
+# A player's wins: the games his team won with him playing, a yes/no of each
+# game (the catalog's ``wins``). "most wins by player nba 2010s" ranks the
+# players by them, as "most triple doubles since 2020" ranks by triple-doubles
+# (ISSUES.md #440); the players' ranking was refused for want of a stat.
+PLAYER_WINS = re.compile(r"\bwins\b|\bgames\s+won\b", re.IGNORECASE)
+"""A player's wins, by the words a ranking of players is asked by.
+
+.. versionadded:: 7.0.0
+"""
+# A result word - a win or a loss - as a whole word: on a player's line or his
+# history by season it names his games won or lost, which neither reads
+# ("Westbrook wins per season" answered his points, rebounds and assists by
+# season, ISSUES.md #440), so it is the ``unread_stat`` cause.
+RESULT_WORD = re.compile(r"wins?|won|loss(?:es)?|lost", re.IGNORECASE)
+"""A win or a loss, as one word (read whole, ``fullmatch``).
+
+.. versionadded:: 7.0.0
+"""
 # A player's games won or lost: "how many playoff games has embiid won" is
 # his team's record in the games he played, with no line at all.
 GAMES_WON = re.compile(r"\bgames\b.{0,20}\b(won|lost|wins?|los[es]+)\b", re.IGNORECASE)
@@ -4414,7 +4432,8 @@ a count and was answered with the league's 30-point games, Embiid dropped.
 SPLIT_WORDS: dict[str, re.Pattern[str]] = {
     "home_away": re.compile(r"\bhome\b.{0,15}\b(?:away|road)\b|\b(?:away|road)\b.{0,15}\bhome\b", re.IGNORECASE),
     "starter_bench": re.compile(r"\b(?:starter|starting|starts|bench|reserve)\b", re.IGNORECASE),
-    "wins_losses": re.compile(r"\bin\s+(?:wins|losses)\b|\bwins\s+(?:vs\.?|versus|and|or)\s+losses\b", re.IGNORECASE),
+    # "wins and loss" too: the feed's "zach lavine career wins and loss" (ISSUES.md #440).
+    "wins_losses": re.compile(r"\bin\s+(?:wins|losses)\b|\bwins\s+(?:vs\.?|versus|and|or)\s+loss(?:es)?\b", re.IGNORECASE),
     "month": re.compile(r"\b(?:by|each|per)\s+month\b|\bmonthly\b", re.IGNORECASE),
 }
 """Which split the words name - exactly one, or none is read
@@ -4866,7 +4885,9 @@ NETPOINTS_ROW = row(r"\bnet ?po?i?nts?\b|\bnetpts\b")
 
 .. versionadded:: 6.0.0
 """
-RECORD_ROW = row(r"\b(record|rec|w-?l|win.loss|splits?)\b|\bwin(?:ning)?\s*(?:%|pct\b|percent(?:age)?\b)")
+# "wins and losses" is the record too: "zach lavine career wins and loss"
+# answered his points, rebounds and assists (ISSUES.md #440).
+RECORD_ROW = row(r"\b(record|rec|w-?l|win.loss|splits?)\b|\bwin(?:ning)?\s*(?:%|pct\b|percent(?:age)?\b)|\bwins?\s*(?:and|vs\.?|v|&|/|-)\s*loss(?:es)?\b")
 """A player's own record or splits.
 
 .. versionadded:: 6.0.0

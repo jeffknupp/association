@@ -549,7 +549,9 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
             # The measure tagger's sentinel key (lexicon.SHOT_DISTANCE_RANKED):
             # refused by the real cause, no ranking of shot distance.
             raise PointRefused(Cause(kind="shot_distance_ranking"))
-        if stat is not None and stat.strip():
+        if stat is not None and stat.strip() and stat_measure(scope.measure) not in {name for name, _, _ in predicates}:
+            # (A yes/no measure the words named is the count's own predicate:
+            # a player's wins, ISSUES.md #440.)
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
         counted = _everyone_ranking_counted(scope, predicates)
         if counted is not None:
@@ -718,7 +720,13 @@ def _everyone_point(asked: PointShape | None, scope: Filtered, question: str, me
     _everyone_single_season(asked, scope, question)
     scope = _everyone_opponent(scope, question)
     words = _measure_words(question)
+    won = measure == "won" and not words
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
+    if won:
+        # A player's wins (the measure tagger's "wins", ISSUES.md #440): the
+        # games won with him playing, a yes/no of each game the players are
+        # counted by, as "most triple doubles since 2020" counts its own.
+        predicates = [*predicates, ("won", "=", True)]
     predicates = _everyone_threshold_predicates(scope, measure, predicates)
     single = _everyone_single_game(asked, scope, question, measure, predicates)
     if single is not None:
@@ -2601,14 +2609,19 @@ def _measure_key_by_words(asked: PointShape | None, words: MeasureWords, context
 def _measure_key_ranked(words: MeasureWords, key: str | None, claims: list[Claim]) -> str | None:
     """The key a ranking of players reads beyond the grammar: games played,
     where the words name no other measure and the model's key none (ISSUES.md
-    #408: the ranking's count of games), and a ranking by shot distance (the
-    sentinel the ranking refuses by name)."""
+    #408: the ranking's count of games), a ranking by shot distance (the
+    sentinel the ranking refuses by name), and his wins where the words name
+    no other measure and the model's key none (#440)."""
     if words.games_played is not None and words.worded is None and key is None:
         key = "games_played"
         claims.append(Claim(words.games_played.start(), words.games_played.end(), "measure"))
     if words.shot_distance is not None:
         key = "shot_distance"
         claims.append(Claim(words.shot_distance.start(), words.shot_distance.end(), "measure"))
+    if words.wins is not None and words.worded is None and key is None:
+        # His wins, the yes/no of each game counted (ISSUES.md #440).
+        key = "wins"
+        claims.append(Claim(words.wins.start(), words.wins.end(), "measure"))
     return key
 
 

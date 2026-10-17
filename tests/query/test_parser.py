@@ -1364,6 +1364,9 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
         # A second stat on a line or a history that says one stat, where its whole line does not show both (#454).
         ("lebron points and true shooting this season", ["LeBron James"], "", "unread_stat", ("points",)),
         ("lebron steals and blocks by season", ["LeBron James"], "steals", "unread_stat", ("blocks",)),
+        # His wins on a line or a history by season, which neither holds (#440).
+        ("lebron wins per season", ["LeBron James"], "", "unread_stat", ("wins",)),
+        ("lebron wins this season", ["LeBron James"], "", "unread_stat", ("wins",)),
     ],
 )
 def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, kind: str, words: tuple[str, ...]) -> None:
@@ -1509,15 +1512,26 @@ def test_a_career_ranking_asked_per_game_ranks_the_per_game_figure(con: duckdb.D
 
 @pytest.mark.parametrize(
     "question",
-    ["best shooting percentages 2023", "list nba players most wins in a career", "Cousins player efficiency rating by year", "most career wins"],
+    ["best shooting percentages 2023", "Cousins player efficiency rating by year", "nba pg highest win games"],
 )
 def test_a_players_ranking_with_no_measure_read_is_refused_naming_the_stat(con: duckdb.DuckDBPyConnection, question: str) -> None:
     """#421: where the words name a measure nothing reads and the model none
-    ("best shooting percentages", "most wins", "efficiency rating"), the
-    ranking's points default is a cause the planner says where the ranking
-    would answer."""
+    ("best shooting percentages", "efficiency rating", a "win" that is no
+    count of wins), the ranking's points default is a cause the planner
+    says where the ranking would answer."""
     reading = _read(con, question)
     assert reading.defaulted is not None and reading.defaulted.kind == "ranking_needs_stat"
+
+
+@pytest.mark.parametrize("question", ["list nba players most wins in a career", "most career wins", "most playoff wins by player nba 2020s"])
+def test_a_players_wins_rank_the_players_by_the_games_they_won(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """#440: "most wins" ranks the players by the games their team won with
+    them playing - the count's ranking over the yes/no of each game, as
+    "most triple doubles since 2020" ranks - where it was refused for want
+    of a stat."""
+    reading = _read(con, question)
+    assert reading.defaulted is None and reading.point is not None
+    assert reading.point.read_as == PointShape("player_games", "ranking", "count") and list(reading.point.predicates) == [("won", "=", True)]
 
 
 @pytest.mark.parametrize("question", ["nba players who averaged 25 ppg in 2001", "most ppg in the 2024 playoffs", "top 10 scorers in 2024", "who led the league in assists in 2019"])

@@ -143,11 +143,16 @@ _LINE_WORDS: dict[str, str] = {
 }
 
 
-def _predicates(q: Query) -> str:
-    """ " with a triple-double" / " won and with 10+ rebounds" - the predicates on a point, as a trailing phrase."""
+def _predicates(q: Query, *, grouped: bool = False) -> str:
+    """ " with a triple-double" / " won and with 10+ rebounds" - the predicates on a point, as a trailing phrase.
+    Over a grouping's heading the games are counted, not had: "in games won"
+    ("every player, regular season career (2010-2019) in games won, by
+    player", ISSUES.md #440), where "had 32 games won" says a count."""
     parts = []
     for name, op, value in q.predicates:
-        if name in PREDICATE_WORDS and value is True:
+        if grouped and name == "won" and value is True:
+            parts.append("in games won")
+        elif name in PREDICATE_WORDS and value is True:
             parts.append(PREDICATE_WORDS[name])
         else:
             words = _LINE_WORDS.get(op, "{label} " + op + " {value}")
@@ -267,7 +272,7 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     span = _span_phrase(out["span"], out.get("player_seasons"))
     if not rows:
         return _grouped_empty(q, who, where, span)
-    head = _grouped_head(q, out, f"{who}{where}, {span}{_predicates(q)}, by {q.group}")
+    head = _grouped_head(q, out, f"{who}{where}, {span}{_predicates(q, grouped=True)}, by {q.group}")
     if q.group == "season" and q.limit and len(rows) >= q.limit:
         # The span names the whole career; the rows are its newest N (the
         # limit cut them - core._compile_grouped), which the heading says.

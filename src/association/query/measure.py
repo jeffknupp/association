@@ -663,6 +663,8 @@ class MeasureWords:
     #: Every stat the words name, each once by its catalog key, with the
     #: characters that name it (:func:`stats_named`).
     stats: tuple[tuple[str, Claim], ...] = ()
+    #: A player's wins named, the count a ranking of players reads.
+    wins: re.Match[str] | None = None
 
 
 def stats_named(question: str) -> tuple[tuple[str, Claim], ...]:
@@ -730,6 +732,7 @@ def read_measure(question: str) -> MeasureWords:
         shot_values=tuple((value, found) for value, pattern in lexicon.SHOT_VALUE_WORDS if (found := pattern.search(question)) is not None),
         beside=_beside_words(question),
         stats=stats_named(question),
+        wins=lexicon.PLAYER_WINS.search(question),
     )
 
 

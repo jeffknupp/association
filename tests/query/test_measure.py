@@ -145,6 +145,10 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
         ("lebron points and true shooting this season", PLAYER_LINE, None, measure_of("ts_pct")),
         ("lebron steals and blocks by season", SEASON_HISTORY, None, measure_of("steals")),
         ("most points and rebounds in a game this season", GAME_HIGHS, None, measure_of("rebounds")),
+        # A player's wins rank the players by the games they won (#440), where no other measure is named.
+        ("most wins by player nba 2010s", PLAYER_RANKING, None, measure_of("wins")),
+        ("most games won by player nba 2010s", PLAYER_RANKING, None, measure_of("wins")),
+        ("most points in wins this season", PLAYER_RANKING, None, measure_of("points")),
     ],
 )
 def test_the_words_read_as_one_measure(question: str, shape: PointShape | None, key: str | None, expected: Measure | None) -> None:

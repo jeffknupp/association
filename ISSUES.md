@@ -55,15 +55,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #479
 
-### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
-- **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
-- **Evidence:** on `p5s6-L` (feed, no names), "Westbrook wins per season" answers "Russell Westbrook, points, rebounds and assists per game by regular season, 2023-2026 ..." (before the fix his 2026 line), "wins" unread: `measure.named("wins")` reads nothing outside a record's games won (`lexicon.GAMES_WON` under `LINE_RECORD`), so step 1's `unread_stat` cannot fire on it, and the players' ranking ("most wins by player nba 2010s", 14 of the 2,082) is refused by `ranking_needs_stat` since #421's fix. A player's wins are the games his team won with him playing (`won` is a yes/no measure of the player-games relation).
-- **User sees:** a line or a history of other stats, fluently, where his wins were asked.
-- **Next step:** read "wins"/"losses" on a player's line, history and ranking as the count of his games won or lost (a yes/no predicate, the count's reading as "most triple doubles since 2020" now has), or refuse by `unread_stat` naming them; each wording enumerated.
-- **Source:** ours.
-- **Priority:** P1 - a different question answered fluently; 1 of the 2,082 (the 14 rankings are refused by name).
-- **GitHub:** #440
-
 ### A team ranking asked of the best single season across years answers the current season: "Which team has made the most three pointers in a season" ranks 2026's teams
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), refusing the players' half (`point._everyone_single_season`, the `single_season_ranking` cause).
 - **Evidence:** on `98b22dd`'s feed run, "Which team has made the most three pointers in a season" answers "3-pointers made per game, 2026 regular season - highest first, of 30 teams: 1 Charlotte Hornets 16.4 ...", "which team has made the most three pointers in a season before 2015" the 2015 season's, and "highest ppg*ts% by a team in a season" 2026's points per game - each a per-game figure over one season where the most in any season was asked ("made", "season" unread). The players' ranking refuses the class by name since lane L's commit; the team ranking (`point.team_read_point`, the team-season relation) has no such check.
