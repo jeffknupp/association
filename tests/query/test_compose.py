@@ -1464,6 +1464,32 @@ def test_a_ranking_by_games_played_counts_each_players_games(cx_ctx: AnswerConte
     assert [line.split()[-2] for line in said.splitlines()[1:]] == ["22", "22", "4", "4", "2", "2"]
 
 
+@pytest.mark.parametrize(
+    ("measure", "span", "aggregate", "minimum"),
+    [
+        # A count over a career, or a range of seasons, is its total, with no qualifier.
+        (Measure(key="rebounds", as_typed="rebounds"), Span(season_type=2, career=True), "total", None),
+        (Measure(key="rebounds", as_typed="rebounds"), Span(season_type=2, since=2010), "total", None),
+        # A make in one season is its count; a scoring title in one, the average.
+        (Measure(key="threePointFieldGoalsMade", as_typed="three pointers"), Span(season_type=2, season=2026), "total", None),
+        (Measure(key="points", as_typed="points"), Span(season_type=2, season=2026), "per_game", 20),
+        # The words' own form stands, and a stat with no season-line metric keeps its average.
+        (Measure(key="rebounds", as_typed="rebounds", how="per_game"), Span(season_type=2, career=True), "per_game", 20),
+        (Measure(key="plusMinus", as_typed="plus minus"), Span(season_type=2, career=True), "per_game", 20),
+    ],
+)
+def test_a_game_level_ranking_reduces_a_bare_stat_as_the_season_line_does(cx_ctx: AnswerContext, measure: Measure, span: Span, aggregate: str, minimum: int | None) -> None:
+    """Decision D17's measurement: "most career rebounds by a small forward"
+    was ranked per game (Scottie Pippen's 6.2) where the career total was
+    asked (Paul Pierce's 7,527, FS026), "most rebounds for the nets since
+    2010" likewise (FS392). A bare stat is reduced as the season line ranks
+    it (the record books' reading, ``measure.metric_name``); a total takes no
+    default qualifier."""
+    q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=measure, span=span, cuts=Cuts(venue="home")), "most rebounds at home")
+    assert isinstance(q, Query) and q.source == "games"
+    assert (q.aggregate, q.minimum_games) == (aggregate, minimum)
+
+
 @pytest.mark.parametrize(("key", "label"), [("defensiveRebounds", "DREB"), ("offensiveRebounds", "OREB")])
 def test_a_rebound_side_is_said_by_its_abbreviation_not_its_column(cx_ctx: AnswerContext, key: str, label: str) -> None:
     """The compiler's sentence says a rebound side by its label, as every

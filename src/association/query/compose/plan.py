@@ -16,7 +16,7 @@ from typing import Any
 
 from association.query.answer import Answer
 from association.query.coverage import coverage_refusal
-from association.query.measure import spelled, yes_no
+from association.query.measure import metric_name, spec_of, spelled, yes_no
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
@@ -456,8 +456,37 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         position=reading.who.position,
     )
     if planned.source == "seasons" and not _season_line_reads(key, planned):
-        return _game_level(key, planned)
-    return planned
+        return _ranked_as_the_season_line(_game_level(key, planned))
+    return _ranked_as_the_season_line(planned)
+
+
+def _ranked_as_the_season_line(q: Query) -> Query:
+    """A ranking of the league's players over their games reduced as the
+    season line ranks the same words (:func:`~association.query.measure.metric_name`,
+    the record books' reading): a stat the words name bare is ranked by its
+    total where the season line's metric for it is the total - a make in a
+    season ("most three pointers by a point guard"), and any box-score count
+    over more than one season, a career or a range ("most career rebounds by
+    a small forward", "most rebounds for the nets since 2010") - and per game
+    where it is the average (a scoring, rebounding, assist, steal or block
+    title in one season). A form the words name ("per game", "total") is
+    theirs, and a measure the season line has no metric for keeps its
+    average. A total needs no qualifier: the default minimum of games
+    goes with the average it qualified (a stated one stays). Before, every
+    bare stat was ranked per game, and "most career rebounds by a small
+    forward" answered Scottie Pippen's 6.2 a game where Paul Pierce's 7,527
+    were asked (the feed sample's FS026; decision D17's measurement)."""
+    if not (q.skeleton == "grouped" and q.group == "player" and q.subject == "everyone" and q.source == "games"):
+        return q
+    measure = q.measure
+    if q.aggregate != Aggregate.PER_GAME or measure is None or measure.how is not None or not q.measures or stat_measure(measure) != q.measures[0]:
+        return q
+    spec = spec_of(measure)
+    span = q.span
+    over_seasons = span.career or span.since is not None or span.until is not None
+    if spec is None or spec.total_metric is None or metric_name(measure, career=over_seasons) != spec.total_metric:
+        return q
+    return replace(q, aggregate=Aggregate.TOTAL, minimum_games=q.minimum_games if q.minimum is not None else None)
 
 
 #: The season line's readers' own checks, by the shape they read: whether
