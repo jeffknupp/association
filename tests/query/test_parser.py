@@ -1660,6 +1660,28 @@ def test_but_joins_two_companions_clauses_as_and_does(question: str, roles: list
     assert [(c.player, c.predicate) for c in _conditions(question, ("Anthony Davis", "LeBron James"), Reading())] == roles
 
 
+@pytest.mark.parametrize(
+    ("question", "asked", "player"),
+    [
+        ("sixers record when embiid starts and maxey doesnt start", PRESENCE_SPLIT, "Tyrese Maxey"),  # codespell:ignore doesnt - as typed
+        ("sixers record when maxey doesnt start and embiid starts", PRESENCE_SPLIT, "Tyrese Maxey"),  # codespell:ignore doesnt - as typed
+        ("maxey game log when embiid doesn't start", PLAYER_LOG, "Joel Embiid"),
+        ("sixers record when maxey doesnt start", PRESENCE_SPLIT, None),  # codespell:ignore doesnt - as typed
+    ],
+)
+def test_a_denied_role_names_the_companion_whose_clause_denies_it(question: str, asked: PointShape, player: str | None) -> None:
+    """ISSUES.md #484: over two companions the with/without split cannot
+    show a denied start (it answered both starting), so it is refused - by
+    the companion whose own clause denies it, never the first with the
+    role. Over one, the split shows both halves and keeps it."""
+    from association.query.parse import _reading_from_route_denied
+    from association.query.reading import Companion
+
+    companions = tuple(Companion(player=name, predicate="started") for name in ("Joel Embiid", "Tyrese Maxey") if name.split()[1].lower() in question)
+    cause = _reading_from_route_denied(question, Reading(asked=asked, companions=companions))
+    assert (cause.facts["player"] if cause is not None else None) == player
+
+
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
 def test_a_total_asked_of_the_season_ranking_ranks_the_total(con: duckdb.DuckDBPyConnection, question: str, source: str) -> None:
     """#435: "total" asks the season ranking for the season's total (its

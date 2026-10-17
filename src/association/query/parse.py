@@ -1518,18 +1518,37 @@ def _reading_from_route_denied(question: str, reading: Reading) -> Cause | None:
     when embiid doesn't start" - which the role reader reads as the role
     itself, so a filter on it narrows to the very games the question
     excludes (ISSUES.md #248: his games WITH Embiid starting were listed):
-    refused by a cause naming the words, on every key but the with/without
-    split, which shows both halves and keeps it (:func:`_read_route_beside`)."""
-    if reading.asked == PRESENCE_SPLIT:
+    refused by a cause naming the words and the companion whose clause
+    denies it, on every key but the with/without split over one companion,
+    which shows both halves and keeps it (:func:`_read_route_beside`); over
+    two ("sixers record when embiid starts and maxey doesn't start", ISSUES.md
+    #484) the split answered both starting, the games the question rules
+    out."""
+    if reading.asked == PRESENCE_SPLIT and len(reading.companions) < 2:
         return None
     roles = tuple(c for c in reading.companions if c.predicate in ("started", "bench"))
     for match, predicate in role_phrases(roles, question):
-        if lexicon.DENIED_ROLE.search(match.group(2)):
-            player = next(c.player for c in roles if c.predicate == predicate)
+        denial = lexicon.DENIED_ROLE.search(match.group(2))
+        if denial:
+            player = _denied_companion(roles, predicate, match.group(2)[: denial.start()])
             return Cause(
                 kind="denied_role", facts={"player": player, "words": question[match.start() : match.end()].strip(), "role": "start" if predicate == "started" else "bench", "shape": reading.asked}
             )
     return None
+
+
+def _denied_companion(roles: tuple[Companion, ...], predicate: str, before: str) -> str:
+    """The companion whose own clause the denial ends (ISSUES.md #484): the
+    words before the denial cut at the last joiner between two names
+    (:data:`~association.query.lexicon.NAME_JOINERS`) - "embiid starts and
+    maxey doesn't start" denies Maxey's start, where the first companion with
+    the role named Embiid - and the first companion with the role where no
+    clause names one."""
+    words = before.split()
+    cut = max((i for i, word in enumerate(words) if word.lower().strip(",") in lexicon.NAME_JOINERS or word.endswith(",")), default=-1)
+    clause = " ".join(words[cut + 1 :])
+    named = [c.player for c in roles if c.predicate == predicate and question_supports(c.player, clause)]
+    return named[0] if named else next(c.player for c in roles if c.predicate == predicate)
 
 
 _DEFAULTED_ORDER: tuple[str, ...] = ("number", "stat", "window", "date")
