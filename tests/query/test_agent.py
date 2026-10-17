@@ -29,6 +29,7 @@ from association.query.reading import (
     Line,
     Measure,
     Period,
+    PlayoffRound,
     PointShape,
     Reading,
     Span,
@@ -664,16 +665,17 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """After the compiler declines, a shape the warehouse has no column for
     (``Reading.unsupported``, the parser's) is refused with its cause as a
-    fast answer, in the planner's sentence - not with the cut. A playoff
-    round is the worked case: no relation honors the ``round`` cut, and the
-    games carry no round label."""
+    fast answer, in the planner's sentence - not with the cut. The rounds
+    around one are the worked case: "before the finals" narrows to no
+    round, which the relations refuse by value."""
 
     monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
-    answer = ask_routed(agent, "nba finals game log 2025", Routed(PLAYER_LOG, Reading(who=Who(kind="team", teams=("NBA Finals",)), cuts=Cuts(round="finals"), span=Span(season=2025, season_type=3))))
+    around = Reading(who=Who(kind="player", players=("Joel Embiid",)), cuts=Cuts(round=PlayoffRound(text="finals")), span=Span(season=2025, season_type=3))
+    answer = ask_routed(agent, "joel embiid 2025 playoffs before the finals", Routed(PLAYER_LOG, around))
 
-    assert "not labeled by playoff round" in answer.text
+    assert "'finals' is read beside words that name the playoff rounds around it" in answer.text
     assert answer.answered_by == "fast"
     assert agent.unanswered is None
 
@@ -937,8 +939,8 @@ def test_a_question_is_answered_in_the_latest_season_on_record_not_the_calendars
 
 def test_the_point_readers_decline_by_a_cause_waits_for_what_the_words_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The point reader's declines are causes, said at a decline's place -
-    so what the words name that nothing reads still speaks first ("2013 nba
-    finals" is refused by its playoff round, not by the log's missing
+    so what the words name that nothing reads still speaks first ("before
+    the finals" is refused by its rounds, not by the log's missing
     player)."""
     from association.query.normalizer import Normalized
     from association.query.reading import Cause
@@ -950,5 +952,5 @@ def test_the_point_readers_decline_by_a_cause_waits_for_what_the_words_name(monk
     )
     monkeypatch.setattr("association.query.parse.read_route", lambda *args, **kwargs: reading)
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized([], ""))
-    answer = _agent_with_players(tmp_path).ask("2013 nba finals game log")
-    assert answer.answered_by == "fast" and answer.text.startswith("The games are not labeled by playoff round, so 'finals' cannot pick them out yet.")
+    answer = _agent_with_players(tmp_path).ask("2013 nba playoffs before the finals game log")
+    assert answer.answered_by == "fast" and answer.text.startswith("'finals' is read beside words that name the playoff rounds around it")

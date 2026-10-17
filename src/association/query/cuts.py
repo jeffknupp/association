@@ -30,7 +30,7 @@ from typing import Literal
 from association.nba.season import current_season
 from association.query import lexicon
 from association.query.calendar import date_range, month_opened, season_of_day
-from association.query.reading import Claim, Cuts, PointShape, situation_of
+from association.query.reading import Claim, Cuts, PlayoffRound, PointShape, situation_of
 from association.query.span import career_named
 
 
@@ -154,8 +154,13 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
     # word, which `claimed` joins; the month is applied beside the day,
     # redundantly, and the answer names both (ISSUES.md, "A month is read
     # from the words of a day in it").
-    claims.extend(claim for claim in (situation_claim, day_claim) if claim is not None)
     playoff_round, round_claim = _round(question)
+    if round_claim is not None and situation_claim is not None and round_claim.start <= situation_claim.start and situation_claim.end <= round_claim.end:
+        # A conference the round's own words name ("eastern conference
+        # finals") is the round's, not the opponents' alignment beside it:
+        # every game of a conference's round is against that conference.
+        situation, situation_claim = None, None
+    claims.extend(claim for claim in (situation_claim, day_claim) if claim is not None)
     if round_claim is not None:
         claims.append(round_claim)
     game_n, game_claim = _series_game(question)
@@ -388,12 +393,23 @@ def _dated_since(year: str | None) -> int | None:
     return int(year) if len(year) > 2 else lexicon.short_year(year)
 
 
-def _round(question: str) -> tuple[str | None, Claim | None]:
-    """A playoff round as worded (:data:`~association.query.lexicon.ROUND_WORDS`)."""
+def _round(question: str) -> tuple[PlayoffRound | None, Claim | None]:
+    """A playoff round as worded (:data:`~association.query.lexicon.ROUND_WORDS`)
+    and the round it names (:func:`~association.query.lexicon.round_named`) -
+    or, where the words before it name the rounds around it
+    (:data:`~association.query.lexicon.ROUND_AROUND`: "before the finals",
+    "playoffs vs finals"), the words alone, which no relation narrows by."""
     match = lexicon.ROUND_WORDS.search(question)
     if match is None:
         return None, None
-    return match.group(0).casefold(), Claim(match.start(), match.end(), "round")
+    words, claim = match.group(0).casefold(), Claim(match.start(), match.end(), "round")
+    around = lexicon.ROUND_AROUND.search(question[: match.start()])
+    if around is not None:
+        # The words that make it the rounds around one are read too: without
+        # "before", "the finals" is the round.
+        return PlayoffRound(text=words), Claim(around.start(), match.end(), "round")
+    number, conference = lexicon.round_named(match)
+    return PlayoffRound(text=words, number=number, conference=conference), claim
 
 
 def _series_game(question: str) -> tuple[int | None, Claim | None]:

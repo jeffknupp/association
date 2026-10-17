@@ -450,6 +450,41 @@ class Situation:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PlayoffRound:
+    """A round of the postseason as the words named it - ``ROADMAP-TYPES.md``'s
+    ``Round``: the words as typed (``text``: "finals", "2013 final", "west
+    finals", "eastern conference semifinals", "ecf"), and what they read
+    as - the round by number (``number``: 1 the first round, 2 the
+    conference semifinals, 3 the conference finals, 4 the Finals) and, for
+    a round inside one conference, the conference the words named
+    (``conference``). ``number`` is None where the words name the rounds
+    AROUND one ("before the finals", "playoffs vs finals"), which nothing
+    narrows to: the relation refuses it by value, as it does a situation
+    nothing reads. Read once, where the words are read
+    (:func:`~association.query.cuts.read_cuts`); the relations narrow by
+    ``real_games.playoff_round`` and ``playoff_conference``, each game's
+    place in its postseason's bracket (``fetch/repairs/real_games.py``).
+
+    .. versionadded:: 7.0.0
+    """
+
+    text: str
+    number: int | None = None
+    conference: lexicon.Conference | None = None
+
+    def __post_init__(self) -> None:
+        if self.number is not None and not 1 <= self.number <= 4:
+            raise ScopeError(f"a playoff round is 1-4, not {self.number}")
+        if self.conference is not None and self.number in (None, 4):
+            raise ScopeError("the Finals cross the conferences: no conference names one")
+
+    @property
+    def read(self) -> bool:
+        """Whether the words name one round a relation narrows to."""
+        return self.number is not None
+
+
+@dataclass(frozen=True, kw_only=True)
 class Cuts:
     """Which games of a span a read sees, as the words gave them -
     ``ROADMAP-TYPES.md``'s ``Opponent``, ``Tenure``, ``Venue``, ``OnDate``,
@@ -490,9 +525,10 @@ class Cuts:
     #: A circumstance the games are under: a calendar narrowing, an
     #: alignment of the opponent, or words nothing reads (:class:`Situation`).
     situation: Situation | None = None
-    #: A playoff round, as worded ("finals", "first round"); no table
-    #: carries one, so every relation refuses it by name.
-    round: str | None = None
+    #: A playoff round (:class:`PlayoffRound`): the round the words named
+    #: ("finals", "first round", "west finals"), which implies the
+    #: postseason, or the rounds around one, which nothing narrows to.
+    round: PlayoffRound | None = None
     #: One game of each playoff series ("game 4"), which the relation
     #: numbers by date within the series.
     game_n: int | None = None
@@ -503,9 +539,8 @@ class Cuts:
     #: The eight cuts, each under its own name: the ones a relation's cell
     #: table declares (``player_relation.RELATION_SCOPING``,
     #: ``team_relation.TEAM_RELATION_SCOPING``) and :meth:`cells` reports a
-    #: value as setting. A ``round`` is in neither table (no game is labeled
-    #: by its round, so every reader refuses it); a ``tenure`` and an
-    #: ordinal ``season_n`` are one player's, not the team relation's.
+    #: value as setting. A ``tenure`` and an ordinal ``season_n`` are one
+    #: player's, not the team relation's.
     CELLS: ClassVar[frozenset[str]] = frozenset(_CUT_ORDER)
 
     @property
@@ -1291,6 +1326,8 @@ def cell_facts(scope: Filtered, cell: str) -> dict[str, Any]:
         facts.update(by=window.by)
     elif cell == "situation":
         facts.update(words=cuts.situation.text if cuts.situation is not None else None)
+    elif cell == "round":
+        facts.update(value=cuts.round.text if cuts.round is not None else None)
     elif cell in _CUT_ORDER:
         facts.update(value=getattr(cuts, cell))
     elif cell == "period" and scope.period is not None:
@@ -1880,6 +1917,9 @@ class DeclineReason(StrEnum):
     RUN_EVERY_GAME = "run_every_game"
     RUN_WHOLE_GAMES = "run_whole_games"
     PERIOD_ONE_PERIOD = "period_one_period"
+    PERIOD_ROUND = "period_round"
+    MEETINGS_TALLY_ROUND = "meetings_tally_round"
+    TEAM_RANKING_ROUND = "team_ranking_round"
     MEETINGS_NO_THIRD_TEAM = "meetings_no_third_team"
     MEETINGS_AVERAGES = "meetings_averages"
     MEETINGS_WHOSE_SEASON = "meetings_whose_season"
@@ -2579,7 +2619,7 @@ def scope_reads_box_scores(scope: Filtered, measures: list[Any]) -> bool:
     half of the starter/bench split (it narrows the GAMES - the season line
     has no such column); a line on a box-score column ("under 14 fta",
     ``measures``); a game of each playoff series; a range of seasons; a
-    calendar ``situation``; a season type left unstated (the season line is
+    calendar ``situation``; a playoff round; a season type left unstated (the season line is
     one row per type and has no "both at once" reading); his own team
     ("lebron stats as a starter for Miami" keeps the games he played for
     that team); a teammate's role; a quarter held as a condition. The
@@ -2597,6 +2637,7 @@ def scope_reads_box_scores(scope: Filtered, measures: list[Any]) -> bool:
             scope.span.since,
             measures,
             cuts.game_n,
+            cuts.round,
             cuts.situation,
             scope.span.both,
             cuts.tenure,

@@ -518,8 +518,13 @@ each declared on its family's type:
   relation's alone), `venue`, `date`, `situation` (parsed once into
   `reading.Situation` - a calendar narrowing, an alignment of the opponent,
   or words nothing reads, refused by value), `game_n`, `season_n` (the
-  player relation's alone); `round` is a cut of no relation, refused
-  wherever it is set;
+  player relation's alone), `round` (`reading.PlayoffRound`: a round by
+  number and the conference the words named, narrowed by each game's
+  place in its postseason's bracket, `real_games.playoff_round` and
+  `playoff_conference`; the rounds AROUND one, "before the finals", are
+  words nothing narrows to, refused by value). A round implies the
+  postseason (`SpanContext.playoff_round`); `game_n` reads
+  `real_games.series_game`;
 - the period (`reading.Period.CELLS`: `period`, a quarter or a half), which
   changes what a read SEES of each game rather than which games: the
   relation rebuilds the period's line from the shots and plays
@@ -1114,7 +1119,7 @@ ollama, and it narrows a relation only through the shared steps.
   span named at once, `window.contradicting_ends`, a window taken in each
   season, `window.per_season_window`, a fact no table holds,
   `lexicon.ABSENT_FACTS`, a player named where the shape reads none) is said
-  before any reader runs; `Reading.unsupported` (a playoff round, an age, a
+  before any reader runs; `Reading.unsupported` (the rounds around a playoff round, an age, a
   quarter's stat nothing rebuilds, ...) only where the answer side
   declined, so a question the compiler answers is answered; and
   `Reading.defaulted` - a word carrying a meaning the reading defaulted

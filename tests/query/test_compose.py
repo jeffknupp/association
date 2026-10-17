@@ -449,11 +449,12 @@ def test_starter_bench_category_is_refused_outside_a_grouped_read(cx_ctx: Answer
 
 
 def test_an_unhonored_cell_is_refused(cx_ctx: AnswerContext) -> None:
-    """A cell the relation cannot narrow by (``round``) is refused rather
-    than silently dropped - by the planner, as the point is planned; the
-    compile step keeps the same check for a query built by hand."""
-    with pytest.raises(Unsupported, match="the finals cannot be read here"):
-        planned_query(PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(round="finals")))
+    """A cell the relation cannot narrow by (a player's ``tenure`` on a
+    team's games) is refused rather than silently dropped - by the planner,
+    as the point is planned; the compile step keeps the same check for a
+    query built by hand."""
+    with pytest.raises(Unsupported, match="games for Stephen Curry cannot be read here"):
+        planned_query(PointShape("team_games", "scalar", "record"), Reading(who=Who(kind="team", teams=("Golden State Warriors",)), cuts=Cuts(tenure="Stephen Curry")))
 
 
 # ---------------------------------------------------------------------------

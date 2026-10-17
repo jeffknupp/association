@@ -70,6 +70,7 @@ from association.query.reading import (
     Line,
     Measure,
     Period,
+    PlayoffRound,
     PointShape,
     Reading,
     Span,
@@ -4187,13 +4188,16 @@ def test_a_teams_period_total_states_the_opponent_and_the_period() -> None:
     assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), cuts=Cuts(opponent="Boston Celtics"), period=Period(number=4)), TEAM_PERIOD_TOTAL)] == []
 
 
-def test_no_shape_states_a_playoff_round() -> None:
-    """Nothing in the warehouse records a round or a series game number."""
-    from association.query import compose
-
-    assert not any("round" in cells_stated(shape) for shape in compose._ROUTES)
-    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown")), cuts=Cuts(round="finals")), PLAYER_COMPARISON)] == ["round"]
-    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Jayson Tatum",)), cuts=Cuts(round="finals")), PointShape("player_games", "scalar", "line"))] == ["round"]
+def test_a_playoff_round_is_stated_where_a_sentence_says_it() -> None:
+    """Each postseason game's round is ``real_games.playoff_round``, and the
+    relations narrow by it in their shared steps; a reader whose sentence
+    says the narrowing it read (``Narrowed.filters``) states it, and a
+    period reader, whose sentence names its narrowings in its own words,
+    steps aside for it."""
+    finals = Cuts(round=PlayoffRound(text="finals", number=4))
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown")), cuts=finals), PLAYER_COMPARISON)] == ["round"]
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Jayson Tatum",)), cuts=finals), PointShape("player_games", "scalar", "line"))] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("Jayson Tatum",)), cuts=finals), PointShape("player_periods", "rows", "date"))] == ["round"]
 
 
 def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con: AnswerContext) -> None:
@@ -5300,15 +5304,16 @@ def test_the_matchup_point_honors_without_too(pg_ctx: AnswerContext) -> None:
     assert [cell for cell, _ in cells_unhonored(scope, PLAYER_MEETINGS)] == []
 
 
-def test_the_matchup_point_refuses_a_window_and_a_round(pg_ctx: AnswerContext) -> None:
+def test_the_matchup_point_refuses_a_window_and_reads_a_round(pg_ctx: AnswerContext) -> None:
     """The relation's cells being honored does not let every other cell
     through too: a window is excluded (the newest meetings are shown beneath
-    averages over all of them), and `round` no relation has - the planner's
-    refusal, as the parser plans the point."""
+    averages over all of them) - the planner's refusal, as the parser plans
+    the point; a round is the relation's own cut."""
     with pytest.raises(Unsupported, match="newest meetings"):
         plan(default_point(PLAYER_MEETINGS, Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), window=Window(order="recent"))))
-    with pytest.raises(Unsupported, match="different span"):
-        planned_query(PLAYER_MEETINGS, Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), cuts=Cuts(round="finals")))
+    # A round narrows the first player's games through the shared step, the meetings among them.
+    finals = Reading(who=Who(kind="pair", players=("Brandin Podziemski", "Stephen Curry")), cuts=Cuts(round=PlayoffRound(text="finals", number=4)))
+    assert [cell for cell, _ in cells_unhonored(finals, PLAYER_MEETINGS)] == []
 
 
 def test_player_meetings_honors_without_on_a_real_two_player_matchup(pg_ctx: AnswerContext) -> None:

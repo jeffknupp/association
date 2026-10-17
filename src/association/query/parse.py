@@ -1091,6 +1091,7 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         window_of=window.of,
         date=cuts.cuts.date,
         game_n=cuts.cuts.game_n,
+        playoff_round=cuts.cuts.round is not None and cuts.cuts.round.read,
         season_n=cuts.cuts.season_n,
         dated_since=cuts.dated_since,
         dated_until=cuts.dated_until,
@@ -1847,11 +1848,14 @@ def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Ca
 
 
 def _unsupported_playoff_round(reading: Reading) -> Cause | None:
-    """A named round: the games carry no round or series label (ISSUES #10)."""
+    """The rounds around one ("2020 playoffs before the finals", "2011
+    playoff vs finals"): a round the relations cannot narrow to, refused by
+    value (:attr:`~association.query.reading.PlayoffRound.read`). A round
+    the words name outright is a cut the relations honor (ISSUES #10)."""
     playoff_round = reading.cuts.round
-    if not isinstance(playoff_round, str) or not playoff_round.strip():
+    if playoff_round is None or playoff_round.read:
         return None
-    return Cause(kind="playoff_round", facts={"shape": reading.asked, "round": playoff_round})
+    return Cause(kind="playoff_round", facts={"shape": reading.asked, "round": playoff_round.text})
 
 
 def _unsupported_situation(reading: Reading) -> Cause | None:

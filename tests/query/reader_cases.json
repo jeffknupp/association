@@ -7254,7 +7254,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "finals",
+    "round": {
+     "text": "finals",
+     "number": 4,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -7324,7 +7328,7 @@
    ],
    "point": {
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -7372,22 +7376,16 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "finals"
-     }
+    "subject_span": {
+     "season": 2024,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   ]
+   },
+   "point_verdict": "read"
   }
  },
  {
@@ -8687,7 +8685,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "finals",
+    "round": {
+     "text": "finals",
+     "number": 4,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -8788,20 +8790,7 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_games",
-       "shape": "rows",
-       "by": "date"
-      },
-      "round": "finals"
-     }
-    }
-   ]
+   "point_verdict": "read"
   }
  },
  {
@@ -16311,7 +16300,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "finals",
+    "round": {
+     "text": "finals",
+     "number": 4,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -16381,7 +16374,7 @@
    ],
    "point": {
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -16429,22 +16422,16 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "finals"
-     }
+    "subject_span": {
+     "season": 2024,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   ]
+   },
+   "point_verdict": "read"
   }
  },
  {
@@ -16696,7 +16683,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "second round",
+    "round": {
+     "text": "second round",
+     "number": 2,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -16705,7 +16696,7 @@
    "measure": null,
    "span": {
     "season": null,
-    "season_type": 2,
+    "season_type": 3,
     "both": false,
     "career": false,
     "since": null,
@@ -16766,7 +16757,7 @@
    ],
    "point": {
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -16814,22 +16805,16 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "second round"
-     }
+    "subject_span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   ]
+   },
+   "point_verdict": "read"
   }
  },
  {
@@ -79050,7 +79035,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "finals",
+    "round": {
+     "text": "finals",
+     "number": 4,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -79189,20 +79178,7 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_games",
-       "shape": "scalar",
-       "by": "count"
-      },
-      "round": "finals"
-     }
-    }
-   ]
+   "point_verdict": "read"
   }
  },
  {
@@ -84401,7 +84377,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "ecf",
+    "round": {
+     "text": "ecf",
+     "number": 3,
+     "conference": "Eastern Conference"
+    },
     "game_n": null,
     "season_n": null
    },
@@ -84526,20 +84506,7 @@
      "until": 2016
     }
    },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "ecf"
-     }
-    }
-   ]
+   "point_verdict": "read"
   }
  },
  {
@@ -84570,7 +84537,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "ecf",
+    "round": {
+     "text": "ecf",
+     "number": 3,
+     "conference": "Eastern Conference"
+    },
     "game_n": null,
     "season_n": null
    },
@@ -84638,7 +84609,7 @@
    ],
    "point": {
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -84686,22 +84657,16 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "ecf"
-     }
+    "subject_span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   ]
+   },
+   "point_verdict": "read"
   }
  },
  {
@@ -84732,7 +84697,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "nba final",
+    "round": {
+     "text": "nba final",
+     "number": 4,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -84802,7 +84771,7 @@
    ],
    "point": {
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -84850,22 +84819,16 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "nba final"
-     }
+    "subject_span": {
+     "season": 2022,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   ]
+   },
+   "point_verdict": "read"
   }
  },
  {
@@ -84896,7 +84859,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "nba final",
+    "round": {
+     "text": "nba final",
+     "number": 4,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -84966,7 +84933,7 @@
    ],
    "point": {
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -85014,22 +84981,16 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "nba final"
-     }
+    "subject_span": {
+     "season": 2024,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   ]
+   },
+   "point_verdict": "read"
   }
  },
  {
@@ -88068,7 +88029,11 @@
     "venue": null,
     "date": null,
     "situation": null,
-    "round": "final",
+    "round": {
+     "text": "final",
+     "number": 4,
+     "conference": null
+    },
     "game_n": null,
     "season_n": null
    },
@@ -88077,7 +88042,7 @@
    "measure": null,
    "span": {
     "season": 2013,
-    "season_type": 2,
+    "season_type": 3,
     "both": false,
     "career": false,
     "since": null,
@@ -88136,7 +88101,7 @@
    ],
    "point": {
     "relation": "player",
-    "on": "player_seasons",
+    "on": "player_games",
     "shape": "scalar",
     "by": "line",
     "measures": [
@@ -88184,22 +88149,16 @@
     "limit": null,
     "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "unsupported": [
-    {
-     "kind": "playoff_round",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "round": "final"
-     }
+    "subject_span": {
+     "season": 2013,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   ]
+   },
+   "point_verdict": "read"
   }
  }
 ]

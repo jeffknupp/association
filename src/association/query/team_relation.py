@@ -73,15 +73,17 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate
 # applied by `team_games` through `TeamNarrowed.narrow_periods`, the
 # counterpart of the player relation's.
 #: The games' cuts a team's games carry (:attr:`~association.query.reading.Cuts.CELLS`
-#: less three): no game is labeled by its ``round``, and a ``tenure`` and
-#: an ordinal ``season_n`` are one player's.
+#: less two): a ``tenure`` and an ordinal ``season_n`` are one player's.
 #:
 #: .. versionadded:: 6.0.0
-TEAM_CUTS: frozenset[str] = Cuts.CELLS - {"round", "tenure", "season_n"}
+#:
+#: .. versionchanged:: 7.0.0
+#:    Carries the playoff ``round``.
+TEAM_CUTS: frozenset[str] = Cuts.CELLS - {"tenure", "season_n"}
 TEAM_RELATION_SCOPING = frozenset({"window", *Period.CELLS, *TEAM_CUTS, *Span.CELLS})
 """The cells every reader on the team-games relation honors: the games'
 cuts a team's games carry (:data:`TEAM_CUTS`: ``opponent``, ``venue``,
-``date``, ``situation``, ``game_n``, each applied by :func:`team_games`
+``date``, ``situation``, ``game_n``, ``round``, each applied by :func:`team_games`
 and said by :meth:`~association.query.team_games.TeamNarrowed.filters`),
 the window, a quarter or half, and the span's three cells
 (:attr:`~association.query.reading.Span.CELLS`) -
@@ -177,6 +179,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             # The window is read: the last or first N meetings, sliced from
             # the one read (compose.meetings).
             "game_n": DeclineReason.MEETINGS_TALLY_GAME_N,
+            "round": DeclineReason.MEETINGS_TALLY_ROUND,
             # A team's quarter and its record read the calendar narrowing;
             # the meetings' tally does not - a weekday or holiday cut of an
             # all-time series is a real question no reader answers.
@@ -277,6 +280,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             "both": DeclineReason.TEAM_RANKING_BOTH,
             "window": DeclineReason.TEAM_RANKING_WINDOW,
             "game_n": DeclineReason.TEAM_RANKING_GAME_N,
+            "round": DeclineReason.TEAM_RANKING_ROUND,
             # A ranking ranks a season or a since/until-bounded
             # span of them; narrowing that pool to one weekday, month or holiday
             # within it is a different question from ranking the span itself.
@@ -492,6 +496,8 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity | None, span: Resolv
             # A series has games 1-7; a regular season has nothing "game 4" names.
             raise Unsupported(f"game {scope.cuts.game_n} names a game of a playoff series, and this is a {span.kind} question")
         narrowed.narrow_series_game(scope.cuts.game_n)
+    if scope.cuts.round is not None:
+        narrowed.narrow_round(scope.cuts.round)
     if scope.cuts.situation:
         # Same discipline as scoped_games: honored where it names the
         # calendar or a conference/division, refused BY VALUE (never

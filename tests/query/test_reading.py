@@ -14,7 +14,7 @@ from association.query.compose.core import Query, measure_names
 from association.query.compose.plan import aggregate_of, plan
 from association.query.compose.team import TeamQuery, team_metric
 from association.query.point import default_point
-from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, DeclineReason, Line, Measure, Period, PointShape, Reading, Span, Unsupported, Window
+from association.query.reading import GAMES_COUNTED, Aggregate, Companion, Cuts, DeclineReason, Line, Measure, Period, PlayoffRound, PointShape, Reading, Span, Unsupported, Window
 from association.query.reading import Subject as Who
 
 
@@ -179,7 +179,7 @@ def test_every_group_is_the_compilers_and_every_declared_cell_a_filters_cell() -
         "split"
     } == Filtered.CELLS - Span.CELLS - Window.CELLS - Cuts.CELLS - Period.CELLS - Line.CELLS - Line.SEASON_CELLS - Line.OPPONENT_CELLS - Companion.CELLS - Measure.CELLS and "split" in names
     assert RELATION_SCOPING <= Filtered.CELLS and TEAM_RELATION_SCOPING <= Filtered.CELLS
-    assert Span.CELLS | Window.CELLS | (Cuts.CELLS - {"round"}) <= RELATION_SCOPING and "round" not in RELATION_SCOPING
+    assert Span.CELLS | Window.CELLS | Cuts.CELLS <= RELATION_SCOPING
 
 
 def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_asked() -> None:
@@ -192,7 +192,7 @@ def test_a_scope_reports_every_cell_it_sets_and_a_decline_says_each_by_what_was_
 
     scope = Reading(
         who=Who(kind="player", players=("x",)),
-        cuts=Cuts(tenure="MIA", round="finals"),
+        cuts=Cuts(tenure="MIA", round=PlayoffRound(text="finals", number=4)),
         companions=(Companion(player="z", predicate="started"), Companion(player="y", predicate="absent")),
         lines=(Line(measure="freeThrowsAttempted", op="<", value=14, as_typed="under 14 fta", narrows=True),),
         measure=Measure(key="points", as_typed="points", how="per_100", unit="per 100 possessions"),

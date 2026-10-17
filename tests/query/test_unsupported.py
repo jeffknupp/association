@@ -35,6 +35,7 @@ from association.query.reading import (
     Line,
     Measure,
     Period,
+    PlayoffRound,
     PointShape,
     Reading,
     Span,
@@ -85,15 +86,19 @@ def test_an_answerable_question_is_not_refused(con: duckdb.DuckDBPyConnection) -
     assert unanswerable(con, PLAYER_LINE, Reading(who=Who(kind="player", players=("LeBron James",)), cuts=Cuts(situation=situation_of("on christmas"))), "lebron on christmas") is None
 
 
-def test_a_playoff_round_is_refused_naming_the_missing_label(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F165 "nba finals game log 2025": ``round`` is a cut no
-    relation honors (the planner declines it), and the games carry no round
-    label (ISSUES #10), so the refusal names the missing label."""
-    scope = Reading(who=Who(kind="team", teams=("NBA Finals",)), cuts=Cuts(round="finals"), span=Span(season=2025, season_type=3))
-    refusal = unanswerable(con, PLAYER_LOG, scope, "nba finals game log 2025")
+def test_the_rounds_around_one_are_refused_naming_the_words(con: duckdb.DuckDBPyConnection) -> None:
+    """A round the words name outright is a cut the relations honor (each
+    game's place in its postseason's bracket, ``real_games.playoff_round``;
+    ISSUES #10); the rounds AROUND one ("2020 playoffs before the finals")
+    narrow to no round, so the refusal names the words and the ways to
+    ask."""
+    around = Reading(who=Who(kind="player", players=("Anthony Davis",)), cuts=Cuts(round=PlayoffRound(text="finals")), span=Span(season=2020, season_type=3))
+    refusal = unanswerable(con, PLAYER_LINE, around, "anthony davis 2020 playoffs before the finals")
     assert refusal is not None
-    assert "not labeled by playoff round" in refusal.text and "'finals'" in refusal.text
+    assert "'finals' is read beside words that name the playoff rounds around it" in refusal.text
     assert refusal.data["refused"] == "playoff_round"
+    named = Reading(who=Who(kind="player", players=("Anthony Davis",)), cuts=Cuts(round=PlayoffRound(text="finals", number=4)), span=Span(season=2020, season_type=3))
+    assert unanswerable(con, PLAYER_LINE, named, "anthony davis 2020 finals") is None
 
 
 @pytest.mark.parametrize(

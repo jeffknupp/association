@@ -479,8 +479,8 @@ narrowing the relation cannot honor, a season under a table's floor, a
 reply the normalizer could not use, a name the question never supported
 (refused by name, :func:`association.query.entities.misread_players`, and
 only where the answer would be about that player), or - where the shape is
-one the warehouse has no column for - the thing itself: a playoff round, an
-age, a stat by quarter the plays cannot rebuild, a coach
+one the warehouse has no column for - the thing itself: the playoff rounds
+around one ("before the finals"), an age, a stat by quarter the plays cannot rebuild, a coach
 (``Reading.unsupported`` and the point reader's causes, said by the
 planner). Before writing one, check which fact is missing: "No NetPoints
 fingerprint on record for season 2026" about a player who resolved to the

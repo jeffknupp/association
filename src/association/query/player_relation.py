@@ -92,11 +92,11 @@ from association.query.team_games import TeamNarrowed
 # honor one of these says so in its row of RELATION_SCOPING_EXCLUDED, with the
 # reason.
 #
-# The games' cuts (`reading.Cuts`) are seven of
-# the eight by name: `round` is left out, since no game is labeled by its
-# round and every reader refuses it (`unhonored_cells` lists it wherever it
-# is set). The tenure is a cell of this relation alone: a team has none.
-RELATION_SCOPING = frozenset({"split", *ReadLine.CELLS, *Companion.CELLS, *(Cuts.CELLS - {"round"}), *Span.CELLS, *Window.CELLS, *Period.CELLS})
+# The games' cuts (`reading.Cuts`) are all eight by name, the playoff round
+# among them: each game's place in its postseason's bracket is
+# `real_games.playoff_round`. The tenure is a cell of this relation alone: a
+# team has none.
+RELATION_SCOPING = frozenset({"split", *ReadLine.CELLS, *Companion.CELLS, *Cuts.CELLS, *Span.CELLS, *Window.CELLS, *Period.CELLS})
 """The cells every reader on the player-games relation honors: the split,
 the subject's lines (:attr:`~association.query.reading.Line.CELLS`:
 ``line``, a line the relation narrows the games by - kept under
@@ -106,9 +106,9 @@ applied by :func:`narrow_measures` and said by
 a line in a quarter or half, applied by :func:`_apply_period_condition`),
 the companions (:attr:`~association.query.reading.Companion.CELLS`:
 ``companion``, a player beside the subject with his role, applied by
-:func:`_narrow_player_games` through :func:`_condition_from_slot`), the games' cuts (:attr:`~association.query.reading.Cuts.CELLS`
-less ``round``: ``opponent``, ``tenure``, ``venue``, ``date``,
-``situation``, ``game_n``, ``season_n``, each applied by :func:`scoped_games`
+:func:`_narrow_player_games` through :func:`_condition_from_slot`), the games' cuts (:attr:`~association.query.reading.Cuts.CELLS`:
+``opponent``, ``tenure``, ``venue``, ``date``,
+``situation``, ``game_n``, ``season_n``, ``round``, each applied by :func:`scoped_games`
 and said by :meth:`~association.query.player_games.Narrowed.filters`), and
 the span's three cells (:attr:`~association.query.reading.Span.CELLS`) -
 ``career`` (every season on record), ``range`` (a
@@ -130,6 +130,9 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
    The lines' two cells (``line``, ``period_line``) and the companions' one
    (``companion``) in place of the slots ``below``, ``above``,
    ``period_condition``, ``without`` and ``conditions`` (Phase 3, step 2).
+
+.. versionchanged:: 7.0.0
+   The playoff ``round``, applied by :meth:`~association.query.player_games.Narrowed.narrow_round`.
 
 .. versionchanged:: 6.0.0
    The span's cells by name (``career``, ``range``, ``both``) in place of
@@ -230,7 +233,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # aside and the compiler's own sentence, which names both quarters, answers.
     **dict.fromkeys(
         (PointShape("player_periods", "rows", "date"), PointShape("player_periods", "split", "period")),
-        ShapeCells(unstated={"period_line": DeclineReason.PERIOD_ONE_PERIOD}, sides=True),
+        ShapeCells(unstated={"period_line": DeclineReason.PERIOD_ONE_PERIOD, "round": DeclineReason.PERIOD_ROUND}, sides=True),
     ),
     # Two players' meetings, refused outright where a narrowing would cut
     # the pair the matchup exists to compare.
@@ -251,7 +254,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         unstated={
             "both": DeclineReason.BOTH_TYPES_ASIDE,
             "range": DeclineReason.HIGH_RANGE_ASIDE,
-            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.HIGH_CUTS_ASIDE),
+            **_excluded_rows(Cuts.CELLS, DeclineReason.HIGH_CUTS_ASIDE),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.HIGH_NARROWINGS_ASIDE),
         }
     ),
@@ -266,7 +269,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         ShapeCells(
             unstated={
                 "range": DeclineReason.COUNT_RANGE_ASIDE,
-                **_excluded_rows(Cuts.CELLS - {"round", "season_n"}, DeclineReason.COUNT_CUTS_ASIDE),
+                **_excluded_rows(Cuts.CELLS - {"season_n"}, DeclineReason.COUNT_CUTS_ASIDE),
                 **_excluded_rows(
                     RELATION_SCOPING - Span.CELLS - Cuts.CELLS - {"line"},
                     DeclineReason.COUNT_NARROWINGS_ASIDE,
@@ -284,7 +287,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         unstated={
             "range": DeclineReason.SEASON_RANKING_RANGE,
             "both": DeclineReason.SEASON_RANKING_BOTH,
-            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows(Cuts.CELLS, DeclineReason.SEASON_LINE_CUTS_ASIDE),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         },
         # A unit, and a line on the season's own figure ("averaged 30 ppg",
@@ -302,7 +305,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         unstated={
             "range": DeclineReason.SEASONS_COUNTED_RANGE,
             "both": DeclineReason.SEASON_COUNT_BOTH,
-            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows(Cuts.CELLS, DeclineReason.SEASON_LINE_CUTS_ASIDE),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         },
         taken=ReadLine.SEASON_CELLS,
@@ -314,7 +317,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         unstated={
             "range": DeclineReason.SEASON_COUNT_RANGE,
             "both": DeclineReason.SEASON_COUNT_BOTH,
-            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows(Cuts.CELLS, DeclineReason.SEASON_LINE_CUTS_ASIDE),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         },
         taken=Measure.CELLS | ReadLine.SEASON_CELLS,
@@ -323,7 +326,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         unstated={
             "range": DeclineReason.HISTORY_RANGE,
             "both": DeclineReason.HISTORY_BOTH,
-            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows(Cuts.CELLS, DeclineReason.SEASON_LINE_CUTS_ASIDE),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.SEASON_LINE_NARROWINGS_ASIDE),
         }
     ),
@@ -335,7 +338,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             "career": DeclineReason.COMPARISON_SPAN,
             "range": DeclineReason.COMPARISON_SPAN,
             "both": DeclineReason.COMPARISON_SPAN,
-            **_excluded_rows(Cuts.CELLS - {"round"}, DeclineReason.SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows(Cuts.CELLS, DeclineReason.SEASON_LINE_CUTS_ASIDE),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), DeclineReason.COMPARISON_NARROWINGS),
         },
         declined="plan",
@@ -347,7 +350,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             "career": DeclineReason.QUARTER_RANKING_SEASON,
             "range": DeclineReason.QUARTER_RANKING_SEASON,
             "both": DeclineReason.QUARTER_RANKING_TYPE,
-            **_excluded_rows(Cuts.CELLS - {"round", "opponent", "venue"}, DeclineReason.QUARTER_RANKING_CUTS),
+            **_excluded_rows(Cuts.CELLS - {"opponent", "venue"}, DeclineReason.QUARTER_RANKING_CUTS),
             **_excluded_rows(
                 (RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"period"},
                 DeclineReason.QUARTER_RANKING_NARROWINGS,
@@ -366,7 +369,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             "range": DeclineReason.NETPOINTS_RANGE,
             "both": DeclineReason.NETPOINTS_BOTH,
             **_excluded_rows(
-                Cuts.CELLS - {"round"},
+                Cuts.CELLS,
                 DeclineReason.NETPOINTS_CUTS,
             ),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, DeclineReason.NETPOINTS_NARROWINGS),
@@ -379,7 +382,7 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
             "range": DeclineReason.FINGERPRINT_SPAN,
             "both": DeclineReason.FINGERPRINT_BOTH,
             **_excluded_rows(
-                Cuts.CELLS - {"round", "date"},
+                Cuts.CELLS - {"date"},
                 DeclineReason.FINGERPRINT_CUTS,
             ),
             **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, DeclineReason.FINGERPRINT_NARROWINGS),
@@ -1026,6 +1029,8 @@ def scoped_games(
     )
     if isinstance(narrowed, Unanswered):
         return narrowed
+    if scope.cuts.round is not None:
+        narrowed.narrow_round(scope.cuts.round)
     narrow_measures(narrowed, measures)
     if date:
         start, end = eastern_day_utc_range(date)
@@ -1107,6 +1112,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Filt
     if scope.cuts.venue:
         narrowed.venue = scope.cuts.venue
         narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", scope.cuts.venue == "home")
+    if scope.cuts.round is not None:
+        narrowed.narrow_round(scope.cuts.round)
     narrow_measures(narrowed, measure_filters(scope))
     season_n = scope.cuts.season_n
     if season_n is not None and season_n > 0:

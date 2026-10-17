@@ -44,6 +44,7 @@ from association.query.reading import (
     Claim,
     Companion,
     Cuts,
+    PlayoffRound,
     PointShape,
     Reading,
     Situation,
@@ -53,6 +54,7 @@ from association.query.reading import (
     unhonored_cells,
 )
 from association.query.reading import Subject as Who
+from association.query.result import Clarify, Refusal
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
 
@@ -94,16 +96,30 @@ def _situation(text: str) -> Situation:
         ("lebron ppg vs the west", PLAYER_LINE, Cuts(situation=_situation("vs the west"))),
         ("giannis stats in the month of march", PLAYER_LINE, Cuts(situation=_situation("in the month of march"))),
         ("lebron ppg as an 18 year old", PLAYER_LINE, Cuts(situation=_situation("18 year old"))),
-        ("tatum stats in the 2024 finals", PLAYER_LINE, Cuts(round="finals")),
-        ("knicks second round record", TEAM_RECORD, Cuts(round="second round")),
+        ("tatum stats in the 2024 finals", PLAYER_LINE, Cuts(round=PlayoffRound(text="finals", number=4))),
+        ("knicks second round record", TEAM_RECORD, Cuts(round=PlayoffRound(text="second round", number=2))),
         # A round's abbreviation is the round (#475): it answered the regular season.
-        ("lebron 2014-2016 ecf", PLAYER_LINE, Cuts(round="ecf")),
-        ("Caleb martin ecf", PLAYER_LINE, Cuts(round="ecf")),
-        ("jokic wcf stats", PLAYER_LINE, Cuts(round="wcf")),
-        ("tatum ecsf stats", PLAYER_LINE, Cuts(round="ecsf")),
+        ("lebron 2014-2016 ecf", PLAYER_LINE, Cuts(round=PlayoffRound(text="ecf", number=3, conference="Eastern Conference"))),
+        ("Caleb martin ecf", PLAYER_LINE, Cuts(round=PlayoffRound(text="ecf", number=3, conference="Eastern Conference"))),
+        ("jokic wcf stats", PLAYER_LINE, Cuts(round=PlayoffRound(text="wcf", number=3, conference="Western Conference"))),
+        ("tatum ecsf stats", PLAYER_LINE, Cuts(round=PlayoffRound(text="ecsf", number=2, conference="Eastern Conference"))),
         # The Finals in the singular, where it names the series (#455): it answered the regular season.
-        ("jaylen brown 2022 nba final stats", PLAYER_LINE, Cuts(round="nba final")),
-        ("kobe stats in the final", PLAYER_LINE, Cuts(round="the final")),
+        ("jaylen brown 2022 nba final stats", PLAYER_LINE, Cuts(round=PlayoffRound(text="nba final", number=4))),
+        ("kobe stats in the final", PLAYER_LINE, Cuts(round=PlayoffRound(text="the final", number=4))),
+        ("Leonard final 2013", PLAYER_LINE, Cuts(round=PlayoffRound(text="final", number=4))),
+        # A conference named before a round keeps it there, and makes "finals" the conference's.
+        ("kobe stats in 2009 west finals", PLAYER_LINE, Cuts(round=PlayoffRound(text="west finals", number=3, conference="Western Conference"))),
+        ("shaq 2000 western conference finals stats", PLAYER_LINE, Cuts(round=PlayoffRound(text="western conference finals", number=3, conference="Western Conference"))),
+        ("tyrese haliburton nba conf finals stats", PLAYER_LINE, Cuts(round=PlayoffRound(text="conf finals", number=3))),
+        ("duncan nba 2002 conference semifinals stats", PLAYER_LINE, Cuts(round=PlayoffRound(text="conference semifinals", number=2))),
+        (
+            "joel embiid stats in the 2026 eastern conference first round",
+            PLAYER_LINE,
+            Cuts(round=PlayoffRound(text="eastern conference first round", number=1, conference="Eastern Conference")),
+        ),
+        # The rounds around one are words no relation narrows to, refused by value.
+        ("anthony davis 2020 playoffs before the finals", PLAYER_LINE, Cuts(round=PlayoffRound(text="finals"))),
+        ("Dirk 2011 playoff vs finals", PLAYER_LINE, Cuts(round=PlayoffRound(text="finals"))),
         # ... and not where a count, a game or a stretch of play follows it.
         ("kobe stats in the final 5 games", PLAYER_LINE, Cuts()),
         ("kobe stats in the final quarter", PLAYER_LINE, Cuts()),
@@ -290,7 +306,7 @@ def test_a_situation_is_parsed_once_into_what_the_relation_applies() -> None:
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "tatum home stats in game 4 of the 2024 finals in his 7th season on christmas"
     read = cuts_under(PLAYER_LINE, read_cuts(question, CutsContext()), split=None)
-    assert read.cuts == Cuts(venue="home", situation=_situation("christmas"), round="finals", game_n=4, season_n=7)
+    assert read.cuts == Cuts(venue="home", situation=_situation("christmas"), round=PlayoffRound(text="finals", number=4), game_n=4, season_n=7)
     assert [(question[c.start : c.end], c.what) for c in read.claims] == [("home", "venue"), ("game 4", "game_n"), ("finals", "round"), ("7th season", "season_n"), ("christmas", "situation")]
 
 
@@ -323,34 +339,41 @@ def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None
 
 def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert Cuts().cells() == frozenset() and not Cuts().named
-    cuts = Cuts(opponent="BOS", tenure="MIA", venue="home", date="2026-01-19", situation=_situation("in march"), round="finals", game_n=4, season_n=2)
+    cuts = Cuts(opponent="BOS", tenure="MIA", venue="home", date="2026-01-19", situation=_situation("in march"), round=PlayoffRound(text="finals", number=4), game_n=4, season_n=2)
     assert cuts.cells() == Cuts.CELLS and cuts.named
     assert unhonored_cells(Reading(cuts=cuts), frozenset()) == ["opponent", "tenure", "venue", "date", "situation", "game_n", "season_n", "round"]
     assert unhonored_cells(Reading(cuts=cuts), Cuts.CELLS - {"round", "tenure"}) == ["tenure", "round"]
-    assert unhonored_cells(Reading(cuts=Cuts(round="finals", opponent="BOS")), cells_stated(PLAYER_LOG)) == ["round"]
+    finals = Cuts(round=PlayoffRound(text="finals", number=4), opponent="BOS")
+    assert unhonored_cells(Reading(cuts=finals), cells_stated(PLAYER_LOG)) == []
+    assert unhonored_cells(Reading(cuts=finals), cells_stated(PointShape("player_periods", "rows", "date"))) == ["round"]
     assert unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), cells_stated(PLAYER_LOG)) == [] and unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["tenure"]
     assert cell_set(Reading(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Reading(), "tenure") and cell_set(Reading(companions=(Companion(player="X", predicate="absent"),)), "companion")
 
 
 def test_the_relation_tables_declare_the_cuts_once() -> None:
-    assert Cuts.CELLS - {"round"} <= RELATION_SCOPING and "round" not in RELATION_SCOPING
-    assert Cuts.CELLS - {"round", "tenure", "season_n"} == TEAM_CUTS and TEAM_CUTS <= TEAM_RELATION_SCOPING and not ({"round", "tenure", "season_n"} & TEAM_RELATION_SCOPING)
+    assert Cuts.CELLS <= RELATION_SCOPING
+    assert Cuts.CELLS - {"tenure", "season_n"} == TEAM_CUTS and TEAM_CUTS <= TEAM_RELATION_SCOPING and not ({"tenure", "season_n"} & TEAM_RELATION_SCOPING)
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
-        assert all("own_team" not in row.unstated and "round" not in row.unstated for row in table.values())
+        assert all("own_team" not in row.unstated for row in table.values())
     # A reader whose words state fewer cuts than the relation's says so in its shape's row, with a reason per cut.
     for shape in (PLAYER_RANKING, SEASON_HISTORY, PLAYER_COMPARISON, NETPOINTS_RATINGS, GAME_HIGHS):
         assert cells_stated(shape) & Cuts.CELLS == frozenset(), shape
     assert (
         cells_stated(GAMES_COUNTED) & Cuts.CELLS == {"season_n"} and cells_stated(NETPOINTS_FINGERPRINT) & Cuts.CELLS == {"date"} and cells_stated(PERIOD_RANKING) & Cuts.CELLS == {"opponent", "venue"}
     )
-    assert cells_stated(PLAYER_LOG) & Cuts.CELLS == Cuts.CELLS - {"round"}
+    assert cells_stated(PLAYER_LOG) & Cuts.CELLS == Cuts.CELLS
     assert cells_stated(PRESENCE_SPLIT) & Cuts.CELLS == {"opponent"} and cells_stated(TEAM_LINE) & Cuts.CELLS == frozenset() and cells_stated(TEAM_RECORD) & Cuts.CELLS == TEAM_CUTS - {"date"}
-    assert all(RELATION_SCOPING_EXCLUDED[PLAYER_RANKING].unstated[cut] for cut in Cuts.CELLS - {"round"})
+    assert all(RELATION_SCOPING_EXCLUDED[PLAYER_RANKING].unstated[cut] for cut in Cuts.CELLS)
     # No shape states a cut its relation does not carry: every cut a shape states is a relation table's, less its row's exclusions.
     from association.query import compose
 
     for shape in compose._ROUTES:
-        assert cells_stated(shape) & Cuts.CELLS <= Cuts.CELLS - {"round"}, shape
+        assert "tenure" not in cells_stated(shape) or shape not in TEAM_RELATION_SCOPING_EXCLUDED, shape
+    # A round is no cut a reader's sentence leaves unsaid: the period readers step aside for it, so
+    # the compiler's own sentence, which names it, answers; the meetings' tally and the team ranking
+    # refuse it (the reader is the point's only answer).
+    assert "round" not in cells_stated(PointShape("player_periods", "rows", "date")) and "round" not in cells_stated(TEAM_RANKING)
+    assert "round" in cells_stated(PLAYER_LINE) and "round" in cells_stated(TEAM_RECORD)
     assert cells_stated(PointShape("netpoints", "chart", "fingerprint")) & Cuts.CELLS == {"date"}
     assert cells_stated(PointShape("team_games", "split", "presence")) & Cuts.CELLS == {"opponent"}
 
@@ -398,6 +421,50 @@ def test_a_series_game_and_an_ordinal_season_change_what_the_player_relation_rea
     assert _player_games(pg_ctx, Cuts(season_n=1)) == (1, 8)
 
 
+def test_a_playoff_round_changes_what_the_player_relation_reads(pg_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
+    """The round is each game's place in its postseason's bracket
+    (``real_games.playoff_round``): p1-p3 are both teams' first series, the
+    first round; p4-p5's opponent has no series before it, so the two teams
+    place it differently and it is in no round - never guessed into one."""
+    first = PlayoffRound(text="first round", number=1)
+    assert _player_games(pg_ctx, Cuts(round=first), Span(season_type=3)) == (3, 60)  # p1-p3
+    assert _player_games(pg_ctx, Cuts(round=PlayoffRound(text="second round", number=2)), Span(season_type=3)) == (0, 0)
+    assert _player_games(pg_ctx, Cuts(round=PlayoffRound(text="finals", number=4)), Span(season_type=3)) == (0, 0)
+    # A round and a game of the series together: game 2 of the first round.
+    assert _player_games(pg_ctx, Cuts(round=first, game_n=2), Span(season_type=3)) == (1, 20)  # p2
+
+
+def test_a_playoff_round_changes_what_the_league_read_reads(pg_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
+    """The league-wide read (no player subject: "highest +/- in the nba
+    finals") narrows by the round through the same step."""
+    from association.query.player_games import aggregate_sql
+    from association.query.player_relation import league_games, span_of
+
+    def games(cuts: Cuts) -> int:
+        narrowed = league_games(pg_ctx.con, span_of(Span(season_type=3), "player_game_log"), Reading(cuts=cuts), position=None)
+        assert not isinstance(narrowed, (Refusal, Clarify))
+        sql, params = aggregate_sql(narrowed, ["COUNT(*)"])
+        (row,) = pg_ctx.con.execute(sql, params).fetchall()
+        return int(row[0])
+
+    assert games(Cuts()) == 5
+    assert games(Cuts(round=PlayoffRound(text="first round", number=1))) == 3
+
+
+def test_a_playoff_round_is_said_as_the_round_and_the_rounds_around_one_are_refused_by_value() -> None:
+    from association.query.player_games import Narrowed
+    from association.query.reading import Unsupported
+
+    narrowed = Narrowed(base=[], base_params=[])
+    narrowed.narrow_round(PlayoffRound(text="2016 final", number=4))
+    assert narrowed.filters() == " in the Finals" and narrowed.extra_params == [4]
+    west = Narrowed(base=[], base_params=[])
+    west.narrow_round(PlayoffRound(text="west finals", number=3, conference="Western Conference"))
+    assert west.filters() == " in the Western Conference Finals" and west.extra_params == [3, "Western Conference"]
+    with pytest.raises(Unsupported, match="names the rounds around one"):
+        Narrowed(base=[], base_params=[]).narrow_round(PlayoffRound(text="finals"))
+
+
 def _team_games(ctx: AnswerContext, cuts: Cuts, span: Span | None = None) -> list[str]:
     settled = scoped_team(ctx.con, Reading(who=Who(kind="team", teams=("Celtics",)), span=span or Span()), "no team")
     assert isinstance(settled, tuple)
@@ -428,6 +495,12 @@ def test_each_cut_changes_what_the_team_relation_reads(team_cells_con: AnswerCon
 def test_a_series_game_changes_what_the_team_relation_reads(team_cells_con: AnswerContext) -> None:  # noqa: F811 - the fixture
     assert _team_games(team_cells_con, Cuts(), Span(season_type=3)) == ["pS_1", "pS_2", "pS_3"]
     assert _team_games(team_cells_con, Cuts(game_n=2), Span(season_type=3)) == ["pS_2"]
+
+
+def test_a_playoff_round_changes_what_the_team_relation_reads(team_cells_con: AnswerContext) -> None:  # noqa: F811 - the fixture
+    """The Celtics' one series is both teams' first: the first round."""
+    assert _team_games(team_cells_con, Cuts(round=PlayoffRound(text="first round", number=1)), Span(season_type=3)) == ["pS_1", "pS_2", "pS_3"]
+    assert _team_games(team_cells_con, Cuts(round=PlayoffRound(text="finals", number=4)), Span(season_type=3)) == []
 
 
 def test_a_situation_nothing_reads_is_refused_by_value_with_its_words(pg_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture

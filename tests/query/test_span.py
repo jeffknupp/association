@@ -446,3 +446,16 @@ def _team_games(ctx: AnswerContext, span: Span) -> int:
 )
 def test_each_span_cell_changes_what_the_team_relation_reads(team_cells_con: AnswerContext, cell: str, span: Span, games: int) -> None:  # noqa: F811 - the fixture
     assert _team_games(team_cells_con, span) == games, cell
+
+
+@pytest.mark.parametrize("question", ["tatum first round stats", "Leonard final 2013", "duncan 2002 conference semifinals stats"])
+def test_a_playoff_round_reads_the_postseason(question: str) -> None:
+    """A round is a postseason's: read beside the regular season, the
+    relation's round cut found no game ("tatum first round stats" named no
+    postseason word)."""
+    assert _read(question, playoff_round=True).season_type == 3
+
+
+def test_a_playoff_round_reads_no_both_types_on_a_log() -> None:
+    """A newest-N window reads both season types, but not inside a round."""
+    assert not read_span("tatum last 5 games in the first round", SpanContext(order="recent", limit=5, playoff_round=True)).both_on_log

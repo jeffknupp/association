@@ -56,6 +56,10 @@ class SpanContext:
     window_of: str = "games"
     date: str | None = None
     game_n: int | None = None
+    #: Whether the cuts read a playoff round the relations narrow to ("first
+    #: round", "2013 final"): a round is the postseason's, whether or not
+    #: the words name the postseason too.
+    playoff_round: bool = False
     season_n: int | None = None
     dated_since: int | None = None
     #: The season a range of calendar days with their years ends in
@@ -179,6 +183,11 @@ def read_span(question: str, context: SpanContext) -> SpanCandidates:
     claims.extend(season_words)
     season_type, both, type_claims = _season_type(question)
     claims.extend(type_claims)
+    if context.playoff_round and not both:
+        # A round is a postseason's ("tatum first round stats", "Leonard
+        # final 2013"): read as the regular season beside it, the relation's
+        # round cut found no game.
+        season_type = 3
     if context.dated_both and not both and season_type == 2 and lexicon.RANGE_REGULAR_SEASON.search(question) is None:
         # A range of calendar days that can hold a postseason game, naming
         # no season type, is every game played between them (ISSUES.md
@@ -650,7 +659,7 @@ def _reads_both_types(question: str, context: SpanContext) -> bool:
         return False
     if not isinstance(context.limit, int) or context.limit < 1:
         return False
-    if context.game_n or context.date:
+    if context.game_n or context.date or context.playoff_round:
         return False
     return not (lexicon.PLAYOFF_WORDS.search(question) or lexicon.REGULAR_SEASON_WORDS.search(question))
 

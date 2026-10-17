@@ -50,7 +50,9 @@ from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
 from .notes import Note
 from .reading import STARTER_SIDES as STARTER_SIDES  # the one table, on the reader's side; a split names one half of it
+from .reading import PlayoffRound
 from .shotchart import SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
+from .team_games import round_clause, round_phrase, series_game_clause
 
 # A player-game ESPN lists as played but records no minutes for. Every such row
 # in the warehouse carries no stats either (checked, 1994-2026), and they are of
@@ -713,6 +715,8 @@ class Narrowed:
     lines: list[tuple[str, str, Any, str]] = field(default_factory=list)
     #: The game of a playoff series the question named ("game 4"), or None.
     series_game: int | None = None
+    #: The playoff round the question named ("the 2024 finals"), or None.
+    playoff_round: PlayoffRound | None = None
     #: The window: the newest (``"recent"``) or oldest (``"first"``) N of the
     #: narrowed games, or None for all of them. Cut AFTER every row filter and
     #: BEFORE whatever a reader does with the rows, so "30-point games in his
@@ -836,6 +840,19 @@ class Narrowed:
         suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")  # codespell:ignore nd - an ordinal suffix
         return [f"in their {n}{suffix} season"]
 
+    def _postseason_parts(self) -> list[str]:
+        """The game of a series and the playoff round the games were
+        narrowed to, as the answer says them - a list so :meth:`filters`
+        adds no branch for them."""
+        parts: list[str] = []
+        if self.series_game is not None:
+            # "of the series" only where one series is in view: an opponent
+            # names it. Across a postseason it is game 4 of each series.
+            parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
+        if self.playoff_round is not None:
+            parts.append(f"in {round_phrase(self.playoff_round)}")
+        return parts
+
     def filters(self, *, dated: bool = True, windowed: bool = False) -> str:
         """What the games were narrowed to, as it follows a name: ``" vs the
         Detroit Pistons at home"``.
@@ -873,10 +890,7 @@ class Narrowed:
         if self.measures:
             parts.append(f"with {_joined(self.measures)}")
         parts.extend(self._ordinal_parts())
-        if self.series_game is not None:
-            # "of the series" only where one series is in view: an opponent
-            # names it. Across a postseason it is game 4 of each series.
-            parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
+        parts.extend(self._postseason_parts())
         if self.date and dated:
             parts.append(f"on {self.date}")
         situation = self._situation_phrase()
@@ -985,21 +999,33 @@ class Narrowed:
         )
 
     def narrow_series_game(self, n: int) -> None:
-        """Only the ``n``th game of each playoff series: the games between the
-        same two teams in one postseason, numbered by date over ``real_games``
-        - the series' own games, so a game he sat out still counts toward the
-        number, and his ``n``th game played is not mistaken for game ``n``."""
-        self.narrow(f"pgl.event_id IN (SELECT event_id FROM ({_SERIES_GAMES}) WHERE game_of_series = ?)", n)
+        """Only the ``n``th game of each playoff series: ``real_games.series_game``,
+        the game's number within the series the two teams played - the
+        series' own games, so a game he sat out still counts toward the
+        number, and his ``n``th game played is not mistaken for game ``n``.
+
+        .. versionchanged:: 7.0.0
+           Reads the number ``real_games`` carries (ESPN's count, or the
+           game's place by date in its series) rather than numbering the
+           games itself.
+        """
+        clause, params = series_game_clause(n, "pgl.event_id", "pgl.season")
+        self.narrow(clause, *params)
         self.series_game = n
 
+    def narrow_round(self, playoff_round: PlayoffRound) -> None:
+        """Only the games of one playoff round (:func:`round_clause`), said
+        as the round (:func:`round_phrase`). A round the words named only
+        as the rounds around one ("before the finals") is refused by value:
+        nothing narrows to it, and dropping it would answer the whole
+        postseason under a heading that names a round.
 
-# Every postseason game numbered within its series. A series is the games two
-# teams play each other in one postseason; ``real_games`` rather than ``games``
-# so a placeholder or a duplicated event does not shift the count.
-_SERIES_GAMES = (
-    "SELECT s.event_id, ROW_NUMBER() OVER (PARTITION BY s.season, LEAST(s.home_team_id, s.away_team_id), GREATEST(s.home_team_id, s.away_team_id) ORDER BY s.date, s.event_id) AS game_of_series "
-    "FROM real_games s WHERE s.season_type = 3"
-)
+        .. versionadded:: 7.0.0
+        """
+        clause, params = round_clause(playoff_round, "pgl.event_id", "pgl.season")
+        self.narrow(clause, *params)
+        self.playoff_round = playoff_round
+
 
 #: The comparisons :meth:`Narrowed.narrow_measure` accepts, mapped to SQL.
 MEASURE_OPS: dict[str, str] = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}

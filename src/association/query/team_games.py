@@ -71,6 +71,7 @@ from association.nba.season import eastern_date_sql
 
 from .entities import Entity
 from .measures import TEAM_PERIOD_COLUMNS as TEAM_PERIOD_COLUMNS
+from .reading import PlayoffRound, Unsupported
 
 # `narrow_calendar` below imports the names it calls at call time; the
 # types are imported for the checker alone.
@@ -78,6 +79,56 @@ if TYPE_CHECKING:
     import duckdb
 
     from .calendar import AlignmentNarrowing, CalendarNarrowing
+
+
+def series_game_clause(n: int, event: str, season: str) -> tuple[str, list[Any]]:
+    """The WHERE clause keeping game ``n`` of each playoff series, over a
+    relation whose game is ``event`` and season ``season`` (column
+    expressions written in code): ``real_games.series_game``, each postseason
+    game's number within its series (``fetch/repairs/real_games.py``).
+
+    .. versionadded:: 7.0.0
+    """
+    return f"EXISTS (SELECT 1 FROM real_games sg WHERE sg.event_id = {event} AND sg.season = {season} AND sg.season_type = 3 AND sg.series_game = ?)", [n]
+
+
+def round_clause(playoff_round: PlayoffRound, event: str, season: str) -> tuple[str, list[Any]]:
+    """The WHERE clause keeping the games of ``playoff_round``, over a
+    relation whose game is ``event`` and season ``season``:
+    ``real_games.playoff_round``, each postseason game's place in its
+    bracket, and ``playoff_conference`` where the words named a conference
+    (``fetch/repairs/real_games.py``). Raises
+    :class:`~association.query.reading.Unsupported` for a round the words
+    did not name as one (:attr:`~association.query.reading.PlayoffRound.read`).
+
+    .. versionadded:: 7.0.0
+    """
+    if playoff_round.number is None:
+        raise Unsupported(f"{playoff_round.text!r} names the rounds around one, and a read narrows to one round")
+    clause = f"EXISTS (SELECT 1 FROM real_games pr WHERE pr.event_id = {event} AND pr.season = {season} AND pr.season_type = 3 AND pr.playoff_round = ?"
+    if playoff_round.conference is None:
+        return clause + ")", [playoff_round.number]
+    return clause + " AND pr.playoff_conference = ?)", [playoff_round.number, playoff_round.conference]
+
+
+#: Each round as an answer names it, by number, where no conference is named.
+_ROUND_NAMES: dict[int, str] = {1: "the first round", 2: "the conference semifinals", 3: "the conference finals", 4: "the Finals"}
+
+
+def round_phrase(playoff_round: PlayoffRound) -> str:
+    """A round as the answer says it: "the Finals", "the conference
+    finals", "the Western Conference Finals", "the Eastern Conference first
+    round" - the round the relation narrowed to, never the words as typed.
+
+    .. versionadded:: 7.0.0
+    """
+    number, conference = playoff_round.number, playoff_round.conference
+    if number is None:
+        return repr(playoff_round.text)
+    if conference is None:
+        return _ROUND_NAMES[number]
+    return f"the {conference} {({1: 'first round', 2: 'semifinals', 3: 'Finals'})[number]}"
+
 
 # One row per team per game, from that team's side, over every game that was
 # actually played - built from `real_games` alone, because it is the only
@@ -186,6 +237,9 @@ class TeamNarrowed:
     #: The game of a playoff series the question named ("game 4"), or None -
     #: the team counterpart of :attr:`association.query.player_games.Narrowed.series_game`.
     series_game: int | None = None
+    #: The playoff round the question named, or None - the team counterpart
+    #: of :attr:`association.query.player_games.Narrowed.playoff_round`.
+    playoff_round: PlayoffRound | None = None
     #: The window: the newest (``"recent"``) or oldest (``"first"``) N of the
     #: narrowed games, or None for all of them - cut AFTER every row filter,
     #: the team counterpart of :attr:`association.query.player_games.Narrowed.window`.
@@ -264,6 +318,8 @@ class TeamNarrowed:
             # "of the series" only where one series is in view: an opponent
             # names it. Across a postseason it is game 4 of each series.
             parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
+        if self.playoff_round is not None:
+            parts.append(f"in {round_phrase(self.playoff_round)}")
         if self.date and date:
             parts.append(f"on {self.date}")
         if self.calendar is not None:
@@ -282,14 +338,27 @@ class TeamNarrowed:
         self.extra_params.extend(params)
 
     def narrow_series_game(self, n: int) -> None:
-        """Only the ``n``th game of each playoff series: the games between the
-        same two teams in one postseason, numbered by date over ``real_games``
+        """Only the ``n``th game of each playoff series (``real_games.series_game``)
         - the team counterpart of :meth:`association.query.player_games.Narrowed.narrow_series_game`.
 
         .. versionadded:: 4.4.0
+
+        .. versionchanged:: 7.0.0
+           Reads the number ``real_games`` carries.
         """
-        self.narrow(f"tg.event_id IN (SELECT event_id FROM ({_TEAM_SERIES_GAMES}) WHERE game_of_series = ?)", n)
+        clause, params = series_game_clause(n, "tg.event_id", "tg.season")
+        self.narrow(clause, *params)
         self.series_game = n
+
+    def narrow_round(self, playoff_round: PlayoffRound) -> None:
+        """Only the games of one playoff round - the team counterpart of
+        :meth:`association.query.player_games.Narrowed.narrow_round`.
+
+        .. versionadded:: 7.0.0
+        """
+        clause, params = round_clause(playoff_round, "tg.event_id", "tg.season")
+        self.narrow(clause, *params)
+        self.playoff_round = playoff_round
 
     def narrow_calendar(self, narrowing: CalendarNarrowing) -> None:
         """Only the games on a weekday, in a month, on a fixed day, or from a
@@ -376,10 +445,6 @@ class TeamNarrowed:
 # than imported, the same way :func:`named` is its own copy: the two relations
 # share no base class, on purpose, so a change to one's clause-composition
 # rules cannot silently reach the other.
-_TEAM_SERIES_GAMES = (
-    "SELECT s.event_id, ROW_NUMBER() OVER (PARTITION BY s.season, LEAST(s.home_team_id, s.away_team_id), GREATEST(s.home_team_id, s.away_team_id) ORDER BY s.date, s.event_id) AS game_of_series "
-    "FROM real_games s WHERE s.season_type = 3"
-)
 
 
 # A team's period line (the period relation's team half; ISSUES.md #161).

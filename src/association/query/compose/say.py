@@ -5345,8 +5345,8 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
         f"Ask for the games {facts['player']} {'came off the bench' if facts['role'] == 'start' else 'started'}, or for the line with and without him."
     ),
     "playoff_round": lambda facts: (
-        f"The games are not labeled by playoff round, so '{facts['round']}' cannot pick them out yet. "
-        "Name the two teams and the season instead - a series is their postseason meetings, and those are read."
+        f"'{facts['round']}' is read beside words that name the playoff rounds around it, and a read narrows to one round at a time - "
+        'ask for one round ("the 2020 Finals", "the 2020 conference finals", "the 2020 first round") or for the whole postseason.'
     ),
     "non_calendar_situation": _say_non_calendar_situation,
     "period_stat": _say_period_stat,
@@ -5481,6 +5481,9 @@ _DECLINE_REASONS: dict[DeclineReason, str] = {
     DeclineReason.RUN_EVERY_GAME: "a run is read over every game in the span, not the last N",
     DeclineReason.RUN_WHOLE_GAMES: "a run is a run of whole games; a quarter or half of each is a different streak nobody has defined",
     DeclineReason.PERIOD_ONE_PERIOD: "a period answer says the one period it measures, never a second one conditioning which games count",
+    DeclineReason.PERIOD_ROUND: "a period answer says the narrowings it reads in its own words, which name no playoff round; the compiler's own sentence, which says the round, answers",
+    DeclineReason.MEETINGS_TALLY_ROUND: "head_to_head counts every meeting; one playoff round's meetings are not read here",
+    DeclineReason.TEAM_RANKING_ROUND: "a leaderboard ranks a season, not one playoff round of it",
     DeclineReason.MEETINGS_NO_THIRD_TEAM: "two players' meetings are the games they played against each other - there is no third team to narrow them to",
     DeclineReason.MEETINGS_AVERAGES: "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
     DeclineReason.MEETINGS_WHOSE_SEASON: "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",

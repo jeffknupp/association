@@ -1406,28 +1406,89 @@ VENUE_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
 .. versionadded:: 6.0.0
 """
 
-# One round of the postseason. No table carries a round, so no reader can
-# narrow to one: "tatum stats in the 2024 finals" was answered with his whole
-# 2024 postseason, 19 games where the Finals were 5. A cut, so every reader
-# refuses it rather than widening the question. The abbreviations are rounds
-# too: "lebron 2014-2016 ecf" answered his regular seasons (ISSUES #475).
-# So is the Finals in the singular where it names the series: "jaylen brown
-# 2022 nba final stats" answered his regular season (#455). "the final" only
-# where no count, game or stretch of play follows it - "the final 5 games"
-# is a window, "the final quarter" a period, "the final score" no round.
-# And "final" beside a year, the series that season: "Leonard final 2013",
-# "leonard 2019 final" (the feed sample's FS059, refused for a count of
-# games "final" never asked).
+# One round of the postseason, read as the round it names - 1 the first
+# round, 2 the conference semifinals, 3 the conference finals, 4 the Finals -
+# and, for a round inside one conference, which (`round_named`). The
+# relations narrow to it by each game's place in its postseason's bracket
+# (`real_games.playoff_round`, `playoff_conference`): "tatum stats in the 2024
+# finals" was answered with his whole 2024 postseason, 19 games where the
+# Finals were 5. The abbreviations are rounds too: "lebron 2014-2016 ecf"
+# answered his regular seasons (ISSUES #475), "ecsf" a conference's
+# semifinals. So is the Finals in the singular where it names the series:
+# "jaylen brown 2022 nba final stats" answered his regular season (#455).
+# "the final" only where no count, game or stretch of play follows it - "the
+# final 5 games" is a window, "the final quarter" a period, "the final score"
+# no round. And "final" beside a year, the series that season: "Leonard
+# final 2013", "leonard 2019 final" (the feed sample's FS059, refused for a
+# count of games "final" never asked). A conference named before a round
+# keeps it in that conference, and makes "finals" the conference's: "west
+# finals", "eastern conference finals" are round 3, "eastern conference
+# semifinals" round 2 of the East.
+_ROUND_SIDE = r"(?:(?P<side>east(?:ern)?|west(?:ern)?)[\s-]+(?:(?:conference|conf\.?)[\s-]+)?)"
+_THE_FINAL_NOT_A_ROUND = (
+    r"(?!\s+(?:\d|one|two|three|four|five|six|seven|eight|nine|ten|games?|quarters?|halves|half|periods?|minutes?|seconds?|stretch|weeks?|months?|days?|seasons?"
+    r"|regular|postseason|playoffs?|score|shots?|plays?|possessions?)\b)"
+)
 ROUND_WORDS = re.compile(
-    r"\bfinals\b|\b[ew]cs?f\b|\bnba\s+final\b|\bfinal(?=\s+(?:19|20)\d\d\b)|(?<=\b(?:19|20)\d\d\s)final\b(?!\s+(?:\d|games?)\b)"
-    r"|\bthe\s+final\b(?!\s+(?:\d|one|two|three|four|five|six|seven|eight|nine|ten|games?|quarters?|halves|half|periods?|minutes?|seconds?|stretch|weeks?|months?|days?|seasons?|regular|postseason|playoffs?|score|shots?|plays?|possessions?)\b)"
-    r"|\b(?:first|second)\s+round\b|\bsemi-?finals?\b",
+    rf"\b{_ROUND_SIDE}?(?:"
+    r"(?P<first>(?:first|1st)[\s-]+round)\b"
+    r"|(?P<second>(?:second|2nd)[\s-]+round|(?:(?:conference|conf\.?)[\s-]+)?semi-?finals?)\b"
+    r"|(?P<third>(?:conference|conf\.?)[\s-]+finals?)\b"
+    r"|(?P<abbrev>(?P<letter>[ew])c(?P<semi>s)?f)\b"
+    rf"|(?P<finals>finals|nba\s+final|final(?=\s+(?:19|20)\d\d\b)|the\s+final{_THE_FINAL_NOT_A_ROUND})\b"
+    r")"
+    r"|(?<=\b(?:19|20)\d\d\s)(?P<year_final>final)\b(?!\s+(?:\d|games?)\b)",
     re.IGNORECASE,
 )
-"""A playoff round, as worded.
+"""A playoff round, as worded, with groups :func:`round_named` reads.
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 7.0.0
+   Reads a conference named before the round, a conference's semifinals
+   and its finals, and the ``ecsf`` abbreviation.
 """
+
+
+Conference = Literal["Eastern Conference", "Western Conference"]
+"""A conference as ``team_alignment`` and ``real_games.playoff_conference``
+name it.
+
+.. versionadded:: 7.0.0
+"""
+
+
+def round_named(match: re.Match[str]) -> tuple[int, Conference | None]:
+    """The round a :data:`ROUND_WORDS` match names, by number (1-4), and the
+    conference it is played in where the words named one ("Eastern
+    Conference", "Western Conference", as ``team_alignment`` holds them),
+    else None. "finals" after a conference is that conference's finals.
+
+    .. versionadded:: 7.0.0
+    """
+    side = match.group("side") or match.group("letter")
+    conference: Conference | None = None if side is None else ("Eastern Conference" if side[0].lower() == "e" else "Western Conference")
+    if match.group("first"):
+        return 1, conference
+    if match.group("second") or match.group("semi"):
+        return 2, conference
+    if match.group("third") or match.group("abbrev") or (side is not None and match.group("finals")):
+        return 3, conference
+    return 4, None
+
+
+# Words before a round that make it the rounds around one rather than the
+# round: "2020 playoffs before the finals", "playoffs until the finals",
+# "2011 playoff vs finals". Nothing narrows to those, so the round is read
+# as words no relation narrows by and refused by name rather than read as
+# the Finals alone - the answer to a different question.
+ROUND_AROUND = re.compile(r"\b(?:before|until|till|prior\s+to|after|vs\.?|versus)\s+(?:the\s+)?(?:nba\s+)?$", re.IGNORECASE)
+"""The words before a round that name the rounds around it (searched on
+the text ending where the round starts).
+
+.. versionadded:: 7.0.0
+"""
+
 
 # One game of a playoff series, by number: "game 4", "game 7s". Read as a
 # number rather than left in the situation (where "Ayton stats in game 4
