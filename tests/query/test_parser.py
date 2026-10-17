@@ -1643,6 +1643,23 @@ def test_how_many_of_a_stat_is_no_guard_on_an_inactive_players_career(question: 
     assert bool(_his_line_guard(question, SpanContext(player_named=True, inactive=True))) is not career
 
 
+@pytest.mark.parametrize(
+    ("question", "roles"),
+    [
+        ("lakers record when AD plays but lebron doesnt", [("Anthony Davis", "played"), ("LeBron James", "absent")]),  # codespell:ignore doesnt - as typed
+        ("lakers record when AD plays but lebron doesn't play", [("Anthony Davis", "played"), ("LeBron James", "absent")]),
+        ("lakers record when lebron sits but AD plays", [("LeBron James", "absent"), ("Anthony Davis", "played")]),
+    ],
+)
+def test_but_joins_two_companions_clauses_as_and_does(question: str, roles: list[tuple[str, str]]) -> None:
+    """ISSUES.md #483 (measured by lane p6-homographs): "but" between two
+    companions' clauses is a joiner (``lexicon.NAME_JOINERS``), so each
+    name takes its own clause's role and the split answers LeBron out."""
+    from association.query.subject import _conditions
+
+    assert [(c.player, c.predicate) for c in _conditions(question, ("Anthony Davis", "LeBron James"), Reading())] == roles
+
+
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
 def test_a_total_asked_of_the_season_ranking_ranks_the_total(con: duckdb.DuckDBPyConnection, question: str, source: str) -> None:
     """#435: "total" asks the season ranking for the season's total (its

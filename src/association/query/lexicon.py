@@ -2800,10 +2800,16 @@ NAME_SHAPED = re.compile(r"[A-Za-z][A-Za-z.'\-]*")
 
 .. versionadded:: 6.0.0
 """
-NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "&", "+", ","})
+# "but" joins two clauses as "and" does: "lakers record when AD plays but
+# lebron doesn't" read "but lebron" as no name and the split answered the
+# games both played (ISSUES.md #483, measured by lane p6-homographs).
+NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "but", "&", "+", ","})
 """The joiners between two names in one phrase.
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 7.0.0
+   "but" is one (ISSUES.md #483).
 """
 
 
