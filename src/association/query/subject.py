@@ -523,13 +523,17 @@ def _question_players(index: names.NameIndex, question: str, routed: list[str], 
 
 
 def _question_players_in_full(players: names.PlayerIndex, name: str, q_words: list[str]) -> bool:
-    """Whether the question writes a player's name whole, two words or
-    more in a row: "miles bridges", "derrick white" are players though each
-    word is an ordinary one (:func:`_question_players`' dictionary rule is
-    for a single word - "best" is Travis Best). ``name`` must be a player's
-    name on record, never a span read as a near spelling ("most most")."""
+    """Whether the question writes a player's name as a name, two of its
+    words or more in a row and in its order: "miles bridges", "derrick
+    white" are players though each word is an ordinary one
+    (:func:`_question_players`' dictionary rule is for a single word -
+    "best" is Travis Best), and so is "jimmy butler" for Jimmy Butler III,
+    whose suffix nobody types (a word beside another word of the same name
+    stands as a name). ``name`` must be a player's name on record, never a
+    span read as a near spelling ("most most")."""
     words = [w.casefold() for w in _words(name)]
-    if len(words) < 2 or not any(q_words[i : i + len(words)] == words for i in range(len(q_words) - len(words) + 1)):
+    runs = [words[at : at + size] for size in range(len(words), 1, -1) for at in range(len(words) - size + 1)]
+    if not any(q_words[i : i + len(run)] == run for run in runs for i in range(len(q_words) - len(run) + 1)):
         return False
     return any(entity.name.casefold() == name.casefold() for entity in find_players(players, name))
 

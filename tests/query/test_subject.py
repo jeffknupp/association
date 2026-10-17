@@ -1482,3 +1482,14 @@ def test_a_teammate_with_a_role_beside_an_absence_is_kept_beside_it(con: duckdb.
     reading = read_route(names_of(con), question, [], "")
     assert reading.asked == PRESENCE_SPLIT, reading.asked
     assert subject.with_without_beside(reading) == beside
+
+
+def test_two_ordinary_words_of_one_name_in_a_row_stand_as_the_name(con: duckdb.DuckDBPyConnection) -> None:
+    """ "jimmy butler nba finals stats" names Jimmy Butler III though each of
+    "jimmy" and "butler" is an ordinary word: two words of one name in a row
+    stand as the name, a suffix nobody types or not - the model's empty
+    reply had left the question about nobody. "butler" alone is still the
+    ordinary word, with no model name beside it."""
+    con.executemany("INSERT INTO players VALUES (?, ?)", [("92", "Jimmy Butler III")])
+    assert _read(con, "jimmy butler nba finals stats").players == ("Jimmy Butler III",)
+    assert _read(con, "butler stats this season").players == ()
