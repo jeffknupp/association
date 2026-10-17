@@ -1228,10 +1228,11 @@ rings does jeremy lin have", which no line of his answers.
 
 COMPANION_DENIED = re.compile(r"\b(?:does|did|do|is|was)(?:n'?t|\s+not)\b", re.IGNORECASE)
 """A denial beside a companion's phrase ("when AD plays and lebron does not",
-"jaylen brown played and jayson tatum did not"): where the companions read
-hold no absence, the denial is a role the reading missed, and the career a
-companion who played implies (decision D13) would answer the games they
-both played - a different question, fluently.
+"jaylen brown played and jayson tatum did not"), which the subject reading
+reads as that companion's absence (ISSUES.md #479). Decision D13's span
+kept a companion's career off where a denial stood beside companions read
+as playing; since the subject reading reads the absence, that guard fired
+on no recorded wording and is gone.
 
 .. versionadded:: 7.0.0
 """

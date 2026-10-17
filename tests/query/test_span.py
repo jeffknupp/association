@@ -234,8 +234,6 @@ def test_the_words_imply_a_career_where_no_season_is_named(question: str, shape:
         # One season asked for, which no career answers.
         ("michael jordan's best season", PLAYER_LINE, {"player_named": True, "inactive": True}),
         ("michael jordan rookie stats", PLAYER_LINE, {"player_named": True, "inactive": True}),
-        # A denial the companions' roles do not hold (the reading read both as playing).
-        ("Lakers record when AD plays and lebron doesnt", PRESENCE_SPLIT, {"companion_played": True, "record": True}),  # codespell:ignore doesnt - the feed's question as typed
         # A versus word with nobody read on its other side.
         ("ron artest vs carmelo anthony", PLAYER_LINE, {"player_named": True, "inactive": True, "versus": True}),
         # An inactive player asked what no line of his answers.
