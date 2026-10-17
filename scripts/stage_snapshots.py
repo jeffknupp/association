@@ -417,7 +417,7 @@ def main() -> int:
     run_parser.add_argument("--today", default=DEFAULT_TODAY, help="the date the run answers as (ASSOCIATION_TODAY)")
     run_parser.add_argument("--threads", type=int, default=1)
     run_parser.add_argument("--match", action="append", help="only questions containing this text (repeatable)")
-    run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"answer the 2,082 feed questions instead ({FEED_RECORDED})")
+    run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"answer the feed questions instead ({FEED_RECORDED})")
     run_parser.add_argument(
         "--workers", type=int, default=1, help="answer in this many processes, each its own shard, joined into one file in the questions' order (D12; 4 cuts the feed from ~290s to ~80s)"
     )

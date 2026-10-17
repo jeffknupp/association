@@ -221,7 +221,7 @@ def run(args: argparse.Namespace) -> int:
     started = time.monotonic()
     with args.out.open("w") as out:
         # The population the ledger was read over, which the report holds
-        # it to (HELD_PATH): the 628 recorded questions, the 2,082 feed
+        # it to (HELD_PATH): the 628 recorded questions, the 2,070 feed
         # questions, or neither.
         out.write(json.dumps({"meta": meta}) + "\n")
         for index, (question, reply) in enumerate(items, 1):
@@ -510,7 +510,7 @@ def main() -> int:
     run_parser.add_argument("--db-path", type=Path, default=Path("nba.duckdb"))
     run_parser.add_argument("--today", default=DEFAULT_TODAY, help="the date the run reads as (ASSOCIATION_TODAY)")
     run_parser.add_argument("--match", action="append", help="only questions containing this text (repeatable)")
-    run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"read the 2,082 feed questions instead ({FEED_RECORDED})")
+    run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"read the feed questions instead ({FEED_RECORDED})")
     run_parser.add_argument("--workers", type=int, default=1, help="read in this many processes, each its own shard, joined into one file in the questions' order (D12)")
     run_parser.add_argument("--shard", default="", metavar="K/N", help=argparse.SUPPRESS)
     run_parser.set_defaults(func=run)

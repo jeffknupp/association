@@ -2191,6 +2191,23 @@ with nothing to read fills the silence from its own weights), and more data
     `9f9d557b`); two of p6-sentence's commits are red on the complexity
     hook in history.
 
+61. **`Reading.point` flattened (2026-10-17, master `049a027d`).** Lane
+    p6-flatten, alone on the seam: the point's fields are written onto the
+    parser's Reading (`reading.POINT_FIELDS`), its verdict one field
+    (`point_verdict`: read, `PointDeclined(why)` or the `Cause`); 33 src
+    and 80 test sites of the nested point gone, `src/association/query`
+    +94 lines (the new types' docstrings; no net cut - the gain is one
+    record, and `reader_cases.json` 118,491 -> 88,205 lines). Measured
+    first: the outer Reading and its point disagreed on `span` (4 corpus,
+    10 feed), `lines` (5 feed) and `measure` (10 feed), the point's value
+    standing in each, since the planner planned from it. Proved under a
+    record mapping (`stages/flatten_map.py`): 628, 2,070, 2,698, 578 and
+    8,567 calls identical, a perturbed span caught. One real gap found and
+    fixed before it (`cfbe6e77`): the point reader's own count career was
+    said with no D13 sentence - 4 corpus and 8 feed answers gain it, the
+    planned query identical on every question; the lead's re-proof
+    confirmed all 12 as the sentence appended, F133 and F098 kept.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
