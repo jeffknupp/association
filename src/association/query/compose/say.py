@@ -28,7 +28,7 @@ from association.query.measure import CATALOG
 from association.query.measures import PERIOD_COLUMNS
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import Note, decided, note
-from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STAT_LABELS, _joined, period_columns
+from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STAT_LABELS, _joined, period_columns, round_phrase
 from association.query.reading import (
     GAME_HIGHS,
     GAMES_COUNTED,
@@ -90,6 +90,7 @@ from association.query.result import (
     Refusal,
     Result,
     Role,
+    RoundOf,
     Rows,
     Run,
     Runs,
@@ -4459,9 +4460,12 @@ def _record_none(result: Result) -> str:
     team, opponent, facts = result.subject, result.narrowing.opponent, _facts(result, TeamRecordFacts)
     season, season_type = result.span.season, result.span.season_type or 2
     kind = "postseason" if season_type == 3 else "regular-season"
-    cut, series = result.narrowing.cell(Calendar) or Calendar(), result.narrowing.cell(GameOfSeries)
+    cut, series, playoff = result.narrowing.cell(Calendar) or Calendar(), result.narrowing.cell(GameOfSeries), result.narrowing.cell(RoundOf)
     month, calendar = cut.month, cut.situation
     where = f" {calendar}" if calendar else (f" in {MONTH_NAMES[month - 1]}" if month is not None else "")
+    # A round: "played no games in the Finals in the 2026 postseason", never
+    # "no games in the 2026 postseason" about a team that played seven.
+    where += f" in {round_phrase(playoff.playoff_round)}" if playoff is not None else ""
     since, until, game_n = result.span.since, result.span.until, series.n if series is not None else None
     since_phrase = "" if since is None else (f" from {since} through {until}" if until is not None else f" since {since}")
     game_n_phrase = f" in game {game_n} of {'the' if opponent is not None else 'each'} series" if game_n else ""

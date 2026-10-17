@@ -681,7 +681,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     seasons = span_of(asked, "games", season_type=BOTH_SEASON_TYPES if both else season_type)
     # The calendar's or the opponents' alignment's narrowing too, which the
     # log's row says it honors and which was dropped here, silently.
-    narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=venue, situation=scope.cuts.situation)), opponent=opponent, date=date)
+    narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=venue, round=scope.cuts.round, situation=scope.cuts.situation)), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):
         return narrowed
     _team_log_narrow_lines(narrowed, lines)

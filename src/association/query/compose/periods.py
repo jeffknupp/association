@@ -773,7 +773,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Re
     # Every cell the shape reads, named: the quarter or half is the
     # relation's narrowing too, so every read of `narrowed` sees that part
     # of each game.
-    narrowing = TeamQuery(cuts=Cuts(venue=scope.cuts.venue, game_n=scope.cuts.game_n, situation=scope.cuts.situation), window=scope.window, period=scope.period)
+    narrowing = TeamQuery(cuts=Cuts(venue=scope.cuts.venue, game_n=scope.cuts.game_n, round=scope.cuts.round, situation=scope.cuts.situation), window=scope.window, period=scope.period)
     narrowed = team_games(con, team, span, narrowing, opponent=scope.cuts.opponent, date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         return narrowed

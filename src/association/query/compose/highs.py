@@ -186,7 +186,9 @@ def read_team_game_high(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result 
         team = found
     season_type = q.span.season_type or 2
     seasons = span_of(q.span, "games", season_type=season_type)
-    narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=q.cuts.venue, game_n=q.cuts.game_n, situation=q.cuts.situation)), opponent=q.cuts.opponent, date=q.cuts.date)
+    narrowed = team_games(
+        con, team, seasons, TeamQuery(cuts=Cuts(venue=q.cuts.venue, game_n=q.cuts.game_n, round=q.cuts.round, situation=q.cuts.situation)), opponent=q.cuts.opponent, date=q.cuts.date
+    )
     if isinstance(narrowed, Unanswered):
         return narrowed
     measure = q.measure

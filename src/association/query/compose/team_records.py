@@ -48,8 +48,8 @@ from association.query.coverage import coverage_refusal, floor_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import PointShape, ShapeDeclined, Situation, Unsupported
-from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, TeamRecordFacts, Unanswered
+from association.query.reading import PlayoffRound, PointShape, ShapeDeclined, Situation, Unsupported
+from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, RoundOf, Rows, Scalar, Span, TeamRecordFacts, Unanswered
 from association.query.season_text import MONTH_NAMES
 from association.query.team_games import TeamNarrowed
 from association.query.team_metrics import FIRST_FULL_REGULAR_SEASON, games_scope
@@ -193,14 +193,14 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
     if scope.span.both:
         # "including the playoffs": checked before the game_n/season_type
         # conflict below, which assumes one named type.
-        if scope.cuts.game_n:
-            raise Unsupported("a game of a playoff series needs one named season type, not both combined")
+        if scope.cuts.game_n or scope.cuts.round is not None:
+            raise Unsupported("a game of a playoff series or a playoff round needs one named season type, not both combined")
         if split == "month":
             raise Unsupported("a month split has no combined-season-type form yet")
         return _combined(con, q, asked)
     if scope.cuts.game_n and season_type != 3:
         raise Unsupported(f"game {scope.cuts.game_n} names a game of a playoff series, and this is a regular season question")
-    return _route(con, q, replace(asked, game_n=scope.cuts.game_n, split=split), season_type)
+    return _route(con, q, replace(asked, game_n=scope.cuts.game_n, playoff_round=scope.cuts.round, split=split), season_type)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -219,6 +219,7 @@ class _Asked:
     calendar: CalendarNarrowing | None
     alignment: AlignmentNarrowing | None = None
     game_n: int | None = None
+    playoff_round: PlayoffRound | None = None
     split: str | None = None
 
 
@@ -226,14 +227,14 @@ def _route(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season_t
     """Which shape the settled slots pick out: a table by month, a tally
     since a season, the standings, or a tally of one season or every one."""
     if asked.split == "month":
-        if asked.game_n:
-            raise Unsupported("a month split has no one-game-of-a-series form yet")
+        if asked.game_n or asked.playoff_round is not None:
+            raise Unsupported("a month split has no one-game-of-a-series or one-round form yet")
         if asked.since is not None:
             return _by_month_span(con, q, asked, season_type)
         return _by_month(con, q, asked, None if asked.career else (asked.season or current_season()), season_type)
     if asked.since is not None:
         return _games_record(con, q, asked, None, season_type)
-    if asked.opponent is None and season_type == 2 and asked.month is None and not asked.game_n and asked.calendar is None and asked.alignment is None:
+    if asked.opponent is None and season_type == 2 and asked.month is None and not asked.game_n and asked.playoff_round is None and asked.calendar is None and asked.alignment is None:
         if asked.career:
             return read_standings_career(con, asked.team, asked.venue)
         return read_standings_season(con, asked.team, asked.season or current_season(), asked.venue)
@@ -277,6 +278,10 @@ def _record_games(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, s
         if season_type != 3:
             raise Unsupported(f"game {asked.game_n} names a game of a playoff series, and this is a regular-season question")
         narrowed.narrow_series_game(asked.game_n)
+    if narrowed_by and asked.playoff_round is not None:
+        # One round of the postseason, read off each game's place in its
+        # bracket - its own phrase ("in the Finals") through filters().
+        narrowed.narrow_round(asked.playoff_round)
     rows = rows_of(con, compile_team_over(replace(q, shape="rows"), asked.team, span, narrowed, ascending=True))
     games = [_record_game(r) for r in rows]
     for game, row in zip(games, rows, strict=True):
@@ -408,6 +413,8 @@ def _record_cells(asked: _Asked) -> tuple[Cell, ...]:
         cells.append(Calendar(month=asked.month, situation=situation))
     if asked.game_n:
         cells.append(GameOfSeries(n=asked.game_n))
+    if asked.playoff_round is not None:
+        cells.append(RoundOf(playoff_round=asked.playoff_round))
     return tuple(cells)
 
 

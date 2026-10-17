@@ -2998,6 +2998,31 @@ def test_team_record_game_n_combines_with_since_across_postseasons(team_cells_co
     assert result.text == "The Boston Celtics are 2-0 (1.000) in game 1 of each series in the postseasons since 1989.\n  Home 2-0, away 0-0."
 
 
+def test_team_record_honors_a_playoff_round_and_says_it_when_empty(team_cells_con: AnswerContext) -> None:
+    """ "Celtics record in the first round": the record keeps its own route
+    and narrowed the round nowhere - "knicks second round record 2026" was
+    16-3, the whole postseason. The Celtics' one series is both teams' first;
+    a round they did not play is said as that round, never as a postseason
+    with no games."""
+    first = Reading(who=Who(kind="team", teams=("Celtics",)), cuts=Cuts(round=PlayoffRound(text="first round", number=1)), span=Span(season=_TC_S, season_type=3))
+    result = team_record(team_cells_con, first)
+    assert result.data["wins"] == 2 and result.data["losses"] == 1
+    assert result.text.startswith(f"The Boston Celtics went 2-1 (.667) in the first round in the {_TC_S} postseason.")
+    finals = replace(first, cuts=Cuts(round=PlayoffRound(text="finals", number=4)))
+    assert team_record(team_cells_con, finals).text == f"The Boston Celtics played no games in the Finals in the {_TC_S} postseason."
+
+
+def test_a_teams_log_honors_a_playoff_round(team_cells_con: AnswerContext) -> None:
+    """The team log rebuilt its cuts from a venue and a situation, the round
+    dropped: "celtics game log in the 2024 finals" listed the last 10 of 19
+    playoff games."""
+    first = Reading(who=Who(kind="team", teams=("Celtics",)), cuts=Cuts(round=PlayoffRound(text="first round", number=1)), span=Span(season=_TC_S, season_type=3))
+    finals = replace(first, cuts=Cuts(round=PlayoffRound(text="finals", number=4)))
+    log = answered_as(PLAYER_LOG)
+    assert "in the first round" in log(team_cells_con, first).text and "(2-1)" in log(team_cells_con, first).text
+    assert "none of them in the Finals" in log(team_cells_con, finals).text
+
+
 def test_team_record_game_n_refuses_a_regular_season(team_cells_con: AnswerContext) -> None:
     """A series has games 1-7; a regular season has nothing "game 4" names -
     the same check `team_relation.team_games` makes for every other team reader."""

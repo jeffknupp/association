@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from association.query.notes import Note
-from association.query.reading import CAUSES
+from association.query.reading import CAUSES, PlayoffRound
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -143,6 +143,18 @@ class GameOfSeries:
 
 
 @dataclass(frozen=True)
+class RoundOf:
+    """One playoff round (the draft's ``Round``), as the relation narrowed
+    to it: the round the words named
+    (:class:`~association.query.reading.PlayoffRound`).
+
+    .. versionadded:: 7.0.0
+    """
+
+    playoff_round: PlayoffRound
+
+
+@dataclass(frozen=True)
 class Calendar:
     """A calendar narrowing (the draft's ``Calendar``): a month by number,
     or a situation as the reading named it ("on Christmas").
@@ -192,7 +204,7 @@ class ShotValue:
     value: int
 
 
-Cell = Period | OnDate | Line | Role | GameOfSeries | Calendar | Companions | Met | ShotValue
+Cell = Period | OnDate | Line | Role | GameOfSeries | RoundOf | Calendar | Companions | Met | ShotValue
 """The closed set of cells a read applies beyond the span, typed
 (``ROADMAP-TYPES.md``, "Filter - one closed union in place of 39 slots" -
 the minimal set the Result needs). An opponent, a venue and the teammates
