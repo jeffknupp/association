@@ -64,26 +64,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours (the reader; the 3B's empty replies are the trigger).
 - **GitHub:** #488
 
-### "but" between two companions is no joiner: "lakers record when AD plays but lebron doesnt" reads both as playing <!-- codespell:ignore doesnt - the wording as typed -->
-- **Found:** 2026-10-16, lane p6-subject, probing #479's clause reading.
-- **Evidence:** `subject._conditions_read_clauses_split` splits a companion phrase at `lexicon.NAME_JOINERS` ("and", "or", "nor", "&", "+", ","); "but" is none, so "AD plays but lebron doesnt" is one clause with "plays" before the denial, the denial is not read as LeBron's (`_conditions_read_clauses_bare_before`), and both read as playing. Probed; 0 of the 628 and the 2,070 hold the wording. <!-- codespell:ignore doesnt - the wording as typed -->
-- **User sees:** the games both played (or a refusal for a span outside their time together), where Davis on and LeBron off was asked.
-- **Next step:** "but" joins `lexicon.NAME_JOINERS` (the lexicon lane's file): `NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "but", "&", "+", ","})`; then a test per wording.
-- **Trialed:** 2026-10-17, lane p6-homographs (on `121b8cf3`, the line applied and reverted, not committed): the `NAME_JOINERS` line alone fixes it - "lakers record when AD plays but lebron doesnt", "... but lebron doesn't play" and "lakers record when lebron sits but AD plays" each answer "Los Angeles Lakers with and without LeBron James in games Anthony Davis played" (out 63 games 29-34, played 250 158-92), as "... and lebron doesnt" does; no `subject.py` change is needed, since the clause reader splits at `NAME_JOINERS` itself (`_conditions_read_clauses_split`) and a word list there would be a second copy. The test to land with it: `test_each_companion_takes_the_role_its_own_clause_states` (`tests/query/test_subject.py`) gains `("lakers record when AD plays but lebron doesnt", ("Anthony Davis", "LeBron James"), [("Anthony Davis", "played"), ("LeBron James", "absent")])`. <!-- codespell:ignore doesnt - the wording as typed -->
-- **Priority:** P1 - a different question answered fluently (probed wording).
-- **Source:** ours.
-- **GitHub:** #483
-
-### A start one of two companions is denied reads as both starting on the with/without split: "sixers record when embiid starts and maxey doesnt start" <!-- codespell:ignore doesnt - the wording as typed -->
-- **Found:** 2026-10-16, lane p6-subject, probing #479's neighbors.
-- **Evidence:** the denied-role cause (`parse._reading_from_route_denied`, #248) is not said on the with/without split, which "shows both halves" - true of one teammate, not of two: `subject._conditions_read_clauses` turns only a PLAYING clause into an absence on a denial, so both companions read `started`, and the split answers "Joel Embiid and Tyrese Maxey started" 22-13 against "either did not start" 23-24 - never Embiid starting with Maxey not. No predicate exists for a start denied (`player_games.CONDITION_PREDICATES`). Probed; 0 recorded wordings.
-- **User sees:** the both-started row, where one started and one did not was asked.
-- **Next step:** refuse a denied start on the split too where it names two or more companions (the `denied_role` cause, `parse.py`'s - the lexicon lane's file), or add a `not_started` predicate the presence statement counts (`conditions._with_without_held`).
-- **Found further:** 2026-10-17, lane p6-homographs. (1) The parse line alone - `if reading.asked == PRESENCE_SPLIT and len(reading.companions) < 2:` in `parse._reading_from_route_denied` - refuses the wording, trialed and reverted, but the cause names the wrong player: "'when embiid starts and maxey doesnt start' asks for the games Joel Embiid did not start", since the cause takes the first companion of the role (`next(c.player for c in roles if c.predicate == predicate)`), not the one whose clause holds the denial; the player has to be the clause's - the companion `_near` the words of the clause (`subject._conditions_read_clauses_split` over the phrase) that `lexicon.DENIED_ROLE` searches. (2) Since `121b8cf3` (this lane) the split keeps a teammate's start beside an absence, so a typed denial would let the split answer the question rather than refuse it: the games Embiid started, divided by whether Maxey started - which needs the denial on the typed companion (`reading.Companion`, reading.py's: a `denied: bool`, or a `not_started` predicate the presence statement counts), read in `subject._conditions_read_clauses` where a denied PLAYING clause already turns absent. Both halves are the lexicon lane's files; nothing of the subject side stands alone (a helper only parse would call is dead code to vulture). <!-- codespell:ignore doesnt - the wording as typed -->
-- **Priority:** P1 - a different question answered fluently (probed wording).
-- **Source:** ours.
-- **GitHub:** #484
-
 ### A team ranking asked of the best single season across years answers the current season: "Which team has made the most three pointers in a season" ranks 2026's teams
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), refusing the players' half (`point._everyone_single_season`, the `single_season_ranking` cause).
 - **Evidence:** on `98b22dd`'s feed run, "Which team has made the most three pointers in a season" answers "3-pointers made per game, 2026 regular season - highest first, of 30 teams: 1 Charlotte Hornets 16.4 ...", "which team has made the most three pointers in a season before 2015" the 2015 season's, and "highest ppg*ts% by a team in a season" 2026's points per game - each a per-game figure over one season where the most in any season was asked ("made", "season" unread). The players' ranking refuses the class by name since lane L's commit; the team ranking (`point.team_read_point`, the team-season relation) has no such check.
@@ -114,6 +94,33 @@ before that commit needs re-checking against the current warehouse.
 
 ## P2: misleading or incomplete
 
+### "final" beside a year is not the Finals: "Leonard final 2013" is refused for an unread window word
+- **Found:** 2026-10-17, lane p6-causes (step 3), the sample's FS059; "leonard 2019 final", "Brunson final 2026" the same.
+- **Evidence:** the round reader matches "the final(s)", "nba final(s)" and "finals" (#455's fix); a bare "final" beside a year is left to the window class and refused `unread_window`, where the key answers the 2013 Finals.
+- **User sees:** a refusal naming the wrong missing thing.
+- **Next step:** in the lexicon's round words, "final" beside a year (not before a count) is the round.
+- **Priority:** P2 - a refusal with a false cause on three recorded wordings.
+- **Source:** ours.
+- **GitHub:** #491
+
+### A team's points allowed is read as a player ranking: "nba team points allowed per game 2025" is refused as a team-relations question
+- **Found:** 2026-10-17, lane p6-causes, the sample's FS091; "Least points allowed nba teams this season per game" the same.
+- **Evidence:** "points allowed" is no measure of the teams' parent row, so the words fall to the players' ranking and the planner refuses `team_relations_question`; the key ranks all 30 teams by points allowed per game.
+- **User sees:** a refusal with a false cause where a table of 30 teams was asked.
+- **Next step:** the teams' parent row reads "points allowed" (the opponents' points, `Measure.whose`) as a team metric of the season table.
+- **Priority:** P2.
+- **Source:** ours.
+- **GitHub:** #492
+
+### The subject seam's leftovers from step 3: a team after a window or in a list, "ron artest", "mpj", "dirk novinski", "playpff", and "may" with no model name
+- **Found:** 2026-10-17, lane p6-causes, held sample ids its files could not reach (the subject reading's).
+- **Evidence:** FS367 "spurs vs okc log on road" reads no team for "spurs" beside "vs okc" (`subject_not_read`); FS160 and FS286 place no team after a window or in a list of opponents (`team_not_read`); FS095 "ron artest" and FS296 "dirk novinski" are not read (a nickname, a typo beyond the near-spelling pass); FS209 "mpj" is no initialism on record; FS279 "playpff" is read as a name; FS238 and FS298 read "may" as Sean May where the feed's replies name nobody (#488's class).
+- **User sees:** refusals naming the wrong missing thing on nine sample wordings.
+- **Next step:** each in `subject.py`/`entities.py`: a team word beside a versus word read as the team whatever else stands; a window or a list before a team; "ron artest" and "mpj" in the nickname and initials tables; a typo past one edit asked about by name; "may" under the homograph rule when no model name anchors it (#488).
+- **Priority:** P2 - nine wrong-cause refusals on graded wordings.
+- **Source:** ours.
+- **GitHub:** #493
+
 ### A teammate's stint ends at his last box score, so over a career the games he sat out before a trade are not "without" him: "kyrie second half game log without luka" counts 18 of the key's 30
 - **Found:** 2026-10-16, lane p6-d15, reading the feed sample's FS354 against its key.
 - **Evidence:** over a career the absence keeps the teammate's tenure (decision D15), and a stint runs from his first box-score row for the team to his last (`player_games._teammate_stints`, `conditions._stints`; "the gap between a traded player's last game for one team and his first for the next belongs to neither, which undercounts rather than guesses"). Luka Doncic's last Dallas row is 2024-12-25 (the injury he was traded during), so Kyrie Irving's January 2025 Dallas games before the 2025-02-01 trade are outside the stint: the period log answers 18 games at 14.7 second-half points where the key's 30 Dallas games without Luka are 14.4. The whole-game log, the line and the with/without split read the same stint.
@@ -129,6 +136,7 @@ before that commit needs re-checking against the current warehouse.
 - **Evidence:** "The most 3-pointers made in a single game by a team in the regular season since 1993-94: 29, by the Boston Celtics on 2026-04-10 ... the Memphis Grizzlies on 2026-04-06 ... and the Boston Celtics on 2024-10-22" - the key holds four games at 29, the fourth Milwaukee vs Miami on 2020-12-30 (event 401267211, `team_box_stats` holds the 29); the reader's default limit of 3 rows cuts the tie and the sentence names the cut list as the holders.
 - **User sees:** a record shared four ways said as shared three ways.
 - **Next step:** the team high's reader (`compose.highs`/`compose.team`, TEAM_GAME_HIGHS) reads past the limit while the next row ties the last, or says "and N more"; a test with a four-way tie.
+- **Also (the lead, 2026-10-17, `widening_checks.py` on run 87):** a player's single-game highs cut a tie the same way - "chris paul career high as a spur" lists 19, 18, 18 and "gilbert arenas career high vs kobe" 45, 37, 37, each a fourth row at the cutoff's figure possibly cut.
 - **Priority:** P2 - an incomplete answer said as complete.
 - **Source:** ours.
 - **GitHub:** #476
@@ -1837,15 +1845,6 @@ The 391 date-only games printed a day early (#76), 2008's team rebound columns
 to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 
-### `ranking_needs_stat` is said where the words ask no ranking: "What position did Larry Bird play?" is refused as a ranking without a stat
-- **Found:** 2026-10-14, the Phase 5 review, reading the feed's 100 `ranking_needs_stat` refusals at `3dc37821`.
-- **Evidence:** the question that names nobody the reading could place and no ranking word is now refused by `subject_not_read` (lane p6-causes: 58 refusals and 30 declines of the feed). What remains: a team's or a position's players asked with no ranking word and no stat - "lakers players in the 2000s", "new york knicks players in 2012", "player in Milwaukee Bucks(2022-2023)", "nba players from the 76ers in the 2000s" (FS151), "2018 pacers playoff stats by player", "chicago bulls forwards by year 2010s", "Who is Knick power forward" - 9 of the 2,070 on `f7a97f1c`, still told a ranking needs a stat; they ask a roster.
-- **User sees:** a refusal that says a ranking needs a stat on a question that asked for a team's players.
-- **Next step:** read a team's players with no stat as the team's players ranked by games played (the key's own reading of FS151), or refuse by the roster as the missing thing.
-- **Priority:** P2 - a refusal naming the wrong cause; 9 of the 2,070.
-- **Source:** ours.
-- **GitHub:** #448
-
 ### "without threes" is read as the player Tree Rollins: "most ppg without threes" refuses as games without a teammate
 - **Found:** 2026-10-14, the Phase 5 review (the Phase 4 review's #404 class, "without free throws", seen on "threes").
 - **Evidence:** the absence reader ("without X") takes "threes" as a near spelling of Tree Rollins and the question asks for games without that teammate; "without threes"/"without free throws"/"excluding threes" name a stat the figure should leave out (points minus 3-pointers), which nothing reads.
@@ -1910,6 +1909,60 @@ those were found.
 - **GitHub:** #467
 
 ## P3: refusal or gap
+
+### "shooting percentages" names no measure: "nba current best shooting percentages" is refused for a ranking stat
+- **Found:** 2026-10-17, lane p6-causes, the sample's FS072.
+- **Evidence:** the plural "shooting percentages" (and "best shooting percentage") matches no catalog alias; the key ranks FG%, 3P% and FT% together.
+- **User sees:** `ranking_needs_stat` where three columns were asked.
+- **Next step:** an alias reading the three splits as one line, or a question back naming the three.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #494
+
+### A misspelled stat word is unread: "most 30+ pointd regular season games" is refused for a ranking stat
+- **Found:** 2026-10-17, lane p6-causes, the sample's FS395 ("most 10/20/30/40+ pointd ...").
+- **Evidence:** "pointd" matches no stat word; the line's number stands with no stat and the ranking refuses `ranking_needs_stat`.
+- **User sees:** a refusal with a false cause.
+- **Next step:** a near spelling of a stat word after a line's number is read as the word and said, as "quater" is (#457's fix).
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #495
+
+### The coverage floor is not said under a reading's own refusal: "Knicks fgm 1988-89" names the reading's cause, not the floor
+- **Found:** 2026-10-17, lane p6-causes, the sample's FS174, FS245 and FS380 (Magic Johnson's Finals before 1994).
+- **Evidence:** the floor is checked on the planned point's scope; a reading that refuses before any point (a round, an unread fact) has no point and so no floor, and its cause is true but not the deepest - no data for 1989 would answer first.
+- **User sees:** a refusal that sends the user to rephrase a question no data could answer.
+- **Next step:** check the floor of the cause's shape over the span before saying the reading's refusal - a change to AGENTS.md's rule that a refusal the reading comes to has no floor; Jeff's view first.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #496
+
+### The first game a yes/no stat holds is not read: "westbrook first triple double in one game" is refused for an unknown stat
+- **Found:** 2026-10-17, lane p6-causes, the sample's FS146.
+- **Evidence:** "first <yes/no stat>" asks the earliest game the predicate holds; no window reads "first" over a yes/no stat.
+- **User sees:** `unknown_stat`.
+- **Next step:** "first <yes/no stat>" is a log over the stat in ascending date order with a limit of one.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #497
+
+### A minimum within one season's reach keeps the season default unsaid: "worst 3pt% with atleast 1000 3pt attempted" answers "No players qualified in 2026"
+- **Found:** 2026-10-17, lane p6-causes, the sample's FS310.
+- **Evidence:** D13's minimum rule reads the career only above 85 games; 1,000 attempts is within a season's reach, so the season default stands and the refusal says no qualifier without the career wording.
+- **User sees:** a true refusal with no way to the career answer (Charles Barkley, 26.6%).
+- **Next step:** say the season default with the career wording, as the D13 decision sentence does.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #498
+
+### A career and a named season asked at once are refused: FS117 names both
+- **Found:** 2026-10-17, lane p6-causes, the sample's FS117.
+- **Evidence:** the span reader refuses both ends named at once; the key answers either reading.
+- **User sees:** a refusal.
+- **Next step:** Jeff's span policy: the named season as the default with the career wording, or a question back.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #499
 
 ### A model's name holding a request verb names nobody: "trace jokic's mark from his best season" asks "did you mean Nikola Jokic?"
 - **Found:** 2026-10-17, lane p6-homographs (`~/association-research/stages/homographs.py`, the corpus's one GRAMMAR hit).
@@ -2778,6 +2831,15 @@ those were found.
 - **GitHub:** #469
 
 ## P4: tooling, docs, low impact
+
+### A module-level constant reassigned in its own module is caught by no gate
+- **Found:** 2026-10-17, lane p6-causes: `lexicon.POSITION_GROUPS` assigned twice in the lexicon; ruff, mypy and `check_duplicate_names.py` (cross-module only) said nothing, and one test failed.
+- **Evidence:** the duplicate-names check is name-only across modules by design; within a module a second assignment silently wins.
+- **User sees:** nothing until a value moves.
+- **Next step:** a hook that flags a repeated module-level assignment of an UPPER_CASE name within one module.
+- **Priority:** P4.
+- **Source:** ours.
+- **GitHub:** #500
 
 ### The sayer prints a range's start twice: "since December 11, 2023 since 2023"
 - **Found:** 2026-10-14, Phase 5's step 6, lane L, probing #412's wordings on master (`5a621f5`); pre-existing.

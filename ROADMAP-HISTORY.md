@@ -2146,6 +2146,17 @@ with nothing to read fills the silence from its own weights), and more data
     `sentence.py` fix, `Reading.point` flattened, the widened-span traps
     as one vertical lane, the playoff round lifted and wired.
 
+58. **Step 3 landed (2026-10-17, master `622d9d4c`).** The refusal names
+    the right cause on 26 more of the sample's 79 false causes (28 were
+    answered by step 2's lanes; 25 are held by wording, 13 of them the
+    subject seam's): three new causes, three facts no table holds, a said
+    default for a career high's stat, a misspelled "last", the season line's
+    attempts, "but" and a denied role, the denial guard deleted, rebuilt
+    games counted under a yes/no stat. The first merge scored by the keyed
+    score (0 regressions, 28 candidates) and the widening harness (2 ties
+    at a high's cutoff, #476's class). Issues #448, #483, #484 closed; ten
+    findings filed.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

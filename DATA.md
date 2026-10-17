@@ -1831,3 +1831,15 @@ holds them as a table and `templates.check_coverage()` refuses a question that
 lands under one. `scripts/check_coverage.py` verifies every floor against a
 built warehouse. See `AGENTS.md` for the rules an agent must follow when adding
 one.
+
+### A player's season table and his box scores disagree on games and attempts
+
+ESPN's per-season totals (`player_season_stats_deduped`) and the box scores
+(`player_game_log`) are two sources, and they differ for a long career.
+Measured 2026-10-17 for LeBron James, regular season: the season table sums
+31,502 field-goal attempts over 1,622 games; the box scores 31,520 over 1,646
+games played (58 of them rebuilt from play-by-play with no minutes). A career
+line read from the season table ("lebron career shot attempts": 31,502) and a
+log or a count read from the box scores can therefore differ by a game or a
+few dozen attempts; the answer names its source's span, not which source.
+
