@@ -46,15 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### A companion denied in the words is read as playing: "boston celtics record in games in which jaylen brown played and jayson tatum did not" answers the games both played
-- **Found:** 2026-10-16, lane p6-span, guarding D13's companion career (FS339).
-- **Evidence:** the subject reading reads every name of "when AD plays and lebron doesnt", "jaylen brown played and jayson tatum did not in the 2025/26 regular season" (two feed wordings) as a companion who PLAYED (`Companion.predicate == "played"`), the denial left in `Reading.unread`; the with/without split then answers "Jaylen Brown and Jayson Tatum played" against "either out", never the row asked (Brown on, Tatum off). #248 is the same misread of "doesnt start". The span tagger now keeps D13's career off such a question (`lexicon.COMPANION_DENIED`), so the no-season wording refuses as before; the wordings that name a season answer the wrong split fluently. <!-- codespell:ignore doesnt - the feed's question as typed -->
-- **User sees:** the team's record with both players, where its record with one and without the other was asked.
-- **Next step:** the subject reading (`subject._conditions_read`) reads a denial after a companion's name or verb ("doesnt", "did not", "isn't playing") as the absent role; the split then answers the mixed row (`compose.presence`, `_with_without_played` already divides by each predicate); a test per wording; the span's guard then reads nothing and leaves. <!-- codespell:ignore doesnt - the feed's question as typed -->
-- **Priority:** P1 - a different question answered fluently, two feed wordings and #248's.
-- **Source:** ours.
-- **GitHub:** #479
-
 ### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
 - **Evidence:** on `p5s6-L` (feed, no names), "Westbrook wins per season" answers "Russell Westbrook, points, rebounds and assists per game by regular season, 2023-2026 ..." (before the fix his 2026 line), "wins" unread: `measure.named("wins")` reads nothing outside a record's games won (`lexicon.GAMES_WON` under `LINE_RECORD`), so step 1's `unread_stat` cannot fire on it, and the players' ranking ("most wins by player nba 2010s", 14 of the 2,082) is refused by `ranking_needs_stat` since #421's fix. A player's wins are the games his team won with him playing (`won` is a yes/no measure of the player-games relation).

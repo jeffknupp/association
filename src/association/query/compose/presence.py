@@ -37,7 +37,7 @@ from association.query.player_games import _joined
 from association.query.player_relation import career_end, condition_scope
 from association.query.reading import Filtered, Unsupported
 from association.query.result import Companions, Grouped, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
-from association.query.subject import with_without_named
+from association.query.subject import with_without_beside, with_without_named
 
 from .core import rows_of
 from .team import TeamQuery, compile_team_presence, team_coverage_refusal
@@ -88,6 +88,11 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Resul
     if isinstance(resolved, Unanswered):
         return resolved
     mates, subject = resolved
+    # The teammates who played beside an absence ("when AD plays and lebron
+    # doesn't"): the games are those they played, divided by the absence.
+    beside = _with_without_beside(con, with_without_beside(scope), mates, covered)
+    if isinstance(beside, Unanswered):
+        return beside
 
     named = [m.name for m in mates]
     all_of = _joined(named)
@@ -105,13 +110,27 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Resul
     if isinstance(against, Unanswered):
         return against
     predicates = _with_without_predicates(con, mates, roles, covered)
-    compiled = compile_team_presence(con, covered, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates)
+    compiled = compile_team_presence(con, covered, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates, beside=[b.id for b in beside])
     games, unknown = presence_games(rows_of(con, compiled), windows)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
     if not games:
         spell_text = "; ".join(f"{_with_without_stint_team(w, team_names)} {w.first} to {w.last}" for w in windows)
         return _with_without_empty_games(subject, mates, named, all_of, covered, spell_text, unknown)
-    return _with_without_result(covered, subject, mates, asked_without, predicates, windows, against, games, unknown, team_names)
+    return _with_without_result(covered, subject, mates, asked_without, predicates, windows, against, games, unknown, team_names, beside)
+
+
+def _with_without_beside(con: duckdb.DuckDBPyConnection, texts: list[str], mates: list[Entity], scope: _Scope) -> list[Entity] | Unanswered:
+    """The teammates who played beside an absence, resolved against the box
+    scores as the teammates are - or the answer resolving one gives up
+    with; one who is among the teammates divided by is not kept twice."""
+    beside: list[Entity] = []
+    for text in texts:
+        found = resolved_player(con, text, "teammate", available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
+        if isinstance(found, Unanswered):
+            return found
+        if found.id not in {m.id for m in (*mates, *beside)}:
+            beside.append(found)
+    return beside
 
 
 def _with_without_result(
@@ -125,6 +144,7 @@ def _with_without_result(
     games: list[dict[str, Any]],
     unknown: int,
     team_names: dict[str, str],
+    beside: list[Entity],
 ) -> Result:
     """The groups - team by team in the order the games were played, so a
     career reads forwards, and side by side, the question's own side first -
@@ -142,11 +162,20 @@ def _with_without_result(
         subject=subject.name if subject is not None else ", ".join(teams),
         relation="team",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last)),
-        narrowing=Narrowing(phrase=f" vs the {against.name}" if against is not None else "", opponent=against.name if against is not None else None),
+        narrowing=Narrowing(phrase=_with_without_narrowing_phrase(against, beside), opponent=against.name if against is not None else None),
         parts=(Part(body=Grouped(by="presence", rows=tuple(groups), of=_with_without_companions(named, asked_without, predicates))),),
         notes=tuple(notes),
         facts=RecordFacts(teams=tuple(teams), player=subject.name if subject is not None else None),
     )
+
+
+def _with_without_narrowing_phrase(against: Entity | None, beside: list[Entity]) -> str:
+    """What narrows both rows, as the heading says it after the teammates:
+    the opponent, and the games the teammates beside an absence played."""
+    phrase = f" vs the {against.name}" if against is not None else ""
+    if beside:
+        phrase += f" in games {_joined([b.name for b in beside])} played"
+    return phrase
 
 
 def _with_without_companions(named: list[str], asked_without: bool, predicates: list[tuple[str, tuple[str, int] | None]]) -> Companions:

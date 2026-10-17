@@ -678,6 +678,8 @@ def presence_games_sql(
     opponent: str | None,
     predicates: Sequence[tuple[str, tuple[str, int] | None]] | None,
     box: BoxSource,
+    *,
+    beside: Sequence[str] = (),
 ) -> tuple[str, dict[str, Any], TeamNarrowed]:
     """The statement behind the team relation's ``presence`` group: every
     game a window's team played across the windows' seasons, marked with
@@ -687,6 +689,10 @@ def presence_games_sql(
     team compiler wraps it (``compose.team.compile_team_presence``) and the
     one door executes it; :func:`presence_games` keeps the games inside the
     windows.
+
+    ``beside`` are teammates whose games alone are read - the ones who
+    played beside an absence ("when AD plays and lebron doesn't", ISSUES.md
+    #479): a game one of them did not play is on neither row.
 
     A count rather than a flag, because with two teammates the two questions
     stop being one split: "without A and B" is the games NEITHER played, "with
@@ -738,8 +744,20 @@ def presence_games_sql(
                    SELECT 1 FROM {box.table} q WHERE q.event_id = t.event_id AND q.team_id = t.team_id AND q.season = t.season AND {_appeared("q", box)}
                ) AS box
         FROM t
-        {played_by if subject else ""}"""
+        {played_by if subject else ""}
+        {_with_without_beside_clause(beside, params, box)}"""
     return sql, params, narrowed
+
+
+def _with_without_beside_clause(beside: Sequence[str], params: dict[str, Any], box: BoxSource) -> str:
+    """The WHERE keeping :func:`presence_games_sql`'s games to those every
+    one of ``beside`` played for the team, binding ``$b<i>`` into
+    ``params`` - empty where none is named."""
+    kept = []
+    for index, mate in enumerate(beside):
+        params[f"b{index}"] = mate
+        kept.append(f"EXISTS (SELECT 1 FROM {box.table} b WHERE b.event_id = t.event_id AND b.season = t.season AND b.team_id = t.team_id AND b.athlete_id = $b{index} AND {_played('b', box)})")
+    return "WHERE " + " AND ".join(kept) if kept else ""
 
 
 def presence_games(rows: Sequence[dict[str, Any]], windows: Sequence[_Stint]) -> tuple[list[dict[str, Any]], int]:

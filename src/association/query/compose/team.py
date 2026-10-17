@@ -697,6 +697,8 @@ def compile_team_presence(
     subject: str | None,
     opponent: str | None,
     predicates: Sequence[tuple[str, tuple[str, int] | None]],
+    *,
+    beside: Sequence[str] = (),
 ) -> TeamCompiled:
     """The ``presence`` group as SQL: a team's games across the named
     teammates' windows on it (``covered``, the
@@ -712,7 +714,7 @@ def compile_team_presence(
 
     .. versionadded:: 5.0.0
     """
-    sql, params, narrowed = presence_games_sql(covered, windows, mates, subject, opponent, predicates, box_source(con))
+    sql, params, narrowed = presence_games_sql(covered, windows, mates, subject, opponent, predicates, box_source(con), beside=beside)
     return TeamCompiled(sql, params, None, covered, narrowed)
 
 

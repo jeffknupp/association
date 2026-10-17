@@ -1245,6 +1245,46 @@ def test_who_sat_out_and_who_played_is_read_from_the_question_without_the_model(
     assert s.kind == "team" and [(c.player, c.predicate) for c in s.conditions] == [("Joel Embiid", "absent")]
 
 
+@pytest.mark.parametrize(
+    ("question", "players", "roles"),
+    [
+        # A denial after the second name, its verb elided (ISSUES.md #479).
+        (
+            "Lakers record when AD plays and lebron doesnt",  # codespell:ignore doesnt - the feed's question as typed
+            ("Anthony Davis", "LeBron James"),
+            [("Anthony Davis", "played"), ("LeBron James", "absent")],
+        ),
+        (
+            "boston celtics record in games in which jaylen brown played and jayson tatum did not",
+            ("Jaylen Brown", "Jayson Tatum"),
+            [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")],
+        ),
+        ("lakers record when AD plays and lebron isn't playing", ("Anthony Davis", "LeBron James"), [("Anthony Davis", "played"), ("LeBron James", "absent")]),
+        # A companion keyword inside another's phrase, either way round.
+        ("lakers record when AD plays without lebron", ("Anthony Davis", "LeBron James"), [("Anthony Davis", "played"), ("LeBron James", "absent")]),
+        ("lakers record without lebron when AD plays", ("Anthony Davis", "LeBron James"), [("LeBron James", "absent"), ("Anthony Davis", "played")]),
+        # One role for every name where the names share it.
+        ("PHI record when Embiid and Paul George play", ("Joel Embiid", "Paul George"), [("Joel Embiid", "played"), ("Paul George", "played")]),
+        ("celtics record without Tatum and Brown", ("Jayson Tatum", "Jaylen Brown"), [("Jayson Tatum", "absent"), ("Jaylen Brown", "absent")]),
+        (
+            "lakers record when AD and lebron dont play",
+            ("Anthony Davis", "LeBron James"),
+            [("Anthony Davis", "absent"), ("LeBron James", "absent")],
+        ),
+    ],
+)
+def test_each_companion_takes_the_role_its_own_clause_states(question: str, players: tuple[str, ...], roles: list[tuple[str, str]]) -> None:
+    """A phrase naming two companions may state a role for each: "when AD
+    plays and lebron doesn't" is Davis on and LeBron off, where one role for
+    the phrase read both as playing and the split answered the games both
+    played - a different question, fluently (ISSUES.md #479; the feed
+    sample's FS339). A name with no role words of its own shares the role
+    after it."""
+    from association.query.subject import _conditions
+
+    assert [(c.player, c.predicate) for c in _conditions(question, players, Reading())] == roles
+
+
 def test_a_misspelled_companion_is_read_as_typed_where_it_is_one_players_near_spelling(con: duckdb.DuckDBPyConnection) -> None:
     """ "without wembyanama" matches no player as spelled. The words after
     "without" are a name's place, so the near-spelling pass applies as it
