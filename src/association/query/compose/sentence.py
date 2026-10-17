@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from association.query.measure import won
-from association.query.notes import decided, note
+from association.query.notes import note
 from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.reading import Aggregate, period_label
 
@@ -237,51 +237,26 @@ def _grouped_line(q: Query, r: dict[str, Any]) -> str:
     return f"  {label:24s} " + "  ".join(cells)
 
 
-def _grouped_empty(q: Query, who: str, where: str, span: str) -> str:
-    """A grouped read with no rows: a stated minimum that kept every player
-    out says so, which "no games" would misname (ISSUES.md #377)."""
-    if q.minimum is not None and q.group == "player":
-        return f"No player{where} played {q.minimum.count:,} games in the {span}, the minimum asked for."
-    return f"No games for {who}{where} in the {span}."
-
-
-def _grouped_minimum(q: Query, scaled: tuple[int, int, int] | None = None) -> str:
-    """ ", minimum 20 games" for a ranking's qualifier, or nothing: the
-    default is the reader's decision; one the question stated is what was
-    asked, said the same way and recorded as no decision (ISSUES.md #377).
-    A default no player in the pool met is scaled to it
-    (``core._run_scaled_minimum``), said with why and how to state another
-    (ISSUES.md #422)."""
-    if scaled is not None:
-        chose, most, default = scaled
-        said = f", minimum {_games(chose)}: none played the usual {default} here, so half the most any did ({most}) - state a minimum to set another"
-        return decided("minimum", said, field="minimum", chose=chose, instead_of=(default,), why=f"the most games any player in the pool played: {most}", of="games")
-    if not q.minimum_games:
-        return ""
-    said = f", minimum {_games(q.minimum_games)}"
-    return said if q.minimum is not None else decided("minimum", said, field="minimum", chose=q.minimum_games, of="games")
-
-
-def _grouped_head(q: Query, out: dict[str, Any], head: str) -> str:
-    """A grouped read's heading with what it is ranked by: the measure and
-    how it is reduced, with the qualifier; or, for players ranked by their
-    games with no line on them, "games played" (ISSUES.md #408)."""
-    if q.aggregate == Aggregate.COUNT and q.group == "player" and not q.predicates and not q.measures:
-        head += " (games played" + (f", minimum {_games(q.minimum_games)}" if q.minimum_games else "") + ")"
+def _grouped_head(q: Query, head: str) -> str:
+    """A grouped read's heading with what it is ranked or split by: the
+    measure and how it is reduced. (A ranking of players by a measure, its
+    qualifier, and players ranked by their games are the game-level
+    ranking's reader's and sayer's since decision D17:
+    ``compose.rankings.read_game_ranking``, ``compose.say.say_game_ranking``.)"""
     if q.measures:
-        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == Aggregate.PER_GAME else q.aggregate}" + _grouped_minimum(q, out.get("minimum_scaled")) + ")"
+        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == Aggregate.PER_GAME else q.aggregate})"
     return head
 
 
 def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
-    """A ``grouped`` read: a split by venue or starter/bench, or a ranking of players."""
+    """A ``grouped`` read: a split by venue or starter/bench, a history by season, or a count of games by player."""
     rows = out["rows"]
     who = out["player"]
     where = out["narrowing"]
     span = _span_phrase(out["span"], out.get("player_seasons"))
     if not rows:
-        return _grouped_empty(q, who, where, span)
-    head = _grouped_head(q, out, f"{who}{where}, {span}{_predicates(q, grouped=True)}, by {q.group}")
+        return f"No games for {who}{where} in the {span}."
+    head = _grouped_head(q, f"{who}{where}, {span}{_predicates(q, grouped=True)}, by {q.group}")
     if q.group == "season" and q.limit and len(rows) >= q.limit:
         # The span names the whole career; the rows are its newest N (the
         # limit cut them - core._compile_grouped), which the heading says.
