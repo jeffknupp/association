@@ -591,15 +591,18 @@ def _read_opponent_near(index: names.NameIndex, question: str) -> str | None:
     as typed - names arrive as typed - so the relation's team resolution
     reads it and the answer says so
     (:func:`~association.query.entities.resolved_team`). Not a word that is
-    a whole word of some player's name, or within the budget of one ("vs
-    hawes" is Spencer Hawes, one edit from the Hawks)."""
-    players = checked_players(index.players)
+    a whole word of some player's name ("vs hawes" is Spencer Hawes, one
+    edit from the Hawks). A word near a player as well as a team ("vs
+    houson": the Rockets, Allan Houston) is kept too, and the resolution
+    asks which (:func:`~association.query.entities.resolved_team`): read
+    as neither, the answer was the subject's line over every opponent, the
+    word named nowhere in it (ISSUES.md #247)."""
     for match in lexicon.AGAINST_PHRASE.finditer(question):
         words = _team_words(match.group(1))[:1]
         if not words:
             continue
         word = words[0]
-        if near_team(index.teams, word) is None or _exact_name_span(index.players, [word]) or players.near([(word, _edit_budget(word))]):
+        if near_team(index.teams, word) is None or _exact_name_span(index.players, [word]):
             continue
         return word
     return None
@@ -768,7 +771,15 @@ def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -
             predicate, line, role_end = _condition_role(word, text[at:])
             role_end = None if role_end is None else at + role_end
             names = _companion_names(text, players, scope, predicate)
-        new = [Companion(player=name, predicate=predicate, line=line) for name in names if not any(_same_person(name, [c.player]) for c in found)]
+        clauses = _conditions_read_clauses(question, match, players, scope)
+        if clauses is not None:
+            # Each name with the role its own clause states: "when AD plays
+            # and lebron doesn't", "when AD plays without lebron" (ISSUES.md
+            # #479) - one role for the phrase read the denied one as playing.
+            read, role_end = clauses
+            new = [c for c in read if not any(_same_person(c.player, [f.player]) for f in found)]
+        else:
+            new = [Companion(player=name, predicate=predicate, line=line) for name in names if not any(_same_person(name, [c.player]) for c in found)]
         if new:
             found.extend(new)
             end = match.start(2) + _read_to(text, [c.player for c in new], role_end)
@@ -779,6 +790,110 @@ def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -
     claims.extend(versus_claims)
     phrases.extend((claim.start, claim.end, "played") for claim in versus_claims)
     return tuple(found), tuple(claims), tuple(phrases)
+
+
+def _conditions_read_clauses(question: str, match: re.Match[str], players: tuple[str, ...], scope: Filtered) -> tuple[list[Companion], int] | None:
+    """The companions of one phrase read clause by clause, where its names
+    do not share one role - or None where they do, and the phrase's one
+    role stands for every name.
+
+    A phrase's words split into chunks at each joiner ("and", a comma) and
+    at a companion keyword inside them ("when AD plays WITHOUT lebron"); a
+    chunk that states no role of its own (a bare name: "Tatum" in "without
+    Tatum and Brown", "Embiid" in "when Embiid and George start") shares the
+    role of the chunk after it. Each clause's role is read from its own
+    words under its own keyword (:func:`_condition_role`), and a denial in
+    them (:data:`~association.query.lexicon.COMPANION_DENIED`: "lebron
+    doesn't", "jayson tatum did not") makes a clause that would read as
+    playing an absence. The clauses are used only where two named clauses
+    read different roles or a denial turned one: everywhere else - one
+    clause above all, where the phrase's own role reader already reads "when
+    maxey was not playing" - the phrase reads as it always did.
+
+    Returns the companions with how far into the phrase's words the roles
+    reached."""
+    text, base = match.group(2), match.start(2)
+    clauses = _conditions_read_clauses_split(match.group(1).lower(), text)
+    read: list[tuple[list[str], Predicate, Line | None]] = []
+    ends: list[int] = []
+    turned = False
+    for word, start, end in clauses:
+        words = text[start:end]
+        predicate, line, role_end = _condition_role(word, words)
+        denied = lexicon.COMPANION_DENIED.search(question, base + start)
+        if predicate == "played" and denied is not None and denied.start() < base + end and _conditions_read_clauses_bare_before(text[start : denied.start() - base]):
+            # The denial's own words may run past the phrase ("did" ends a
+            # phrase of "in games ... jayson tatum did not"), so it is
+            # searched in the question from the clause on.
+            predicate, line, role_end, turned = "absent", None, denied.end() - base - start, True
+        names = _companion_names(words, players, scope, predicate)
+        if names:
+            read.append((names, predicate, line))
+            ends.append(start + (role_end if role_end is not None else len(words.rstrip())))
+    if len(read) < 2 or (not turned and len({(predicate, line) for _, predicate, line in read}) < 2):
+        return None
+    companions: list[Companion] = []
+    for names, predicate, line in read:
+        companions += [Companion(player=name, predicate=predicate, line=line) for name in names if not any(_same_person(name, [c.player]) for c in companions)]
+    return companions, max(ends)
+
+
+def _conditions_read_clauses_split(word: str, text: str) -> list[tuple[str, int, int]]:
+    """A companion phrase's words as clauses: ``(keyword, start, end)`` in
+    the words, split at each joiner and at a companion keyword inside them,
+    a chunk stating no role of its own joined to the one after it - but
+    never across a companion keyword, which states the next names' role
+    itself ("with jaylen brown and without jayson tatum": Brown is the
+    "with"'s)."""
+    chunks: list[tuple[str, int, int, bool]] = []
+    keyword, start, end, led = word, 0, 0, False
+    for piece in lexicon.NAME_PIECES.finditer(text):
+        nested = lexicon.COMPANION.match(text, piece.start())
+        keyed = nested is not None and nested.end(1) == piece.end()
+        if piece.group(0).casefold() in lexicon.NAME_JOINERS or keyed:
+            if end > start:
+                chunks.append((keyword, start, end, led))
+                led = False
+            if keyed:
+                keyword, led = piece.group(0).casefold(), True
+            start = end = piece.end()
+            continue
+        end = piece.end()
+    if end > start:
+        chunks.append((keyword, start, end, led))
+    clauses: list[tuple[str, int, int]] = []
+    held: tuple[str, int, int] | None = None
+    for own, at, end, keyed in chunks:
+        if keyed and held is not None:
+            clauses.append(held)
+            held = None
+        keyword, start = (held[0], held[1]) if held is not None else (own, at)
+        if _conditions_read_clauses_states_role(keyword, text[start:end]):
+            clauses.append((keyword, start, end))
+            held = None
+        else:
+            held = (keyword, start, end)
+    if held is not None:
+        clauses.append(held)
+    return clauses
+
+
+def _conditions_read_clauses_states_role(word: str, words: str) -> bool:
+    """Whether a chunk of a companion phrase states a role of its own - a
+    role word or a denial, a word no name holds, a number - rather than
+    being a bare name that shares the next chunk's."""
+    if _condition_role(word, words)[0] != "played" or lexicon.COMPANION_DENIED.search(words):
+        return True
+    pieces = lexicon.NAME_PIECES.findall(words)
+    return any(not lexicon.NAME_SHAPED.fullmatch(piece) or piece.casefold() in lexicon.NAME_STOPWORDS for piece in pieces)
+
+
+def _conditions_read_clauses_bare_before(words: str) -> bool:
+    """Whether the words of a clause before its denial are a name alone -
+    "lebron" in "lebron doesn't" - so the denial is that name's: "AD plays
+    but lebron doesn't" holds "plays" before it, and the denial is not
+    AD's."""
+    return not any(not lexicon.NAME_SHAPED.fullmatch(piece) or piece.casefold() in lexicon.NAME_STOPWORDS for piece in lexicon.NAME_PIECES.findall(words))
 
 
 def _conditions_read_name_at(text: str, names: list[str]) -> int:
@@ -1157,6 +1272,22 @@ def with_without_named(scope: Filtered) -> tuple[list[str], bool, dict[str, tupl
     return mate_texts, asked_without, roles
 
 
+def with_without_beside(scope: Filtered) -> list[str]:
+    """The teammates a with/without split over an absence keeps the games
+    of - the own-side companions who PLAYED beside one who is absent: "when
+    AD plays and lebron doesn't" divides the games Anthony Davis played by
+    whether LeBron James did (ISSUES.md #479), where the split had divided
+    every game by LeBron alone and dropped Davis. Empty where nobody is
+    absent: there the ones who played are what the split divides by
+    (:func:`with_without_named`).
+
+    .. versionadded:: 7.0.0
+    """
+    if not any(c.absent for c in scope.companions):
+        return []
+    return teammate_names([c.player for c in scope.companions if c.side == "own" and c.predicate == "played"])
+
+
 def _with_without_roles(companions: tuple[Companion, ...]) -> dict[str, tuple[str, tuple[str, int] | None]]:
     """The role each companion gives its player - ``started``, ``bench``,
     ``reached`` (with its column and threshold) - by the name as written,
@@ -1202,6 +1333,13 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
         # "has 4 fta": a box-score word the threshold spellings do not hold
         # (ISSUES.md #340), the column MEASURE_WORDS names it by.
         return "reached", Line(measure=lexicon.MEASURE_WORDS[has.group(2).lower()], value=int(has.group(1)), as_typed=has.group(0).casefold()), has.end()
+    bare = _condition_role_bare_number(text)
+    if bare is not None:
+        # "when tatum has 30": a line whose words name no stat (ISSUES.md
+        # #340) - read as a line on nothing, which the relation refuses by
+        # its words (``line_names_no_stat``), where reading no line answered
+        # the with/without split, a different question.
+        return "reached", Line(measure=None, value=bare[0], as_typed=bare[1]), bare[2]
     started = lexicon.CONDITION_STARTED.search(text)
     if started is not None:
         return "started", None, started.end()
@@ -1212,6 +1350,24 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
     if word in ("without", "excluding") or absent is not None:
         return "absent", None, absent.end() if absent is not None else None
     return "played", None, None
+
+
+def _condition_role_bare_number(text: str) -> tuple[int, str, int] | None:
+    """A number standing after a companion's name with no stat word read
+    beside it - "tatum has 30", "maxey has 20+" - as ``(value, the words
+    from the one before it, where it ends)``; None where the phrase holds
+    none. A year or an ordinal is no count of a stat (three digits at
+    most, digits alone)."""
+    pieces = list(lexicon.NAME_PIECES.finditer(text))
+    for at, (before, piece) in enumerate(itertools.pairwise(pieces), start=2):
+        digits = piece.group(0).removesuffix("+")
+        after = pieces[at].group(0).casefold() if at < len(pieces) else None
+        # A word after the number that is no joiner or function word is a
+        # stat the line spellings do not hold ("shoots 4 ft"): not a line
+        # on nothing, and left to the reading's unread number.
+        if digits.isdigit() and len(digits) <= 3 and int(digits) >= 1 and (after is None or after in lexicon.NAME_JOINERS or after in lexicon.NAME_STOPWORDS):
+            return int(digits), text[before.start() : piece.end()].casefold(), piece.end()
+    return None
 
 
 def _team_names(index: names.NameIndex, question: str, scope: Filtered, team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:
@@ -1293,6 +1449,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     # question is about.
     own_team = _read_subject_own_team(index.teams, question, players, own, season, opponent)
     teams = _team_names(index, question, scope, team_word, opponent, own_team)
+    teams = _read_subject_near_team(index, question, opponent, teams, others=(*players, *companions, position, own_team))
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
         evidence = (*evidence, f"companions the model named nobody for {list(unrouted)}")
@@ -1310,6 +1467,35 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
         filler=filler,
         claims=(*subject.claims, *_read_subject_season_claims(question)),
     )
+
+
+def _read_subject_near_team(index: names.NameIndex, question: str, opponent: str | None, teams: list[str], *, others: tuple[str | None, ...]) -> list[str]:
+    """The team a question naming no other subject names by a typo -
+    "nuggers record this season" - as typed, where exactly one of its words
+    is a near spelling of a team (:func:`~association.query.entities.near_team`)
+    and that word is no ordinary word ("rings" is one edit from the Kings),
+    no word of a player's name and near no player's: read as nobody, the
+    question ranked every team. Resolving it, and saying it was read as a
+    near spelling, is the entity index's
+    (:func:`~association.query.entities.resolved_team`), as for the word a
+    versus word leads (ISSUES.md #247). ``teams`` as read where the words
+    name a team or ``others`` holds another subject (a player, a companion,
+    a position, an own team), and empty where no word, or several, are
+    near one."""
+    if teams or any(others):
+        return teams
+    players = checked_players(index.players)
+    dictionary = _dictionary()
+    found: dict[str, str] = {}
+    for word in dict.fromkeys(_team_words(question)):
+        lowered = word.casefold()
+        if lowered in dictionary or (opponent is not None and question_supports(opponent, word)):
+            continue
+        team = near_team(index.teams, word)
+        if team is None or _exact_name_span(index.players, [lowered]) or players.near([(lowered, _edit_budget(lowered))]):
+            continue
+        found.setdefault(team.id, word)
+    return list(found.values()) if len(found) == 1 else []
 
 
 def _read_subject_own_team(teams: names.TeamIndex, question: str, players: tuple[str, ...], own: tuple[Entity, int] | None, season: int | None, opponent: str | None) -> str | None:
@@ -1666,8 +1852,11 @@ def _apply_team_record_when(subject: Subject, scope: Filtered, asked: PointShape
         # The companion's line is the record's own now: the shape is keyed on it.
         lines=(replace(condition.line, keyed=True),) if condition.line is not None else (),
         # Nothing else of the scope stands: the companion is the record's
-        # player now, and no split, period or window was read for it.
-        companions=(),
+        # player now, and no split, period or window was read for it. Any
+        # OTHER companion stands, for the planner to honor or refuse ("when
+        # tatum scores 30 and brown plays": dropped, the record was every
+        # game of Tatum's 30).
+        companions=tuple(c for c in subject.conditions if c is not condition),
         split=None,
         period=None,
         window=Window(),
@@ -2347,10 +2536,10 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
     bounds = _question_derived_player_multi_anchor_window(q_words, anchors) if len(anchors) >= 2 else _question_derived_player_single_anchor_window(q_words, name_words, positions, anchors)
     if bounds is None:
         return None
-    window, min_size = bounds
+    window, min_size, alone = bounds
 
     try:
-        return _question_derived_player_search(players, window, min_size)
+        return _question_derived_player_search(players, window, min_size, alone)
     except duckdb.CatalogException:
         # A warehouse without `players` (a partial load, or a test double) has
         # nothing here to resolve against - the same best-effort rule
@@ -2359,7 +2548,7 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
         return None
 
 
-def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: set[int]) -> tuple[list[str], int] | None:
+def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: set[int]) -> tuple[list[str], int, int | None] | None:
     """The window and size floor for two or more anchored words - resolved
     from exactly that range of the question, one word narrower at a time,
     but never down to a single word alone. See
@@ -2371,10 +2560,10 @@ def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: se
     too spread out to be one coherent name."""
     if max(anchors) - min(anchors) > 4:
         return None
-    return q_words[min(anchors) : max(anchors) + 1], 2
+    return q_words[min(anchors) : max(anchors) + 1], 2, None
 
 
-def _question_derived_player_single_anchor_window(q_words: list[str], name_words: list[str], positions: list[int | None], anchors: set[int]) -> tuple[list[str], int]:
+def _question_derived_player_single_anchor_window(q_words: list[str], name_words: list[str], positions: list[int | None], anchors: set[int]) -> tuple[list[str], int, int | None]:
     """The window and size floor for exactly one anchored word: a small
     window around it, never the whole question - what keeps
     :func:`question_derived_player` from becoming the rejected
@@ -2383,21 +2572,30 @@ def _question_derived_player_single_anchor_window(q_words: list[str], name_words
     name "Grady", and the window's "grady dick" is what resolves it) - what
     is trusted only from the surname position (the floor of 1 rather than 2)
     is falling all the way back to the anchor WORD ALONE, with nothing else
-    corroborating it; see the docstring's "Kareem" measurement."""
+    corroborating it; see the docstring's "Kareem" measurement. The word
+    alone is the ANCHOR's, never a neighbor's: "how many points may luka
+    score" anchors on "luka", which alone names several Lukas, and its
+    neighbor "may" alone is Sean May - a player nobody named, read as the
+    model's "luka" (ISSUES.md #447). The third value is where in the window
+    the anchor stands."""
     anchor_index = next(i for i, p in enumerate(positions) if p is not None)
     anchor = next(iter(anchors))
-    window = q_words[max(0, anchor - 1) : min(len(q_words), anchor + 2)]
+    start = max(0, anchor - 1)
+    window = q_words[start : min(len(q_words), anchor + 2)]
     min_size = 1 if anchor_index == len(name_words) - 1 else 2
-    return window, min_size
+    return window, min_size, anchor - start
 
 
-def _question_derived_player_search(players: names.PlayerIndex, window: list[str], min_size: int) -> Entity | None:
+def _question_derived_player_search(players: names.PlayerIndex, window: list[str], min_size: int, alone: int | None = None) -> Entity | None:
     """``window``, tried longest span first down to ``min_size``, exact
     words before near ones - the shared search both
     :func:`_question_derived_player_multi_anchor_window` and
-    :func:`_question_derived_player_single_anchor_window` resolve into."""
+    :func:`_question_derived_player_single_anchor_window` resolve into. A
+    single word is tried only where it is the anchor (``alone``, its place
+    in the window)."""
     for size in range(min(lexicon.MAX_NAME_WORDS, len(window)), min_size - 1, -1):
-        found = [resolved for start in range(len(window) - size + 1) if (resolved := _resolve_word_span(players, window[start : start + size])) is not None]
+        starts = range(len(window) - size + 1) if size > 1 or alone is None else [alone]
+        found = [resolved for start in starts if (resolved := _resolve_word_span(players, window[start : start + size])) is not None]
         unique_ids = {c.id for c in found}
         if len(unique_ids) == 1:
             return found[0]
@@ -2649,7 +2847,8 @@ def _team_beside_player(teams: names.TeamIndex, question: str, player: str, seas
 
 def subject_claims(teams: names.TeamIndex, question: str, scope: Filtered) -> tuple[Claim, ...]:
     """The characters of ``question`` the subject reading read the settled
-    ``scope``'s names and position group from (:class:`~association.query.reading.Claim`):
+    ``scope``'s names (a teammate who played beside an absence among them)
+    and position group from (:class:`~association.query.reading.Claim`):
     each player's (``"player"``: the question's words of his name, a curated
     nickname, his initials, or - where no word of it stands as typed - each
     word's nearest near spelling), each team's (``"team"``: a word of its
@@ -2663,7 +2862,9 @@ def subject_claims(teams: names.TeamIndex, question: str, scope: Filtered) -> tu
     """
     tokens = _subject_claims_tokens(question)
     found: list[Claim] = []
-    for player in scope.who.players:
+    # The teammates who played beside an absence are names the split reads
+    # (with_without_beside), as the subject's own players are.
+    for player in (*scope.who.players, *with_without_beside(scope)):
         found.extend(_subject_claims_player(question, tokens, player))
     season = scope.span.season
     for team in scope.who.teams:

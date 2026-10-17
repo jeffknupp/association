@@ -279,3 +279,17 @@ def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDB
     bare = duckdb.connect(":memory:")
     with pytest.raises(duckdb.CatalogException):
         teams_named_by_word(teams_of(bare), "lakers")
+
+
+@pytest.mark.parametrize("question", ["how many points may luka score tonight", "how many points will luka score tonight", "march luka points"])
+def test_a_word_beside_the_models_name_is_never_read_alone_as_that_name(question: str) -> None:
+    """The model's "luka" anchors the window "may luka score"; "luka" alone
+    names two Lukas here, and "may" alone is Sean May - read as the model's
+    "luka", a player nobody named, and the question became a comparison of
+    the two (ISSUES.md #447). A word alone is tried only where it is the
+    anchor itself; "Jaylen Tatum" still falls back to its anchor "tatum"."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1', 'Sean May'), ('2', 'Luka Doncic'), ('3', 'Luka Garza'), ('4', 'Will Barton'), ('5', 'Jayson Tatum'), ('6', 'Johnny March')")
+    assert question_derived_player(players_of(c), question, "luka") is None
+    assert question_derived_player(players_of(c), "tatum rec home", "Jaylen Tatum") == Entity("5", "Jayson Tatum")

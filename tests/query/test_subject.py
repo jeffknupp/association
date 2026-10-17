@@ -283,8 +283,44 @@ def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConne
     player = reading.who.player
     team_subject = reading.subject.kind in ("team", "team_players") and not reading.subject.players
     if reading.asked in PLAYER_ASKS and team_subject and player:
-        no_line = reading.asked == LINE_RECORD and not (threshold_of(reading) and reading.measure is not None and reading.measure.named)
+        # A record over a line with no stat is refused by the cause naming
+        # the stat missing ("celtics record when jayson tatum has 30", #340).
+        no_line = reading.asked == LINE_RECORD and not (threshold_of(reading) and reading.measure is not None and reading.measure.named) and reading.point_refusal is None
         assert not find_teams(teams_of(con), player) and not no_line, (question, reading.asked, player)
+
+
+@pytest.mark.parametrize("question", ["celtics record when jayson tatum has 30", "sixers record when maxey has 20+", "celtics record when tatum had 30 and brown plays"])
+def test_a_companions_number_with_no_stat_is_refused_by_the_stat_missing(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ "celtics record when tatum has 30" names no stat after the number:
+    no line could be read, and the team's record fell back to the
+    with/without split over Tatum - a different question, fluently (ISSUES.md
+    #340). The number is read as the companion's line on no stat, and the
+    record over it is refused by the cause naming the stat it lacks; the
+    model's stat is no evidence for it (empty on a third of the recorded
+    "record when X scores N points" replies that name the stat outright)."""
+    from association.query.parse import read_route
+
+    reading = read_route(names_of(con), question, [], "points")
+    assert reading.asked == LINE_RECORD and reading.point_refusal is not None and reading.point_refusal.kind == "threshold_needs_stat", (question, reading.asked, reading.point_refusal)
+
+
+def test_a_word_after_versus_near_a_team_and_a_player_is_kept_for_the_resolution_to_ask(con: duckdb.DuckDBPyConnection) -> None:
+    """ "Bobby Portis vs magics Gamelog": "magics" is near the Orlando Magic
+    and Magic Johnson, and was read as neither - his log over every
+    opponent (ISSUES.md #247). Kept as typed, the opponent's resolution asks
+    which; a whole word of a player's name is still his ("vs hawes")."""
+    s = _read(con, "luka vs magics Gamelog", PLAYER_LOG, scope=Reading(who=Who(kind="player", players=("Luka Doncic",))))
+    assert s.opponent == "magics"
+
+
+@pytest.mark.parametrize(("question", "teams"), [("celtcs record this season", ("celtcs",)), ("most rings all time", ()), ("kngs record vs lakers", ("kngs",))])
+def test_a_teams_typo_is_the_subject_where_no_other_subject_stands(con: duckdb.DuckDBPyConnection, question: str, teams: tuple[str, ...]) -> None:
+    """ "nuggers record this season" named its team by a typo and was read
+    as no subject: every team ranked (ISSUES.md #247). A word near exactly
+    one team, no ordinary word ("rings" is one edit from the Kings) and no
+    player's, is that team where nothing else is the subject - kept as
+    typed for the team's resolution to read and say so."""
+    assert _read(con, question, TEAM_RECORD).teams == teams
 
 
 def test_a_models_name_filed_as_the_wrong_kind_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
@@ -1245,6 +1281,52 @@ def test_who_sat_out_and_who_played_is_read_from_the_question_without_the_model(
     assert s.kind == "team" and [(c.player, c.predicate) for c in s.conditions] == [("Joel Embiid", "absent")]
 
 
+@pytest.mark.parametrize(
+    ("question", "players", "roles"),
+    [
+        # A denial after the second name, its verb elided (ISSUES.md #479).
+        (
+            "Lakers record when AD plays and lebron doesnt",  # codespell:ignore doesnt - the feed's question as typed
+            ("Anthony Davis", "LeBron James"),
+            [("Anthony Davis", "played"), ("LeBron James", "absent")],
+        ),
+        (
+            "boston celtics record in games in which jaylen brown played and jayson tatum did not",
+            ("Jaylen Brown", "Jayson Tatum"),
+            [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")],
+        ),
+        ("lakers record when AD plays and lebron isn't playing", ("Anthony Davis", "LeBron James"), [("Anthony Davis", "played"), ("LeBron James", "absent")]),
+        # A companion keyword inside another's phrase, either way round.
+        ("lakers record when AD plays without lebron", ("Anthony Davis", "LeBron James"), [("Anthony Davis", "played"), ("LeBron James", "absent")]),
+        ("lakers record without lebron when AD plays", ("Anthony Davis", "LeBron James"), [("LeBron James", "absent"), ("Anthony Davis", "played")]),
+        # A bare name before a companion keyword keeps its own keyword's role.
+        (
+            "boston celtics record in games with jaylen brown and without jayson tatum in the 2025/26 regular season",
+            ("Jaylen Brown", "Jayson Tatum"),
+            [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")],
+        ),
+        # One role for every name where the names share it.
+        ("PHI record when Embiid and Paul George play", ("Joel Embiid", "Paul George"), [("Joel Embiid", "played"), ("Paul George", "played")]),
+        ("celtics record without Tatum and Brown", ("Jayson Tatum", "Jaylen Brown"), [("Jayson Tatum", "absent"), ("Jaylen Brown", "absent")]),
+        (
+            "lakers record when AD and lebron dont play",
+            ("Anthony Davis", "LeBron James"),
+            [("Anthony Davis", "absent"), ("LeBron James", "absent")],
+        ),
+    ],
+)
+def test_each_companion_takes_the_role_its_own_clause_states(question: str, players: tuple[str, ...], roles: list[tuple[str, str]]) -> None:
+    """A phrase naming two companions may state a role for each: "when AD
+    plays and lebron doesn't" is Davis on and LeBron off, where one role for
+    the phrase read both as playing and the split answered the games both
+    played - a different question, fluently (ISSUES.md #479; the feed
+    sample's FS339). A name with no role words of its own shares the role
+    after it."""
+    from association.query.subject import _conditions
+
+    assert [(c.player, c.predicate) for c in _conditions(question, players, Reading())] == roles
+
+
 def test_a_misspelled_companion_is_read_as_typed_where_it_is_one_players_near_spelling(con: duckdb.DuckDBPyConnection) -> None:
     """ "without wembyanama" matches no player as spelled. The words after
     "without" are a name's place, so the near-spelling pass applies as it
@@ -1303,3 +1385,16 @@ def test_a_count_is_named_from_a_line_the_tagger_read_never_a_bare_number() -> N
     assert child_named(player, PLAYER_LOG, lines_named(question).marked(question), original=question) == (GAMES_COUNTED, "games with 15 points")
     question = "kobe bryant career games with more than 40 field goal percentage"
     assert child_named(player, PLAYER_LOG, lines_named(question).marked(question), original=question) is None
+
+
+def test_a_teams_record_over_a_companions_line_keeps_the_other_companions(con: duckdb.DuckDBPyConnection) -> None:
+    """ "celtics record when tatum scores 30 and jaylen brown plays": the
+    record is keyed on Tatum's line, and Brown's presence was dropped with
+    the rest of the scope - the record over every game of Tatum's 30,
+    fluently. The other companions stand, for the planner to honor or
+    refuse."""
+    from association.query.parse import read_route
+
+    reading = read_route(names_of(con), "celtics record when tatum scores 30 and jaylen brown plays", ["celtics", "tatum", "jaylen brown"], "points")
+    assert reading.asked == LINE_RECORD
+    assert [(c.player, c.predicate) for c in reading.companions] == [("Jaylen Brown", "played")]

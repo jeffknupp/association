@@ -719,6 +719,30 @@ def test_with_two_teammates_counts_only_the_games_both_played(league: AnswerCont
     assert result.text.splitlines()[2].startswith("Jayson Tatum and Jaylen Brown played")
 
 
+def test_a_teammate_who_played_beside_an_absence_keeps_the_games_he_played(league: AnswerContext) -> None:
+    """ "record when Brown plays and Tatum doesn't" is the games Brown played,
+    divided by whether Tatum did - never every game divided by Tatum alone,
+    nor the games both played (ISSUES.md #479). Brown played e1, e2, e3, e4
+    and e7; Tatum sat e2 (a DNP) and e3 (no line); e5 has no box score.
+    Brown sits e3 here, so it is on neither row: divided by Tatum alone the
+    "out" row would be 1-1."""
+    league.con.execute(
+        "INSERT INTO player_box_stats VALUES ('e3', ?, 2, ?, ?, ?, FALSE, FALSE, 10, 4, 2, 1, 0, 0, 0, 0, 2, 4, 0, 1)",
+        [S, BOS, PHI, JOURNEYMAN],
+    )  # e3 keeps a box score once Brown sits
+    league.con.execute("UPDATE player_box_stats SET did_not_play = TRUE, minutes = NULL WHERE athlete_id = ? AND event_id = 'e3'", [BROWN])
+    result = presence_split(
+        league,
+        Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Jaylen Brown"), Companion(player="Jayson Tatum", predicate="absent")), span=Span(season_type=2)),
+    )
+    groups = {g["teammate_played"]: g for g in result.data["groups"]}
+    assert (groups[False]["wins"], groups[False]["losses"]) == (0, 1)  # e2
+    assert (groups[True]["wins"], groups[True]["losses"]) == (2, 1)  # e1, e4, e7
+    assert result.data["teammates"] == ["Jayson Tatum"]
+    assert result.text.splitlines()[0].startswith("Boston Celtics with and without Jayson Tatum in games Jaylen Brown played")
+    assert result.text.splitlines()[2].startswith("Jayson Tatum out")
+
+
 def test_a_game_before_he_arrived_is_not_a_game_without_him(league: AnswerContext) -> None:
     """The StatMuse failure: "Nets record without KD all-time" counted decades
     of Nets games before he arrived. e0z is a Celtics win before Tatum's first
