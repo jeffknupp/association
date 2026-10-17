@@ -316,8 +316,10 @@ def _read_lines_phrases(question: str) -> list[LineCandidate]:
                 # "How many times did bill Russell score below 10" (the feed
                 # sample's FS241): the verb names the stat the phrase does
                 # not, where the line was refused as naming none.
-                line, start = replace(line, measure="points", as_typed=f"{question[scored.start() : m.start()]}{m.group(0)}".casefold()), scored.start()
-            found.append(LineCandidate(line, start, Claim(start, m.end(), "line"), "phrase", phrase_number, stat, lead))
+                # The verb is the grammar's to claim (a count's "score"), so
+                # the line claims its own phrase alone.
+                line = replace(line, measure="points", as_typed=f"{question[scored.start() : m.start()]}{m.group(0)}".casefold())
+            found.append(LineCandidate(line, start, Claim(m.start(), m.end(), "line"), "phrase", phrase_number, stat, lead))
     return found
 
 
