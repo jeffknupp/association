@@ -2119,6 +2119,20 @@ with nothing to read fills the silence from its own weights), and more data
     entries the subject lane had deleted; cross-checked against GitHub and
     removed (`f7a97f1c`). Open P1s: 6, three of them Jeff's lifting.
 
+56. **Step 4 landed (2026-10-17, master `7ac32895`) and the external review
+    was recorded.** The homograph harness traces every name to the word it
+    was read from and holds four grammar-sense hits by text; the rule, read
+    once in the subject reading, names nobody from a month in a date or
+    from "best" and "head"; a start or bench role beside an absence is
+    kept; "jimmy butler" is Jimmy Butler III. Five feed moves, the corpus
+    identical. The same day Jeff passed on an independent review of the
+    code and the process (`reviews/phase6-2026-10-17/` in the research
+    repo, with the lead's response): its process findings - vertical lanes,
+    no lane edits to `ISSUES.md`, the per-commit chain cut to D12's letter -
+    were applied at once; its code findings (`Reading.point`, the widened
+    span's downstream traps, a keyed-score proof, a token-stream reader)
+    are the work after step 5, with seven calls put to Jeff.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
