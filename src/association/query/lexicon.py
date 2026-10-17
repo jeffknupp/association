@@ -4603,15 +4603,20 @@ split is read (:func:`~association.query.split.read_split`).
 # point reader reads the words through the lexicon as every tagger does.
 
 TOP_IN_A_GAME = re.compile(
-    r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b|\b(?:best|highest)\s+scoring\s+games?\b",
+    r"\b(most|highest|best|career[- ]high|record)\b.*\b(in an?\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b|\b(?:best|highest)\s+scoring\s+games?\b",
     re.IGNORECASE,
 )
-"""One game's top figure: "most points in a game", a "single-game", a
-"career high" or the best scoring games ("highest scoring games of 76ers
-players", never a ranking of the 76ers' points per game)
+"""One game's top figure: "most points in a game" ("in an nba game" too), a
+"single-game", a "career high" or the best scoring games ("highest scoring
+games of 76ers players", never a ranking of the 76ers' points per game)
 - a ranking of single games, never of season lines.
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 7.0.0
+   "in an ... game" as "in a ... game": "most points in an nba game since
+   2000" summed every player's points since 2000 (decision D17's
+   measurement).
 """
 # Not this relation's question: a team as the subject, an opponent's or
 # allowed figure, or a period. Refused, never answered with a ranking of
