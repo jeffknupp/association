@@ -1419,6 +1419,9 @@ CAUSES: frozenset[str] = frozenset(
         # A ranking of players whose words name
         # no measure it reads (ISSUES.md #421), never the points default.
         "ranking_needs_stat",
+        # A question that names nobody the reading could
+        # place and asks no ranking (ISSUES.md #448).
+        "subject_not_read",
         # Two measures combined by an arithmetic
         # word, which no measure reads (ISSUES.md #424).
         "measures_combined",
@@ -1487,9 +1490,12 @@ missing thing, never only the slot"):
   (``opponent_not_read``: ``words``, ``shape``; ISSUES.md #247), a team
   named beside a player that no read placed - not his tenure, not the
   opponent (``team_not_read``: ``words``, ``team``, ``shape``; ISSUES.md
-  #436), or a player named on a question whose
+  #436), a player named on a question whose
   shape has no reading for one (``no_player_reading``: ``player``,
-  ``shape``);
+  ``shape``), or a question that names nobody the reading could place and
+  asks for no ranking, which fell to the league's ranking only as the
+  parent grammar's last row (``subject_not_read``: ``opponent``, the team
+  a versus word set the unread subject against, or None; ISSUES.md #448);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,
   said only where the answer side declines): a playoff round
   (``playoff_round``: ``shape``, ``round``), a situation nothing reads

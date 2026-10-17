@@ -1159,9 +1159,16 @@ def _reading(
     # word there is no refusal).
     read_by_model = (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked))
     defaulted, defaulted_claims = _reading_from_route_defaulted(asked, pointed, [(c.start, c.end) for c in found], read_by_model, model_stat)
-    if defaulted is not None and defaulted.kind == "ranking_needs_stat" and unsupported:
+    if refused is None and defaulted is not None and defaulted.kind == "ranking_needs_stat":
+        # Where the words asked no ranking, nobody read is the cause, said
+        # before any reader runs (ISSUES.md #448); where a ranking word
+        # stands, the word is what keeps the ranking's own cause, and is read.
+        refused, ranking_claims = _refused_subject_not_read(asked, pointed)
+        defaulted_claims = [*defaulted_claims, *ranking_claims]
+    if defaulted is not None and defaulted.kind == "ranking_needs_stat" and (unsupported or (refused is not None and refused.kind == "subject_not_read")):
         # What the words name that nothing reads (an age) is the refusal the
-        # answering loop says where the ranking declines; it is the cause.
+        # answering loop says where the ranking declines; it is the cause -
+        # as nobody read is, where the words asked no ranking.
         defaulted = None
     found = list(claimed_once([*found, *defaulted_claims]))
     return replace(
@@ -1347,6 +1354,30 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)
     return Cause(kind="no_player_reading", facts={"player": player, "shape": reading.asked}) if player is not None else None
+
+
+def _refused_subject_not_read(question: str, reading: Reading) -> tuple[Cause | None, list[Claim]]:
+    """A question that names nobody the reading could place and asks for no
+    ranking (``subject_not_read``, ISSUES.md #448): with no player, team or
+    position read, the parent grammar's last row reads any words as the
+    league's ranking of players, and where the words name no stat to rank
+    by either, that ranking's own cause (``ranking_needs_stat``) was said -
+    "chrry vs rockets", "Kumminga logs vs wizards", "What position did Larry
+    Bird play?" were each told a ranking needs a stat, and "11/29/24 Al
+    Horford" that the game would answer a different span. What is missing
+    is who the question is about: the sentence says so, beside the opponent
+    a versus word set him against. Where a ranking word stands ("most 10+
+    pointd regular season games") the ranking was asked, and its cause
+    stands - the word claimed, since the cause turns on it. Asked only of a
+    ranking with no stat read (``ranking_needs_stat``) and no other cause:
+    a number, a stat, a window or a date the reading defaulted past names
+    the word it lost, which is the sharper sentence."""
+    if reading.who.kind != "everyone" or reading.who.players or reading.who.teams:
+        return None, []
+    ranked = [Claim(match.start(), match.end(), "refused") for match in lexicon.RANKING_ASKED.finditer(question)]
+    if ranked:
+        return None, ranked
+    return Cause(kind="subject_not_read", facts={"opponent": reading.cuts.opponent}), []
 
 
 def _refused_fact_not_read(question: str) -> Cause | None:

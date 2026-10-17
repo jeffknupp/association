@@ -1834,10 +1834,10 @@ those were found.
 
 ### `ranking_needs_stat` is said where the words ask no ranking: "What position did Larry Bird play?" is refused as a ranking without a stat
 - **Found:** 2026-10-14, the Phase 5 review, reading the feed's 100 `ranking_needs_stat` refusals at `3dc37821`.
-- **Evidence:** 64 of the 100 are questions that ask no ranking - a player's position, a fact, a name the no-names feed could not read - whose reading fell to the players' ranking with no measure, which step 6's cause (lane L, #421) then names; the cause is right that the ranking would answer wrong, and wrong about what the words asked. Part is the feed's lack of model names (production reads the player).
-- **User sees:** a refusal that says a ranking needs a stat on a question that asked for no ranking.
-- **Next step:** where the ranking key stands only as the parent grammar's fallback (no ranking word in the words: "most", "top", "leaders", "who has the most"), the refusal names what the words asked instead (`no_shape`'s "what its words ask has no reader", or the unread fact), never a ranking's stat; measure the 100 on both populations.
-- **Priority:** P2 - a refusal naming the wrong cause; 64 of the 2,082.
+- **Evidence:** the question that names nobody the reading could place and no ranking word is now refused by `subject_not_read` (lane p6-causes: 58 refusals and 30 declines of the feed). What remains: a team's or a position's players asked with no ranking word and no stat - "lakers players in the 2000s", "new york knicks players in 2012", "player in Milwaukee Bucks(2022-2023)", "nba players from the 76ers in the 2000s" (FS151), "2018 pacers playoff stats by player", "chicago bulls forwards by year 2010s", "Who is Knick power forward" - 9 of the 2,070 on `f7a97f1c`, still told a ranking needs a stat; they ask a roster.
+- **User sees:** a refusal that says a ranking needs a stat on a question that asked for a team's players.
+- **Next step:** read a team's players with no stat as the team's players ranked by games played (the key's own reading of FS151), or refuse by the roster as the missing thing.
+- **Priority:** P2 - a refusal naming the wrong cause; 9 of the 2,070.
 - **Source:** ours.
 - **GitHub:** #448
 

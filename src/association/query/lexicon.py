@@ -4637,6 +4637,15 @@ RANKING_WORDS = re.compile(r"\b(leaders?|most|highest|top|best|worst|fewest|leas
 
 .. versionadded:: 6.0.0
 """
+RANKING_ASKED = re.compile(r"\b(leaders?|leading|led|most|highest|top|best|worst|fewest|least|lowest|rank(?:s|ed|ings?)?)\b", re.IGNORECASE)
+"""A ranking asked in words, :data:`RANKING_WORDS` and the words that name
+a ranking or a leader outright ("ranked", "rankings", "leading"): where
+none stands, the league's ranking of players is only the parent grammar's
+last row, and a question that names nobody the reading could place asked
+for no ranking (the ``subject_not_read`` cause, ISSUES.md #448).
+
+.. versionadded:: 7.0.0
+"""
 LOG_OR_STATS_WORDS = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.IGNORECASE)
 """A log asked, or the bare "stats" a position's log and a team's players
 are asked by.

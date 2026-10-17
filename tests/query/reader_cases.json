@@ -1289,7 +1289,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "league"
    ],
    "subject": {
@@ -2218,7 +2217,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "league"
    ],
    "subject": {
@@ -2384,7 +2382,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "rookie",
     "year"
    ],
@@ -10186,7 +10183,6 @@
    },
    "minimum": null,
    "unread": [
-    "led",
     "rebounding"
    ],
    "subject": {
@@ -17153,14 +17149,10 @@
    },
    "point_declined": null,
    "point_refusal": null,
-   "defaulted": {
-    "kind": "ranking_needs_stat",
+   "refused": {
+    "kind": "subject_not_read",
     "facts": {
-     "shape": {
-      "relation": "player_seasons",
-      "shape": "ranking",
-      "by": "player"
-     }
+     "opponent": null
     }
    }
   }
@@ -18383,7 +18375,6 @@
    },
    "minimum": null,
    "unread": [
-    "best",
     "defense",
     "league"
    ],
@@ -57514,14 +57505,10 @@
    },
    "point_declined": null,
    "point_refusal": null,
-   "defaulted": {
-    "kind": "ranking_needs_stat",
+   "refused": {
+    "kind": "subject_not_read",
     "facts": {
-     "shape": {
-      "relation": "player_seasons",
-      "shape": "ranking",
-      "by": "player"
-     }
+     "opponent": "New York Knicks"
     }
    }
   }

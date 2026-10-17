@@ -5575,6 +5575,7 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
     "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
+    "subject_not_read": lambda facts: _subject_not_read(facts["opponent"]),
     "measures_combined": lambda facts: _measures_combined(facts["words"]),
 }
 
@@ -5590,6 +5591,18 @@ def _ranking_needs_stat() -> str:
     reads (ISSUES.md #421): the stat is the missing fact, and the sentence
     says how to name one rather than ranking by points unasked."""
     return "A ranking of players needs a stat to rank them by, and the words name none read here - name one ('most points', 'best 3pt%', 'most triple-doubles')."
+
+
+def _subject_not_read(opponent: str | None) -> str:
+    """The refusal for a question that names nobody the reading could place
+    and asks for no ranking (ISSUES.md #448): who the question is about is
+    the missing fact - never a ranking's stat - and the sentence says how to
+    name him."""
+    if opponent is not None:
+        return f"The words set someone against the {opponent}, but no player or team is read as who played them - name the player or the team in full, as the warehouse spells it."
+    return (
+        "No player or team is read from these words, and they ask for no ranking - name the player or the team in full, as the warehouse spells it, or the stat to rank the league by ('most points')."
+    )
 
 
 def _single_season_ranking(words: str) -> str:
