@@ -773,6 +773,27 @@ def _blanks(q: Query, rebuilt: bool) -> bool:
     return rebuilt and not _period_read(q)
 
 
+_REBUILT_DERIVED: frozenset[str] = frozenset({"double_double", "triple_double", "pra"})
+"""The derived measures built only of columns a rebuild gets right
+(:data:`~association.query.player_games.REBUILT_STATS`), read on a rebuilt
+line as its columns are."""
+
+
+def _rebuilt_read(q: Query) -> list[str]:
+    """The columns ``q`` reads, for the rebuilt-line rule: its measures and
+    its predicates' columns, a yes/no of a game made of columns a rebuild
+    gets right (a double- or triple-double) read as those columns - excluded,
+    a rebuilt 18-point, 16-rebound game of 2018-03-24 was no double-double,
+    and a question about that day's double-double answered that he had
+    none."""
+    named = [*q.measures, *(name for name, _, _ in q.predicates)]
+    read = [name for name in named if name not in _REBUILT_DERIVED]
+    if named and not read:
+        # Only such measures: their columns are all a rebuild gets right.
+        return ["points"]
+    return read
+
+
 def _rebuilt_for(box: BoxSource, q: Query) -> bool:
     """The rebuilt-line rule. A grouped read and a
     record widen the guard to rebuilt lines and blank the columns a rebuild
@@ -791,7 +812,7 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
         # like any other: the guard widens whatever is measured
         # (``box_source(con).rebuilt``).
         return box.rebuilt
-    read = [*q.measures, *(name for name, _, _ in q.predicates)]
+    read = _rebuilt_read(q)
     if q.skeleton == "rows":
         # A listing's rule (the game log's own, ``_rebuilt_readable``, until
         # the log executed the compiled statement and this became the one
