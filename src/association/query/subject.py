@@ -1209,7 +1209,7 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
     if bench is not None:
         return "bench", None, bench.end()
     absent = lexicon.CONDITION_ABSENT.search(text)
-    if word in ("without", "excluding") or absent is not None:
+    if word in ("without", "excluding") or absent is not None or (word == "with" and lexicon.COMPANION_NONE.match(text)):
         return "absent", None, absent.end() if absent is not None else None
     return "played", None, None
 

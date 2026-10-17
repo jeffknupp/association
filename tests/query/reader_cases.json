@@ -109895,7 +109895,7 @@
     {
      "player": "Paul George",
      "side": "own",
-     "predicate": "played",
+     "predicate": "absent",
      "line": null
     }
    ],
@@ -109905,7 +109905,7 @@
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": true,
+    "career": false,
     "since": null,
     "until": null
    },
@@ -109920,8 +109920,7 @@
    },
    "minimum": null,
    "unread": [
-    "stats",
-    "no"
+    "stats"
    ],
    "subject": {
     "kind": "player",
@@ -109947,7 +109946,7 @@
      {
       "player": "Paul George",
       "side": "own",
-      "predicate": "played",
+      "predicate": "absent",
       "line": null
      }
     ],
@@ -109979,13 +109978,6 @@
       "Paul George"
      ],
      "reason": "from the question's own words"
-    },
-    {
-     "stage": "parser",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -110042,7 +110034,7 @@
      {
       "player": "Paul George",
       "side": "own",
-      "predicate": "played",
+      "predicate": "absent",
       "line": null
      }
     ],
@@ -110052,7 +110044,7 @@
      "season": null,
      "season_type": 2,
      "both": false,
-     "career": true,
+     "career": false,
      "since": null,
      "until": null
     },
@@ -117471,6 +117463,416 @@
     "window": {
      "order": null,
      "count": 5,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "with_no_names_an_absence#1",
+  "why": "\"with no X\" is the games X sat, as \"without X\" is (lexicon.COMPANION_NONE, read by the subject reading's role) - \"with\" alone read him as playing (#482).",
+  "question": "james harden stats with no paul george",
+  "names": [
+   "James Harden",
+   "Paul George"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "split",
+    "by": "presence"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "James Harden"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Paul George",
+     "side": "own",
+     "predicate": "absent",
+     "line": null
+    }
+   ],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "stats"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "James Harden"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Paul George"
+    ],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "asked_reason": null,
+    "conditions": [
+     {
+      "player": "Paul George",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['James Harden', 'Paul George']; model players the question supports ['James Harden', 'Paul George']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "James Harden"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Paul George"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "split",
+    "by": "presence",
+    "measures": [
+     {
+      "key": "record",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "presence",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "James Harden"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Paul George",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    },
+    "minimum": null
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
+ },
+ {
+  "name": "with_no_names_an_absence#2",
+  "why": "\"with no X\" is the games X sat, as \"without X\" is (lexicon.COMPANION_NONE, read by the subject reading's role) - \"with\" alone read him as playing (#482).",
+  "question": "james harden stats with no paul george last season",
+  "names": [
+   "James Harden",
+   "Paul George"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_games",
+    "shape": "split",
+    "by": "presence"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "James Harden"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [
+    {
+     "player": "Paul George",
+     "side": "own",
+     "predicate": "absent",
+     "line": null
+    }
+   ],
+   "lines": [],
+   "measure": null,
+   "span": {
+    "season": 2025,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "stats"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "James Harden"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [
+     "Paul George"
+    ],
+    "invented": [],
+    "named_season": 2025,
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "asked_reason": null,
+    "conditions": [
+     {
+      "player": "Paul George",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['James Harden', 'Paul George']; model players the question supports ['James Harden', 'Paul George']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "James Harden"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "companions",
+     "before": null,
+     "after": [
+      "Paul George"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "team_games",
+     "shape": "split",
+     "by": "presence"
+    },
+    "relation": "team",
+    "on": "team_games",
+    "shape": "split",
+    "by": "presence",
+    "measures": [
+     {
+      "key": "record",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "presence",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null,
+    "who": {
+     "kind": "player",
+     "players": [
+      "James Harden"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [
+     {
+      "player": "Paul George",
+      "side": "own",
+      "predicate": "absent",
+      "line": null
+     }
+    ],
+    "lines": [],
+    "measure": null,
+    "span": {
+     "season": 2025,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
      "of": "games",
      "rank": null,
      "by": null

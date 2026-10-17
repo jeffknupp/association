@@ -2744,6 +2744,14 @@ VERSUS_PHRASE = re.compile(rf"\b(vs\.?|versus|against|v\.?)\s+((?:(?!\b(?:{COMPA
 # was read and the team's record fell back to the with/without split
 # (ISSUES.md #340). The column is MEASURE_WORDS', the one definition of what
 # a question calls a box-score column.
+# An absence that leads the name: "james harden stats with no paul george" is
+# the games George sat, where "with" alone read him as playing (ISSUES.md
+# #482). Read over a "with" phrase's words, from their start.
+COMPANION_NONE = re.compile(r"^\s*(?:no|zero)\b", re.IGNORECASE)
+"""An absence word before a companion's name ("with no X").
+
+.. versionadded:: 7.0.0
+"""
 CONDITION_HAS_LINE = re.compile(
     r"\b(?:has|had|have|gets?|got|records?|recorded|posts?|posted)\s+(\d{1,3})(?:\s*\+|[\s-]*plus\b|\s+or\s+more\b)?\s*("
     + "|".join(sorted((re.escape(w) for w in MEASURE_WORDS), key=len, reverse=True))
