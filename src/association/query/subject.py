@@ -639,7 +639,9 @@ def _routed_names(index: names.NameIndex, scope: Filtered, question: str, oppone
     not an invention)."""
     team_slot = _team_slot_player(index, scope)
     routed = [p for p in _routed_player_slots(scope) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(index, p) and not _not_a_name(p)]
-    supported = [p for p in routed if question_supports(p, question)]
+    # A name the question holds only by a word its grammar holds there (a
+    # month in a date, "best") is one the question never named.
+    supported = [p for p in routed if question_supports(p, question) and not _named_only_by_a_common_word(question, p)]
     return supported, [p for p in routed if p not in supported]
 
 
@@ -691,7 +693,10 @@ def _spellings(players: names.PlayerIndex, question: str, routed: list[str]) -> 
     out: dict[str, str] = {}
     for name in routed:
         derived = question_derived_player(players, question, name)
-        if derived is not None and derived.name != name:
+        if derived is not None and derived.name != name and not _named_only_by_a_common_word(question, derived.name):
+            # A respelling read from a word the grammar holds in its place
+            # is none: "curry best shooting night" never spells the model's
+            # "Stephen Curry" as Travis Best (ISSUES.md #486).
             out[name] = derived.name
     return _spellings_owned(out)
 
@@ -3008,17 +3013,43 @@ def _team_traces(teams: names.TeamIndex, team: Entity) -> set[str]:
 
 
 def _named_only_by_a_common_word(question: str, player: str) -> bool:
-    """Whether every word of ``player``'s name the question holds is ALSO an
-    ordinary English word known to collide with a real surname
-    (:data:`lexicon.COMMON_WORDS_THAT_NAME_PLAYERS`) - the same shape
+    """Whether every place the question holds a word of ``player``'s name
+    is a word the question's grammar holds there - the homograph rule,
+    read once for every reader of the subject's names (ISSUES.md #342,
+    #486): a month in a calendar day or before its year ("may 10th 2019"
+    is no Sean May, "jan 3 2019" no Jan Vesely; :func:`_words_the_grammar_holds`),
+    or an ordinary word known to collide with a real surname wherever it
+    stands (:data:`lexicon.COMMON_WORDS_THAT_NAME_PLAYERS`: "best" is no
+    Travis Best, "head" no Luther Head) - the same shape
     :func:`_named_only_by_a_team_word` checks for a team name, applied to a
     plain word instead of a team's.
 
     .. versionadded:: 4.4.0
     """
-    asked = {w.casefold() for w in _words(question)}
-    supporting = [w for w in _words(player) if w.casefold() in asked]
-    return bool(supporting) and all(w.casefold() in lexicon.COMMON_WORDS_THAT_NAME_PLAYERS for w in supporting)
+    words = {w.casefold() for w in _words(player)}
+    held = _words_the_grammar_holds(question)
+    places = [(start, end) for word, start, end in _subject_claims_tokens(question) if word in words]
+    return bool(places) and all(place in held for place in places)
+
+
+def _words_the_grammar_holds(question: str) -> frozenset[tuple[int, int]]:
+    """The places (start, end) of the question's words that hold a sense
+    of its grammar no name can take there: a month written in a calendar
+    day, each end of a range of days among them
+    (:data:`~association.query.lexicon.CALENDAR_DATE`), or in a month the
+    games are narrowed to - "in may", "march 2026" (the month a
+    :data:`~association.query.lexicon.SITUATION` ends on) - and every word
+    of :data:`~association.query.lexicon.COMMON_WORDS_THAT_NAME_PLAYERS`."""
+    held: set[tuple[int, int]] = set()
+    for match in lexicon.CALENDAR_DATE.finditer(question):
+        held.add(match.span("month"))
+    for match in lexicon.SITUATION.finditer(question):
+        # "in may", "march 2026": the month the situation ends on.
+        tokens = _subject_claims_tokens(match.group(0))
+        if tokens and tokens[-1][0] in lexicon.MEANING_MONTH_WORDS:
+            held.add((match.start() + tokens[-1][1], match.start() + tokens[-1][2]))
+    held.update((start, end) for word, start, end in _subject_claims_tokens(question) if word in lexicon.COMMON_WORDS_THAT_NAME_PLAYERS)
+    return frozenset(held)
 
 
 def _named_only_by_a_team_word(teams: names.TeamIndex, question: str, player: str) -> bool:

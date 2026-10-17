@@ -46,15 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### "best" is read as Travis Best beside an ambiguous surname: "curry best shooting night" ranks the league
-- **Found:** 2026-10-16, lane p6-words, fixing #445 ("best game(s)" as a single game's high).
-- **Evidence:** with the model's name "Stephen Curry" and the question's "curry" (several Currys on record), the subject reading respells the name by the one whole-word player the question holds - "best", Travis Best (decision reason "question spells 'Curry' as 'Travis Best'") - and reads `players == ['Travis Best', 'Curry']`. On `bad8e4ac`: "curry best shooting night" answers the league's points-per-game ranking fluently, "curry best stats this season" and "brown best season" are refused by `ranking_needs_stat`; on `p6-words` (#445's fix) "curry best games" and "curry best 3 games vs lakers" answer the league's single-game highs ("Bam Adebayo had the most points in a single game ..."). With the full name ("steph curry best games") the reading is right. `lexicon.COMMON_WORDS_THAT_NAME_PLAYERS` ("best", "head") guards the question's own names (`subject._named_only_by_a_common_word`) but not the respelling of a model's name. 0 of the 2,070 feed and 628 corpus questions hold the wording (probes).
-- **User sees:** a league-wide answer, fluently, where one player's was asked.
-- **Next step:** the respelling of a model's name (`subject.py`, "question spells X as Y") skips a player named only by a word of `COMMON_WORDS_THAT_NAME_PLAYERS`, as the question's own names do; then the ambiguous surname is asked about (the clarify "did you mean Seth Curry or Stephen Curry?") or resolved by the season. A test per wording. The subject seam's (lane p6-subject's files).
-- **Priority:** P1 - a different question answered fluently, on probes.
-- **Source:** ours.
-- **GitHub:** #486
-
 ### "but" between two companions is no joiner: "lakers record when AD plays but lebron doesnt" reads both as playing <!-- codespell:ignore doesnt - the wording as typed -->
 - **Found:** 2026-10-16, lane p6-subject, probing #479's clause reading.
 - **Evidence:** `subject._conditions_read_clauses_split` splits a companion phrase at `lexicon.NAME_JOINERS` ("and", "or", "nor", "&", "+", ","); "but" is none, so "AD plays but lebron doesnt" is one clause with "plays" before the denial, the denial is not read as LeBron's (`_conditions_read_clauses_bare_before`), and both read as playing. Probed; 0 of the 628 and the 2,070 hold the wording. <!-- codespell:ignore doesnt - the wording as typed -->
@@ -1783,13 +1774,6 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a refusal about a player he never named.
 - **Next step:** find what writes the words "first quarter" into `player` (the parser's last step restores "the one player the question names" for a player-required intent); a team subject with a quarter is `team_quarter_points`, never `period_split`. A case in `tests/query/test_parser.py`.
 - **GitHub:** #314
-
-### The team-only player check reads a month or an ordinary word as a player
-- **Found:** 2026-10-09, Phase 3 step 0 (`~/association-research/stages/refusal_sites.py`)
-- **Evidence:** 3 of the 2,082 feed answers (no names, no stat, as `run --feed` asks them): "curry playoff stats from may 10th 2019 to april 30th 2023 including record and ts% ..." and its "may 13th" twin are refused "This was read as a question about Sean May, a player, but team leaderboard has no reading for one ..."; "Nba curry most 3PM in Jan 3 2019" names Jan Vesely. `subject.player_named_on_a_team_only_question` reads `players_named_in` raw ("may" and "jan" are whole surnames) while the subject reading drops a dictionary word nobody routed (`subject._question_players`, `_dictionary()`), so two readers of "who the words name" disagree; `_named_only_by_a_common_word` knows only "best" and "head". With the normalizer's names ("curry") production reads these as Curry questions, so the names-less population is where it shows.
-- **User sees:** a refusal naming a player the question never meant (the wrong cause).
-- **Next step:** read the team-only check's player from the subject reading's own players (`Reading.subject`), which already excludes ordinary words, rather than a second `players_named_in` pass; re-measure the three.
-- **GitHub:** #342
 
 ### "top 10 players in offensive netpoints per 50 possessions" answers season totals, and the "50" counts as read
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 3).
