@@ -1279,18 +1279,21 @@ def with_without_named(scope: Filtered) -> tuple[list[str], bool, dict[str, tupl
 
 def with_without_beside(scope: Filtered) -> list[str]:
     """The teammates a with/without split over an absence keeps the games
-    of - the own-side companions who PLAYED beside one who is absent: "when
-    AD plays and lebron doesn't" divides the games Anthony Davis played by
-    whether LeBron James did (ISSUES.md #479), where the split had divided
-    every game by LeBron alone and dropped Davis. Empty where nobody is
-    absent: there the ones who played are what the split divides by
-    (:func:`with_without_named`).
+    of - the own-side companions who PLAYED beside one who is absent, or
+    held a role there: "when AD plays and lebron doesn't" divides the games
+    Anthony Davis played by whether LeBron James did (ISSUES.md #479), where
+    the split had divided every game by LeBron alone and dropped Davis;
+    "when embiid starts without maxey" divides the games Joel Embiid
+    started (each one's role is :func:`with_without_named`'s, by the name as
+    written), where the start was dropped and every game divided by Maxey.
+    Empty where nobody is absent: there the ones who played are what the
+    split divides by (:func:`with_without_named`).
 
     .. versionadded:: 7.0.0
     """
     if not any(c.absent for c in scope.companions):
         return []
-    return teammate_names([c.player for c in scope.companions if c.side == "own" and c.predicate == "played"])
+    return teammate_names([c.player for c in scope.companions if c.side == "own" and not c.absent])
 
 
 def _with_without_roles(companions: tuple[Companion, ...]) -> dict[str, tuple[str, tuple[str, int] | None]]:
@@ -2867,8 +2870,8 @@ def subject_claims(teams: names.TeamIndex, question: str, scope: Filtered) -> tu
     """
     tokens = _subject_claims_tokens(question)
     found: list[Claim] = []
-    # The teammates who played beside an absence are names the split reads
-    # (with_without_beside), as the subject's own players are.
+    # The teammates who played (or held a role) beside an absence are names
+    # the split reads (with_without_beside), as the subject's own players are.
     for player in (*scope.who.players, *with_without_beside(scope)):
         found.extend(_subject_claims_player(question, tokens, player))
     season = scope.span.season

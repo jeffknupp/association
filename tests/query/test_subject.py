@@ -1461,3 +1461,24 @@ def test_a_respelling_read_from_the_grammars_word_is_none(con: duckdb.DuckDBPyCo
     assert subject.question_derived_player(players, "best curry stats", "Best") is not None
     assert subject._spellings(players, "best curry stats", ["Best"]) == {}
     assert subject._spellings(players, "travis best career points", ["Best"]) == {"Best": "Travis Best"}
+
+
+@pytest.mark.parametrize(
+    ("question", "beside"),
+    [
+        ("sixers record when embiid starts without maxey", ["Joel Embiid"]),
+        ("sixers record when embiid starts and maxey doesn't", ["Joel Embiid"]),
+        ("sixers record when embiid plays without maxey", ["Joel Embiid"]),
+        ("sixers record without maxey", []),
+    ],
+)
+def test_a_teammate_with_a_role_beside_an_absence_is_kept_beside_it(con: duckdb.DuckDBPyConnection, question: str, beside: list[str]) -> None:
+    """The with/without split over an absence keeps the games of the
+    teammates beside it in the role each held: a start stated beside the
+    absence ("when embiid starts without maxey") was dropped, and every game
+    divided by Maxey alone."""
+    from association.query.parse import read_route
+
+    reading = read_route(names_of(con), question, [], "")
+    assert reading.asked == PRESENCE_SPLIT, reading.asked
+    assert subject.with_without_beside(reading) == beside

@@ -88,8 +88,9 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Resul
     if isinstance(resolved, Unanswered):
         return resolved
     mates, subject = resolved
-    # The teammates who played beside an absence ("when AD plays and lebron
-    # doesn't"): the games are those they played, divided by the absence.
+    # The teammates who played (or held a role) beside an absence ("when AD
+    # plays and lebron doesn't", "when embiid starts without maxey"): the
+    # games are those they played in their role, divided by the absence.
     beside = _with_without_beside(con, with_without_beside(scope), mates, covered)
     if isinstance(beside, Unanswered):
         return beside
@@ -110,13 +111,16 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Resul
     if isinstance(against, Unanswered):
         return against
     predicates = _with_without_predicates(con, mates, roles, covered)
-    compiled = compile_team_presence(con, covered, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates, beside=[b.id for b in beside])
+    beside_roles = _with_without_predicates(con, beside, roles, covered)
+    compiled = compile_team_presence(
+        con, covered, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, [*predicates, *beside_roles], beside=[b.id for b in beside]
+    )
     games, unknown = presence_games(rows_of(con, compiled), windows)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
     if not games:
         spell_text = "; ".join(f"{_with_without_stint_team(w, team_names)} {w.first} to {w.last}" for w in windows)
         return _with_without_empty_games(subject, mates, named, all_of, covered, spell_text, unknown)
-    return _with_without_result(covered, subject, mates, asked_without, predicates, windows, against, games, unknown, team_names, beside)
+    return _with_without_result(covered, subject, mates, asked_without, predicates, windows, against, games, unknown, team_names, list(zip(beside, beside_roles, strict=True)))
 
 
 def _with_without_beside(con: duckdb.DuckDBPyConnection, texts: list[str], mates: list[Entity], scope: _Scope) -> list[Entity] | Unanswered:
@@ -144,7 +148,7 @@ def _with_without_result(
     games: list[dict[str, Any]],
     unknown: int,
     team_names: dict[str, str],
-    beside: list[Entity],
+    beside: list[tuple[Entity, tuple[str, tuple[str, int] | None]]],
 ) -> Result:
     """The groups - team by team in the order the games were played, so a
     career reads forwards, and side by side, the question's own side first -
@@ -169,13 +173,28 @@ def _with_without_result(
     )
 
 
-def _with_without_narrowing_phrase(against: Entity | None, beside: list[Entity]) -> str:
+def _with_without_narrowing_phrase(against: Entity | None, beside: list[tuple[Entity, tuple[str, tuple[str, int] | None]]]) -> str:
     """What narrows both rows, as the heading says it after the teammates:
-    the opponent, and the games the teammates beside an absence played."""
+    the opponent, and the games the teammates beside an absence played -
+    each in the role he held ("in games Joel Embiid started")."""
     phrase = f" vs the {against.name}" if against is not None else ""
-    if beside:
-        phrase += f" in games {_joined([b.name for b in beside])} played"
+    if beside and all(role == ("played", None) for _, role in beside):
+        phrase += f" in games {_joined([b.name for b, _ in beside])} played"
+    elif beside:
+        phrase += f" in games {_joined([f'{b.name} {_with_without_role_words(role)}' for b, role in beside])}"
     return phrase
+
+
+def _with_without_role_words(role: tuple[str, tuple[str, int] | None]) -> str:
+    """A teammate's role beside an absence, as the heading says it."""
+    predicate, line = role
+    if predicate == "started":
+        return "started"
+    if predicate == "bench":
+        return "came off the bench"
+    if predicate == "reached" and line is not None:
+        return f"had {line[1]}+ {line[0]}"
+    return "played"
 
 
 def _with_without_companions(named: list[str], asked_without: bool, predicates: list[tuple[str, tuple[str, int] | None]]) -> Companions:
