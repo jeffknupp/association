@@ -1852,8 +1852,11 @@ def _apply_team_record_when(subject: Subject, scope: Filtered, asked: PointShape
         # The companion's line is the record's own now: the shape is keyed on it.
         lines=(replace(condition.line, keyed=True),) if condition.line is not None else (),
         # Nothing else of the scope stands: the companion is the record's
-        # player now, and no split, period or window was read for it.
-        companions=(),
+        # player now, and no split, period or window was read for it. Any
+        # OTHER companion stands, for the planner to honor or refuse ("when
+        # tatum scores 30 and brown plays": dropped, the record was every
+        # game of Tatum's 30).
+        companions=tuple(c for c in subject.conditions if c is not condition),
         split=None,
         period=None,
         window=Window(),

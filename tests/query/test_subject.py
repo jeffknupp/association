@@ -1385,3 +1385,16 @@ def test_a_count_is_named_from_a_line_the_tagger_read_never_a_bare_number() -> N
     assert child_named(player, PLAYER_LOG, lines_named(question).marked(question), original=question) == (GAMES_COUNTED, "games with 15 points")
     question = "kobe bryant career games with more than 40 field goal percentage"
     assert child_named(player, PLAYER_LOG, lines_named(question).marked(question), original=question) is None
+
+
+def test_a_teams_record_over_a_companions_line_keeps_the_other_companions(con: duckdb.DuckDBPyConnection) -> None:
+    """ "celtics record when tatum scores 30 and jaylen brown plays": the
+    record is keyed on Tatum's line, and Brown's presence was dropped with
+    the rest of the scope - the record over every game of Tatum's 30,
+    fluently. The other companions stand, for the planner to honor or
+    refuse."""
+    from association.query.parse import read_route
+
+    reading = read_route(names_of(con), "celtics record when tatum scores 30 and jaylen brown plays", ["celtics", "tatum", "jaylen brown"], "points")
+    assert reading.asked == LINE_RECORD
+    assert [(c.player, c.predicate) for c in reading.companions] == [("Jaylen Brown", "played")]
