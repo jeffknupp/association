@@ -46,6 +46,30 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "with no X" is read as playing beside the subject: "james harden stats with no paul george" answers the with/without split as if he played
+- **Found:** 2026-10-16, lane p6-subject, beside #479's clause reading.
+- **Evidence:** the subject reading reads the name after "with" as a companion who PLAYED (`subject._condition_role`: "with" and no absence word); "no" before the name is in `lexicon.NAME_STOPWORDS` and read by nothing. Two feed wordings: "james harden stats with no paul george" and "... last season" - the split is shown with "Paul George played" first, the side the question did not ask. The fix needs a lexicon line (the lexicon is the other lane's): an absence word that LEADS a name, e.g. `COMPANION_NONE = re.compile(r"^\s*(?:no|zero)\b", re.IGNORECASE)` read by `_condition_role` on a "with" phrase's words (absent where it matches), or "with no" folded into `lexicon.COMPANION`'s "without".
+- **User sees:** the split's "played" row first, under a heading that reads as "with Paul George".
+- **Next step:** the lexicon line above, then `_condition_role` reads it as `absent`; a test per wording.
+- **Priority:** P1 - the asked side presented as the other; two feed wordings.
+- **Source:** ours.
+
+### "but" between two companions is no joiner: "lakers record when AD plays but lebron doesnt" reads both as playing <!-- codespell:ignore doesnt - the wording as typed -->
+- **Found:** 2026-10-16, lane p6-subject, probing #479's clause reading.
+- **Evidence:** `subject._conditions_read_clauses_split` splits a companion phrase at `lexicon.NAME_JOINERS` ("and", "or", "nor", "&", "+", ","); "but" is none, so "AD plays but lebron doesnt" is one clause with "plays" before the denial, the denial is not read as LeBron's (`_conditions_read_clauses_bare_before`), and both read as playing. Probed; 0 of the 628 and the 2,070 hold the wording. <!-- codespell:ignore doesnt - the wording as typed -->
+- **User sees:** the games both played (or a refusal for a span outside their time together), where Davis on and LeBron off was asked.
+- **Next step:** "but" joins `lexicon.NAME_JOINERS` (the lexicon lane's file): `NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "but", "&", "+", ","})`; then a test per wording.
+- **Priority:** P1 - a different question answered fluently (probed wording).
+- **Source:** ours.
+
+### A start one of two companions is denied reads as both starting on the with/without split: "sixers record when embiid starts and maxey doesnt start" <!-- codespell:ignore doesnt - the wording as typed -->
+- **Found:** 2026-10-16, lane p6-subject, probing #479's neighbors.
+- **Evidence:** the denied-role cause (`parse._reading_from_route_denied`, #248) is not said on the with/without split, which "shows both halves" - true of one teammate, not of two: `subject._conditions_read_clauses` turns only a PLAYING clause into an absence on a denial, so both companions read `started`, and the split answers "Joel Embiid and Tyrese Maxey started" 22-13 against "either did not start" 23-24 - never Embiid starting with Maxey not. No predicate exists for a start denied (`player_games.CONDITION_PREDICATES`). Probed; 0 recorded wordings.
+- **User sees:** the both-started row, where one started and one did not was asked.
+- **Next step:** refuse a denied start on the split too where it names two or more companions (the `denied_role` cause, `parse.py`'s - the lexicon lane's file), or add a `not_started` predicate the presence statement counts (`conditions._with_without_held`).
+- **Priority:** P1 - a different question answered fluently (probed wording).
+- **Source:** ours.
+
 ### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
 - **Evidence:** on `p5s6-L` (feed, no names), "Westbrook wins per season" answers "Russell Westbrook, points, rebounds and assists per game by regular season, 2023-2026 ..." (before the fix his 2026 line), "wins" unread: `measure.named("wins")` reads nothing outside a record's games won (`lexicon.GAMES_WON` under `LINE_RECORD`), so step 1's `unread_stat` cannot fire on it, and the players' ranking ("most wins by player nba 2010s", 14 of the 2,082) is refused by `ranking_needs_stat` since #421's fix. A player's wins are the games his team won with him playing (`won` is a yes/no measure of the player-games relation).
@@ -1948,6 +1972,14 @@ those were found.
 - **GitHub:** #467
 
 ## P3: refusal or gap
+
+### A companion's line stated by "shoots" is not read: "knicks record in playoff games when Mitchell Robinson shoots 4 ft" is refused for an unread number
+- **Found:** 2026-10-16, lane p6-subject (#340's fix; the feed sample's FS045).
+- **Evidence:** `lexicon.CONDITION_HAS_LINE` reads a companion's line after "has", "had", "gets", "records", "posts" and a box-score word; "shoots" is none, so "shoots 4 ft" reads no line and the reading refuses "4" as an unread number. One feed wording (FS045).
+- **User sees:** a refusal naming the number, where the Knicks' playoff record in Robinson's 4+ FT games was asked.
+- **Next step:** "shoots", "makes", "hits" join `CONDITION_HAS_LINE`'s verbs (the lexicon lane's file), with "ft" read as made free throws where `MEASURE_WORDS` says so; a test.
+- **Priority:** P3 - a refusal where an answer exists.
+- **Source:** ours.
 
 ### A teammate's surname that is one player's exactly is read as him, though a near spelling was the subject's teammate: "rui hachimura stats without reeves" reads Antonio Reeves
 - **Found:** 2026-10-16, lane p6-span's prototype of D15, re-measured by lane p6-d15.
