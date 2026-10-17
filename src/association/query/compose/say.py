@@ -1640,8 +1640,15 @@ def phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: l
     games = values.get("gamesPlayed")
     parts = []
     for stat in wanted:
-        per_game_col, _, label = PLAYER_STAT_COLUMNS[stat]
+        per_game_col, total_col, label = PLAYER_STAT_COLUMNS[stat]
         per_game = values.get(per_game_col)
+        total = values.get(total_col) if total_col else None
+        if not per_game and total and games:
+            # A per-game figure stored rounded to a tenth reads 0 from a
+            # total that is not: "Tim Duncan averaged 0 3-pointers per game"
+            # over his 30 in 1,392 games (ISSUES.md #478). The figure is
+            # the total over the games, said as small as it is.
+            per_game = total / games
         if per_game is not None:
             parts.append(f"{format_value(per_game)} {label}")
     if not parts:
