@@ -1710,6 +1710,17 @@ def test_a_log_of_a_yes_no_stat_keeps_the_games_it_holds_in_over_the_career(con:
     assert reading.span.career
 
 
+@pytest.mark.parametrize(("question", "op"), [("how many times did tyrese maxey score below 10", "<"), ("tyrese maxey games he scored under 15", "<")])
+def test_a_scoring_verb_names_the_stat_a_below_phrase_does_not(con: duckdb.DuckDBPyConnection, question: str, op: str) -> None:
+    """The feed sample's FS241, "How many times did bill Russell score below
+    10", was refused "'below 10' names no box-score stat": the verb before
+    the phrase names points, and the refusal that is the missing thing - no
+    such player - is said where his name is resolved."""
+    reading = _read(con, question)
+    assert [(line.measure, line.op) for line in reading.lines] == [("points", op)]
+    assert reading.point_refusal is None
+
+
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
 def test_a_total_asked_of_the_season_ranking_ranks_the_total(con: duckdb.DuckDBPyConnection, question: str, source: str) -> None:
     """#435: "total" asks the season ranking for the season's total (its

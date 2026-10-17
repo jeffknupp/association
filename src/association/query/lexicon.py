@@ -2311,6 +2311,13 @@ opponents score 120+") - searched over the words before the line
 # carries "under 14 fta" and "less than 15 fga and with less than 35 minutes"
 # is two lines, not one.
 
+SCORED_BEFORE = re.compile(r"\bscor(?:e|es|ed|ing)\s+\Z", re.IGNORECASE)
+"""A scoring verb right before a below or above phrase that names no stat
+("score below 10"): the line is on points. Searched over the question up
+to the phrase.
+
+.. versionadded:: 7.0.0
+"""
 BELOW = re.compile(
     r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
     r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b"
