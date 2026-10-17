@@ -143,10 +143,96 @@ def test_a_season_under_two_labels_keeps_both_rows(con: duckdb.DuckDBPyConnectio
     assert seasons == [1993, 1994]
 
 
-def test_the_columns_are_exactly_games_columns(con: duckdb.DuckDBPyConnection) -> None:
+def test_the_columns_are_games_columns_then_the_bracket(con: duckdb.DuckDBPyConnection) -> None:
     """A drop-in replacement: anything reading `g.*` off `games` must get the
-    same row shape, or swapping the name silently changes an answer's data."""
-    assert [r[0] for r in con.execute("DESCRIBE real_games").fetchall()] == [r[0] for r in con.execute("DESCRIBE games").fetchall()]
+    same row shape, or swapping the name silently changes an answer's data;
+    the bracket's three columns follow them."""
+    games = [r[0] for r in con.execute("DESCRIBE games").fetchall()]
+    assert [r[0] for r in con.execute("DESCRIBE real_games").fetchall()] == [*games, "playoff_round", "series_game", "playoff_conference"]
+
+
+# A postseason in the bracket's shape, four teams in two conferences: each
+# conference's one series opens it, and the two winners meet. E1, E2, W1 and
+# W2 stand for any franchise ids.
+_BRACKET = [
+    ("e_g1", "2016-04-17T23:00Z", "E1", "E2", "E1"),
+    ("e_g2", "2016-04-19T23:00Z", "E2", "E1", "E1"),
+    ("w_g1", "2016-04-18T02:30Z", "W1", "W2", "W1"),
+    ("f_g1", "2016-06-03T01:00Z", "W1", "E1", "W1"),
+    ("f_g2", "2016-06-06T00:00Z", "W1", "E1", "E1"),
+    # Off the postseason: no round, no number.
+    ("reg", "2016-01-05T00:30Z", "E1", "W1", "E1"),
+]
+
+
+def _bracket(*, espn_series: list[int | None] | None = None, alignment: bool = True) -> duckdb.DuckDBPyConnection:
+    """A warehouse holding :data:`_BRACKET`, with ESPN's ``series_game``
+    beside it where ``espn_series`` gives one per row."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('E1'),('E2'),('W1'),('W2')")
+    espn = espn_series is not None
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season BIGINT, season_type BIGINT, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, winner_team_id VARCHAR"
+        + (", series_game BIGINT)" if espn else ")")
+    )
+    for i, (event, day, home, away, winner) in enumerate(_BRACKET):
+        row = (event, 2016, 2 if event == "reg" else 3, day, home, away, winner)
+        c.execute(f"INSERT INTO games VALUES ({', '.join('?' * (len(row) + espn))})", [*row, *([espn_series[i]] if espn_series is not None else [])])
+    loaded = {"games", "teams"}
+    if alignment:
+        c.execute("CREATE TABLE team_alignment (season BIGINT, team_id VARCHAR, conference VARCHAR, division VARCHAR)")
+        c.execute(
+            "INSERT INTO team_alignment VALUES (2016,'E1','Eastern Conference','A'),(2016,'E2','Eastern Conference','A'),(2016,'W1','Western Conference','B'),(2016,'W2','Western Conference','B')"
+        )
+        loaded.add("team_alignment")
+    real_games.build_table(c, loaded)
+    return c
+
+
+def _placed(c: duckdb.DuckDBPyConnection) -> dict[str, tuple[object, object, object]]:
+    return {r[0]: r[1:] for r in c.execute("SELECT event_id, playoff_round, series_game, playoff_conference FROM real_games").fetchall()}
+
+
+def test_a_postseason_game_is_placed_in_its_bracket() -> None:
+    """A series' round is its place among each team's series by the day it
+    opened, its game's number its place by date within the series, and a
+    round before the last is played inside one conference."""
+    assert _placed(_bracket()) == {
+        "e_g1": (1, 1, "Eastern Conference"),
+        "e_g2": (1, 2, "Eastern Conference"),
+        "w_g1": (1, 1, "Western Conference"),
+        "f_g1": (2, 1, None),
+        "f_g2": (2, 2, None),
+        "reg": (None, None, None),
+    }
+
+
+def test_espn_s_own_series_count_is_taken_over_the_place_by_date() -> None:
+    """A game ESPN numbers is that number (the 2001 playoff games ESPN never
+    served would otherwise shift a series' count); one it does not is
+    numbered by its place."""
+    placed = _placed(_bracket(espn_series=[1, 2, 1, 3, None, None]))
+    assert placed["f_g1"][1] == 3 and placed["f_g2"][1] == 2
+
+
+def test_a_series_whose_two_teams_place_it_differently_has_no_round() -> None:
+    """A team enters the bracket late (its only series opens after E1 has
+    played one - the shape of a postseason with a missing series): E1 places
+    it second and the newcomer first, and a guess between them would be the
+    silent wrong round."""
+    c = _bracket()
+    c.execute("INSERT INTO teams VALUES ('X')")
+    c.execute("UPDATE games SET home_team_id = 'X' WHERE event_id IN ('f_g1', 'f_g2')")
+    c.execute("UPDATE games SET winner_team_id = 'X' WHERE event_id = 'f_g1'")
+    real_games.build_table(c, {"games", "teams", "team_alignment"})
+    assert _placed(c)["f_g1"][0] is None
+
+
+def test_without_team_alignment_no_conference_is_read() -> None:
+    """The conference is ``team_alignment``'s; with no such table it is
+    left unread rather than guessed."""
+    assert {v[2] for v in _placed(_bracket(alignment=False)).values()} == {None}
 
 
 def test_without_box_scores_the_phantom_rule_does_not_fire(con: duckdb.DuckDBPyConnection) -> None:

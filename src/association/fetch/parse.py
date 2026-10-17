@@ -167,6 +167,27 @@ def _parse_game_summary_winner_team_id(home: dict[str, Any], away: dict[str, Any
     return None
 
 
+def _parse_game_summary_series_game(comp: dict[str, Any]) -> int | None:
+    """Which game of its playoff series this is, by ESPN's own count: the
+    ``playoff`` series object's competitors' wins, summed - each summary's
+    series is as of that game ("NY leads series 3-2" on the night of Game
+    5), so the wins it reports are the games played so far, this one
+    included. ESPN serves the object on every postseason summary from the
+    1989 playoffs on and none on a regular-season one (``DATA.md``, "The
+    playoff round and the series' game number"), so this is None off the
+    postseason and wherever a count is missing.
+
+    .. versionadded:: 7.0.0
+    """
+    for series in comp.get("series") or []:
+        if not isinstance(series, dict) or series.get("type") != "playoff":
+            continue
+        wins = [competitor.get("wins") for competitor in series.get("competitors") or []]
+        if len(wins) == 2 and all(isinstance(w, int) for w in wins):
+            return sum(wins) or None
+    return None
+
+
 def _parse_game_summary_game_row(
     event_id: Any,
     season: int,
@@ -180,9 +201,13 @@ def _parse_game_summary_game_row(
     venue: dict[str, Any],
     game_info: dict[str, Any],
     status: dict[str, Any],
+    note: Any = None,
 ) -> Row:
     """The single ``games`` row: header, competitor, venue and status fields
-    flattened together."""
+    flattened together, and a playoff game's place in its series - ESPN's
+    count of it (``series_game``) and the header's note naming the round
+    ("West 1st Round - Game 1", from the 2009 playoffs on; 2004-2008 say
+    only "PLAYOFFS" or "FINALS"), kept as served."""
     return {
         "event_id": event_id,
         "season": season,
@@ -205,6 +230,8 @@ def _parse_game_summary_game_row(
         "status": status.get("name"),
         "status_completed": bool(status.get("completed")),
         "status_state": status.get("state"),  # 'pre' | 'in' | 'post' - 'post' + not completed = postponed/canceled, not pending
+        "series_game": _parse_game_summary_series_game(comp),
+        "series_note": note if isinstance(note, str) and note.strip() else None,
     }
 
 
@@ -394,7 +421,7 @@ def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict
     opponent_of = {home_team_id: away_team_id, away_team_id: home_team_id}
     winner_team_id = _parse_game_summary_winner_team_id(home, away, home_team_id, away_team_id)
 
-    result["game"] = _parse_game_summary_game_row(event_id, season, season_type, comp, home, away, home_team_id, away_team_id, winner_team_id, venue, game_info, status)
+    result["game"] = _parse_game_summary_game_row(event_id, season, season_type, comp, home, away, home_team_id, away_team_id, winner_team_id, venue, game_info, status, header.get("gameNote"))
 
     boxscore = data.get("boxscore") or {}
     result["team_box"] = _parse_game_summary_team_box(boxscore, event_id, season, season_type, opponent_of)

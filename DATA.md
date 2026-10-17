@@ -1326,6 +1326,47 @@ measured. Count foul-outs from the box score.
   `scripts/check_net_points_games.py` runs that over a whole season.
 - **Tracked in:** no action needed — fixed in `f152b5e`.
 
+### The playoff round and the series' game number
+
+- **What ESPN does:** labels a postseason game's place in its series in
+  every season, and its round only from 2004. Each game summary's header
+  competition carries a `series` list whose `playoff` entry (`"NY leads
+  series 3-2"`, `competitors[].wins`) is as of that game, so the two wins
+  summed are its number in the series - served for every postseason on
+  record (the 1989 playoffs on). The round is named by the scoreboard's
+  competition `type.abbreviation` (`RD16`, `QTR`, `SEMI`, `FINAL`) from
+  2004, by the summary's `gameNote` / the scoreboard's `notes[].headline`
+  as "PLAYOFFS" or "FINALS" in 2004-2008 and as the round and game ("NBA
+  FINALS - GAME 7", "West 1st Round - Game 1", "EASTERN CONFERENCE
+  SEMIFINALS - GAME 1") from 2009. Before 2004 the type is `STD` and there
+  is no note: ESPN names no round. Two 2013 and 2015 East semifinal series
+  are typed `STD` though their notes name the round.
+- **Evidence:** measured 2026-10-17 through `association.fetch`'s own client
+  (lane p6-round): every postseason day's scoreboard 1989-2026 (1,627 days,
+  3,006 postseason events) and a first-round and a Finals summary per
+  season. The wins summed equal each game's place by date within its series
+  in `real_games` on all 3,006; the bracket's round (below) agrees with the
+  competition type on all 1,915 typed games and with the note on all 1,610
+  that name a round, none disagreeing. Every postseason 1988-2026 in
+  `real_games` holds 15 series, 8, 4, 2 and 1 by round, both teams of each
+  placing it alike; rounds 1-3 are played inside one conference
+  (`team_alignment`, 2,861 games) and the Finals across. The 2001 series
+  ESPN serves short (DATA.md, "The 2000 and 2001 playoffs stop before the
+  Finals") are short in its series counts too: its one 2001 Finals game
+  reads "LAL lead series 1-0".
+- **Does a refetch fix it?** A pull since 2026-10-17 writes `games.series_game`
+  (the wins summed) and `games.series_note` (the note as served); a tree
+  pulled before has neither until `scripts/backfill_series_games.py`
+  re-fetches its postseason summaries (3,022 on disk).
+- **How we handle it:** `real_games` places each postseason game
+  (`fetch/repairs/real_games.py`): `playoff_round` is the series' place
+  among each team's series by the day it opened (NULL where the two teams
+  disagree), `series_game` ESPN's count where the game carries it and its
+  place by date otherwise, `playoff_conference` the two teams' shared
+  conference in rounds 1-3. `scripts/check_playoff_rounds.py` holds the
+  bracket to ESPN's labels on a built warehouse.
+- **Tracked in:** ISSUES.md, "A named playoff round is refused" (#10).
+
 ### Play-in games are not in `games` at all
 
 - **What ESPN does:** the schedule endpoint the pull reads serves regular

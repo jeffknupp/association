@@ -336,6 +336,67 @@ def test_parse_game_summary_completed_game() -> None:
     assert result["players_seen"]["3155526"]["display_name"] == "Test Player"
 
 
+def _with_series(data: dict, *, note: str | None, series: list[dict]) -> dict:
+    """``data`` with the header's ``gameNote`` and its competition's
+    ``series`` list in the shape ESPN serves them: the regular-season series
+    first, the playoff one second (event 400878160, 2016 Finals Game 7)."""
+    if note is not None:
+        data["header"]["gameNote"] = note
+    data["header"]["competitions"][0]["series"] = series
+    return data
+
+
+_SEASON_SERIES = {
+    "type": "season",
+    "title": "Regular Season Series",
+    "summary": "GS wins series 2-0",
+    "completed": True,
+    "totalCompetitions": 2,
+    "competitors": [{"id": "9", "wins": 2, "ties": 0}, {"id": "5", "wins": 0, "ties": 0}],
+}
+
+
+def test_parse_game_summary_reads_the_playoff_series_game_and_its_note() -> None:
+    """2016 Finals Game 7 as ESPN serves it: "CLE wins series 4-3", the
+    wins summed are the game's number, and the note is kept as served. The
+    regular-season series beside it is not the playoff one."""
+    playoff = {
+        "type": "playoff",
+        "title": "Playoff Series",
+        "summary": "CLE wins series 4-3",
+        "completed": True,
+        "totalCompetitions": 7,
+        "competitors": [{"id": "9", "wins": 3, "ties": 0}, {"id": "5", "wins": 4, "ties": 0}],
+    }
+    data = _with_series(_make_game_data(), note="NBA FINALS - GAME 7", series=[_SEASON_SERIES, playoff])
+    game = parse.parse_game_summary(data, season=2016, season_type=3)["game"]
+    assert (game["series_game"], game["series_note"]) == (7, "NBA FINALS - GAME 7")
+
+
+def test_parse_game_summary_reads_a_1990s_series_with_no_note() -> None:
+    """1998's summaries carry the playoff series ("NY leads series 3-2" on
+    the night of Game 5) and no ``gameNote`` - ESPN names no round before
+    2004."""
+    playoff = {
+        "type": "playoff",
+        "title": "Playoff Series",
+        "summary": "NY leads series 3-2",
+        "completed": False,
+        "totalCompetitions": 7,
+        "competitors": [{"id": "14", "wins": 2, "ties": 0}, {"id": "18", "wins": 3, "ties": 0}],
+    }
+    data = _with_series(_make_game_data(), note=None, series=[_SEASON_SERIES, playoff])
+    game = parse.parse_game_summary(data, season=1998, season_type=3)["game"]
+    assert (game["series_game"], game["series_note"]) == (5, None)
+
+
+def test_parse_game_summary_a_regular_season_game_has_no_series_game() -> None:
+    """Only the regular-season series is served off the postseason."""
+    data = _with_series(_make_game_data(), note=None, series=[_SEASON_SERIES])
+    game = parse.parse_game_summary(data, season=2016, season_type=2)["game"]
+    assert (game["series_game"], game["series_note"]) == (None, None)
+
+
 def test_parse_game_summary_free_throw_sentinel_coordinate_nulled() -> None:
     """Free throws (and some other plays) carry an ESPN sentinel "no real
     coordinate" value instead of a court position or null. Left unfiltered,

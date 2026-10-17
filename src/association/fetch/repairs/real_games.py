@@ -99,27 +99,71 @@ _GAME_HAS_BOX = "EXISTS (SELECT 1 FROM player_box_stats pb WHERE pb.event_id = g
 _SEASON_HAS_BOX = "EXISTS (SELECT 1 FROM player_box_stats pb WHERE pb.season = listed.season AND pb.season_type = listed.season_type)"
 
 
-def real_games_sql(*, box_scores: bool) -> str:
+def real_games_sql(*, box_scores: bool, alignment: bool = False, espn_series: bool = False) -> str:
     """The ``CREATE OR REPLACE TABLE`` statement behind ``real_games``.
 
-    The table has exactly ``games``' columns, so it is a drop-in replacement
-    for it in any query that does not want the junk rows.
+    The table has ``games``' columns, so it is a drop-in replacement for it
+    in any query that does not want the junk rows, and three more that place
+    a postseason game in its bracket (NULL off the postseason):
+
+    - ``playoff_round``: 1 for the first round, 2 the conference semifinals,
+      3 the conference finals, 4 the Finals. A series is the games two teams
+      play each other in one postseason, and its round is its place among
+      each team's series by the date it opened - the same place for both
+      teams, or NULL where they disagree. Measured on the 2026-09-24
+      warehouse: every postseason 1988-2026 holds 15 series, 8, 4, 2 and 1
+      by round with both teams agreeing on each, and the round agrees with
+      ESPN's own label on every game ESPN labels - its scoreboard's
+      competition type (RD16, QTR, SEMI, FINAL) on 1,915 games from 2004 on
+      and the note naming the round on 1,610 from 2009 on - with no game
+      disagreeing. Before 2004 ESPN names no round anywhere, so the place in
+      the bracket is the only reading there is (``DATA.md``, "The playoff
+      round and the series' game number").
+    - ``series_game``: the game's number within its series, 1-7 - ESPN's
+      own count (``games.series_game``, the playoff series' wins summed)
+      where the game carries it, else the game's place by date among the
+      series' games here. The two agree on all 3,006 postseason games ESPN's
+      scoreboards list for 1989-2026; the 2001 playoff games ESPN never
+      served (``DATA.md``) are missing from both, so a 2001 series' numbers
+      count the games on record.
+    - ``playoff_conference``: the conference a round-1-3 series is played
+      in, from ``team_alignment`` for that season - the two teams' shared
+      one (they shared it in every one of the 2,861 such games) - and NULL
+      for the Finals, which cross conferences.
 
     Args:
         box_scores: Whether ``player_box_stats`` is loaded. Without it the
             phantom rule cannot be evaluated and is left out rather than
             guessed at; the placeholder, unknown-team and duplicate rules
             still apply.
+        alignment: Whether ``team_alignment`` is loaded; without it
+            ``playoff_conference`` is NULL throughout.
+        espn_series: Whether ``games`` carries ESPN's ``series_game``
+            (a pull since the column was added); without it every game's
+            number is its place by date.
 
     Returns:
         One SQL statement, with no parameters - every value in it is a
         constant from this module.
 
     .. versionadded:: 2.2.0
+
+    .. versionchanged:: 7.0.0
+       Adds ``playoff_round``, ``series_game`` and ``playoff_conference``,
+       and takes ``alignment`` and ``espn_series``.
     """
     game_has_box = _GAME_HAS_BOX if box_scores else "false"
     season_has_box = _SEASON_HAS_BOX if box_scores else "false"
     stamps = ", ".join(f"'{s}'" for s in DATE_ONLY_STAMPS)
+    excluded = "eastern_day, has_box, series_game" if espn_series else "eastern_day, has_box"
+    espn_number = "kept.series_game" if espn_series else "NULL"
+    conference = (
+        "(SELECT any_value(ta.conference) FROM team_alignment ta WHERE ta.season = kept.season AND ta.team_id IN (kept.home_team_id, kept.away_team_id)"
+        " HAVING count(DISTINCT ta.conference) = 1 AND count(*) = 2)"
+        if alignment
+        else "NULL"
+    )
+    pair = "least(kept.home_team_id, kept.away_team_id), greatest(kept.home_team_id, kept.away_team_id)"
     return f"""
         CREATE OR REPLACE TABLE real_games AS
         WITH listed AS (
@@ -130,15 +174,37 @@ def real_games_sql(*, box_scores: bool) -> str:
             WHERE g.winner_team_id IS NOT NULL
               AND g.home_team_id IN (SELECT team_id FROM teams)
               AND g.away_team_id IN (SELECT team_id FROM teams)
+        ),
+        kept AS (
+            SELECT *
+            FROM listed
+            WHERE NOT (substr(listed.date, 12) IN ({stamps}) AND NOT listed.has_box AND {season_has_box})
+            QUALIFY row_number() OVER (
+                PARTITION BY listed.season, listed.season_type, listed.eastern_day,
+                             least(listed.home_team_id, listed.away_team_id), greatest(listed.home_team_id, listed.away_team_id)
+                ORDER BY listed.has_box DESC, listed.date, listed.event_id
+            ) = 1
+        ),
+        series AS (
+            SELECT kept.season, least(kept.home_team_id, kept.away_team_id) AS low, greatest(kept.home_team_id, kept.away_team_id) AS high, min(kept.date) AS opened
+            FROM kept WHERE kept.season_type = 3 GROUP BY ALL
+        ),
+        each_side AS (
+            SELECT season, low AS team, low, high, opened FROM series
+            UNION ALL SELECT season, high AS team, low, high, opened FROM series
+        ),
+        placed AS (
+            SELECT season, low, high, CASE WHEN min(place) = max(place) THEN max(place) END AS playoff_round
+            FROM (SELECT *, row_number() OVER (PARTITION BY season, team ORDER BY opened, low, high) AS place FROM each_side)
+            GROUP BY ALL
         )
-        SELECT * EXCLUDE (eastern_day, has_box)
-        FROM listed
-        WHERE NOT (substr(listed.date, 12) IN ({stamps}) AND NOT listed.has_box AND {season_has_box})
-        QUALIFY row_number() OVER (
-            PARTITION BY listed.season, listed.season_type, listed.eastern_day,
-                         least(listed.home_team_id, listed.away_team_id), greatest(listed.home_team_id, listed.away_team_id)
-            ORDER BY listed.has_box DESC, listed.date, listed.event_id
-        ) = 1
+        SELECT kept.* EXCLUDE ({excluded}),
+               placed.playoff_round,
+               CASE WHEN kept.season_type = 3 THEN coalesce({espn_number}, row_number() OVER (PARTITION BY kept.season, kept.season_type, {pair} ORDER BY kept.date, kept.event_id)) END AS series_game,
+               CASE WHEN placed.playoff_round BETWEEN 1 AND 3 THEN {conference} END AS playoff_conference
+        FROM kept
+        LEFT JOIN placed ON kept.season_type = 3 AND placed.season = kept.season
+                        AND placed.low = least(kept.home_team_id, kept.away_team_id) AND placed.high = greatest(kept.home_team_id, kept.away_team_id)
     """
 
 
@@ -181,7 +247,8 @@ def build_table(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     if missing or "team_id" not in _real_games_columns(con, "teams"):
         log.info("skip real_games (missing columns: %s)", ", ".join(missing) or "teams.team_id")
         return
-    con.execute(real_games_sql(box_scores="player_box_stats" in loaded))
+    alignment = "team_alignment" in loaded and {"season", "team_id", "conference"} <= _real_games_columns(con, "team_alignment")
+    con.execute(real_games_sql(box_scores="player_box_stats" in loaded, alignment=alignment, espn_series="series_game" in _real_games_columns(con, "games")))
     row = con.execute("SELECT count(*), (SELECT count(*) FROM games) FROM real_games").fetchone()
     assert row is not None  # COUNT(*) always returns exactly one row
     log.info("real_games: %d rows (%d dropped as not a game)", row[0], row[1] - row[0])
