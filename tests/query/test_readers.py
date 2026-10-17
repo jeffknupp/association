@@ -2061,6 +2061,22 @@ def test_a_comparison_is_not_refused_before_netpoints_begins(ps_con: AnswerConte
     assert check_coverage(PLAYER_COMPARISON, Reading(span=Span(season=2005, season_type=2))) is None
 
 
+def test_a_range_of_seasons_wholly_under_a_floor_is_refused_by_it() -> None:
+    """ "most wins by player nba 1980s": a range whose last season is under
+    the box scores' floor is refused by the floor, where the game-level
+    ranking said "No games for every player in the regular season career
+    (1994-1989)"; a range that reaches the floor is answered from it."""
+    from association.query.coverage import check_coverage, coverage_refusal
+
+    counted = PointShape("player_games", "ranking", "count")
+    decade = Reading(span=Span(since=1980, until=1989, season_type=2))
+    refusal = check_coverage(counted, decade)
+    assert refusal is not None and "only go back to 1994" in refusal and "no data for 1989" in refusal
+    assert coverage_refusal(counted, decade) is not None
+    assert check_coverage(counted, Reading(span=Span(since=1990, until=1999, season_type=2))) is None
+    assert check_coverage(counted, Reading(span=Span(since=1980, season_type=2))) is None
+
+
 def test_player_comparison_uses_a_table_not_prose(ps_con: AnswerContext) -> None:
     """Prose can state that a player with 0.4 steals led one with 1.6; a table
     cannot make that mistake."""
