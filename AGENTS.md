@@ -622,7 +622,10 @@ for what follows, the third the one first got wrong:
   Williams). A name the question never held never reaches the subject's
   players (`parse._read_route_players`): it rides on `Reading.misread`, and
   `apply_subject` replaces it from the question's names where the count is
-  exact (`Subject.supported`) or reports it for the by-name refusal.
+  exact (`Subject.supported`) or reports it for the by-name refusal. A
+  full name the warehouse holds no row of, one word of which is a whole
+  word of one player on record ("kareem abdul jabbar" and Kareem Rush), is
+  read whole first (`lexicon.NAMES_NOT_ON_RECORD`), so no namesake answers.
 - **Trim a name back to the part the question holds only where that part
   is ambiguous.** "luka", "jokic", "embiid" reach one player each, so the
   model's completion stands; "brown" is ten players, and choosing among

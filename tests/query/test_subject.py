@@ -432,6 +432,24 @@ def test_the_models_spelling_stands_where_a_whole_word_names_somebody_else(con: 
     assert (applied.decisions, applied.dropped, applied.scope.who.players) == ([], [], ("Kareem Abdul-Jabbar", "Bob Lanier"))
 
 
+def test_a_full_name_on_record_nowhere_is_read_whole_and_never_as_a_namesake(con: duckdb.DuckDBPyConnection) -> None:
+    """ "kareem abdul jabbar finals stats year by year" read "kareem" alone
+    as Kareem Rush, the one player on record with that word, and answered
+    his 2004 Finals; with the model's "Kareem Abdul-Jabbar" the lone word
+    overruled it the same way. The full name of a player the warehouse holds
+    no row of is read whole (``lexicon.NAMES_NOT_ON_RECORD``), so no
+    namesake answers and resolution says nobody matched."""
+    from association.query.subject import apply_subject, players_named_in
+
+    question = "kareem abdul jabbar finals stats year by year"
+    with names.loaded():
+        assert players_named_in(players_of(con), question) == ["Kareem Abdul-Jabbar"]
+    scope = Reading(who=Who(kind="player", players=("Kareem Abdul-Jabbar",)))
+    s = read_subject(names_of(con), question, PLAYER_LINE, scope)
+    assert s.players == ("Kareem Abdul-Jabbar",)
+    assert apply_subject(s, scope, asked=PLAYER_LINE).scope.who.players == ("Kareem Abdul-Jabbar",)
+
+
 def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.DuckDBPyConnection) -> None:
     """#206: "jay huff game log vs Embiid" with the model's opponent Nikola
     Jokic. The reading holds a model's opponent apart

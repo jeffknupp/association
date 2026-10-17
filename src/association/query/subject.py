@@ -2364,8 +2364,11 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
             if index + size > len(words):
                 continue
             span = words[index : index + size]
-            nickname = PLAYER_NICKNAMES.get(" ".join(span).casefold())
+            nickname = PLAYER_NICKNAMES.get(" ".join(span).casefold()) or lexicon.NAMES_NOT_ON_RECORD.get(" ".join(span).casefold())
             if nickname is not None:
+                # A full name the warehouse holds no row of is read whole, as
+                # typed (lexicon.NAMES_NOT_ON_RECORD): one word of it alone
+                # would read a namesake on record ("kareem" as Kareem Rush).
                 found.append(nickname)
                 index += size
                 break

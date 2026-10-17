@@ -3982,6 +3982,29 @@ def whole_phrases(phrases: list[str] | tuple[str, ...], *, possessive: bool = Fa
     return re.compile(r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(phrases, key=len, reverse=True)) + r")" + glued + r"(?![\w])", re.IGNORECASE)
 
 
+# Players whose careers ended before the box scores begin (1993-94), so the
+# warehouse holds no row of theirs anywhere (`players`, `player_season_stats`:
+# measured 2026-10-17), and one word of whose name is a whole word of exactly
+# one player on record - by every spelling their full name is typed in, as
+# the subject reading's words split it. Read as the name typed, before any one
+# word of it is matched alone: "kareem abdul jabbar finals stats year by
+# year" read "kareem" as Kareem Rush, the one player on record with that
+# word, and answered his 2004 Finals - and a model reply naming "Kareem
+# Abdul-Jabbar" was overruled the same way, the question's own lone word
+# replacing it. A name kept whole matches no player, and the answer says so
+# by name. Only such names: one no word of which reads a namesake alone is
+# already refused by name ("larry bird" is asked about as Jabari Bird, a
+# question back, never an answer).
+NAMES_NOT_ON_RECORD: dict[str, str] = {
+    "kareem abdul jabbar": "Kareem Abdul-Jabbar",
+    "kareem abduljabbar": "Kareem Abdul-Jabbar",
+}
+"""Full names of players the warehouse holds no row of whose one word
+would read a namesake on record, by spelling: the name each is read as.
+
+.. versionadded:: 7.0.0
+"""
+
 MAX_NAME_WORDS = 3
 """A name is never longer than three words once a hyphenated one is split
 into its halves ("karl anthony towns"): the longest span the readers of a
