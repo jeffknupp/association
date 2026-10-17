@@ -14,7 +14,7 @@ from routed import Routed, measure_of, reading_of
 from association.nba.season import current_season
 from association.query import names, subject
 from association.query.decisions import Decision
-from association.query.entities import find_teams, names_of, teams_of
+from association.query.entities import find_teams, names_of, players_of, teams_of
 from association.query.lines import threshold_of
 from association.query.names import NameIndex
 from association.query.reading import (
@@ -1398,3 +1398,98 @@ def test_a_teams_record_over_a_companions_line_keeps_the_other_companions(con: d
     reading = read_route(names_of(con), "celtics record when tatum scores 30 and jaylen brown plays", ["celtics", "tatum", "jaylen brown"], "points")
     assert reading.asked == LINE_RECORD
     assert [(c.player, c.predicate) for c in reading.companions] == [("Jaylen Brown", "played")]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "curry playoff stats from may 10th 2019 to may 13th 2023 including record and ts%",
+        "curry playoff stats from may 10th 2019 to april 30th 2023 including record",
+        "Nba curry most 3PM in Jan 3 2019",
+        "warriors record in may 2016",
+    ],
+)
+def test_a_month_in_a_calendar_day_names_no_player_on_a_team_only_question(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ "may 10th 2019" is a month in a day, never Sean May; "Jan 3 2019"
+    never Jan Vesely: the team-only check read every whole word of a name
+    raw and refused the feed's two Curry questions as "a question about
+    Sean May" (ISSUES.md #342). A word the question's grammar holds in its
+    place names nobody, for every reader of the subject's names."""
+    con.executemany("INSERT INTO players VALUES (?, ?)", [("90", "Sean May"), ("91", "Jan Vesely")])
+    assert subject.player_named_on_a_team_only_question(players_of(con), teams_of(con), question, Who(), None) is None
+
+
+def test_a_month_the_model_filed_as_a_player_is_a_name_the_question_never_held(con: duckdb.DuckDBPyConnection) -> None:
+    """The model's "May" beside "lebron points in may 2024" is the month in
+    its place: a name the question never held (reported as invented), never
+    a Sean May set beside LeBron - while "sean may stats in may 2008" is
+    still Sean May, by his given name beside the surname."""
+    con.executemany("INSERT INTO players VALUES (?, ?)", [("90", "Sean May")])
+    for question in ("lebron points in may 2024", "lebron points in may"):
+        read = _read(con, question, scope=Reading(who=Who(kind="player", players=("LeBron James", "May"))))
+        assert read.players == ("LeBron James",) and read.invented == ("May",), (question, read)
+    assert _read(con, "sean may stats in may 2008", scope=Reading(who=Who(kind="player", players=("Sean May",)))).players == ("Sean May",)
+
+
+@pytest.mark.parametrize(
+    ("question", "named"),
+    [
+        ("curry best shooting night", ["Stephen Curry"]),
+        ("curry best stats this season", ["Stephen Curry"]),
+        ("curry best games", ["Stephen Curry"]),
+        ("best curry stats", ["Best", "Stephen Curry"]),
+    ],
+)
+def test_best_beside_a_surname_is_the_superlative_never_travis_best(con: duckdb.DuckDBPyConnection, question: str, named: list[str]) -> None:
+    """ "curry best shooting night" with the model's "Stephen Curry" read the
+    question's spelling of him as Travis Best - "best" the one whole word of
+    a player - and ranked the league (ISSUES.md #486). "best" is the
+    superlative in its place: the ambiguous surname is read as typed, for
+    the entity index to ask about (two Currys here), and the model's own
+    "Best" is a name the question never held."""
+    from association.query.parse import read_route
+
+    reading = read_route(names_of(con), question, named, "points")
+    assert reading.who.players == ("Curry",), (question, reading.who)
+
+
+def test_a_respelling_read_from_the_grammars_word_is_none(con: duckdb.DuckDBPyConnection) -> None:
+    """The model's "Best" anchored at "best" resolves to Travis Best by the
+    anchor word alone; the question's grammar holds "best" there, so it
+    spells no player (ISSUES.md #486) - "travis best" still does."""
+    players = players_of(con)
+    assert subject.question_derived_player(players, "best curry stats", "Best") is not None
+    assert subject._spellings(players, "best curry stats", ["Best"]) == {}
+    assert subject._spellings(players, "travis best career points", ["Best"]) == {"Best": "Travis Best"}
+
+
+@pytest.mark.parametrize(
+    ("question", "beside"),
+    [
+        ("sixers record when embiid starts without maxey", ["Joel Embiid"]),
+        ("sixers record when embiid starts and maxey doesn't", ["Joel Embiid"]),
+        ("sixers record when embiid plays without maxey", ["Joel Embiid"]),
+        ("sixers record without maxey", []),
+    ],
+)
+def test_a_teammate_with_a_role_beside_an_absence_is_kept_beside_it(con: duckdb.DuckDBPyConnection, question: str, beside: list[str]) -> None:
+    """The with/without split over an absence keeps the games of the
+    teammates beside it in the role each held: a start stated beside the
+    absence ("when embiid starts without maxey") was dropped, and every game
+    divided by Maxey alone."""
+    from association.query.parse import read_route
+
+    reading = read_route(names_of(con), question, [], "")
+    assert reading.asked == PRESENCE_SPLIT, reading.asked
+    assert subject.with_without_beside(reading) == beside
+
+
+def test_two_ordinary_words_of_one_name_in_a_row_stand_as_the_name(con: duckdb.DuckDBPyConnection) -> None:
+    """ "jimmy butler nba finals stats" names Jimmy Butler III though each of
+    "jimmy" and "butler" is an ordinary word: two words of one name in a row
+    stand as the name, a suffix nobody types or not - the model's empty
+    reply had left the question about nobody. "butler" alone is still the
+    ordinary word, with no model name beside it."""
+    con.executemany("INSERT INTO players VALUES (?, ?)", [("92", "Jimmy Butler III")])
+    assert _read(con, "jimmy butler nba finals stats").players == ("Jimmy Butler III",)
+    assert _read(con, "butler stats this season").players == ()

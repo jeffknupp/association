@@ -51,6 +51,7 @@ from association.query.reading import (
     Cuts,
     Measure,
     PointShape,
+    Predicate,
     Reading,
     Span,
     Unsupported,
@@ -741,6 +742,37 @@ def test_a_teammate_who_played_beside_an_absence_keeps_the_games_he_played(leagu
     assert result.data["teammates"] == ["Jayson Tatum"]
     assert result.text.splitlines()[0].startswith("Boston Celtics with and without Jayson Tatum in games Jaylen Brown played")
     assert result.text.splitlines()[2].startswith("Jayson Tatum out")
+
+
+@pytest.mark.parametrize(
+    ("role", "heading", "out", "played"),
+    [
+        ("started", "in games Jaylen Brown started", (1, 1), (1, 1)),  # out: e2 L, e3 W; played: e1 W, e7 L
+        ("bench", "in games Jaylen Brown came off the bench", (0, 0), (1, 0)),  # e4 alone, Tatum played
+    ],
+)
+def test_a_teammate_with_a_role_beside_an_absence_keeps_the_games_he_held_it(league: AnswerContext, role: Predicate, heading: str, out: tuple[int, int], played: tuple[int, int]) -> None:
+    """ "record when Brown starts and Tatum doesn't" is the games Brown
+    STARTED, divided by whether Tatum played - the start was dropped and
+    every game divided by Tatum alone ("sixers record when embiid starts
+    without maxey" answered with and without Maxey over all his games). Brown
+    played e1, e2, e3, e4 and e7, off the bench in e4 here: started, the
+    "played" row is e1 and e7 (1-1, where dropping the start counted e4's
+    win too, 2-1); off the bench, e4 alone."""
+    league.con.execute("UPDATE player_box_stats SET starter = FALSE WHERE athlete_id = ? AND event_id = 'e4'", [BROWN])
+    result = presence_split(
+        league,
+        Reading(
+            who=Who(kind="team", teams=("Boston Celtics",)),
+            companions=(Companion(player="Jaylen Brown", predicate=role), Companion(player="Jayson Tatum", predicate="absent")),
+            span=Span(season_type=2),
+        ),
+    )
+    groups = {g["teammate_played"]: g for g in result.data["groups"]}
+    assert (groups[False]["wins"], groups[False]["losses"]) == out
+    assert (groups[True]["wins"], groups[True]["losses"]) == played
+    assert result.data["teammates"] == ["Jayson Tatum"]
+    assert result.text.splitlines()[0].startswith(f"Boston Celtics with and without Jayson Tatum {heading}")
 
 
 def test_a_game_before_he_arrived_is_not_a_game_without_him(league: AnswerContext) -> None:

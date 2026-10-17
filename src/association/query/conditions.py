@@ -692,7 +692,11 @@ def presence_games_sql(
 
     ``beside`` are teammates whose games alone are read - the ones who
     played beside an absence ("when AD plays and lebron doesn't", ISSUES.md
-    #479): a game one of them did not play is on neither row.
+    #479), or held a role there ("when embiid starts without maxey"): a game
+    one of them did not play, or played without his role, is on neither
+    row. ``predicates`` holds each of ``mates``' predicate, then each of
+    ``beside``'s (a teammate ``beside`` with none past ``mates``' is read as
+    having played).
 
     A count rather than a flag, because with two teammates the two questions
     stop being one split: "without A and B" is the games NEITHER played, "with
@@ -727,7 +731,8 @@ def presence_games_sql(
     # Which of the named teammates the game counts on the "held" side: each
     # by his own predicate ("record when Embiid, Maxey and Edgecombe start"),
     # or, with none stated, that he appeared.
-    held = _with_without_held(mates, predicates, params)
+    given = list(predicates or ())
+    held = _with_without_held(mates, given[: len(mates)] or None, params)
     line = (
         "s.minutes, s.points, s.rebounds, s.assists, s.fieldGoalsMade AS fgm, s.fieldGoalsAttempted AS fga"
         if subject
@@ -745,18 +750,29 @@ def presence_games_sql(
                ) AS box
         FROM t
         {played_by if subject else ""}
-        {_with_without_beside_clause(beside, params, box)}"""
+        {_with_without_beside_clause(beside, given[len(mates) :], params, box)}"""
     return sql, params, narrowed
 
 
-def _with_without_beside_clause(beside: Sequence[str], params: dict[str, Any], box: BoxSource) -> str:
+def _with_without_beside_clause(beside: Sequence[str], roles: Sequence[tuple[str, tuple[str, int] | None]], params: dict[str, Any], box: BoxSource) -> str:
     """The WHERE keeping :func:`presence_games_sql`'s games to those every
-    one of ``beside`` played for the team, binding ``$b<i>`` into
-    ``params`` - empty where none is named."""
+    one of ``beside`` played for the team - each in the role ``roles``
+    gives him where it gives one (started, came off the bench, reached a
+    line: the predicates :func:`_with_without_held` reads), binding
+    ``$b<i>``/``$bv<i>`` into ``params`` - empty where none is named."""
     kept = []
     for index, mate in enumerate(beside):
         params[f"b{index}"] = mate
-        kept.append(f"EXISTS (SELECT 1 FROM {box.table} b WHERE b.event_id = t.event_id AND b.season = t.season AND b.team_id = t.team_id AND b.athlete_id = $b{index} AND {_played('b', box)})")
+        predicate, line = roles[index] if index < len(roles) else ("played", None)
+        own = f"b.athlete_id = $b{index} AND {_played('b', box)}"
+        if predicate == "started":
+            own += " AND b.starter"
+        elif predicate == "bench":
+            own += " AND NOT b.starter"
+        elif predicate == "reached" and line is not None:
+            params[f"bv{index}"] = line[1]
+            own += f" AND b.{line[0]} >= $bv{index}"
+        kept.append(f"EXISTS (SELECT 1 FROM {box.table} b WHERE b.event_id = t.event_id AND b.season = t.season AND b.team_id = t.team_id AND {own})")
     return "WHERE " + " AND ".join(kept) if kept else ""
 
 
