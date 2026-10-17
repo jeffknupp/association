@@ -2084,6 +2084,20 @@ with nothing to read fills the silence from its own weights), and more data
     period reads under D14 and the D13 decision sentence. Issues #366 and
     #446 closed; #476-#479 filed.
 
+53. **Step 2's follow-up lane landed (2026-10-16, master `e8f3d52e`),**
+    closing step 2's three decisions on every relation: D15 over one season
+    with its sentences, D14 and D13 on the period reads, the D13 default
+    said with the wording that asks one season, and the player log's full
+    line. The lead's runs 81 to 82: feed 554 of 2,082 moved - 269 the new
+    sentence alone, 211 the same figures with columns added, 65 the
+    with/without and period figures the decisions move, 3 period refusals
+    answered; corpus 96, the 34 grade-aware flags each the sentence or the
+    columns but nine period reads that now match the yardstick's own
+    readings. Issues #471, #472, #474 closed; #480, #481 filed. Two calls
+    left to Jeff: a "without" naming no season where the two are not
+    teammates this season, and the regular-season-only career read where
+    the keys count the playoffs (#231).
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
