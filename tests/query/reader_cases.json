@@ -41504,20 +41504,18 @@
    "point": null,
    "point_declined": "a leaderboard cannot answer about one named player ('LeBron James')",
    "point_refusal": null,
-   "unsupported": [
-    {
-     "kind": "non_calendar_situation",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "ranking",
-       "by": "player"
-      },
-      "situation": "before turning 27",
-      "reads_as": "age"
-     }
+   "refused": {
+    "kind": "non_calendar_situation",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     },
+     "situation": "before turning 27",
+     "reads_as": "age"
     }
-   ]
+   }
   }
  },
  {
@@ -41730,20 +41728,18 @@
    },
    "point_declined": null,
    "point_refusal": null,
-   "unsupported": [
-    {
-     "kind": "non_calendar_situation",
-     "facts": {
-      "shape": {
-       "relation": "player_seasons",
-       "shape": "scalar",
-       "by": "line"
-      },
-      "situation": "18 year old",
-      "reads_as": "age"
-     }
+   "refused": {
+    "kind": "non_calendar_situation",
+    "facts": {
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "scalar",
+      "by": "line"
+     },
+     "situation": "18 year old",
+     "reads_as": "age"
     }
-   ]
+   }
   }
  },
  {

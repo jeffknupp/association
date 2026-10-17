@@ -5006,6 +5006,12 @@ _FACT_NOT_READ: dict[str, str] = {
         "(his record, or with and without a teammate) - so {words!r} cannot be ranked. Ask for the teams' best record, or one player's record, instead."
     ),
     "birth": "No birth date is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by season, team or position instead.",
+    "age": "No birth date is on file here - the player records carry none - so a player's age ({words!r}) cannot be read. Ask for his stats in a season instead.",
+    "player efficiency rating": (
+        "No player efficiency rating is on file here - it needs league pace and team factors the warehouse does not hold per season - "
+        "so {words!r} cannot be read. Ask for a player's line by season, or his NetPoints, instead."
+    ),
+    "double team": ("No double team is on file here - the warehouse records no defensive coverage or player tracking - so {words!r} cannot be read. Ask for the player's line over the games instead."),
     "death": "No date of death is on file here - the player records carry none - so {words!r} cannot be read. Ask for a player's seasons or games instead.",
     "height": "No height is on file here - the player records carry none - so {words!r} cannot be read. Ask for players by position instead (centers, forwards or guards).",
     "jersey": (

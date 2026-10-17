@@ -1170,6 +1170,14 @@ def _reading(
         # answering loop says where the ranking declines; it is the cause -
         # as nobody read is, where the words asked no ranking.
         defaulted = None
+    aged = next((cause for cause in unsupported if cause.kind == "non_calendar_situation" and cause.facts.get("reads_as") == "age"), None)
+    if refused is None and aged is not None:
+        # An age as a narrowing ("by a 35 year old") is a fact no table
+        # holds - no birth date is on file - so nothing could answer past
+        # it: said before any reader, ahead of a shape's own refusal ("Most
+        # 30 point games by a 35 year old in a season" was told the best
+        # single season is read by nothing, the feed sample's FS114).
+        refused, unsupported = aged, tuple(cause for cause in unsupported if cause is not aged)
     found = list(claimed_once([*found, *defaulted_claims]))
     return replace(
         pointed,
@@ -1313,12 +1321,18 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       words name nothing else that nothing reads (bench points), whose
       cause is said where the answer side declines, as before.
 
-    The championship first, as the answering loop asked them, then a fact
-    nothing reads, then a coach named by "under", then the window's ends, then a window per season, then a
+    A fact no table holds first (an age asked beside a title is the age),
+    then the championship, then points by play nothing reads, then a coach named by "under", then the window's ends, then a window per season, then a
     career's own seasons, then a ranking's own conference."""
+    fact = _refused_fact_not_read(question)
+    if fact is not None:
+        # Before the championship: "how old was shaq when he won a
+        # championship in miami" asks an age, which no table holds, and the
+        # title is derivable from the games.
+        return fact
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
-    fact = _refused_fact_not_read(question) or _refused_play_type_points(question, reading)
+    fact = _refused_play_type_points(question, reading)
     if fact is not None:
         return fact
     coach = _refused_coach_under(teams, question)

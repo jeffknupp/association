@@ -125,6 +125,49 @@ def test_a_teams_points_in_the_paint_and_fast_break_points_are_read_and_not_refu
     assert _reading_from_route_refused(players_of(con), teams_of(con), question, reading) is None
 
 
+@pytest.mark.parametrize(
+    ("question", "fact", "words", "said"),
+    [
+        ("how old was shaq when he won in miami", "age", "how old", "a player's age ('how old')"),
+        ("how old was shaq when he won a championship in miami", "age", "how old", "a player's age ('how old')"),
+        ("active nba players youngest to oldest", "age", "youngest", "a player's age ('youngest')"),
+        ("Cousins player efficiency rating by year", "player efficiency rating", "player efficiency rating", "No player efficiency rating is on file"),
+        ("jordan PER by year", "player efficiency rating", "PER", "No player efficiency rating is on file"),
+        ("the most double teamed player per possession", "double team", "double teamed", "No double team is on file"),
+        ("jalen brown vs pacer playoff double team", "double team", "double team", "No double team is on file"),
+    ],
+)
+def test_an_age_a_player_efficiency_rating_or_a_double_team_is_refused_as_the_fact_no_table_holds(con: duckdb.DuckDBPyConnection, question: str, fact: str, words: str, said: str) -> None:
+    """The feed sample's false causes FS053, FS202, FS323, FS416 and the
+    fluent FS391: an age asked outright was refused as a team no read
+    placed or as the championship, a player efficiency rating as a
+    ranking's missing stat, and a double team as a rate per possession or
+    answered as the player's line - each is a fact no table holds, said
+    before any point, ahead of the championship."""
+    cause = _reading_from_route_refused(players_of(con), teams_of(con), question, Reading(asked=PLAYER_LINE, subject=Subject("everyone")))
+    assert cause is not None and cause.kind == "fact_not_read" and cause.facts == {"fact": fact, "words": words}
+    assert said in refusal_result(cause).text
+
+
+@pytest.mark.parametrize("question", ["kevin durant points per game", "jaren jackson per career", "Luka career age by season", "lebron per 36 minutes stats"])
+def test_a_lowercase_per_or_a_bare_age_is_no_fact(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """A lowercase "per" is a unit or ambiguous (the sample's keyer read
+    "jaren jackson per career" both as the rating and as his line), and a
+    bare "age" may be a clipped "average": neither is refused as a fact."""
+    assert _reading_from_route_refused(players_of(con), teams_of(con), question, Reading(asked=PLAYER_LINE, subject=Subject("everyone"))) is None
+
+
+def test_an_age_as_a_narrowing_is_said_before_a_shapes_own_refusal(con: duckdb.DuckDBPyConnection) -> None:
+    """The feed sample's FS114, "Most 30 point games by a 35 year old in a
+    season", was told the best single season is read by nothing: the age
+    is the fact no table holds, so nothing could answer past it, and it is
+    the Reading's refusal, said before any reader."""
+    reading = read_route(names_of(con), "Most 30 point games by a 35 year old in a season", [], "points")
+    assert reading.refused is not None and reading.refused.kind == "non_calendar_situation" and reading.refused.facts["reads_as"] == "age"
+    assert not reading.unsupported
+    assert refusal_result(reading.refused).text.startswith("'35 year old' needs a birth date")
+
+
 def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F054 "lebron ppg as an 18 year old": the calendar reader
     refuses the value (no weekday, month, holiday or "since <day>" in it),

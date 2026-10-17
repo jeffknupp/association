@@ -4695,7 +4695,28 @@ championship.
 # distance and is left alone; a lead only with its margin or its size
 # ("10+ point leads", "biggest lead"), never "leads the league".
 ABSENT_FACTS: tuple[
-    tuple[Literal["draft", "award", "birth", "death", "height", "jersey", "lead", "four-point play", "role", "wins", "clutch", "defended shots", "betting line"], re.Pattern[str]], ...
+    tuple[
+        Literal[
+            "draft",
+            "award",
+            "birth",
+            "age",
+            "death",
+            "height",
+            "jersey",
+            "lead",
+            "four-point play",
+            "role",
+            "wins",
+            "clutch",
+            "defended shots",
+            "betting line",
+            "player efficiency rating",
+            "double team",
+        ],
+        re.Pattern[str],
+    ],
+    ...,
 ] = (
     (
         "draft",
@@ -4720,6 +4741,15 @@ ABSENT_FACTS: tuple[
         ),
     ),
     ("birth", re.compile(r"\bborn\b|\bbirth(?:\s?(?:days?|dates?|places?|years?))?\b", re.IGNORECASE)),
+    # A player's age asked outright (the feed sample's FS053, FS202): "how
+    # old was shaq when he won in miami" was refused as a team no read
+    # placed and "... a championship in miami" as the championship, where
+    # the age is what no table holds; "active nba players youngest to
+    # oldest" likewise. An age as a narrowing ("27 year old", "before
+    # turning 33", ``AGE_WORDS``) is the cuts' situation, said by its own
+    # sentence. A bare "age" is left alone: "Luka career age by season" is
+    # as likely a clipped "average".
+    ("age", re.compile(r"\bhow\s+old\b|\b(?:youngest|oldest)\b", re.IGNORECASE)),
     # A player's death: unread, "when did brandon clarke die" would read
     # "when ... brandon clarke" as a teammate's games and answer his line.
     ("death", re.compile(r"\b(?:die|dies|died|death|deceased|passed\s+away)\b", re.IGNORECASE)),
@@ -4750,13 +4780,25 @@ ABSENT_FACTS: tuple[
     # "spread" is a line's ("point spread" as a margin of victory is no
     # wording either population holds); "odds" is left alone - "celtics
     # playoff odds" is the power index's projection, and answered so.
+    # A player efficiency rating (the feed sample's FS323): no table stores
+    # one - it needs league pace and team factors held per season - and
+    # "Cousins player efficiency rating by year" was told a ranking needs a
+    # stat. Its abbreviation only in capitals: a lowercase "per" is a unit
+    # ("per game") or ambiguous ("jaren jackson per career" is read by the
+    # sample's keyer both as the rating and as his line per game).
+    ("player efficiency rating", re.compile(r"(?i:\bplayer\s+efficiency\s+ratings?\b)|\bPER\b")),
+    # A double team (the feed sample's FS416, FS391): no defensive coverage
+    # or tracking is fetched, and "jalen brown vs pacer playoff double team"
+    # answered his line over the games, the words unread.
+    ("double team", re.compile(r"\bdouble[\s-]?team(?:ed|s|ing)?\b", re.IGNORECASE)),
     (
         "betting line",
         re.compile(r"\bats\b|\bagainst\s+the\s+spread\b|\b(?:point\s+)?spreads?\b|\bover\s*[/-]\s*under\b|\bo/u\b|\bunderdogs?\b|\bmoney\s?lines?\b|\bbetting\b", re.IGNORECASE),
     ),
 )
 """The facts a question can name that no table here holds (a draft
-position, an award or an All-Star selection, a birth date, a height), holds only as a dateless snapshot (a
+position, an award or an All-Star selection, a birth date or an age, a height, a player
+efficiency rating, a double team), holds only as a dateless snapshot (a
 jersey number) or that nothing here reads from what it holds (a lead within
 a game, a four-point play, a player's role on his team, an opponent's win
 total, the last minutes of a game, a defender's field-goal percentage) or that
@@ -4766,6 +4808,9 @@ reads the first into the ``fact_not_read`` cause before any point
 (:attr:`~association.query.reading.Reading.refused`).
 
 .. versionadded:: 6.0.0
+
+.. versionchanged:: 7.0.0
+   An age asked outright, a player efficiency rating and a double team.
 """
 # Points scored one way - off turnovers, on second chances, on the fast
 # break, in the paint - each a figure of its own that its last word is not:
