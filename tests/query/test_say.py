@@ -314,6 +314,26 @@ def test_the_other_matched_names_are_joined_not_printed_as_a_list() -> None:
     assert spoken == ". Note: other players also matched: Seth Curry, Dell Curry"
 
 
+def test_a_named_players_top_games_asked_by_count_are_listed_beneath_the_high() -> None:
+    """#445: "steph curry top 5 games this season" asks for his top games,
+    which the high lists beneath its top one; the high alone says one."""
+    games = (
+        {"player": "Stephen Curry", "value": 49, "date": "2025-11-14", "opponent": "SA", "reconstructed": False},
+        {"player": "Stephen Curry", "value": 48, "date": "2025-12-14", "opponent": "POR", "reconstructed": False},
+        {"player": "Stephen Curry", "value": 46, "date": "2025-11-12", "opponent": "", "reconstructed": False},
+    )
+    high = Result(
+        subject="Stephen Curry",
+        relation="player",
+        span=Span(season=2026, season_type=2, first=2026, last=2026, years="2026 regular season"),
+        parts=(Part(body=Rows(columns=("points",), rows=games, by="points")),),
+        facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0, listed=3),
+    )
+    top = "Stephen Curry's highest point total in a single game in the 2026 regular season was 49, on 2025-11-14 vs SA."
+    assert say(high).text == top + " Next: 48 on 2025-12-14 vs POR, 46 on 2025-11-12."
+    assert say(replace(high, facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0))).text == top
+
+
 def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() -> None:
     """The league's high over a career: a tie said as a tie, then the floor
     a league career is under. A named player's defaulted season that held

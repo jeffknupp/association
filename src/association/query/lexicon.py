@@ -3474,7 +3474,12 @@ CHILD_SINGLE_GAME_HIGH = ask(
     # is a count of triple-doubles - every one is one game's - never a
     # single game's high of a yes/no measure (ISSUES.md #265). Only beside "scoring": "highest
     # win% games" is a ranking of players by a rate over games.
-    r"|\b(?:best|highest)\s+scoring\s+games?\b",
+    r"|\b(?:best|highest)\s+scoring\s+games?\b"
+    # "top 5 games", "best 3 games", "top 10 rebounding games" and "best
+    # game(s)": his games ranked by the measure, the highs - never the newest
+    # games, which "steph curry top 5 games this season" listed (ISSUES.md
+    # #445).
+    r"|\b(?:top|best)\s+(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:[a-z]+ing\s+)?games\b|\bbest\s+(?:[a-z]+ing\s+)?games?\b",
     re.IGNORECASE,
 )
 """The words that name a single game's high.

@@ -46,6 +46,14 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "best" is read as Travis Best beside an ambiguous surname: "curry best shooting night" ranks the league
+- **Found:** 2026-10-16, lane p6-words, fixing #445 ("best game(s)" as a single game's high).
+- **Evidence:** with the model's name "Stephen Curry" and the question's "curry" (several Currys on record), the subject reading respells the name by the one whole-word player the question holds - "best", Travis Best (decision reason "question spells 'Curry' as 'Travis Best'") - and reads `players == ['Travis Best', 'Curry']`. On `bad8e4ac`: "curry best shooting night" answers the league's points-per-game ranking fluently, "curry best stats this season" and "brown best season" are refused by `ranking_needs_stat`; on `p6-words` (#445's fix) "curry best games" and "curry best 3 games vs lakers" answer the league's single-game highs ("Bam Adebayo had the most points in a single game ..."). With the full name ("steph curry best games") the reading is right. `lexicon.COMMON_WORDS_THAT_NAME_PLAYERS` ("best", "head") guards the question's own names (`subject._named_only_by_a_common_word`) but not the respelling of a model's name. 0 of the 2,070 feed and 628 corpus questions hold the wording (probes).
+- **User sees:** a league-wide answer, fluently, where one player's was asked.
+- **Next step:** the respelling of a model's name (`subject.py`, "question spells X as Y") skips a player named only by a word of `COMMON_WORDS_THAT_NAME_PLAYERS`, as the question's own names do; then the ambiguous surname is asked about (the clarify "did you mean Seth Curry or Stephen Curry?") or resolved by the season. A test per wording. The subject seam's (lane p6-subject's files).
+- **Priority:** P1 - a different question answered fluently, on probes.
+- **Source:** ours.
+
 ### A companion denied in the words is read as playing: "boston celtics record in games in which jaylen brown played and jayson tatum did not" answers the games both played
 - **Found:** 2026-10-16, lane p6-span, guarding D13's companion career (FS339).
 - **Evidence:** the subject reading reads every name of "when AD plays and lebron doesnt", "jaylen brown played and jayson tatum did not in the 2025/26 regular season" (two feed wordings) as a companion who PLAYED (`Companion.predicate == "played"`), the denial left in `Reading.unread`; the with/without split then answers "Jaylen Brown and Jayson Tatum played" against "either out", never the row asked (Brown on, Tatum off). #248 is the same misread of "doesnt start". The span tagger now keeps D13's career off such a question (`lexicon.COMPANION_DENIED`), so the no-season wording refuses as before; the wordings that name a season answer the wrong split fluently. <!-- codespell:ignore doesnt - the feed's question as typed -->
@@ -90,15 +98,6 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
 - **GitHub:** #340
 - **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14).
-
-### "top N games" and "best game(s)" are read as the newest games: "steph curry top 5 games this season" lists his last 5
-- **Found:** 2026-10-14, the Phase 5 review, probing step 1's refusals on both trees (`520a94b`, `3dc37821`).
-- **Evidence:** the window tagger reads "top 5 games" as a window of the newest 5 (`lexicon.ORDER_WORDS`' "top" beside a count), so "steph curry top 5 games this season" lists his last 5 games and "luka doncic best game this season" his last 10; the player's best games by points are the single-game high's shape (`player_games/rows/measure`, "most points in a game"), which these words never reach. Step 1's own refusal for "top" with no count suggests "top 5 games" as the rewording, which then answers wrong.
-- **User sees:** a different set of games than asked, fluently.
-- **Next step:** the window tagger reads "top/best N games" and "best game" as the high's shape ordered by the measure (the rows-by-measure key with a count), not a window; a test per wording; measure both populations ("top" beside a count on a player's games).
-- **Priority:** P1 - a different question answered fluently; 0 of the 2,082 (probed wordings).
-- **Source:** ours.
-- **GitHub:** #445
 
 ### "may" is read as the player Sean May: "how many points may luka score tonight" answers a Sean May comparison
 - **Found:** 2026-10-14, the Phase 5 review, probing step 1's date class.

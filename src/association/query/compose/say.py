@@ -2305,7 +2305,7 @@ def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label:
     top = games[0]
     where = f" vs {top['opponent']}" if top["opponent"] else ""
     if named:
-        return f"{named}'s highest {label} total in a single game {when} was {top['value']}, on {top['date']}{where}."
+        return _single_game_high_named(result, named, games, f"{named}'s highest {label} total in a single game {when} was {top['value']}, on {top['date']}{where}.")
     tied = [g for g in games if g["value"] == top["value"]]
     players = list(dict.fromkeys(g["player"] for g in tied))
     if len(players) > 1:
@@ -2322,6 +2322,16 @@ def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label:
         sentence = f"{top['player']} had the most {label}s in a single game{team} {when}: {top['value']}, on {top['date']}{where}."
     rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def _single_game_high_named(result: Result, named: str, games: list[dict[str, Any]], sentence: str) -> str:
+    """A named player's high: his top game (``sentence``), and beneath it the
+    rest of the games the words asked for by count (ISSUES.md #445: "steph
+    curry top 5 games this season"), where the high says its top alone."""
+    if not _facts(result, CountFacts).listed or len(games) < 2:
+        return sentence
+    rest = [f"{g['value']} on {g['date']}" + (f" vs {g['opponent']}" if g["opponent"] else "") for g in games[1:]]
+    return sentence + f" Next: {', '.join(rest)}."
 
 
 def _count_times(count: int) -> str:

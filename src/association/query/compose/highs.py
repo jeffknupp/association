@@ -104,7 +104,9 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Result | 
         parts=(Part(body=Rows(columns=(column,), rows=tuple(games), by=column)),),
         notes=tuple(notes),
         decisions=(redirect,) if redirect is not None else (),
-        facts=CountFacts(stat=stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0]),
+        # A count of a named player's top games asked ("top 5 games", ISSUES.md
+        # #445) is listed beneath the top one, which the high says alone.
+        facts=CountFacts(stat=stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0], listed=q.window.count if player is not None else None),
     )
 
 
