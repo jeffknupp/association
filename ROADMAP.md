@@ -948,6 +948,48 @@ since parser22.
 
 **How the steps run (proposed).** Step 0 first and alone on `src/` (running); step 1 beside it in the research repo (two agents, disjoint shapes), since the key is written against the warehouse, not the code. Steps 2 and 3 after both land, as lanes along the files' seams under D12 (the reader's fixes against the planner's and sayer's causes, the parser-compiler seam one agent's at a time), the lead merging and re-proving each push with its own runs and the corpus run at each merge; step 4 alone on the subject reading after step 2's reader lanes close; step 5 last. What is NOT done in this phase, by the Phase 5 lesson: a new `MEANING_*` class or any refusal rule of its kind before step 1's rates exist. Effort: step 0 hours; step 1 about two agent-days plus the lead's checking; steps 2-4 days of agent time at the six-to-eight-minute commit cycles D12 bought, sized by what the grading finds.
 
+**Phase 7 - The token-stream reader** (decision D22, approved 2026-10-17):
+`GrammarText`, its masks and the word-deletion probing replaced by one pass
+over typed tokens, a claimed token excluded before entity matching; gated by
+the keyed score (D16) and required to cut net lines. Its rows are drafted
+when Phase 6 closes.
+
+**Phase 8 - Data completeness and integrity (Jeff, 2026-10-17; starts once
+the query pipeline is solid - after Phase 7 closes).** The warehouse holds
+less than the source publishes, and `DATA.md` says so in places where it is
+wrong: "ESPN publishes no birth date ... there is no endpoint left to try"
+stood for a month while ESPN's own player pages show a birth date, height,
+weight, draft and college (corrected 2026-10-17). The phase's work, to be
+drafted into rows when it opens:
+
+1. **Audit every absence claim.** Each `DATA.md` entry that says the source
+   does not publish something, each `lexicon.ABSENT_FACTS` entry and each
+   refusal saying a fact is not held is checked against what ESPN's own pages
+   fetch (the site's network requests, not the files the pull happens to
+   read), and rewritten as "the source publishes it and we do not read it"
+   where that is the truth. The gap list (`feed-sample/gaps.md`) and the
+   honest-limit refusals are the demand side.
+2. **Fetch what is published and asked for,** by demand: the athlete endpoint
+   (birth date, so age; height, weight, draft, college), awards and
+   selections if a collection serves them, whatever else the audit finds.
+   Each a fetch, a parse, a table, a coverage floor, a test pinned to a
+   fixture of the real response, and the backfill (AGENTS.md, "A change that
+   alters warehouse data is not finished until the warehouse holds it").
+3. **Recover what the plays hold.** The simulation branch's lineup segments
+   (`origin/simulation`, `association sim build`) rebuild minutes and
+   plus-minus from play-by-play: measured 2026-10-17 on 2016, 318 of the 322
+   empty Chicago and New Orleans team-games sum exactly to five times the
+   game's length, and where a box score exists 24,597 of 24,643 player-games
+   match within a minute. Ported into `fetch/repairs/` as a flagged column
+   beside the rebuilt box scores (not merged: the branch forked at Phase 3),
+   so the rebuilt games count under minutes and per-minute figures; plus the
+   playoff round and series game derived from the schedule if the lifting
+   (D11) has not already landed it.
+4. **Integrity checks that fail loudly:** each table's sibling check (a sum
+   against a source that restates it) as a script run after every load, the
+   season table against the box scores (a player's games and attempts differ
+   by source, `DATA.md`), the plays against the final score by season.
+
 ## How a note survives a rewording
 
 A note today is a sentence: a string appended to the answer and to

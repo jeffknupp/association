@@ -524,21 +524,31 @@ ESPN's core API. The missing rows were never missing from ESPN.
   "The 2026 regular-season power index snapshot carries no BPI rating for any
   team".
 
-### No birth dates anywhere
+### Birth dates are published; the pull does not read the endpoint that holds them
 
-**Corrected 2026-09-15, conference/division half moved out 2026-09-24.** This
-section used to also cover conference and division membership; that half is
-now its own entry below, since the fault it described (fetched, then thrown
-away) is fixed - it is `DATA.md`'s job to describe what the source holds, not
-to track what we do about it, and there is nothing left to do about the
-conference/division half. The birth-date half stands, unfixed.
+**Corrected 2026-10-17 (Jeff).** This entry used to say ESPN "publishes no
+birth date through any endpoint" and that "there is no endpoint left to try".
+Both were wrong: ESPN's own player page (for example
+`https://www.espn.com/nba/player/_/id/3945274/luka-doncic`) shows a birth
+date, height, weight, draft and college, so an endpoint serves them - Jeff
+confirmed one independently. What is true is narrower: the pull reads a
+player's bio only from the athlete block embedded in each game's box score
+(`fetch/parse.py`'s `players_seen`, cached by
+`Pipeline._cache_player_bio`), and that block carries no birth date. Nobody
+looked further. The lesson is the one AGENTS.md states under "Do not
+conclude a source does not publish something from one file's schema": the
+entry concluded it from the files the pull happened to read.
 
-- **What ESPN does:** publishes no birth date through any endpoint the pull
-  reads. `games.conference_game` is also False on all 43,504 rows checked -
-  the per-game flag is useless regardless of the standings' own grouping,
-  covered below.
-- **Does a refetch fix it?** No - there is no endpoint left to try.
-- **How we handle it:** anything by age is refused or falls through.
+- **What ESPN does:** publishes birth dates (and height, weight, draft,
+  college) on its athlete pages and, by them, through an athlete endpoint the
+  pull does not call. `games.conference_game` is separately False on all
+  43,504 rows checked - the per-game flag is useless regardless of the
+  standings' own grouping, covered below.
+- **Does a refetch fix it?** A fetch of the athlete endpoint would; a refetch
+  of what the pull reads today would not. Data completeness is the theme
+  after the query pipeline (ROADMAP.md, Phase 8).
+- **How we handle it:** anything by age is refused as a fact no table holds
+  (`lexicon.ABSENT_FACTS`) - true of the warehouse, not of the source.
 - **Tracked in:** ISSUES.md, "Shapes deferred for lack of data or logic" (#32).
 
 ### The standings endpoint holds conference and division, at two different request shapes
