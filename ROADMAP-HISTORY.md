@@ -2098,6 +2098,16 @@ with nothing to read fills the silence from its own weights), and more data
     teammates this season, and the regular-season-only career read where
     the keys count the playoffs (#231).
 
+54. **The subject-seam P1 lane landed (2026-10-16, master `a1860237`),**
+    after the lead's curation of the feed (twelve wordings that are neither a
+    question nor a request out, `bad8e4ac`): a companion's role read from
+    its own clause (a denial is an absence), a companion's bare number
+    refused by the stat it lacks, a word near both a team and a player asked
+    about, a word beside the model's name never read alone as that name.
+    Eight feed answers moved, one corpus reading, no graded answer; FS339
+    matches the key. Four entries filed for the lexicon lane with the lines
+    they need (#482-#485).
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
