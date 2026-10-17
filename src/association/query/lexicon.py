@@ -1415,8 +1415,11 @@ VENUE_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
 # 2022 nba final stats" answered his regular season (#455). "the final" only
 # where no count, game or stretch of play follows it - "the final 5 games"
 # is a window, "the final quarter" a period, "the final score" no round.
+# And "final" beside a year, the series that season: "Leonard final 2013",
+# "leonard 2019 final" (the feed sample's FS059, refused for a count of
+# games "final" never asked).
 ROUND_WORDS = re.compile(
-    r"\bfinals\b|\b[ew]cs?f\b|\bnba\s+final\b"
+    r"\bfinals\b|\b[ew]cs?f\b|\bnba\s+final\b|\bfinal(?=\s+(?:19|20)\d\d\b)|(?<=\b(?:19|20)\d\d\s)final\b(?!\s+(?:\d|games?)\b)"
     r"|\bthe\s+final\b(?!\s+(?:\d|one|two|three|four|five|six|seven|eight|nine|ten|games?|quarters?|halves|half|periods?|minutes?|seconds?|stretch|weeks?|months?|days?|seasons?|regular|postseason|playoffs?|score|shots?|plays?|possessions?)\b)"
     r"|\b(?:first|second)\s+round\b|\bsemi-?finals?\b",
     re.IGNORECASE,
