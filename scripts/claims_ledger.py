@@ -63,7 +63,7 @@ DEFAULT_TODAY = "2026-09-30"
 FEED_RECORDED = Path.home() / "association-research" / "stages" / "feed_recorded.jsonl"
 HELD_PATH = Path(__file__).resolve().with_name("ledger_held.json")
 """The counts the report holds each whole population to (``corpus``, the
-628 recorded questions; ``feed``, the 2,082 the feed's answered population
+628 recorded questions; ``feed``, the 2,070 the feed's answered population
 reads, ``scripts/stage_snapshots.py run --feed``): the unread content words,
 the questions holding an unread NUMBER (a word with a digit), and for the
 feed the questions whose Reading states other unread words than the
@@ -73,7 +73,7 @@ ruling. A count that grows, or a question new to a list, fails the report;
 one that fell or left a list fails it too, on a run of the whole
 population, until ``report --shrink`` lowers the file with the change (it
 only removes and lowers, as ``scripts/check_ratchets.py --shrink``)."""
-POPULATIONS = {"corpus": 628, "feed": 2082}
+POPULATIONS = {"corpus": 628, "feed": 2070}
 """How many questions each held population holds: a run of fewer is part
 of one (``--match``) and is held only to what it can show grew."""
 

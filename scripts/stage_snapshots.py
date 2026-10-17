@@ -27,9 +27,10 @@ a lowering or a sort can move with the interpreter or the engine.
 ``compare`` warns when two runs differ in any of them.
 
 ``run --feed`` answers the fourth population instead: the
-2,082 questions the readings population (``reader_pop.py``) reads beyond
-the corpus - the StatMuse feed's 2,067 distinct questions of three or more
-words and 15 franchise and companion wordings - from the replies
+2,070 questions the readings population (``reader_pop.py``) reads beyond
+the corpus - the StatMuse feed's 2,055 distinct questions of three or more
+words (twelve that are neither a question nor a request left out,
+``stages/garbage.txt``) and 15 franchise and companion wordings - from the replies
 ``~/association-research/stages/feed_replies.py`` writes (no names and no
 stat for the feed, which no model was asked: tree against tree on equal
 input, not production's answer), about four minutes a tree. The record is

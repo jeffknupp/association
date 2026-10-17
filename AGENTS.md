@@ -157,10 +157,10 @@ The rules:
      and records each Reading whole, so an ADDED call or a Reading field
      added with an empty default moves every later call: align first with
      `~/association-research/stages/calls_aligned.py`.
-  3. **The 2,710 readings** (`~/association-research/stages/reader_pop.py`:
-     the 628 and the 2,082 outside them, read and planned, no answer;
+  3. **The 2,698 readings** (`~/association-research/stages/reader_pop.py`:
+     the 628 and the 2,070 outside them, read and planned, no answer;
      `reader_cmp.py` compares two in seconds).
-  4. **The feed**: those 2,082 ANSWERED, `run --feed OUT.jsonl`, from
+  4. **The feed**: those 2,070 ANSWERED, `run --feed OUT.jsonl`, from
      `~/association-research/stages/feed_recorded.jsonl` (`feed_replies.py`
      writes it) - tree against tree on equal input, not production's
      answer. It is the one that sees an answer move on a question the
@@ -233,7 +233,7 @@ The rules:
   subject himself) or by question with its reason (`HELD`), and fails
   otherwise; a held question that no longer drops leaves the list with
   the change that cleared it. `~/association-research/stages/grammar_rows_dropped.py`
-  measures the same over the 2,710 readings.
+  measures the same over the 2,698 readings.
 - **A caveat, a stated default or a definition is written through
   `query/notes.py`.** `note(kind, text, **facts)` for something about the
   data or a term the answer uses; `decided(kind, text, field=, chose=,
