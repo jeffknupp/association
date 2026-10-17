@@ -53,21 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the respelling of a model's name (`subject.py`, "question spells X as Y") skips a player named only by a word of `COMMON_WORDS_THAT_NAME_PLAYERS`, as the question's own names do; then the ambiguous surname is asked about (the clarify "did you mean Seth Curry or Stephen Curry?") or resolved by the season. A test per wording. The subject seam's (lane p6-subject's files).
 - **Priority:** P1 - a different question answered fluently, on probes.
 - **Source:** ours.
-
-### A companion denied in the words is read as playing: "boston celtics record in games in which jaylen brown played and jayson tatum did not" answers the games both played
-- **Found:** 2026-10-16, lane p6-span, guarding D13's companion career (FS339).
-- **Evidence:** the subject reading reads every name of "when AD plays and lebron doesnt", "jaylen brown played and jayson tatum did not in the 2025/26 regular season" (two feed wordings) as a companion who PLAYED (`Companion.predicate == "played"`), the denial left in `Reading.unread`; the with/without split then answers "Jaylen Brown and Jayson Tatum played" against "either out", never the row asked (Brown on, Tatum off). #248 is the same misread of "doesnt start". The span tagger now keeps D13's career off such a question (`lexicon.COMPANION_DENIED`), so the no-season wording refuses as before; the wordings that name a season answer the wrong split fluently. <!-- codespell:ignore doesnt - the feed's question as typed -->
-- **User sees:** the team's record with both players, where its record with one and without the other was asked.
-- **Next step:** the subject reading (`subject._conditions_read`) reads a denial after a companion's name or verb ("doesnt", "did not", "isn't playing") as the absent role; the split then answers the mixed row (`compose.presence`, `_with_without_played` already divides by each predicate); a test per wording; the span's guard then reads nothing and leaves. <!-- codespell:ignore doesnt - the feed's question as typed -->
-- **Priority:** P1 - a different question answered fluently, two feed wordings and #248's.
-### "with no X" is read as playing beside the subject: "james harden stats with no paul george" answers the with/without split as if he played
-- **Found:** 2026-10-16, lane p6-subject, beside #479's clause reading.
-- **Evidence:** the subject reading reads the name after "with" as a companion who PLAYED (`subject._condition_role`: "with" and no absence word); "no" before the name is in `lexicon.NAME_STOPWORDS` and read by nothing. Two feed wordings: "james harden stats with no paul george" and "... last season" - the split is shown with "Paul George played" first, the side the question did not ask. The fix needs a lexicon line (the lexicon is the other lane's): an absence word that LEADS a name, e.g. `COMPANION_NONE = re.compile(r"^\s*(?:no|zero)\b", re.IGNORECASE)` read by `_condition_role` on a "with" phrase's words (absent where it matches), or "with no" folded into `lexicon.COMPANION`'s "without".
-- **User sees:** the split's "played" row first, under a heading that reads as "with Paul George".
-- **Next step:** the lexicon line above, then `_condition_role` reads it as `absent`; a test per wording.
-- **Priority:** P1 - the asked side presented as the other; two feed wordings.
-- **Source:** ours.
-- **GitHub:** #482
+- **GitHub:** #486
 
 ### "but" between two companions is no joiner: "lakers record when AD plays but lebron doesnt" reads both as playing <!-- codespell:ignore doesnt - the wording as typed -->
 - **Found:** 2026-10-16, lane p6-subject, probing #479's clause reading.
@@ -105,32 +91,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14: the review found it untagged in the P1 section).
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
-
-### A word after a versus word near both a team and a player is read as neither: "Kmart vs houson" answers without the opponent
-- **Found:** 2026-09-27, plan item 6 step (d) part 3 (#131, "gui last 5 games vs sours"); rewritten 2026-10-13 twice by the P1 sweep's lane N, which read a near spelling of exactly one team after a versus word (`subject._read_opponent_near`, `entities.near_team`: "gui last 5 games vs sours" and 11 more) and refused a word after a versus word that names nothing on record (`subject.versus_word_unread`, the `opponent_not_read` cause: "steph curry vs phnx", "og annuby vs philidalephis stats", "Vucevic vs magocs", "suns v kingsrecord last 20 games" and 4 more, `CHANGES.md`).
-- **Evidence:** what is left, on the 2,082 feed questions (no model names): a word after "vs" near a team AND a player is read as neither and refused by nothing - "Kmart vs houson" (Houston, Allan Houston), "austin reaves 2nd half game log vs clevland" (the Cavaliers, Antonius Cleveland), "Bobby Portis vs magics Gamelog" (the Magic, Magic Johnson); a nickname split in two, "lebron record vs t wolves"; a typo'd TEAM subject ("nuggers record"), since only the word a versus word leads is tried. Each answers the subject's line or log over every opponent.
-- **User sees:** a fluent answer to the un-narrowed question, the opponent named nowhere in it.
-- **Next step:** a word near a team and a player asks which (a `Clarify` naming both); "t wolves" joins the nicknames; a typo'd team subject read through `near_team` where no other subject stands. A test per wording.
-- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14: the review found it untagged in the P1 section).
-- **Source:** ours.
-- **GitHub:** #247
-
-### A team's record when a companion "has N" with no stat word is answered as the with/without split
-- **Found:** 2026-10-09, Phase 3 step 0, while measuring whether `refusals._team_where_a_player_belongs` was reachable (it was not, and this is why). Rewritten 2026-10-13 (lane N of the P1 sweep), which read a companion's line after "has N" on any box-score word (`lexicon.CONDITION_HAS_LINE`: "when mitchell robinson has 4 fta" is the Knicks' record in his 4+ FTA games, `CHANGES.md`).
-- **Evidence:** probed with names, "sixers record when maxey has 20+" (stat points) and "celtics record when tatum has 30" answer the with/without split: no stat word follows the number, so no line is read, the grammar's rules decline `record_when`, and the parent for a team with a companion is the with/without split. 0 of the 628 and of the 2,082 hold this wording.
-- **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
-- **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
-- **GitHub:** #340
-- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14).
-
-### "may" is read as the player Sean May: "how many points may luka score tonight" answers a Sean May comparison
-- **Found:** 2026-10-14, the Phase 5 review, probing step 1's date class.
-- **Evidence:** the subject reading reads "may" as a whole word of Sean May's name (`players_named_in`'s rule, one whole word of exactly one player) and the question becomes a comparison of Luka Doncic and Sean May; the verb "may" before another verb names nobody. Step 1's date class read "may" as a month on the same wording until its narrowing (2026-10-14, the lead); the subject reading's half is this entry.
-- **User sees:** a comparison with a player the question never named, fluently.
-- **Next step:** "may" (and the other modal/month homographs: "will", "march", "august" are names too) names a player only where the reading holds no verb after it, or where it is capitalized or beside another name word; `lexicon.NEVER_A_NAME`/`NOT_A_SUBJECT` are the tables; measure on the 2,710 and the feed.
-- **Priority:** P1 - a different question answered fluently.
-- **Source:** ours.
-- **GitHub:** #447
 
 ### A question naming no season defaults to 2026 where its words read the career: the remainder after D13's first pass
 - **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1), the lead's hand pass; Jeff's ruling D13 the same day. Rewritten 2026-10-16 by lane p6-span, which read the career for ten wording classes (`span.IMPLIED_CAREERS`, `CHANGES.md`): of the sample's 54 verdicts in the class (`season-default` and its log variant), 41 now read the span the key reads; lane p6-d15 read FS225 and FS032 (D14 and D15) and the period reads' careers (FS027, FS177, FS354: `point._PERIOD_GAMES_ASKS`, `compose.periods` across seasons) and said the career as the default it is (the `career_implied` decision), and FS391 ("jalen brown vs pacer playoff double team") now answers his 8 playoff games against Indiana fluently past "double team", a defense nothing in the warehouse records (the key's own reading: not answerable as asked, then the whole record) - no meaning class holds the word.
@@ -1952,6 +1912,7 @@ those were found.
 - **Next step:** a `points_off_turnovers` team metric whose season figure sums the box rows (the narrowed path's `TEAM_GAME_FIGURES` entry `{b}.turnoverPoints`, the unnarrowed one off `team_box_stats` where the season table is 0), its first season 1995; then `PLAY_TYPE_POINTS` names it.
 - **Priority:** P3 - a refusal of a figure on file.
 - **Source:** ours (the season table's gap is ESPN's: worth a `DATA.md` line when this is read).
+- **GitHub:** #487
 ### A companion's line stated by "shoots" is not read: "knicks record in playoff games when Mitchell Robinson shoots 4 ft" is refused for an unread number
 - **Found:** 2026-10-16, lane p6-subject (#340's fix; the feed sample's FS045).
 - **Evidence:** `lexicon.CONDITION_HAS_LINE` reads a companion's line after "has", "had", "gets", "records", "posts" and a box-score word; "shoots" is none, so "shoots 4 ft" reads no line and the reading refuses "4" as an unread number. One feed wording (FS045).
