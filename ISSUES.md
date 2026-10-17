@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** a rule on the reader's own unread words (a name word left unread beside the matched one refuses or re-resolves), measured on the 288.
 - **Priority:** P1 - fluent wrong player.
 - **Source:** ours.
+- **GitHub:** #517
 
 ### "before / until / through <bare year>" is read as that one season: "most 3s in an nba game before 2010" answers 2010's high
 - **Found:** 2026-10-17, lane p6-sentence (D17), measuring the feed sample's FS142 after the game-level ranking moved to its reader.
@@ -136,6 +137,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** pass the scope's cuts whole (a `dataclasses.replace` over the read's own), or a source test that every `Cuts(` built on the answer side names every field.
 - **Priority:** P2 - a silent narrowing dropped, found three times.
 - **Source:** ours.
+- **GitHub:** #518
 
 ### "best 3 point shooters" is read as made threes, not the percentage: "nba best 3 point shooters last 5 years" ranks 3PM
 - **Found:** 2026-10-17, lane p6-sentence (D17), FS253 against its key.
@@ -1930,6 +1932,7 @@ those were found.
 - **Next step:** Jeff's call under D13 - whether a named round (and a game of a series) implies the career (`span.IMPLIED_CAREERS`); then the game-7 clause.
 - **Priority:** P3 pending Jeff's call.
 - **Source:** ours.
+- **GitHub:** #519
 
 ### When the recorded reply names nobody, a name only the words hold is not read: "dirk 2011 finals stats" is refused "No player or team is read"
 - **Found:** 2026-10-17, lane p6-round (the playoff round), reading the round's refusals.
@@ -1938,6 +1941,7 @@ those were found.
 - **Next step:** measure whether the subject reading should read a unique whole-name match from the words when the model names none (`subject.players_named_in`), against the invented-name rules in AGENTS.md ("Names").
 - **Priority:** P3.
 - **Source:** ours (the model's reply, read past).
+- **GitHub:** #520
 
 ### The round's remainders: the rounds around one, the meetings tally, a team ranking and a quarter within a round
 - **Found:** 2026-10-17, lane p6-round (the playoff round), closing #10.
@@ -1946,6 +1950,7 @@ those were found.
 - **Next step:** each reader honors the `round` cell through its relation's shared step; the league's Finals log reads the two teams.
 - **Priority:** P3.
 - **Source:** ours.
+- **GitHub:** #521
 
 ### The warehouse holds no trade dates, so a teammate's stint ends at his next team's first game: "kyrie second half game log without luka" counts 33 of the key's 30
 - **Found:** 2026-10-17, lane p6-traps, fixing #480 (a stint now runs to the day before his first row for his next team).
@@ -2921,6 +2926,7 @@ those were found.
 - **Next step:** a champion read needs a new shape (D11, Jeff's lifting).
 - **Priority:** P4.
 - **Source:** ours.
+- **GitHub:** #522
 
 ### A shot chart's file name depends on the rows' order, so a warehouse rebuild renames it
 - **Found:** 2026-10-17, the lead, a baseline run on master before and after `real_games` was rebuilt (no code change).
@@ -2929,6 +2935,7 @@ those were found.
 - **Next step:** name the file from the sorted ids (min, max).
 - **Priority:** P4.
 - **Source:** ours.
+- **GitHub:** #523
 
 ### A per-game figure at an exact half rounds to even: Kobe's 2002 Finals assists said 5.2 where the key says 5.3
 - **Found:** 2026-10-17, the lead, FS103 against its key.
@@ -2937,6 +2944,7 @@ those were found.
 - **Next step:** round half up in the sayer's per-game format (`decimal`), measured on the populations.
 - **Priority:** P4.
 - **Source:** ours.
+- **GitHub:** #524
 
 ### The rebuild's attempts and rebound sides are measured but nothing reads them
 - **Found:** 2026-10-17, lane p6-traps, fixing #501.
