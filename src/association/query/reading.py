@@ -1422,6 +1422,9 @@ CAUSES: frozenset[str] = frozenset(
         # A question that names nobody the reading could
         # place and asks no ranking (ISSUES.md #448).
         "subject_not_read",
+        # A team's or a position's players asked with no
+        # ranking word and no stat: a roster, which no reader lists.
+        "roster_not_read",
         # One player's best single season across his
         # career, which no reader takes (decision D13's remainder).
         "own_best_season",
@@ -1501,6 +1504,9 @@ missing thing, never only the slot"):
   a versus word set the unread subject against, or None; ISSUES.md #448);
   one player's best single season across his career, which no reader
   takes (``own_best_season``: ``words``, ``player``);
+  a team's or a position's players asked with no ranking word and no stat,
+  a roster no reader lists (``roster_not_read``: ``team``, or None, and
+  ``group``, the players' name - "players", "forwards");
 - what the words name and nothing reads (:attr:`Reading.unsupported`,
   said only where the answer side declines): a playoff round
   (``playoff_round``: ``shape``, ``round``), a situation nothing reads

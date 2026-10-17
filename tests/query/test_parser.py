@@ -3,7 +3,7 @@ the rules' own cases on the small fixture warehouse."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import duckdb
 import pytest
@@ -1534,6 +1534,22 @@ def test_a_question_naming_nobody_read_and_no_ranking_is_refused_by_who_it_is_ab
     assert reading.refused is not None and reading.refused.kind == "subject_not_read"
     assert reading.defaulted is None
     assert refusal_result(reading.refused).text.startswith(("No player or team is read", "The words set someone against"))
+
+
+def test_a_teams_players_asked_with_no_ranking_word_and_no_stat_are_refused_as_a_roster() -> None:
+    """The feed sample's FS151, "nba players from the 76ers in the 2000s",
+    was told a ranking needs a stat: a team's or a position's players asked
+    with no ranking word ask a roster, which no reader lists - said with the
+    wordings that rank them, which answer."""
+    from association.query.parse import _refused_subject_not_read
+
+    team_players = Reading(who=Who(kind="team_players", teams=("Philadelphia 76ers",)), read_as=PLAYER_RANKING)
+    cause, _ = _refused_subject_not_read("nba players from the 76ers in the 2000s", replace(team_players, point=team_players))
+    assert cause == Cause(kind="roster_not_read", facts={"team": "Philadelphia 76ers", "group": "players"})
+    assert "'Philadelphia 76ers players most games played'" in refusal_result(cause).text
+    assert refusal_phrase("roster_not_read", {"team": "Chicago Bulls", "group": "forwards"}).startswith("A list of the Chicago Bulls' forwards - a roster -")
+    # A ranking word asks the ranking: its own cause stands.
+    assert _refused_subject_not_read("most 76ers players in the 2000s", replace(team_players, point=team_players))[0] is None
 
 
 def test_nobody_read_is_said_beside_the_opponent_a_versus_word_read() -> None:

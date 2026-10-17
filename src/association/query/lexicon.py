@@ -4689,6 +4689,20 @@ best game names no such default - by what is the question's to say.
 
 .. versionadded:: 7.0.0
 """
+POSITION_GROUP_NAMES: dict[str, str] = {
+    "C": "centers",
+    "F": "forwards",
+    "G": "guards",
+    "PG": "point guards",
+    "SG": "shooting guards",
+    "PF": "power forwards",
+    "SF": "small forwards",
+}
+"""A position group's players by name, by the code the subject reading
+writes (``Subject.position``): what a roster's refusal calls them.
+
+.. versionadded:: 7.0.0
+"""
 RANKING_ASKED = re.compile(r"\b(leaders?|leading|led|most|highest|top|best|worst|fewest|least|lowest|rank(?:s|ed|ings?)?)\b", re.IGNORECASE)
 """A ranking asked in words, :data:`RANKING_WORDS` and the words that name
 a ranking or a leader outright ("ranked", "rankings", "leading"): where

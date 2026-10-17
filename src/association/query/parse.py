@@ -1163,13 +1163,15 @@ def _reading(
     # word there is no refusal).
     read_by_model = (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked))
     defaulted, defaulted_claims = _reading_from_route_defaulted(asked, pointed, [(c.start, c.end) for c in found], read_by_model, model_stat)
-    if refused is None and defaulted is not None and defaulted.kind == "ranking_needs_stat":
-        # Where the words asked no ranking, nobody read is the cause, said
+    if refused is None and not unsupported and defaulted is not None and defaulted.kind == "ranking_needs_stat":
+        # Where the words asked no ranking, nobody read (or a roster) is the cause, said
         # before any reader runs (ISSUES.md #448); where a ranking word
         # stands, the word is what keeps the ranking's own cause, and is read.
+        # Not past what the words name that nothing reads (a playoff round,
+        # an age): that is the deeper cause, said where the ranking declines.
         refused, ranking_claims = _refused_subject_not_read(asked, pointed)
         defaulted_claims = [*defaulted_claims, *ranking_claims]
-    if defaulted is not None and defaulted.kind == "ranking_needs_stat" and (unsupported or (refused is not None and refused.kind == "subject_not_read")):
+    if defaulted is not None and defaulted.kind == "ranking_needs_stat" and (unsupported or (refused is not None and refused.kind in ("subject_not_read", "roster_not_read"))):
         # What the words name that nothing reads (an age) is the refusal the
         # answering loop says where the ranking declines; it is the cause -
         # as nobody read is, where the words asked no ranking.
@@ -1419,11 +1421,24 @@ def _refused_subject_not_read(question: str, reading: Reading) -> tuple[Cause | 
     ranking with no stat read (``ranking_needs_stat``) and no other cause:
     a number, a stat, a window or a date the reading defaulted past names
     the word it lost, which is the sharper sentence."""
-    if reading.who.kind != "everyone" or reading.who.players or reading.who.teams:
+    # (Not against anyone, nor over a window of games: "guards vs jokic this
+    # season" asks their lines against him, "san antonio spurs last two game
+    # player stats" a box score, no list of them.)
+    roster = (
+        reading.who.kind in ("team_players", "position") and not reading.who.players and not lexicon.VERSUS_OR_AGAINST_WORD.search(question) and not reading.companions and reading.window.count is None
+    )
+    if not roster and (reading.who.kind != "everyone" or reading.who.players or reading.who.teams):
         return None, []
     ranked = [Claim(match.start(), match.end(), "refused") for match in lexicon.RANKING_ASKED.finditer(question)]
     if ranked:
         return None, ranked
+    if roster:
+        # A team's or a position's players with no ranking word and no stat
+        # ask a roster ("nba players from the 76ers in the 2000s", the feed
+        # sample's FS151), which no reader lists: the ranking's stat is not
+        # what is missing.
+        group = lexicon.POSITION_GROUP_NAMES.get(reading.who.position or "", "players")
+        return Cause(kind="roster_not_read", facts={"team": reading.who.teams[0] if reading.who.teams else None, "group": group}), []
     return Cause(kind="subject_not_read", facts={"opponent": reading.cuts.opponent}), []
 
 

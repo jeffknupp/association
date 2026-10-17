@@ -5596,6 +5596,7 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
     "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
     "subject_not_read": lambda facts: _subject_not_read(facts["opponent"]),
+    "roster_not_read": lambda facts: _roster_not_read(facts["team"], facts["group"]),
     "own_best_season": lambda facts: (
         f"A player's best single season across his career ({facts['words']!r}) is read by nothing here yet - ask for his seasons one by one ('{facts['player']} stats by season'), or name the season."
     ),
@@ -5626,6 +5627,15 @@ def _subject_not_read(opponent: str | None) -> str:
     return (
         "No player or team is read from these words, and they ask for no ranking - name the player or the team in full, as the warehouse spells it, or the stat to rank the league by ('most points')."
     )
+
+
+def _roster_not_read(team: str | None, group: str) -> str:
+    """The refusal for a team's or a position's players asked with no
+    ranking word and no stat: the list itself is what nothing reads, and
+    the players ranked by a stat is the wording that answers."""
+    whose = f"the {team}' {group}" if team else f"the league's {group}"
+    example = f"{team} {group}" if team else group
+    return f"A list of {whose} - a roster - is read by nothing here yet, and no stat was named to rank them by - ask for them ranked by one ('{example} most games played', '{example} most points')."
 
 
 def _single_season_ranking(words: str) -> str:
