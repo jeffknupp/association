@@ -481,6 +481,10 @@ def test_a_career_the_words_imply_is_said_with_the_wording_that_asks_one_season(
     said.update(text="No games found for Joel Embiid.", data={"message": "No games found for Joel Embiid."})
     refused = ask_routed(agent, "joel embiid 30 point games", route)
     assert refused.text == "No games found for Joel Embiid."
+    # Nor beside a name that matched nobody, which read no career either.
+    said.update(text="No player found matching 'joel embid'.", data={"unmatched": "joel embid", "suggestions": []})
+    unmatched = ask_routed(agent, "joel embiid 30 point games", route)
+    assert unmatched.text == "No player found matching 'joel embid'."
 
 
 def test_a_near_spelling_the_parser_read_as_a_word_is_said(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -73,12 +73,21 @@ def _career_implied(reading: Reading, composed: Answer) -> Answer:
     question": visible, and correctable)."""
     if not any(each.stage == "parser" and each.field == "span" and each.after == "career" for each in reading.decisions):
         return composed
-    if "message" in (composed.data or {}):
+    if _read_nothing(composed):
         # A refusal or a question back (the sayer's `message`, `say_refusal`'s
         # and `say_clarify`'s data): nothing was read over the career, and a
         # cause such as an unread number is not corrected by naming a season.
         return composed
     return _noted(composed, say_career_implied(reading.who.kind, current_season()))
+
+
+def _read_nothing(composed: Answer) -> bool:
+    """Whether ``composed`` read nothing a default could be said of: a
+    refusal or a question back (the sayer's ``message``), or a name that
+    matched nobody (``unmatched``: "No player found matching 'bill Russell'
+    ...", which carried "(No season was named, so this reads every season
+    on record ...)" beside it)."""
+    return bool({"message", "unmatched"} & set(composed.data or {}))
 
 
 def _stat_default(reading: Reading, composed: Answer) -> Answer:
@@ -87,7 +96,7 @@ def _stat_default(reading: Reading, composed: Answer) -> Answer:
     default it is, with the wording that names another (AGENTS.md, "A
     reasonable default beats a question": visible, and correctable). Not
     beside a refusal or a question back, which read no stat."""
-    if "message" in (composed.data or {}):
+    if _read_nothing(composed):
         return composed
     for each in reading.decisions:
         if each.stage == "parser" and each.field == "measure":
