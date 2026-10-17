@@ -112970,10 +112970,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "best",
-    "season"
-   ],
+   "unread": [],
    "subject": {
     "kind": "player",
     "players": [
@@ -113111,7 +113108,14 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null
+   "point_refusal": null,
+   "refused": {
+    "kind": "own_best_season",
+    "facts": {
+     "words": "best season",
+     "player": "Michael Jordan"
+    }
+   }
   }
  },
  {

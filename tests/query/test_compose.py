@@ -2440,6 +2440,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "single_season_ranking": {"shape": PLAYER_RANKING, "words": "in a single season"},
     "ranking_needs_stat": {"shape": PLAYER_RANKING},
     "subject_not_read": {"opponent": "Houston Rockets"},
+    "own_best_season": {"words": "best season", "player": "Michael Jordan"},
     "measures_combined": {"shape": PLAYER_RANKING, "words": "fgm + opp fgm"},
 }
 

@@ -1422,6 +1422,9 @@ CAUSES: frozenset[str] = frozenset(
         # A question that names nobody the reading could
         # place and asks no ranking (ISSUES.md #448).
         "subject_not_read",
+        # One player's best single season across his
+        # career, which no reader takes (decision D13's remainder).
+        "own_best_season",
         # Two measures combined by an arithmetic
         # word, which no measure reads (ISSUES.md #424).
         "measures_combined",
@@ -1496,6 +1499,8 @@ missing thing, never only the slot"):
   asks for no ranking, which fell to the league's ranking only as the
   parent grammar's last row (``subject_not_read``: ``opponent``, the team
   a versus word set the unread subject against, or None; ISSUES.md #448);
+  one player's best single season across his career, which no reader
+  takes (``own_best_season``: ``words``, ``player``);
 - what the words name and nothing reads (:attr:`Reading.unsupported`,
   said only where the answer side declines): a playoff round
   (``playoff_round``: ``shape``, ``round``), a situation nothing reads

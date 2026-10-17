@@ -3182,6 +3182,18 @@ question (ISSUES.md #390).
 
 .. versionadded:: 6.0.0"""
 
+OWN_BEST_SEASON = re.compile(
+    r"\bbest\s+(?:season|year)s?\b"
+    r"|\b(?:most|highest|best|fewest|lowest|worst)\b.{0,60}?(?:\b(?:in|for|during|of)\s+(?:a|one|1|any)\s+(?:single[- ])?(?:(?:regular|playoffs?)[- ]|post)?season\b|\bsingle[- ](?:post)?season\b)",
+    re.IGNORECASE,
+)
+"""One player's best season across his career asked: "best season",
+"best year", or a superlative over "a (single) season" or "a single
+postseason" - which no reader takes, refused by name where no season is
+named (``point._own_best_season_refused``, the ``own_best_season`` cause).
+
+.. versionadded:: 7.0.0"""
+
 SEASON_BY_SEASON = re.compile(r"\b(?:by|every|each|per)\s+(?:season|year)s?\b|\b(?:season|year)[- ]by[- ](?:season|year)\b", re.IGNORECASE)
 """A history asked season by season ("stats by season", "every season",
 "per season", "year by year") - kept the history where no stat is named,
@@ -3397,6 +3409,18 @@ CAMEL_CASE_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 .. versionadded:: 6.0.0
 """
 
+HOW_MANY_OF_A_STAT = re.compile(
+    r"\bhow\s+many\s+(?:(?:total|career|regular[- ]season|playoff|postseason)\s+)?(?:points|rebounds|assists|steals|blocks|turnovers|fouls|minutes|threes|3-pointers|3s|"
+    r"field\s+goals|free\s+throws|free\s+throw\s+attempts|field\s+goal\s+attempts|3-point\s+attempts|three\s+pointers)\b",
+    re.IGNORECASE,
+)
+""""how many" right before a stat the season line holds ("how many free
+throws", "how many career points"): a count of that stat, which an
+inactive player's career answers - no guard on his career (decision D13,
+``span._his_line_guard``).
+
+.. versionadded:: 7.0.0
+"""
 HOW_MANY_GAMES = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 """A count asked outright ("how many") - beside a games key, a line's count of games rather than a log of one.
 

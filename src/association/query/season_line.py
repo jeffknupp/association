@@ -135,6 +135,11 @@ CAREER_TOTALS: dict[str, str | None] = {
     "threePointFieldGoalsMade": "threePointFieldGoalsMade",
     "fieldGoalsMade": "fieldGoalsMade",
     "freeThrowsMade": "freeThrowsMade",
+    "fieldGoalsAttempted": "fieldGoalsAttempted",
+    "threePointFieldGoalsAttempted": "threePointFieldGoalsAttempted",
+    "freeThrowsAttempted": "freeThrowsAttempted",
+    "offensiveRebounds": "offensiveRebounds",
+    "defensiveRebounds": "defensiveRebounds",
 }
 """Each stat's season-total column, which a career sums (``None``: no total;
 summed as the average times the games).
@@ -1398,6 +1403,15 @@ PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
     "threePointFieldGoalsMade": ("avgThreePointFieldGoalsMade", "threePointFieldGoalsMade", "3-pointers"),
     "fieldGoalsMade": ("avgFieldGoalsMade", "fieldGoalsMade", "field goals"),
     "freeThrowsMade": ("avgFreeThrowsMade", "freeThrowsMade", "free throws"),
+    # The attempts and the two halves of a rebound, which the season table
+    # holds per game and in total: "How many free throws have Kobe attempt"
+    # (the feed sample's FS064) was refused "no per-game column for stat
+    # 'freeThrowsAttempted'", where the key reads his 10,011.
+    "fieldGoalsAttempted": ("avgFieldGoalsAttempted", "fieldGoalsAttempted", "field goal attempts"),
+    "threePointFieldGoalsAttempted": ("avgThreePointFieldGoalsAttempted", "threePointFieldGoalsAttempted", "3-point attempts"),
+    "freeThrowsAttempted": ("avgFreeThrowsAttempted", "freeThrowsAttempted", "free throw attempts"),
+    "offensiveRebounds": ("avgOffensiveRebounds", "offensiveRebounds", "offensive rebounds"),
+    "defensiveRebounds": ("avgDefensiveRebounds", "defensiveRebounds", "defensive rebounds"),
 }
 
 

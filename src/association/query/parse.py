@@ -1382,6 +1382,9 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         # Where the words name something else nothing reads ("bench points
         # allowed in the west"), that cause is said, as it was.
         return Cause(kind="own_alignment", facts={"shape": reading.asked, "alignment": aligned})
+    best = _refused_own_best_season(players, question, reading)
+    if best is not None:
+        return best
     denied = _reading_from_route_denied(question, reading)
     if denied is not None:
         return denied
@@ -1422,6 +1425,35 @@ def _refused_subject_not_read(question: str, reading: Reading) -> tuple[Cause | 
     if ranked:
         return None, ranked
     return Cause(kind="subject_not_read", facts={"opponent": reading.cuts.opponent}), []
+
+
+def _refused_own_best_season(players: names.PlayerIndex, question: str, reading: Reading) -> Cause | None:
+    """One player's best single season across his career ("michael jordan's
+    best season", "Klay Thompson most free throw attempts in a season", the
+    feed sample's FS162) is a superlative over his seasons that no reader
+    takes (decision D13's remainder): the line read the current season, so
+    "Michael Jordan has no 2026 regular season numbers" named a missing
+    season nobody asked about - and once the season line read the attempts,
+    Klay's answered his 2026 average, fluently. Refused by a cause naming
+    the words, with the wording that lists his seasons
+    (``own_best_season``); a season named ("michael jordan best season
+    1988") is that season's line. Only for a name the index reads as one
+    player, every word of it his: a name it reads as nobody, or backs off
+    to a surname ("trace jokic's mark from his best season"), keeps the
+    refusal by that name, said where the name is resolved."""
+    if reading.asked != PLAYER_LINE or reading.who.kind != "player" or len(reading.who.players) != 1:
+        return None
+    span = reading.span
+    if span.season is not None or span.since is not None or span.until is not None:
+        return None
+    found = lexicon.OWN_BEST_SEASON.search(question)
+    if found is None:
+        return None
+    typed = reading.who.players[0]
+    matched = find_players(players, typed, limit=None)
+    if len(matched) != 1 or not set(typed.casefold().split()) <= set(matched[0].name.casefold().split()):
+        return None
+    return Cause(kind="own_best_season", facts={"words": found.group(0), "player": matched[0].name})
 
 
 def _refused_fact_not_read(question: str) -> Cause | None:

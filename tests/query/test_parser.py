@@ -1596,6 +1596,53 @@ def test_last_misspelled_or_before_stats_reads_the_window_of_games(con: duckdb.D
         assert reading.defaulted is None
 
 
+@pytest.mark.parametrize(
+    ("question", "words"),
+    [
+        ("tyrese maxey's best season", "best season"),
+        ("tyrese maxey most free throw attempts in a season", "most free throw attempts in a season"),
+        ("tyrese maxey most points per game in a single postseason", "most points per game in a single postseason"),
+        ("tyrese maxey best season 2024", None),
+        ("tyrese maxey free throw attempts", None),
+        ("trace maxey best season", None),
+    ],
+)
+def test_a_players_best_season_across_his_career_is_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, words: str | None) -> None:
+    """The feed sample's FS162, "michael jordan's best season", was told he
+    has no 2026 numbers: a player's best single season across his career is
+    a superlative over his seasons no reader takes, refused by a cause
+    naming the words and the wording that lists his seasons. A season
+    named is that season's line; a line asked plainly is the line; a name
+    the index backs off to a surname keeps its refusal by name."""
+    # The model's spelling of a name the index backs off to a surname.
+    reading = _read(con, question, ["trace maxey"] if question.startswith("trace") else None)
+    if words is None:
+        assert reading.refused is None or reading.refused.kind != "own_best_season"
+    else:
+        assert reading.refused == Cause(kind="own_best_season", facts={"words": words, "player": "Tyrese Maxey"})
+        assert "'Tyrese Maxey stats by season'" in refusal_result(reading.refused).text
+
+
+@pytest.mark.parametrize("stat", ["freeThrowsAttempted", "fieldGoalsAttempted", "threePointFieldGoalsAttempted", "offensiveRebounds", "defensiveRebounds"])
+def test_the_season_line_reads_the_attempts_and_the_rebounds_halves(stat: str) -> None:
+    """The feed sample's FS064, "How many free throws have Kobe attempt",
+    was refused "no per-game column for stat 'freeThrowsAttempted'": the
+    season table holds each per game and in total, and the line reads it."""
+    from association.query.season_line import CAREER_TOTALS, PLAYER_STAT_COLUMNS
+
+    assert stat in PLAYER_STAT_COLUMNS and CAREER_TOTALS[stat] == stat
+
+
+@pytest.mark.parametrize(("question", "career"), [("how many free throws has tyrese maxey attempted", True), ("how many games did tyrese maxey score 30 points", False)])
+def test_how_many_of_a_stat_is_no_guard_on_an_inactive_players_career(question: str, career: bool) -> None:
+    """ "How many free throws have Kobe attempt" (FS064) is a count of a stat
+    his career holds; decision D13's guard keeps "how many" of anything else
+    ("how many games did he score 30 points") off his career."""
+    from association.query.span import SpanContext, _his_line_guard
+
+    assert bool(_his_line_guard(question, SpanContext(player_named=True, inactive=True))) is not career
+
+
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
 def test_a_total_asked_of_the_season_ranking_ranks_the_total(con: duckdb.DuckDBPyConnection, question: str, source: str) -> None:
     """#435: "total" asks the season ranking for the season's total (its

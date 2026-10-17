@@ -266,7 +266,7 @@ def test_a_guard_word_is_claimed_where_it_keeps_a_career_off() -> None:
     # Nothing to keep off, nothing read: no line asked of him.
     read = span_under(PLAYER_LINE, read_span("michael jordan's best season", SpanContext(player_named=True, inactive=True)))
     assert read.claims == ()
-    question = "how many rebounds does jeremy lin have"
+    question = "how many games did jeremy lin have 10 rebounds"
     read = span_under(PLAYER_LINE, read_span(question, SpanContext(player_named=True, inactive=True, how_many=True)))
     assert [(c.what, question[c.start : c.end]) for c in read.claims] == [("span", "how many")]
 

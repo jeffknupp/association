@@ -5596,6 +5596,9 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
     "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
     "subject_not_read": lambda facts: _subject_not_read(facts["opponent"]),
+    "own_best_season": lambda facts: (
+        f"A player's best single season across his career ({facts['words']!r}) is read by nothing here yet - ask for his seasons one by one ('{facts['player']} stats by season'), or name the season."
+    ),
     "measures_combined": lambda facts: _measures_combined(facts["words"]),
 }
 

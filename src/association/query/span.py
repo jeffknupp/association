@@ -568,7 +568,14 @@ def _his_line_guard(question: str, context: SpanContext) -> list[Claim]:
     (:data:`~association.query.lexicon.HIS_LINE_ASKED`, or a stat)."""
     if not (context.player_named and context.inactive and (lexicon.HIS_LINE_ASKED.search(question) or lexicon.STAT_WORDS.search(question))):
         return []
-    found = [lexicon.HOW_MANY_GAMES.search(question), lexicon.WH_QUESTION.search(question), lexicon.RANKING_WORDS.search(question)]
+    # "how many" before a stat the line holds is a count of that stat, his
+    # career's total: "How many free throws have Kobe attempt" (the feed
+    # sample's FS064) answered "Kobe Bryant has no 2026 regular season
+    # numbers", where the key reads his 10,011.
+    how_many = lexicon.HOW_MANY_GAMES.search(question)
+    if how_many is not None and lexicon.HOW_MANY_OF_A_STAT.search(question):
+        how_many = None
+    found = [how_many, lexicon.WH_QUESTION.search(question), lexicon.RANKING_WORDS.search(question)]
     return [Claim(match.start(), match.end(), "span") for match in found if match is not None]
 
 
