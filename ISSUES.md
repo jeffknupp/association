@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the lexicon line above, then `_condition_role` reads it as `absent`; a test per wording.
 - **Priority:** P1 - the asked side presented as the other; two feed wordings.
 - **Source:** ours.
+- **GitHub:** #482
 
 ### "but" between two companions is no joiner: "lakers record when AD plays but lebron doesnt" reads both as playing <!-- codespell:ignore doesnt - the wording as typed -->
 - **Found:** 2026-10-16, lane p6-subject, probing #479's clause reading.
@@ -61,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** "but" joins `lexicon.NAME_JOINERS` (the lexicon lane's file): `NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "but", "&", "+", ","})`; then a test per wording.
 - **Priority:** P1 - a different question answered fluently (probed wording).
 - **Source:** ours.
+- **GitHub:** #483
 
 ### A start one of two companions is denied reads as both starting on the with/without split: "sixers record when embiid starts and maxey doesnt start" <!-- codespell:ignore doesnt - the wording as typed -->
 - **Found:** 2026-10-16, lane p6-subject, probing #479's neighbors.
@@ -69,6 +71,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** refuse a denied start on the split too where it names two or more companions (the `denied_role` cause, `parse.py`'s - the lexicon lane's file), or add a `not_started` predicate the presence statement counts (`conditions._with_without_held`).
 - **Priority:** P1 - a different question answered fluently (probed wording).
 - **Source:** ours.
+- **GitHub:** #484
 
 ### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
@@ -1980,6 +1983,7 @@ those were found.
 - **Next step:** "shoots", "makes", "hits" join `CONDITION_HAS_LINE`'s verbs (the lexicon lane's file), with "ft" read as made free throws where `MEASURE_WORDS` says so; a test.
 - **Priority:** P3 - a refusal where an answer exists.
 - **Source:** ours.
+- **GitHub:** #485
 
 ### A teammate's surname that is one player's exactly is read as him, though a near spelling was the subject's teammate: "rui hachimura stats without reeves" reads Antonio Reeves
 - **Found:** 2026-10-16, lane p6-span's prototype of D15, re-measured by lane p6-d15.
