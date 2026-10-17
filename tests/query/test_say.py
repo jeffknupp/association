@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from routed import said
 
-from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_career_implied, say_player_log, say_team_log
+from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_career_implied, say_player_log, say_spelling_read, say_team_log
 from association.query.notes import Note, collect
 from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
@@ -70,6 +70,12 @@ def test_the_career_the_words_imply_is_said_by_whose_it_is() -> None:
     assert say_career_implied("player", 2026) == '(No season was named, so this reads his career - add one, "in 2026", to ask about that season alone.)'
     assert "reads their careers" in say_career_implied("pair", 2026)
     assert "reads every season on record" in say_career_implied("team", 2026)
+
+
+def test_a_near_spelling_read_as_a_word_is_said_with_the_wording_that_leaves_it_out() -> None:
+    """#457: "first quater" is the 1st quarter, said as read, with the
+    wording that reaches the whole game instead."""
+    assert say_spelling_read("quater", "quarter") == "('quater' was read as 'quarter' - leave the quarter out to ask about whole games.)"
 
 
 def test_each_note_kind_has_one_phrase() -> None:
@@ -306,6 +312,26 @@ def test_the_other_matched_names_are_joined_not_printed_as_a_list() -> None:
 
     spoken = decision_phrase(Decided(kind="also_matched", field="player", chose="Stephen Curry", instead_of=("Seth Curry", "Dell Curry")))
     assert spoken == ". Note: other players also matched: Seth Curry, Dell Curry"
+
+
+def test_a_named_players_top_games_asked_by_count_are_listed_beneath_the_high() -> None:
+    """#445: "steph curry top 5 games this season" asks for his top games,
+    which the high lists beneath its top one; the high alone says one."""
+    games = (
+        {"player": "Stephen Curry", "value": 49, "date": "2025-11-14", "opponent": "SA", "reconstructed": False},
+        {"player": "Stephen Curry", "value": 48, "date": "2025-12-14", "opponent": "POR", "reconstructed": False},
+        {"player": "Stephen Curry", "value": 46, "date": "2025-11-12", "opponent": "", "reconstructed": False},
+    )
+    high = Result(
+        subject="Stephen Curry",
+        relation="player",
+        span=Span(season=2026, season_type=2, first=2026, last=2026, years="2026 regular season"),
+        parts=(Part(body=Rows(columns=("points",), rows=games, by="points")),),
+        facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0, listed=3),
+    )
+    top = "Stephen Curry's highest point total in a single game in the 2026 regular season was 49, on 2025-11-14 vs SA."
+    assert say(high).text == top + " Next: 48 on 2025-12-14 vs POR, 46 on 2025-11-12."
+    assert say(replace(high, facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0))).text == top
 
 
 def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() -> None:

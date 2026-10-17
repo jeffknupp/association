@@ -95,6 +95,36 @@ def test_a_playoff_round_is_refused_naming_the_missing_label(con: duckdb.DuckDBP
     assert refusal.data["refused"] == "playoff_round"
 
 
+@pytest.mark.parametrize(
+    ("question", "measure", "words"),
+    [
+        ("toronto raptors points off turnovers", "turnovers", "points off turnovers"),
+        ("lebron points in the paint", "points", "points in the paint"),
+        ("lebron fast break points", "points", "fast break points"),
+        ("celtics second chance points", "points", "second chance points"),
+        ("celtics points allowed in the paint", "points", "points allowed in the paint"),
+    ],
+)
+def test_points_scored_one_way_that_nothing_reads_are_refused_by_name(con: duckdb.DuckDBPyConnection, question: str, measure: str, words: str) -> None:
+    """ISSUES.md #456: "toronto raptors points off turnovers" answered the
+    Raptors' turnovers per game, the phrase read as its last word. Points
+    scored one way are a figure of their own; where the measure read is
+    not the team metric that reads them, the words are refused by name."""
+    reading = Reading(asked=PLAYER_LINE, subject=Subject("everyone"), measure=measure_of(measure))
+    cause = _reading_from_route_refused(players_of(con), teams_of(con), question, reading)
+    assert cause is not None
+    assert cause.kind == "fact_not_read" and cause.facts == {"fact": "points by play", "words": words}
+    assert f"No figure for {words!r} is read here" in said(refusal_result(cause)).text
+
+
+@pytest.mark.parametrize(("question", "measure"), [("toronto raptors points in the paint", "points_in_paint"), ("celtics fast break points this season", "fast_break_points")])
+def test_a_teams_points_in_the_paint_and_fast_break_points_are_read_and_not_refused(con: duckdb.DuckDBPyConnection, question: str, measure: str) -> None:
+    """The team metrics of those names read them (``team_metrics``), so the
+    words pass where the measure read is that metric."""
+    reading = Reading(asked=PLAYER_LINE, subject=Subject("everyone"), measure=measure_of(measure))
+    assert _reading_from_route_refused(players_of(con), teams_of(con), question, reading) is None
+
+
 def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F054 "lebron ppg as an 18 year old": the calendar reader
     refuses the value (no weekday, month, holiday or "since <day>" in it),

@@ -241,7 +241,7 @@ The rules:
   the question have said it differently?"). Both hand the sentence back
   unchanged and, inside `Agent.ask`, record the kind and facts on the
   answer (`Answer.notes`, `Answer.decisions`) and in the snapshot's
-  `remarks`. The kinds (21 notes, 8 decisions) and each kind's fact names
+  `remarks`. The kinds (21 notes, 10 decisions) and each kind's fact names
   are closed (`NOTE_KINDS`, `DECISION_KINDS`, `FACTS`): a new remark uses
   one, and adding a kind or a fact name is a deliberate edit there. Facts
   are plain values, never a sentence or an object. Wrap at the writer,

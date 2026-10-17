@@ -660,6 +660,33 @@ class MeasureWords:
     losing: re.Match[str] | None
     shot_values: tuple[tuple[int, re.Match[str]], ...]
     beside: tuple[tuple[str, ...], tuple[Claim, ...]]
+    #: Every stat the words name, each once by its catalog key, with the
+    #: characters that name it (:func:`stats_named`).
+    stats: tuple[tuple[str, Claim], ...] = ()
+    #: A player's wins named, the count a ranking of players reads.
+    wins: re.Match[str] | None = None
+    #: "total" named, the season ranking's total asked for outright.
+    total: re.Match[str] | None = None
+
+
+def stats_named(question: str) -> tuple[tuple[str, Claim], ...]:
+    """Every stat ``question``'s words name, in the order :func:`named`
+    finds them, each once by its catalog key with the characters that name
+    it: the words :func:`named` reads first, then again over the rest with
+    those characters blanked - "rebound and assist" names rebounds, then
+    assists. A word read with no characters to claim ends the reading.
+
+    .. versionadded:: 7.0.0
+    """
+    found: dict[str, Claim] = {}
+    text = question
+    while (read := named(text)) is not None:
+        key, claim = read
+        if claim.end <= claim.start:
+            break
+        found.setdefault(key_of(key)[0] or key, claim)
+        text = text[: claim.start] + " " * (claim.end - claim.start) + text[claim.end :]
+    return tuple(found.items())
 
 
 def read_measure(question: str) -> MeasureWords:
@@ -706,6 +733,9 @@ def read_measure(question: str) -> MeasureWords:
         losing=lexicon.LOSING_STREAK.search(question),
         shot_values=tuple((value, found) for value, pattern in lexicon.SHOT_VALUE_WORDS if (found := pattern.search(question)) is not None),
         beside=_beside_words(question),
+        stats=stats_named(question),
+        wins=lexicon.PLAYER_WINS.search(question),
+        total=lexicon.TOTAL_WORD.search(question),
     )
 
 

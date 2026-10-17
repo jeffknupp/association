@@ -469,11 +469,18 @@ class CountFacts:
     box scores cover, and how many games in the span had an empty box score.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       ``listed``: how many of a named player's top games the words asked for.
     """
 
     stat: str | None
     box_scores_from: int
     empty_box_scores: int
+    #: How many of a named player's top games the words asked for ("steph
+    #: curry top 5 games"), which the high lists beneath its top one; None
+    #: where they asked for the high alone.
+    listed: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

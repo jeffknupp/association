@@ -180,8 +180,11 @@ skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,comple
 # single inline codespell:ignore in ISSUES.md. "atleast" is the feed's own
 # spelling of "at least" ("who has the worst fg% with atleast 1000 fg
 # attempted"), which the stated minimum reads (lexicon.MINIMUM, ISSUES.md
-# #377) and its docstrings, tests and entries quote.
-ignore-words-list = "ot,ist,playin,alltime,atleast"
+# #377) and its docstrings, tests and entries quote. "quater" is the feed's
+# misspelling of "quarter" ("lebron james first quater log"), which the
+# period reads as the word (lexicon.QUARTER_NEAR_SPELLINGS, ISSUES.md #457)
+# and its tests and docstrings quote.
+ignore-words-list = "ot,ist,playin,alltime,atleast,quater"
 
 [tool.importlinter]
 root_package = "association"

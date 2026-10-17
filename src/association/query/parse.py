@@ -35,7 +35,7 @@ from association.query.grammar import Asked, absent, settle
 from association.query.line import LinesNamed, LinesRead, lines_named, read_lines, read_period_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
-from association.query.period import read_period
+from association.query.period import read_period, respelled
 from association.query.point import cuts_under, lines_under, measure_under, minimum_under, period_under, read_point, span_under, window_under
 from association.query.reading import (
     NETPOINTS_FINGERPRINT,
@@ -953,15 +953,21 @@ def _tagged(
         ),
         *needed(question, span.claims, lambda q: _tagged_span(asked, q, settled, window=window.window, cuts=cuts, implied=implied), outside="span", gives_up=True),
     )
-    return scope, claims, _tagged_decisions(span)
+    return scope, claims, _tagged_decisions(span, question, scope)
 
 
-def _tagged_decisions(span: SpanRead) -> tuple[Decision, ...]:
-    """The taggers' decisions the trace records: the career the words imply
-    where no season is named (decision D13), with the rules that read it."""
-    if not span.implied:
-        return ()
-    return (Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"),)
+def _tagged_decisions(span: SpanRead, question: str, scope: Reading) -> tuple[Decision, ...]:
+    """The taggers' decisions the trace records, and the answer says: the
+    career the words imply where no season is named (decision D13), and a
+    near spelling of "quarter" read as the word where a quarter stands on
+    the Reading (ISSUES.md #457)."""
+    found: list[Decision] = []
+    if span.implied:
+        found.append(Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"))
+    near = respelled(question)
+    if near is not None and (scope.period is not None or any(line.period is not None for line in scope.lines)):
+        found.append(Decision("parser", "period", near, "quarter", f"{near!r} is one edit from 'quarter', after an ordinal"))
+    return tuple(found)
 
 
 def _tagged_window_words(question: str, asked: PointShape | None, context: CutsContext, split: str | None) -> str:
@@ -1272,6 +1278,10 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       default reading, the fact unread; and an award or an All-Star
       selection ("nba mvps in 2010's", "1999 sixth man of the year",
       ISSUES.md #146), answered as a points ranking.
+      Points scored one way that no reader reads (``fact_not_read``,
+      :data:`~association.query.lexicon.PLAY_TYPE_POINTS`): "toronto
+      raptors points off turnovers" answered the Raptors' turnovers (ISSUES.md
+      #456).
     - a coach named by "under" and his name, with no "coach" said
       (``no_coach_table``, with the ``words``;
       :data:`~association.query.lexicon.COACH_UNDER`): "Name the top 10
@@ -1301,7 +1311,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     career's own seasons, then a ranking's own conference."""
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
-    fact = _refused_fact_not_read(question)
+    fact = _refused_fact_not_read(question) or _refused_play_type_points(question, reading)
     if fact is not None:
         return fact
     coach = _refused_coach_under(teams, question)
@@ -1347,6 +1357,22 @@ def _refused_fact_not_read(question: str) -> Cause | None:
         match = pattern.search(question)
         if match is not None:
             return Cause(kind="fact_not_read", facts={"fact": fact, "words": match.group(0)})
+    return None
+
+
+def _refused_play_type_points(question: str, reading: Reading) -> Cause | None:
+    """Points scored one way (:data:`~association.query.lexicon.PLAY_TYPE_POINTS`:
+    off turnovers, on second chances, on the fast break, in the paint) where
+    the measure read is not the team metric that reads them, as the
+    ``fact_not_read`` cause with the words (ISSUES.md #456): "toronto
+    raptors points off turnovers" answered the Raptors' turnovers and
+    "lebron points in the paint" his points. A team's points in the paint
+    and fast-break points are read, and pass."""
+    read = reading.measure.key if reading.measure is not None else None
+    for metric, pattern in lexicon.PLAY_TYPE_POINTS:
+        match = pattern.search(question)
+        if match is not None and (metric is None or metric != read):
+            return Cause(kind="fact_not_read", facts={"fact": "points by play", "words": match.group(0)})
     return None
 
 
@@ -1517,9 +1543,12 @@ def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedCon
     present"); "may" only in a date ("in may", "may 10" - not "who may
     lead"); and a token holding a digit that is no number as written
     ("3ot", "20222-23") is an unread number too."""
+    if lexicon.RESULT_WORD.fullmatch(lower) and _reads_no_result(context):
+        names_read[lower] = "games lost" if lower.startswith("los") else "games won"
+        return "stat"
     named = measure.named(lower)
     if named is not None and named[0] != context.key and not _leftover(lower, context.read_words):
-        if not _one_stat_shape(context.shape):
+        if not _one_stat_shape(context.shape, context.key):
             return None
         names_read[lower] = measure.CATALOG[named[0]].label if named[0] in measure.CATALOG else named[0]
         return "stat"
@@ -1534,12 +1563,29 @@ def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedCon
     return None
 
 
-def _one_stat_shape(shape: PointShape | None) -> bool:
+def _reads_no_result(context: _DefaultedContext) -> bool:
+    """Whether the point is a player's line or his history by season with
+    no result read: neither holds his games won or lost (ISSUES.md #440:
+    "Westbrook wins per season" answered his points, rebounds and assists
+    by season)."""
+    shape = context.shape
+    if shape is None or not shape.relation.startswith("player_") or context.key in ("wins", "losses", "record"):
+        return False
+    return (shape.shape == "scalar" and shape.by == "line") or (shape.shape == "split" and shape.by == "season")
+
+
+def _one_stat_shape(shape: PointShape | None, key: str | None) -> bool:
     """Whether the point reads one stat, so a second stat word asks for
-    another answer: a ranking, a count, a single game's high or a total; a
-    log, a line, a split, a history or a comparison show the whole line."""
+    another answer: a ranking, a count, a single game's high or a total;
+    and a line or a history by season where a measure stands, which says
+    that stat alone (ISSUES.md #454: "lebron points and true shooting this
+    season" answered his true shooting) - where the words name two stats its whole line
+    shows, the measure tagger read none (``point._measure_whole_line``). A
+    log, a split or a comparison shows the whole line beside a measure."""
     if shape is None:
         return False
+    if key is not None and ((shape.shape == "scalar" and shape.by == "line") or (shape.shape == "split" and shape.by == "season")):
+        return True
     return shape.shape == "ranking" or (shape.shape == "rows" and shape.by == "measure") or (shape.shape == "scalar" and shape.by in ("count", "total"))
 
 

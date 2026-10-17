@@ -70,6 +70,20 @@ def which_period(text: str) -> tuple[Period, Claim] | None:
     return Period(number=number), Claim(quarter.start(), quarter.end(), "period")
 
 
+def respelled(question: str) -> str | None:
+    """The near spelling of "quarter" the quarter ``question`` names is
+    read by (:data:`~association.query.lexicon.QUARTER_NEAR_SPELLINGS`:
+    "first quater"), as typed - or None where the words spell it out, or
+    name a half (read first, as :func:`which_period` reads it).
+
+    .. versionadded:: 7.0.0
+    """
+    if lexicon.WHICH_HALF.search(question) is not None:
+        return None
+    quarter = lexicon.WHICH_QUARTER.search(question)
+    return quarter.group("near") if quarter is not None else None
+
+
 def read_period(question: str) -> PeriodRead:
     """The period ``question``'s words name, with the claim; the whole game
     and no claim where they name none. Whether the reader takes it is the

@@ -41,6 +41,7 @@ from association.query.measure import (
     named_by_a_team_metric,
     names_a_stat,
     read_measure,
+    stats_named,
     team_metric_named,
 )
 from association.query.measures import DERIVED_MEASURES, GAME_COLUMNS, LINE, PERIOD_COLUMNS, SPLIT_LINE, STAT_LINE, log_extras, resolve_metric, stat_column, stat_measure
@@ -49,6 +50,7 @@ from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import read_route
 from association.query.point import _team_measure, measure_under
 from association.query.reading import (
+    GAME_HIGHS,
     GAMES_COUNTED,
     LINE_RUNS,
     NETPOINTS_FINGERPRINT,
@@ -57,6 +59,7 @@ from association.query.reading import (
     PLAYER_LINE,
     PLAYER_LOG,
     PLAYER_RANKING,
+    PLAYER_SPLITS,
     SEASON_HISTORY,
     SHOT_DISTANCE,
     TEAM_LINE,
@@ -130,10 +133,39 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
         ("how many times has embiid fouled out", GAMES_COUNTED, "fouls", measure_of("fouls")),
         ("how many games did embiid play", PLAYER_LINE, "games_played", None),
         ("luka td3s home", PLAYER_LINE, "threePointFieldGoalsMade", measure_of("triple_double")),
+        # Two stats or more a whole line shows read no one measure: the line, the log, the period's log, the splits, the
+        # history and a team's line say them all (#454: "James harden rebound and assist vs POR" answered his rebounds).
+        ("James harden rebound and assist vs POR", PLAYER_LINE, None, None),
+        ("Giannis first half points rebounds assists gamelog vs washington", PERIOD_LOG, None, Measure(how="per_game")),
+        ("Tyus jones points reb ast last 10 games", PLAYER_LOG, "points", None),
+        ("lebron home and away splits points and assists", PLAYER_SPLITS, None, None),
+        ("lebron points and rebounds by season", SEASON_HISTORY, None, None),
+        ("celtics points and rebounds per game this season", TEAM_LINE, None, None),
+        # ... not where the whole line leaves one out, nor on a shape that reads one stat.
+        ("lebron points and true shooting this season", PLAYER_LINE, None, measure_of("ts_pct")),
+        ("lebron steals and blocks by season", SEASON_HISTORY, None, measure_of("steals")),
+        ("most points and rebounds in a game this season", GAME_HIGHS, None, measure_of("rebounds")),
+        # A player's wins rank the players by the games they won (#440), where no other measure is named.
+        ("most wins by player nba 2010s", PLAYER_RANKING, None, measure_of("wins")),
+        ("most games won by player nba 2010s", PLAYER_RANKING, None, measure_of("wins")),
+        ("most points in wins this season", PLAYER_RANKING, None, measure_of("points")),
+        # "total" asks the season ranking for the total (#435): it ranked the per-game figure.
+        ("total points leader in 1998 season", PLAYER_RANKING, None, measure_of("points", how="total")),
+        ("most total rebounds in 2024", PLAYER_RANKING, "rebounds", measure_of("rebounds", how="total")),
+        ("total assists per game leaders 2024", PLAYER_RANKING, None, measure_of("assists", how="per_game")),
     ],
 )
 def test_the_words_read_as_one_measure(question: str, shape: PointShape | None, key: str | None, expected: Measure | None) -> None:
     assert _read(question, shape, key) == expected
+
+
+def test_every_stat_the_words_name_is_read_once_in_order() -> None:
+    """The stats a question names, each once by its catalog key, with the
+    characters that name it (#454)."""
+    assert [key for key, _ in stats_named("James harden rebound and assist vs POR")] == ["rebounds", "assists"]
+    assert [key for key, _ in stats_named("Tyus jones points reb ast pts last 10 games")] == ["points", "rebounds", "assists"]
+    assert [(key, (claim.start, claim.end)) for key, claim in stats_named("lebron 3 pointers and assists")] == [("threePointFieldGoalsMade", (7, 17)), ("assists", (22, 29))]
+    assert stats_named("lebron stats") == ()
 
 
 def test_the_models_key_is_context_the_words_confirm_and_never_the_source_where_they_name_one() -> None:

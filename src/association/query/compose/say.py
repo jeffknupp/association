@@ -492,6 +492,11 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
         # with the wording that reaches the season instead (AGENTS.md, "A
         # reasonable default beats a question").
         text = f'(No season was named, so this reads {said_with["whose"]} - add one, "in {each.facts["season"]}", to ask about that season alone.)'
+    elif each.kind == "spelling_read":
+        # A near spelling read as the word (ISSUES.md #457): said, with the
+        # wording that reaches the whole game instead (AGENTS.md, "A
+        # reasonable default beats a question").
+        text = f"('{each.before}' was read as '{each.chose}' - leave the {each.chose} out to ask about whole games.)"
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "also_matched":
@@ -518,6 +523,16 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     else:
         raise ValueError(f"no phrase for decision kind {each.kind!r}")
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
+
+
+def say_spelling_read(typed: str, read_as: str) -> str:
+    """A near spelling the parser read as a word of the lexicon (the
+    ``spelling_read`` decision: "quater" as "quarter"), said with the
+    wording that asks without it.
+
+    .. versionadded:: 7.0.0
+    """
+    return decision_phrase(Decided(kind="spelling_read", field="period", chose=read_as, before=typed, why="one edit from the word"))
 
 
 def say_left_out(left_out: LeftOut) -> str:
@@ -2290,7 +2305,7 @@ def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label:
     top = games[0]
     where = f" vs {top['opponent']}" if top["opponent"] else ""
     if named:
-        return f"{named}'s highest {label} total in a single game {when} was {top['value']}, on {top['date']}{where}."
+        return _single_game_high_named(result, named, games, f"{named}'s highest {label} total in a single game {when} was {top['value']}, on {top['date']}{where}.")
     tied = [g for g in games if g["value"] == top["value"]]
     players = list(dict.fromkeys(g["player"] for g in tied))
     if len(players) > 1:
@@ -2307,6 +2322,16 @@ def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label:
         sentence = f"{top['player']} had the most {label}s in a single game{team} {when}: {top['value']}, on {top['date']}{where}."
     rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def _single_game_high_named(result: Result, named: str, games: list[dict[str, Any]], sentence: str) -> str:
+    """A named player's high: his top game (``sentence``), and beneath it the
+    rest of the games the words asked for by count (ISSUES.md #445: "steph
+    curry top 5 games this season"), where the high says its top alone."""
+    if not _facts(result, CountFacts).listed or len(games) < 2:
+        return sentence
+    rest = [f"{g['value']} on {g['date']}" + (f" vs {g['opponent']}" if g["opponent"] else "") for g in games[1:]]
+    return sentence + f" Next: {', '.join(rest)}."
 
 
 def _count_times(count: int) -> str:
@@ -4967,6 +4992,10 @@ _FACT_NOT_READ: dict[str, str] = {
     "defended shots": (
         "No defensive field-goal percentage is on file here - the tracking that credits a defender with the shots he contested is not fetched - "
         "so {words!r} cannot be read. Ask for a team's field-goal percentage allowed, or a player's own shooting, instead."
+    ),
+    "points by play": (
+        "No figure for {words!r} is read here - a player's box score carries none, and of a team's points by play only its points in the paint and fast-break points are read - "
+        "so it cannot be answered. Ask for the points, or for a team's points in the paint or fast-break points, instead."
     ),
     "player rating": (
         "No player's {words} is on file here - the ratings are kept for teams (points per 100 possessions) - so it cannot be read for a player. "

@@ -294,11 +294,25 @@ def check_coverage(shape: PointShape | None, scope: Filtered) -> str | None:
        Keyed by the planned point's :class:`~association.query.reading.PointShape`
        (Phase 3, step 1), not an intent.
     """
-    if scope.span.season is None or shape is None:
+    season = _floor_season(scope)
+    if season is None or shape is None:
         # No season means the current one, which every table covers; no
         # point means nothing was read.
         return None
-    return unavailable(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=_pools_players(shape))
+    return unavailable(sources_for(shape, scope), season, scope.span.season_type or 2, ranking=_pools_players(shape))
+
+
+def _floor_season(scope: Filtered) -> int | None:
+    """The season a floor is checked at: the one season asked, or the last
+    of a range that ends - every season of "the 1980s" is under a floor
+    its last one is under, where a game-level ranking of the decade said
+    "No games for every player in the regular season career (1994-1989)"
+    (the range clipped to the box scores' first season). A range that
+    reaches the floor answers from it, its span said ("1994 on")."""
+    span = scope.span
+    if span.season is not None:
+        return span.season
+    return span.until if span.until is not None and not span.career else None
 
 
 def floor_refusal(tables: tuple[str, ...], season: int, season_type: int, *, ranking: bool = False, shown: Mapping[str, Any] | None = None, under: tuple[str, ...] = ("message",)) -> Refusal | None:
@@ -329,9 +343,10 @@ def coverage_refusal(shape: PointShape | None, scope: Filtered) -> Refusal | Non
     .. versionchanged:: 6.0.0
        Keyed by the planned point's :class:`~association.query.reading.PointShape`.
     """
-    if scope.span.season is None or shape is None:
+    season = _floor_season(scope)
+    if season is None or shape is None:
         return None
-    return floor_refusal(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=_pools_players(shape))
+    return floor_refusal(sources_for(shape, scope), season, scope.span.season_type or 2, ranking=_pools_players(shape))
 
 
 def coverage_caveat(shape: PointShape | None, scope: Filtered) -> str | None:

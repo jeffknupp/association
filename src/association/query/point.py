@@ -549,7 +549,9 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
             # The measure tagger's sentinel key (lexicon.SHOT_DISTANCE_RANKED):
             # refused by the real cause, no ranking of shot distance.
             raise PointRefused(Cause(kind="shot_distance_ranking"))
-        if stat is not None and stat.strip():
+        if stat is not None and stat.strip() and stat_measure(scope.measure) not in {name for name, _, _ in predicates}:
+            # (A yes/no measure the words named is the count's own predicate:
+            # a player's wins, ISSUES.md #440.)
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
         counted = _everyone_ranking_counted(scope, predicates)
         if counted is not None:
@@ -718,7 +720,13 @@ def _everyone_point(asked: PointShape | None, scope: Filtered, question: str, me
     _everyone_single_season(asked, scope, question)
     scope = _everyone_opponent(scope, question)
     words = _measure_words(question)
+    won = measure == "won" and not words
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
+    if won:
+        # A player's wins (the measure tagger's "wins", ISSUES.md #440): the
+        # games won with him playing, a yes/no of each game the players are
+        # counted by, as "most triple doubles since 2020" counts its own.
+        predicates = [*predicates, ("won", "=", True)]
     predicates = _everyone_threshold_predicates(scope, measure, predicates)
     single = _everyone_single_game(asked, scope, question, measure, predicates)
     if single is not None:
@@ -2413,6 +2421,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
         claims.append(words.worded[1])
     key = _measure_key_by_ask(asked, words, context, key, from_words=words.worded is not None)
     key = _measure_key_by_words(asked, words, context, key, claims)
+    key = _measure_whole_line(asked, words, key, claims)
     key, unit = _measure_rate(asked, words, key, claims)
     how = _measure_how(asked, words, key, unit, claims)
     of_wins = None
@@ -2445,15 +2454,79 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
     return MeasureRead(measure, distinct)
 
 
+#: The stats a whole line shows where no stat is named, by the key that
+#: reads it: a player's season or narrowed line and his log, and of them the
+#: ones a quarter's or a half's line shows (no minutes: the period's line is
+#: rebuilt from the plays, which carry none).
+_WHOLE_LINE_STATS: frozenset[str] = frozenset(
+    {
+        "points",
+        "rebounds",
+        "assists",
+        "steals",
+        "blocks",
+        "turnovers",
+        "fouls",
+        "minutes",
+        "fieldGoalsMade",
+        "fieldGoalsAttempted",
+        "freeThrowsMade",
+        "freeThrowsAttempted",
+        "threePointFieldGoalsMade",
+        "threePointFieldGoalsAttempted",
+        "fieldGoalPct",
+        "threePointFieldGoalPct",
+        "freeThrowPct",
+    }
+)
+_WHOLE_LINES: dict[PointShape, frozenset[str]] = {
+    PLAYER_LINE: _WHOLE_LINE_STATS,
+    PLAYER_LOG: _WHOLE_LINE_STATS,
+    PERIOD_LOG: _WHOLE_LINE_STATS - {"minutes"},
+    # The splits' columns, the history's points, rebounds and assists by
+    # season (``season_line.HISTORY_LINE``), and the team line's counting
+    # stats and its three-point percentage (``team_metrics.DEFAULT_TEAM_LINE``).
+    PLAYER_SPLITS: frozenset({"points", "rebounds", "assists", "steals", "blocks", "turnovers", "minutes", "threePointFieldGoalsMade", "fieldGoalPct"}),
+    SEASON_HISTORY: frozenset({"points", "rebounds", "assists"}),
+    TEAM_LINE: frozenset({"points", "rebounds", "assists", "turnovers", "threePointFieldGoalPct"}),
+}
+
+
+def _measure_whole_line(asked: PointShape | None, words: MeasureWords, key: str | None, claims: list[Claim]) -> str | None:
+    """No one measure where the words name two stats or more on a key that
+    reads a whole line and the whole line shows every one of them
+    (ISSUES.md #454): "James harden rebound and assist vs POR" answered his
+    rebounds alone, "Giannis first half points rebounds assists gamelog vs
+    washington" his first-half rebounds - the line with no stat named says
+    them all. Each stat word is claimed: the reading turns on it."""
+    shown = _WHOLE_LINES.get(asked) if asked is not None else None
+    if shown is None or len(words.stats) < 2 or not all(stat in shown for stat, _ in words.stats):
+        return key
+    if key is not None and key_of(key)[0] not in shown:
+        # A measure the words name beyond the box-score words (an advanced
+        # metric, a team metric's alias) is no stat the whole line shows.
+        return key
+    claims.extend(claim for _, claim in words.stats)
+    return None
+
+
 def _measure_how(asked: PointShape | None, words: MeasureWords, key: str | None, unit: str | None, claims: list[Claim]) -> MeasureHow | None:
     """How the measure is asked: a unit's reading; a players' ranking asked
-    per game ("highest career ppg", "who averaged the most points in his
+    as a total ("total points leader"); a players' ranking asked per game ("highest career ppg", "who averaged the most points in his
     career") the per-game figure, where a career's bare name reads the
     career TOTAL (the record books' list) and answered LeBron's 43,440
     points to a per-game question; a quarter's or half's figure asked game
     by game (a log, or "games" with no stat named)."""
     if unit is not None:
         return how_of(unit)
+    if asked == PLAYER_RANKING and key not in (None, "shot_distance") and words.total is not None and words.ranked_per_game is None and key_of(key)[3] is None:
+        # (Not over a rate the measure's own words name: "total adjusted
+        # netpoints" is the per-100 figure "adjusted" names.)
+        # "total points leader in 1998 season": the season's total, which the
+        # ranking ranks by its catalog total (``measure.metric_name``), where
+        # it ranked the per-game figure with "total" unread (ISSUES.md #435).
+        claims.append(Claim(words.total.start(), words.total.end(), "measure"))
+        return "total"
     if asked == PLAYER_RANKING and key not in (None, "shot_distance") and words.ranked_per_game is not None:
         # (Not the shot-distance sentinel, which the ranking refuses by name:
         # "avg 3 point distance" is the shot's distance, no game's figure.)
@@ -2544,14 +2617,19 @@ def _measure_key_by_words(asked: PointShape | None, words: MeasureWords, context
 def _measure_key_ranked(words: MeasureWords, key: str | None, claims: list[Claim]) -> str | None:
     """The key a ranking of players reads beyond the grammar: games played,
     where the words name no other measure and the model's key none (ISSUES.md
-    #408: the ranking's count of games), and a ranking by shot distance (the
-    sentinel the ranking refuses by name)."""
+    #408: the ranking's count of games), a ranking by shot distance (the
+    sentinel the ranking refuses by name), and his wins where the words name
+    no other measure and the model's key none (#440)."""
     if words.games_played is not None and words.worded is None and key is None:
         key = "games_played"
         claims.append(Claim(words.games_played.start(), words.games_played.end(), "measure"))
     if words.shot_distance is not None:
         key = "shot_distance"
         claims.append(Claim(words.shot_distance.start(), words.shot_distance.end(), "measure"))
+    if words.wins is not None and words.worded is None and key is None:
+        # His wins, the yes/no of each game counted (ISSUES.md #440).
+        key = "wins"
+        claims.append(Claim(words.wins.start(), words.wins.end(), "measure"))
     return key
 
 

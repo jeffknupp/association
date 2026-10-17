@@ -46,6 +46,20 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "best" is read as Travis Best beside an ambiguous surname: "curry best shooting night" ranks the league
+- **Found:** 2026-10-16, lane p6-words, fixing #445 ("best game(s)" as a single game's high).
+- **Evidence:** with the model's name "Stephen Curry" and the question's "curry" (several Currys on record), the subject reading respells the name by the one whole-word player the question holds - "best", Travis Best (decision reason "question spells 'Curry' as 'Travis Best'") - and reads `players == ['Travis Best', 'Curry']`. On `bad8e4ac`: "curry best shooting night" answers the league's points-per-game ranking fluently, "curry best stats this season" and "brown best season" are refused by `ranking_needs_stat`; on `p6-words` (#445's fix) "curry best games" and "curry best 3 games vs lakers" answer the league's single-game highs ("Bam Adebayo had the most points in a single game ..."). With the full name ("steph curry best games") the reading is right. `lexicon.COMMON_WORDS_THAT_NAME_PLAYERS` ("best", "head") guards the question's own names (`subject._named_only_by_a_common_word`) but not the respelling of a model's name. 0 of the 2,070 feed and 628 corpus questions hold the wording (probes).
+- **User sees:** a league-wide answer, fluently, where one player's was asked.
+- **Next step:** the respelling of a model's name (`subject.py`, "question spells X as Y") skips a player named only by a word of `COMMON_WORDS_THAT_NAME_PLAYERS`, as the question's own names do; then the ambiguous surname is asked about (the clarify "did you mean Seth Curry or Stephen Curry?") or resolved by the season. A test per wording. The subject seam's (lane p6-subject's files).
+- **Priority:** P1 - a different question answered fluently, on probes.
+- **Source:** ours.
+
+### A companion denied in the words is read as playing: "boston celtics record in games in which jaylen brown played and jayson tatum did not" answers the games both played
+- **Found:** 2026-10-16, lane p6-span, guarding D13's companion career (FS339).
+- **Evidence:** the subject reading reads every name of "when AD plays and lebron doesnt", "jaylen brown played and jayson tatum did not in the 2025/26 regular season" (two feed wordings) as a companion who PLAYED (`Companion.predicate == "played"`), the denial left in `Reading.unread`; the with/without split then answers "Jaylen Brown and Jayson Tatum played" against "either out", never the row asked (Brown on, Tatum off). #248 is the same misread of "doesnt start". The span tagger now keeps D13's career off such a question (`lexicon.COMPANION_DENIED`), so the no-season wording refuses as before; the wordings that name a season answer the wrong split fluently. <!-- codespell:ignore doesnt - the feed's question as typed -->
+- **User sees:** the team's record with both players, where its record with one and without the other was asked.
+- **Next step:** the subject reading (`subject._conditions_read`) reads a denial after a companion's name or verb ("doesnt", "did not", "isn't playing") as the absent role; the split then answers the mixed row (`compose.presence`, `_with_without_played` already divides by each predicate); a test per wording; the span's guard then reads nothing and leaves. <!-- codespell:ignore doesnt - the feed's question as typed -->
+- **Priority:** P1 - a different question answered fluently, two feed wordings and #248's.
 ### "with no X" is read as playing beside the subject: "james harden stats with no paul george" answers the with/without split as if he played
 - **Found:** 2026-10-16, lane p6-subject, beside #479's clause reading.
 - **Evidence:** the subject reading reads the name after "with" as a companion who PLAYED (`subject._condition_role`: "with" and no absence word); "no" before the name is in `lexicon.NAME_STOPWORDS` and read by nothing. Two feed wordings: "james harden stats with no paul george" and "... last season" - the split is shown with "Paul George played" first, the side the question did not ask. The fix needs a lexicon line (the lexicon is the other lane's): an absence word that LEADS a name, e.g. `COMPANION_NONE = re.compile(r"^\s*(?:no|zero)\b", re.IGNORECASE)` read by `_condition_role` on a "with" phrase's words (absent where it matches), or "with no" folded into `lexicon.COMPANION`'s "without".
@@ -73,15 +87,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #484
 
-### "wins" on a player's line or history is read by nothing: "Westbrook wins per season" answers his points, rebounds and assists by season
-- **Found:** 2026-10-14, Phase 5, step 6 (lane L), reading the moves of #387's fix.
-- **Evidence:** on `p5s6-L` (feed, no names), "Westbrook wins per season" answers "Russell Westbrook, points, rebounds and assists per game by regular season, 2023-2026 ..." (before the fix his 2026 line), "wins" unread: `measure.named("wins")` reads nothing outside a record's games won (`lexicon.GAMES_WON` under `LINE_RECORD`), so step 1's `unread_stat` cannot fire on it, and the players' ranking ("most wins by player nba 2010s", 14 of the 2,082) is refused by `ranking_needs_stat` since #421's fix. A player's wins are the games his team won with him playing (`won` is a yes/no measure of the player-games relation).
-- **User sees:** a line or a history of other stats, fluently, where his wins were asked.
-- **Next step:** read "wins"/"losses" on a player's line, history and ranking as the count of his games won or lost (a yes/no predicate, the count's reading as "most triple doubles since 2020" now has), or refuse by `unread_stat` naming them; each wording enumerated.
-- **Source:** ours.
-- **Priority:** P1 - a different question answered fluently; 1 of the 2,082 (the 14 rankings are refused by name).
-- **GitHub:** #440
-
 ### A team ranking asked of the best single season across years answers the current season: "Which team has made the most three pointers in a season" ranks 2026's teams
 - **Found:** 2026-10-14, Phase 5, step 6 (lane L), refusing the players' half (`point._everyone_single_season`, the `single_season_ranking` cause).
 - **Evidence:** on `98b22dd`'s feed run, "Which team has made the most three pointers in a season" answers "3-pointers made per game, 2026 regular season - highest first, of 30 teams: 1 Charlotte Hornets 16.4 ...", "which team has made the most three pointers in a season before 2015" the 2015 season's, and "highest ppg*ts% by a team in a season" 2026's points per game - each a per-game figure over one season where the most in any season was asked ("made", "season" unread). The players' ranking refuses the class by name since lane L's commit; the team ranking (`point.team_read_point`, the team-season relation) has no such check.
@@ -90,14 +95,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **Priority:** P1 - a narrower question answered fluently; 3 of the 2,082.
 - **GitHub:** #441
-
-### "total" on the season ranking is read by nothing: "total points leader in 1998 season" answers the points-per-game leader
-- **Found:** 2026-10-14, Phase 5, step 4 (D5), measuring which wordings the point reader's `lexicon.TOTAL_WORD` reaches
-- **Evidence:** the word is read only on the game-level ranking (`point._everyone_ranking`'s last read: "most total points by a center this season" is a total, written on the point's `Measure.how` since this step); the season-line ranking (`point._leaderboard_season_line`, `player_seasons/ranking/player`) never reads it, and the measure tagger writes `how="total"` only where "total" stands as a unit. On the case warehouse (`tests/names`, no model) "total points leaders this season", "most total rebounds in 2024", "most total points vs boston this season" and "most total assists on mondays this season" each plan a per-game ranking with "total" in `Reading.unread`. Feed answers (2,082, `a984044`): "total points leader in 1998 season" -> "Michael Jordan led the league in points per game in the 1998 regular season ... at 28.7", "total rebound leader in 1996 season" and "... 1998 season" the same in rebounds per game (8 feed questions hold "total" beside "most"/"leader"; "most total points in nba history" is right, a career ranking being totals).
-- **User sees:** a wrong answer - the per-game leaders where the season's totals were asked.
-- **Next step:** read "total <stat>" as `Measure.how="total"` in the measure tagger (`measure.read_measure`, beside the unit's `how_of`) and have the season ranking rank by the catalog's `total_metric` where the measure is asked as a total; enumerate the moves on the four populations (every season ranking with "total" in its words).
-- **GitHub:** #435
-- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14).
 
 ### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
@@ -109,59 +106,31 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
 
-### "top N games" and "best game(s)" are read as the newest games: "steph curry top 5 games this season" lists his last 5
-- **Found:** 2026-10-14, the Phase 5 review, probing step 1's refusals on both trees (`520a94b`, `3dc37821`).
-- **Evidence:** the window tagger reads "top 5 games" as a window of the newest 5 (`lexicon.ORDER_WORDS`' "top" beside a count), so "steph curry top 5 games this season" lists his last 5 games and "luka doncic best game this season" his last 10; the player's best games by points are the single-game high's shape (`player_games/rows/measure`, "most points in a game"), which these words never reach. Step 1's own refusal for "top" with no count suggests "top 5 games" as the rewording, which then answers wrong.
-- **User sees:** a different set of games than asked, fluently.
-- **Next step:** the window tagger reads "top/best N games" and "best game" as the high's shape ordered by the measure (the rows-by-measure key with a count), not a window; a test per wording; measure both populations ("top" beside a count on a player's games).
-- **Priority:** P1 - a different question answered fluently; 0 of the 2,082 (probed wordings).
+### A word after a versus word near both a team and a player is read as neither: "Kmart vs houson" answers without the opponent
+- **Found:** 2026-09-27, plan item 6 step (d) part 3 (#131, "gui last 5 games vs sours"); rewritten 2026-10-13 twice by the P1 sweep's lane N, which read a near spelling of exactly one team after a versus word (`subject._read_opponent_near`, `entities.near_team`: "gui last 5 games vs sours" and 11 more) and refused a word after a versus word that names nothing on record (`subject.versus_word_unread`, the `opponent_not_read` cause: "steph curry vs phnx", "og annuby vs philidalephis stats", "Vucevic vs magocs", "suns v kingsrecord last 20 games" and 4 more, `CHANGES.md`).
+- **Evidence:** what is left, on the 2,082 feed questions (no model names): a word after "vs" near a team AND a player is read as neither and refused by nothing - "Kmart vs houson" (Houston, Allan Houston), "austin reaves 2nd half game log vs clevland" (the Cavaliers, Antonius Cleveland), "Bobby Portis vs magics Gamelog" (the Magic, Magic Johnson); a nickname split in two, "lebron record vs t wolves"; a typo'd TEAM subject ("nuggers record"), since only the word a versus word leads is tried. Each answers the subject's line or log over every opponent.
+- **User sees:** a fluent answer to the un-narrowed question, the opponent named nowhere in it.
+- **Next step:** a word near a team and a player asks which (a `Clarify` naming both); "t wolves" joins the nicknames; a typo'd team subject read through `near_team` where no other subject stands. A test per wording.
+- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14: the review found it untagged in the P1 section).
 - **Source:** ours.
-- **GitHub:** #445
+- **GitHub:** #247
 
-### Two stat words on a one-stat shape, one read: "James harden rebound and assist vs POR" answers his rebounds alone
-- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
-- **Evidence:** "James harden rebound and assist vs POR" answers "averaged 4 rebounds per game in 2 games vs Portland"; "Giannis first half points rebounds assists gamelog vs washington" answers "16 rebounds in the 1st half over 3 games" (a period total of one stat where a log of three was asked). The measure tagger reads one stat from the words, so the `unread_stat` class (which triggers only where the measure did NOT come from the words) does not fire, and the other stat words stay unread; `measures_combined` refuses two stats only where the point reads a combined measure.
-- **User sees:** one stat's figure where two or three were asked, fluently.
-- **Next step:** on a one-stat shape, a second stat word the tagger would read to another key is the `unread_stat` cause whether or not the first came from the words (the parser's last step, `parse._defaulted_class`); "gamelog" on the Giannis wording should also name the log, which shows the whole line.
-- **Priority:** P1 - a fluent wrong answer on two recorded questions.
-- **Source:** ours.
-- **GitHub:** #454
+### A team's record when a companion "has N" with no stat word is answered as the with/without split
+- **Found:** 2026-10-09, Phase 3 step 0, while measuring whether `refusals._team_where_a_player_belongs` was reachable (it was not, and this is why). Rewritten 2026-10-13 (lane N of the P1 sweep), which read a companion's line after "has N" on any box-score word (`lexicon.CONDITION_HAS_LINE`: "when mitchell robinson has 4 fta" is the Knicks' record in his 4+ FTA games, `CHANGES.md`).
+- **Evidence:** probed with names, "sixers record when maxey has 20+" (stat points) and "celtics record when tatum has 30" answer the with/without split: no stat word follows the number, so no line is read, the grammar's rules decline `record_when`, and the parent for a team with a companion is the with/without split. 0 of the 628 and of the 2,082 hold this wording.
+- **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
+- **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
+- **GitHub:** #340
+- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14).
 
-### "ecf" is read by nothing: "lebron 2014-2016 ecf" answers his 2014-2016 regular seasons
-- **Found:** 2026-10-16, lane p6-sayer, reading the full-line moves on the feed at `7317141a` (`player_games/scalar/line` answers carrying an unread round word).
-- **Evidence:** 2 feed wordings answer fluently with "ecf" in `Reading.unread`: "lebron 2014-2016 ecf" ("25.9 points ... in 222 games from 2014 through 2016 (2014-2016 regular seasons)") and "Caleb martin ecf" (his 2026 regular-season line). The spelled-out round is refused by the round's cause ("lebron 2009-2014 eastern conference finals": "The games are not labeled by playoff round ..."); the abbreviation reaches no round word in the lexicon, and the unread-meaning harness has no class for a round.
-- **User sees:** a regular season's line where a conference final's was asked, fluently.
-- **Next step:** "ecf", "wcf" (and "ecsf"/"wcsf" if the population holds them) read as the conference finals round in the lexicon's round words, refused by the round's cause as "eastern conference finals" is; the two wordings re-run.
-- **Priority:** P1 - a fluent wrong answer.
+### "may" is read as the player Sean May: "how many points may luka score tonight" answers a Sean May comparison
+- **Found:** 2026-10-14, the Phase 5 review, probing step 1's date class.
+- **Evidence:** the subject reading reads "may" as a whole word of Sean May's name (`players_named_in`'s rule, one whole word of exactly one player) and the question becomes a comparison of Luka Doncic and Sean May; the verb "may" before another verb names nobody. Step 1's date class read "may" as a month on the same wording until its narrowing (2026-10-14, the lead); the subject reading's half is this entry.
+- **User sees:** a comparison with a player the question never named, fluently.
+- **Next step:** "may" (and the other modal/month homographs: "will", "march", "august" are names too) names a player only where the reading holds no verb after it, or where it is capitalized or beside another name word; `lexicon.NEVER_A_NAME`/`NOT_A_SUBJECT` are the tables; measure on the 2,710 and the feed.
+- **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
-- **GitHub:** #475
-
-### "nba final stats" is not read as the Finals: "jaylen brown 2022 nba final stats" answers his 2021-22 regular season
-- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627` (the Phase 5 review had called "final" a window word in its Finals sense and the narrowing dropped it from the class; the answer was wrong either way).
-- **Evidence:** "jaylen brown 2022 nba final stats" answers "23.6 points, 6.1 rebounds and 3.5 assists per game in 66 games" of the regular season; "jayson tatum 2024 nba final stats" likewise (74 games). The round reader matches "finals" and "the finals", not "nba final"; "final" is unread.
-- **User sees:** the regular season's line where the Finals' was asked, fluently.
-- **Next step:** "nba final(s)", "the final(s)", "finals" read as the Finals round, refused by the round's cause as every round is (`Reading.unsupported`, `round`).
-- **Priority:** P1 - a fluent wrong answer on two recorded questions.
-- **Source:** ours.
-- **GitHub:** #455
-
-### A compound stat nothing holds is read as its last word: "toronto raptors points off turnovers" answers the Raptors' turnovers
-- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
-- **Evidence:** "toronto raptors points off turnovers" answers "The Toronto Raptors' turnovers per game was 13.7 in the 2026 regular season"; "points off turnovers" is a team stat the warehouse does not carry, the measure tagger reads "turnovers", and "points" is unread (a leftover guard applies only to the read measure's own words).
-- **User sees:** turnovers where points off turnovers were asked, fluently.
-- **Next step:** the phrases "points off turnovers", "second chance points", "fast break points", "points in the paint" are one measure each in the catalog, refused as a stat no table holds (`unknown_stat` with the phrase as typed), before the tagger reads a word inside them.
-- **Priority:** P1 - a fluent wrong answer.
-- **Source:** ours.
-- **GitHub:** #456
-
-### A misspelled period word is dropped silently: "lebron james first quater log" answers his whole-game log <!-- codespell:ignore quater - the feed's question as typed -->
-- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
-- **Evidence:** "lebron james first quater log" answers "LeBron James, last 10 of 60 games of the 2026 regular season" - the whole game's line; `period.which_period` does not match "quater", so no period is read, "first" and "quater" are unread, and the log's default answers. <!-- codespell:ignore quater - the feed's question as typed -->
-- **User sees:** the game log where the first-quarter log was asked, fluently.
-- **Next step:** a near spelling of a period word ("quater", "qaurter", "quarer") within one edit is read as the word and said (as the entity index says a near-spelled name), or the ordinal before an unread word that is near a period word is the `unread_window` cause. <!-- codespell:ignore quater - the feed's question as typed -->
-- **Priority:** P1 - a fluent wrong answer on one recorded question, and a typo class nothing guards.
-- **Source:** ours.
-- **GitHub:** #457
+- **GitHub:** #447
 
 ### A question naming no season defaults to 2026 where its words read the career: the remainder after D13's first pass
 - **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1), the lead's hand pass; Jeff's ruling D13 the same day. Rewritten 2026-10-16 by lane p6-span, which read the career for ten wording classes (`span.IMPLIED_CAREERS`, `CHANGES.md`): of the sample's 54 verdicts in the class (`season-default` and its log variant), 41 now read the span the key reads; lane p6-d15 read FS225 and FS032 (D14 and D15) and the period reads' careers (FS027, FS177, FS354: `point._PERIOD_GAMES_ASKS`, `compose.periods` across seasons) and said the career as the default it is (the `career_implied` decision), and FS391 ("jalen brown vs pacer playoff double team") now answers his 8 playoff games against Indiana fluently past "double team", a defense nothing in the warehouse records (the key's own reading: not answerable as asked, then the whole record) - no meaning class holds the word.
@@ -1976,6 +1945,13 @@ those were found.
 
 ## P3: refusal or gap
 
+### A team's points off turnovers is on file and read by nothing: "toronto raptors points off turnovers" is refused
+- **Found:** 2026-10-16, lane p6-words, fixing #456 (points scored one way read as their last word).
+- **Evidence:** `team_box_stats.turnoverPoints` is filled for every team-game 1995-2026 (2026: 2,632 rows, none NULL, mean 17.9); `team_season_stats.turnoverPoints` only through the 2021 regular season (0 for every team from the 2021 playoffs on). No team metric reads either (`team_metrics.TEAM_METRICS`, `compose.team.TEAM_GAME_FIGURES`), so the phrase is refused by `fact_not_read` (`lexicon.PLAY_TYPE_POINTS`). A season metric over `team_season_stats` would answer 0 for 2022-2026; the read needs the box rows summed per season. Second-chance points are on neither table.
+- **User sees:** a refusal saying the figure is not read, for a figure the warehouse holds; 1 of the 2,070 feed questions.
+- **Next step:** a `points_off_turnovers` team metric whose season figure sums the box rows (the narrowed path's `TEAM_GAME_FIGURES` entry `{b}.turnoverPoints`, the unnarrowed one off `team_box_stats` where the season table is 0), its first season 1995; then `PLAY_TYPE_POINTS` names it.
+- **Priority:** P3 - a refusal of a figure on file.
+- **Source:** ours (the season table's gap is ESPN's: worth a `DATA.md` line when this is read).
 ### A companion's line stated by "shoots" is not read: "knicks record in playoff games when Mitchell Robinson shoots 4 ft" is refused for an unread number
 - **Found:** 2026-10-16, lane p6-subject (#340's fix; the feed sample's FS045).
 - **Evidence:** `lexicon.CONDITION_HAS_LINE` reads a companion's line after "has", "had", "gets", "records", "posts" and a box-score word; "shoots" is none, so "shoots 4 ft" reads no line and the reading refuses "4" as an unread number. One feed wording (FS045).

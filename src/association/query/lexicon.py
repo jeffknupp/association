@@ -563,7 +563,7 @@ count, a pair's record or a single game from being read over a career.
 # from the text for the same reason the year is: the question is the source,
 # and the model is wrong in both directions. "Title" and "championship" are left
 # out on purpose - "title odds" is a regular-season projection.
-PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
+PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|nba\s+final|[ew]cs?f|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
 """The postseason, named outright.
 
 .. versionadded:: 6.0.0
@@ -1395,8 +1395,18 @@ VENUE_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
 # One round of the postseason. No table carries a round, so no reader can
 # narrow to one: "tatum stats in the 2024 finals" was answered with his whole
 # 2024 postseason, 19 games where the Finals were 5. A cut, so every reader
-# refuses it rather than widening the question.
-ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b", re.IGNORECASE)
+# refuses it rather than widening the question. The abbreviations are rounds
+# too: "lebron 2014-2016 ecf" answered his regular seasons (ISSUES #475).
+# So is the Finals in the singular where it names the series: "jaylen brown
+# 2022 nba final stats" answered his regular season (#455). "the final" only
+# where no count, game or stretch of play follows it - "the final 5 games"
+# is a window, "the final quarter" a period, "the final score" no round.
+ROUND_WORDS = re.compile(
+    r"\bfinals\b|\b[ew]cs?f\b|\bnba\s+final\b"
+    r"|\bthe\s+final\b(?!\s+(?:\d|one|two|three|four|five|six|seven|eight|nine|ten|games?|quarters?|halves|half|periods?|minutes?|seconds?|stretch|weeks?|months?|days?|seasons?|regular|postseason|playoffs?|score|shots?|plays?|possessions?)\b)"
+    r"|\b(?:first|second)\s+round\b|\bsemi-?finals?\b",
+    re.IGNORECASE,
+)
 """A playoff round, as worded.
 
 .. versionadded:: 6.0.0
@@ -1931,6 +1941,33 @@ ORDINAL_PERIODS: dict[str, int] = {"first": 1, "1st": 1, "second": 2, "2nd": 2, 
 .. versionadded:: 6.0.0
 """
 
+
+def _one_edit_from(word: str) -> frozenset[str]:
+    """Every lowercase spelling one Damerau edit from ``word`` - a letter
+    left out, added, changed, or two neighbors swapped - but ``word``
+    itself (the metric the entity index reads a near spelling by)."""
+    letters = "abcdefghijklmnopqrstuvwxyz"
+    splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+    found = {left + right[1:] for left, right in splits if right}
+    found |= {left + right[1] + right[0] + right[2:] for left, right in splits if len(right) > 1}
+    found |= {left + letter + right[1:] for left, right in splits if right for letter in letters}
+    found |= {left + letter + right for left, right in splits for letter in letters}
+    return frozenset(found - {word})
+
+
+# A near spelling of "quarter" after an ordinal is the quarter: "lebron james
+# first quater log" answered his whole-game log, the period dropped (ISSUES.md
+# #457). Read as the word, as the entity index reads one near spelling of a
+# name, and said (``parse._tagged_decisions``, the ``spelling_read``
+# decision). Only beside an ordinal, where nothing else stands, and never a
+# word that is one: "quarters" is the word's plural, "quartet" no typo of it.
+QUARTER_NEAR_SPELLINGS: frozenset[str] = _one_edit_from("quarter") - {"quarters", "quartet"}
+"""The spellings one edit from "quarter" read as it after an ordinal.
+
+.. versionadded:: 7.0.0
+"""
+_QUARTER_NEAR = "|".join(sorted(QUARTER_NEAR_SPELLINGS, key=lambda spelling: (-len(spelling), spelling)))
+
 # Which quarter or half, in the forms questions actually use. All three
 # shapes come from the feed: "1st quarter", "q1"/"1q", and "first half"/"2h"
 # - and the hyphenated adjective, "first-quarter rebounds", which read no
@@ -1938,7 +1975,7 @@ ORDINAL_PERIODS: dict[str, int] = {"first": 1, "1st": 1, "second": 2, "2nd": 2, 
 # period 1, which is wrong for a team the same way it is for a player, so
 # the half is read first and apart (``period.which_period``).
 WHICH_QUARTER = re.compile(
-    r"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
+    rf"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q|(?P<near>{_QUARTER_NEAR}))\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
     re.IGNORECASE,
 )
 """Which quarter the words name, by ordinal or by number.
@@ -1957,7 +1994,10 @@ WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<
 # "quarter" is answered with a whole-game line: `[1-4]q` is the mirror of
 # `q[1-4]` ("Duncan Robison 1q log", "Devin Vassell nba player per game
 # stats 1q"), as "4th qtr" is of "4th quarter".
-QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
+QUARTER_WORDS = re.compile(
+    rf"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q|{_QUARTER_NEAR})\b"
+    r"|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b"
+)
 """A quarter named at all - one, or every one ("by quarter"). Read over the
 lowercased question, as the grammar's rule reads it.
 
@@ -2510,6 +2550,24 @@ TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
 
 .. versionadded:: 6.0.0
 """
+# A player's wins: the games his team won with him playing, a yes/no of each
+# game (the catalog's ``wins``). "most wins by player nba 2010s" ranks the
+# players by them, as "most triple doubles since 2020" ranks by triple-doubles
+# (ISSUES.md #440); the players' ranking was refused for want of a stat.
+PLAYER_WINS = re.compile(r"\bwins\b|\bgames\s+won\b", re.IGNORECASE)
+"""A player's wins, by the words a ranking of players is asked by.
+
+.. versionadded:: 7.0.0
+"""
+# A result word - a win or a loss - as a whole word: on a player's line or his
+# history by season it names his games won or lost, which neither reads
+# ("Westbrook wins per season" answered his points, rebounds and assists by
+# season, ISSUES.md #440), so it is the ``unread_stat`` cause.
+RESULT_WORD = re.compile(r"wins?|won|loss(?:es)?|lost", re.IGNORECASE)
+"""A win or a loss, as one word (read whole, ``fullmatch``).
+
+.. versionadded:: 7.0.0
+"""
 # A player's games won or lost: "how many playoff games has embiid won" is
 # his team's record in the games he played, with no line at all.
 GAMES_WON = re.compile(r"\bgames\b.{0,20}\b(won|lost|wins?|los[es]+)\b", re.IGNORECASE)
@@ -2686,6 +2744,14 @@ VERSUS_PHRASE = re.compile(rf"\b(vs\.?|versus|against|v\.?)\s+((?:(?!\b(?:{COMPA
 # was read and the team's record fell back to the with/without split
 # (ISSUES.md #340). The column is MEASURE_WORDS', the one definition of what
 # a question calls a box-score column.
+# An absence that leads the name: "james harden stats with no paul george" is
+# the games George sat, where "with" alone read him as playing (ISSUES.md
+# #482). Read over a "with" phrase's words, from their start.
+COMPANION_NONE = re.compile(r"^\s*(?:no|zero)\b", re.IGNORECASE)
+"""An absence word before a companion's name ("with no X").
+
+.. versionadded:: 7.0.0
+"""
 CONDITION_HAS_LINE = re.compile(
     r"\b(?:has|had|have|gets?|got|records?|recorded|posts?|posted)\s+(\d{1,3})(?:\s*\+|[\s-]*plus\b|\s+or\s+more\b)?\s*("
     + "|".join(sorted((re.escape(w) for w in MEASURE_WORDS), key=len, reverse=True))
@@ -3416,7 +3482,12 @@ CHILD_SINGLE_GAME_HIGH = ask(
     # is a count of triple-doubles - every one is one game's - never a
     # single game's high of a yes/no measure (ISSUES.md #265). Only beside "scoring": "highest
     # win% games" is a ranking of players by a rate over games.
-    r"|\b(?:best|highest)\s+scoring\s+games?\b",
+    r"|\b(?:best|highest)\s+scoring\s+games?\b"
+    # "top 5 games", "best 3 games", "top 10 rebounding games" and "best
+    # game(s)": his games ranked by the measure, the highs - never the newest
+    # games, which "steph curry top 5 games this season" listed (ISSUES.md
+    # #445).
+    r"|\b(?:top|best)\s+(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:[a-z]+ing\s+)?games\b|\bbest\s+(?:[a-z]+ing\s+)?games?\b",
     re.IGNORECASE,
 )
 """The words that name a single game's high.
@@ -4374,7 +4445,8 @@ a count and was answered with the league's 30-point games, Embiid dropped.
 SPLIT_WORDS: dict[str, re.Pattern[str]] = {
     "home_away": re.compile(r"\bhome\b.{0,15}\b(?:away|road)\b|\b(?:away|road)\b.{0,15}\bhome\b", re.IGNORECASE),
     "starter_bench": re.compile(r"\b(?:starter|starting|starts|bench|reserve)\b", re.IGNORECASE),
-    "wins_losses": re.compile(r"\bin\s+(?:wins|losses)\b|\bwins\s+(?:vs\.?|versus|and|or)\s+losses\b", re.IGNORECASE),
+    # "wins and loss" too: the feed's "zach lavine career wins and loss" (ISSUES.md #440).
+    "wins_losses": re.compile(r"\bin\s+(?:wins|losses)\b|\bwins\s+(?:vs\.?|versus|and|or)\s+loss(?:es)?\b", re.IGNORECASE),
     "month": re.compile(r"\b(?:by|each|per)\s+month\b|\bmonthly\b", re.IGNORECASE),
 }
 """Which split the words name - exactly one, or none is read
@@ -4686,6 +4758,25 @@ reads the first into the ``fact_not_read`` cause before any point
 
 .. versionadded:: 6.0.0
 """
+# Points scored one way - off turnovers, on second chances, on the fast
+# break, in the paint - each a figure of its own that its last word is not:
+# "toronto raptors points off turnovers" answered the Raptors' turnovers per
+# game and "lebron points in the paint" his points, the phrase's other words
+# unread (ISSUES.md #456). A team's points in the paint and fast-break points
+# are read (the team metrics of those names, ``team_metrics.TEAM_METRICS``);
+# every other reading of these phrases is refused by name. Each with the
+# team metric that reads it, or None where nothing does.
+PLAY_TYPE_POINTS: tuple[tuple[str | None, re.Pattern[str]], ...] = (
+    ("points_in_paint", re.compile(r"\b(?:points?|pts?)\s+(?:(?:allowed|given\s+up|scored)\s+)?in\s+(?:the\s+)?paint\b|\bpaint\s+(?:points?|pts?)\b", re.IGNORECASE)),
+    ("fast_break_points", re.compile(r"\bfast[\s-]?break\s+(?:points?|pts?)\b", re.IGNORECASE)),
+    (None, re.compile(r"\b(?:points?|pts?)\s+off\s+(?:of\s+)?turnovers?\b|\bturnover\s+points\b", re.IGNORECASE)),
+    (None, re.compile(r"\b(?:second|2nd)[\s-]+chance\s+(?:points?|pts?)\b", re.IGNORECASE)),  # codespell:ignore nd - an ordinal suffix
+)
+"""Points scored one way, as worded, each with the team metric that reads
+it (``None`` where nothing does).
+
+.. versionadded:: 7.0.0
+"""
 BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
 """The word "bench", whole: "bench points" names a figure nothing reads.
 
@@ -4807,7 +4898,9 @@ NETPOINTS_ROW = row(r"\bnet ?po?i?nts?\b|\bnetpts\b")
 
 .. versionadded:: 6.0.0
 """
-RECORD_ROW = row(r"\b(record|rec|w-?l|win.loss|splits?)\b|\bwin(?:ning)?\s*(?:%|pct\b|percent(?:age)?\b)")
+# "wins and losses" is the record too: "zach lavine career wins and loss"
+# answered his points, rebounds and assists (ISSUES.md #440).
+RECORD_ROW = row(r"\b(record|rec|w-?l|win.loss|splits?)\b|\bwin(?:ning)?\s*(?:%|pct\b|percent(?:age)?\b)|\bwins?\s*(?:and|vs\.?|v|&|/|-)\s*loss(?:es)?\b")
 """A player's own record or splits.
 
 .. versionadded:: 6.0.0
