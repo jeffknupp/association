@@ -122,10 +122,11 @@ def test_the_report_names_each_question_the_reading_and_the_deletion_disagree_on
     assert "not recorded" in capsys.readouterr().out
 
 
-def test_the_held_disagreements_pass_and_one_that_clears_fails_until_it_is_removed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_held_disagreements_pass_and_one_that_clears_is_slack(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The subject reading's two holdouts are
-    held by question text; another question differing fails the report, and
-    so does a held one that agrees now (it leaves the list with its fix)."""
+    held by question text; another question differing fails the report; a
+    held one that agrees now is reported as slack and passes (the lead
+    removes it at the merge)."""
     import argparse
 
     held = list(ledger.HELD_DISAGREEMENTS)
@@ -137,7 +138,7 @@ def test_the_held_disagreements_pass_and_one_that_clears_fails_until_it_is_remov
     assert "(held)" in capsys.readouterr().out
     cleared = [{**rows[0], "reading_unread": rows[0]["unread"]}, *rows[1:]]
     path.write_text("".join(json.dumps(row) + "\n" for row in cleared))
-    assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 1
+    assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 0
     assert f"GONE: {held[0]!r}" in capsys.readouterr().out
 
 
@@ -165,7 +166,7 @@ def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: py
     held = [what for what, count in ledger.HELD_JOINS.items() for _ in range(count)]
     assert report(held) == 0
     assert report([*held, "companion+intent"]) == 1 and "GREW: companion+intent" in capsys.readouterr().out
-    assert report([what for what in held if what != "refused+measure"]) == 1 and "GONE: refused+measure 1 -> 0" in capsys.readouterr().out
+    assert report([what for what in held if what != "refused+measure"]) == 0 and "GONE: refused+measure 1 -> 0" in capsys.readouterr().out
 
 
 def _held_run(tmp_path: Path, population: str, rows: list[dict[str, Any]]) -> Path:
@@ -202,13 +203,13 @@ def test_a_whole_populations_unread_words_and_numbers_are_held(tmp_path: Path, c
     assert report([row("q0", ["average", "stats"]), *rows[1:]]) == 1 and "GREW: unread words 2 -> 3" in capsys.readouterr().out
     # A number newly unread on another question: new to the list, though the count of words held.
     assert report([row("q0", []), rows[1], row("q2", ["5"])]) == 1 and "NEW unread number: 'q2'" in capsys.readouterr().out
-    # The held number read now: gone from the list, and the words fell - both fail until lowered.
+    # The held number read now: gone from the list, and the words fell - both slack, reported and passing.
     cleared = [rows[0], row("q1 with 30", []), rows[2]]
-    assert report(cleared) == 1
+    assert report(cleared) == 0
     said = capsys.readouterr().out
     assert "GONE unread number: 'q1 with 30'" in said and "FELL: unread words 2 -> 1" in said
     # Part of the population vouches for no fall.
-    assert report(cleared[:2]) == 1 and "FELL" not in capsys.readouterr().out
+    assert report(cleared[:2]) == 0 and "FELL" not in capsys.readouterr().out
     assert report(rows[:2]) == 0
     # --shrink lowers the file to the whole run, and never raises it.
     assert report(cleared, shrink=True) == 0
@@ -244,9 +245,9 @@ def test_the_feeds_disagreements_and_joins_are_held_by_question_and_kind(tmp_pat
     assert report(rows) == 0
     capsys.readouterr()
     assert report([*rows[:2], {**rows[2], "reading_unread": []}]) == 1 and "NEW disagreement: 'q2'" in capsys.readouterr().out
-    assert report([{**rows[0], "reading_unread": ["head"]}, *rows[1:]]) == 1 and "GONE disagreement: 'q0'" in capsys.readouterr().out
+    assert report([{**rows[0], "reading_unread": ["head"]}, *rows[1:]]) == 0 and "GONE disagreement: 'q0'" in capsys.readouterr().out
     assert report([rows[0], {**rows[1], "joined": ["situation+date"]}, rows[2]]) == 1 and "GREW: situation+date 1 -> 2" in capsys.readouterr().out
-    assert report([{**rows[0], "joined": []}, *rows[1:]]) == 1 and "GONE: situation+date 1 -> 0" in capsys.readouterr().out
+    assert report([{**rows[0], "joined": []}, *rows[1:]]) == 0 and "GONE: situation+date 1 -> 0" in capsys.readouterr().out
 
 
 def test_the_held_file_holds_both_populations() -> None:

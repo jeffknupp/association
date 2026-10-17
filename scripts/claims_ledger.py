@@ -70,9 +70,10 @@ feed the questions whose Reading states other unread words than the
 deletion finds and the joined claims by kind - the 628's are
 :data:`HELD_DISAGREEMENTS` and :data:`HELD_JOINS`, each held with Jeff's
 ruling. A count that grows, or a question new to a list, fails the report;
-one that fell or left a list fails it too, on a run of the whole
-population, until ``report --shrink`` lowers the file with the change (it
-only removes and lowers, as ``scripts/check_ratchets.py --shrink``)."""
+one that fell or left a list is SLACK, reported and never a failure
+(one-way since 2026-10-17), closed by ``report --shrink`` at the lead's
+merge on master (it only removes and lowers, as
+``scripts/check_ratchets.py --shrink``)."""
 POPULATIONS = {"corpus": 628, "feed": 2070}
 """How many questions each held population holds: a run of fewer is part
 of one (``--match``) and is held only to what it can show grew."""
@@ -344,16 +345,16 @@ def _held_questions(rows: list[dict[str, Any]], what: str, now: set[str], held: 
     for question in new:
         print(f"  NEW {what}: {question!r}")
     for question in gone:
-        print(f"  GONE {what}: {question!r} - remove it with the change that cleared it (report --shrink)")
+        print(f"  GONE {what}: {question!r} - slack; the lead's merge removes it (report --shrink)")
     return (1 if new else 0), (1 if gone else 0), (held - set(gone) if whole else held)
 
 
 def _report_held(rows: list[dict[str, Any]], population: str, *, shrink: bool = False) -> int:
     """A whole population's unread words and unread-number questions
-    against :data:`HELD_PATH`: 1 on a grown count or a new question, and -
-    on a run of the whole population - on a count that fell or a question
-    gone, until ``--shrink`` lowers the file (it never raises a count, and
-    a growth still fails under it)."""
+    against :data:`HELD_PATH`: 1 on a grown count or a new question; a
+    count that fell or a question gone is reported as slack and passes,
+    lowered by ``--shrink`` at the lead's merge (it never raises a count,
+    and a growth still fails under it)."""
     if population not in POPULATIONS:
         return 0
     held_file = _held()
@@ -371,8 +372,9 @@ def _report_held(rows: list[dict[str, Any]], population: str, *, shrink: bool = 
         # The feed's disagreements and joins are reported (and fail) beside
         # this; here they are only lowered with the rest under --shrink.
         lowered.update(_feed_lowered(rows, held))
+    del fell  # slack: reported above, never a failure (one-way since 2026-10-17)
     if not shrink:
-        return grew | fell
+        return grew
     if not whole:
         print(f"  --shrink needs a run of the whole population ({POPULATIONS[population]} questions); nothing written")
         return 1
@@ -392,7 +394,7 @@ def _held_count(what: str, now: int, held: int, *, whole: bool) -> tuple[int, in
         print(f"  GREW: {what.split(': ', 1)[-1]} {held} -> {now}")
         return 1, 0
     if now < held and whole:
-        print(f"  FELL: {what.split(': ', 1)[-1]} {held} -> {now} - lower it with the change (report --shrink)")
+        print(f"  FELL: {what.split(': ', 1)[-1]} {held} -> {now} - slack; the lead's merge lowers it (report --shrink)")
         return 0, 1
     return 0, 0
 
@@ -417,8 +419,8 @@ def _report_held_disagreements(rows: list[dict[str, Any]], held: dict[str, Any])
     stated = [row for row in rows if "reading_unread" in row]
     differ = {row["question"] for row in stated if row["reading_unread"] != row["unread"]}
     print(f"the Reading's own unread words: {len(stated) - len(differ)} of {len(stated)} questions agree with the deletion, {len(differ)} differ (held {len(held.get('disagreements', []))})")
-    new, gone, _ = _held_questions(rows, "disagreement", differ, set(held.get("disagreements", [])), whole=len(rows) >= POPULATIONS["feed"])
-    return new | gone
+    new, _gone, _ = _held_questions(rows, "disagreement", differ, set(held.get("disagreements", [])), whole=len(rows) >= POPULATIONS["feed"])
+    return new  # a gone one is slack
 
 
 #: The questions whose Reading states other unread words than the deletion
@@ -455,9 +457,9 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
     asked = {row["question"] for row in stated}
     cleared = [question for question in HELD_DISAGREEMENTS if question in asked and question not in {row["question"] for row in differ}]
     for question in cleared:
-        print(f"  GONE: {question!r} agrees now - remove it from HELD_DISAGREEMENTS with the change that cleared it")
+        print(f"  GONE: {question!r} agrees now - slack; remove it from HELD_DISAGREEMENTS at the merge")
     new = [row for row in differ if row["question"] not in HELD_DISAGREEMENTS]
-    return 1 if new or cleared else 0
+    return 1 if new else 0
 
 
 #: Every claim the 628's readings join from two that overlap without one
@@ -494,8 +496,7 @@ def _report_joins(rows: list[dict[str, Any]], table: dict[str, int] | None = Non
             print(f"  {'NEW' if not held else 'GREW'}: {what} {held} -> {now}")
             failed = 1
         elif now < held and whole:
-            print(f"  {'GONE' if not now else 'FELL'}: {what} {held} -> {now} - lower the held joins with the change")
-            failed = 1
+            print(f"  {'GONE' if not now else 'FELL'}: {what} {held} -> {now} - slack; the lead's merge lowers the held joins")
     return failed
 
 

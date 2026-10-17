@@ -105,13 +105,16 @@ The rules:
     connection, by name or annotation: empty.
 
   The empty ones are held as empty lists, so a new one fails. The check
-  fails on a NEW entry or a count that grew, and on one GONE or a count
-  that fell, so the lists only shrink. A NEW failure is fixed in the code
+  fails on a NEW entry or a count that grew; one GONE or a count that
+  fell is SLACK, reported and passing (one-way since 2026-10-17, so two
+  branches that both lower a count do not conflict on the list), and the
+  lead's merge runs `--shrink` on master so the room closes within one
+  merge. A NEW failure is fixed in the code
   - pass the Reading, not the question; narrow through the relation's
   shared steps, not a new `execute` - and adding to the list is Jeff's
-  call. A GONE failure is the ratchet working: run
-  `scripts/check_ratchets.py --shrink` (it only removes and lowers) and
-  commit the shorter list with the change. A ratchet that reaches 0 is
+  call. A SLACK line is the ratchet working: the lead runs
+  `scripts/check_ratchets.py --shrink` (it only removes and lowers) at the
+  merge, never a branch. A ratchet that reaches 0 is
   deleted with the thing it held. (history)
 - **The reader does not import the answer side, and the answer side never
   reaches the model** (`[tool.importlinter]`). The contracts hold with no
@@ -196,9 +199,10 @@ The rules:
   the corpus the five "100"s of "per 100 possessions", which the rate
   reads without the number), the disagreements, and no joined claim on
   either. `report` exits 1 on a
-  grown count or a question new to a list, and - on a run of the whole
-  population - on one that fell or left it, until `report --shrink`
-  lowers the file with the change (it only removes and lowers). After a
+  grown count or a question new to a list; a count that fell or a
+  question that left a list is slack, reported and passing, and the lead's
+  merge runs `report --shrink` on master to lower the file (it only removes
+  and lowers). After a
   reader change, run it on both populations and read the unread numbers
   first. A count grows only by a named overcount exposed, said in the
   commit (Jeff's rulings). (history)
@@ -231,8 +235,8 @@ The rules:
   `tests/query/test_grammar_drops.py` checks every reader case against
   them: a drop is held by rule (`held_by_rule`: a companion who is the
   subject himself) or by question with its reason (`HELD`), and fails
-  otherwise; a held question that no longer drops leaves the list with
-  the change that cleared it. `~/association-research/stages/grammar_rows_dropped.py`
+  otherwise; a held question that no longer drops is slack - the test
+  warns, and the lead prunes it from the list at the merge. `~/association-research/stages/grammar_rows_dropped.py`
   measures the same over the 2,698 readings.
 - **A caveat, a stated default or a definition is written through
   `query/notes.py`.** `note(kind, text, **facts)` for something about the

@@ -1,5 +1,5 @@
 """``scripts/check_ratchets.py``: each ratchet finds the shape it holds, and
-the gate fails both on a new violation and on a listed one that is gone."""
+the gate fails on a new violation and reports a listed one that is gone as slack."""
 
 from __future__ import annotations
 
@@ -166,7 +166,8 @@ def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
     grown = {**now, "sql_outside_the_relations": {"leaderboard": 3}}
     assert ratchets.compare(listed, grown) == ["sql_outside_the_relations: NEW leaderboard (2 -> 3) - the roadmap is deleting this shape; do not add to it"]
     fallen = {**now, "sql_outside_the_relations": {"leaderboard": 1}}
-    assert ratchets.compare(listed, fallen) == ["sql_outside_the_relations: GONE leaderboard (2 -> 1) - remove it from scripts/ratchets.json (--shrink) so it cannot come back"]
+    assert ratchets.compare(listed, fallen) == []
+    assert ratchets.slack(listed, fallen) == ["sql_outside_the_relations: SLACK leaderboard (2 -> 1) - gone from the code; the lead's merge runs --shrink so it cannot come back"]
     # --shrink lowers a count to the code's and never raises one.
     assert ratchets.shrink(listed, fallen)["sql_outside_the_relations"] == {"leaderboard": 1}
     assert ratchets.shrink(listed, grown)["sql_outside_the_relations"] == {"leaderboard": 2}
@@ -196,13 +197,14 @@ def test_a_regex_inside_the_reader_is_found_and_an_annotation_is_not() -> None:
     assert ratchets.regex_outside_the_lexicon(modules) == {"point", "line", "measure", "entities"}
 
 
-def test_a_new_violation_and_a_listed_one_that_is_gone_both_fail() -> None:
+def test_a_new_violation_fails_and_a_listed_one_that_is_gone_is_slack() -> None:
     names = list(ratchets.CHECKS)
     clean = {name: ["a"] for name in names}
     assert ratchets.compare(clean, clean) == []
     grown = {**clean, names[0]: ["a", "b"]}
     assert ratchets.compare(clean, grown) == [f"{names[0]}: NEW b - the roadmap is deleting this shape; do not add to it"]
-    assert ratchets.compare(grown, clean) == [f"{names[0]}: GONE b - remove it from scripts/ratchets.json (--shrink) so it cannot come back"]
+    assert ratchets.compare(grown, clean) == []
+    assert ratchets.slack(grown, clean) == [f"{names[0]}: SLACK b - gone from the code; the lead's merge runs --shrink so it cannot come back"]
     # A ratchet the list does not hold yet lists nothing: everything found is new.
     assert len(ratchets.compare({}, clean)) == len(names)
 

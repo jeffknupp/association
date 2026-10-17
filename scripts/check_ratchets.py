@@ -13,9 +13,11 @@ in ``scripts/ratchets.json``, and this fails on
 - a violation that is not listed - new code going the way the roadmap is
   leaving - or a counted one that grew. Fix it; adding to the list is a
   decision for a person, written into the commit that does it.
-- a listed violation the code no longer has, or a count that fell - the list
-  must shrink with the code, or the room it leaves gets used again.
-  ``--shrink`` removes and lowers, and never adds or raises.
+A listed violation the code no longer has, or a count that fell, is SLACK:
+reported, never a failure (one-way since 2026-10-17, so two branches that
+both lower a count do not conflict on the list). The lead runs ``--shrink``
+on master at every merge, so the room a fix leaves is closed within one
+merge; ``--shrink`` removes and lowers, and never adds or raises.
 
 The ratchets, each named for the contract it holds (``ROADMAP.md``, "The
 target"):
@@ -467,9 +469,21 @@ def _counts(standing: Standing | None) -> dict[str, int]:
 
 
 def compare(allowed: dict[str, Standing], found: dict[str, Standing]) -> list[str]:
-    """One line per violation not listed or counted higher than listed, and
-    per listed violation gone or counted lower."""
-    problems: list[str] = []
+    """One line per violation not listed or counted higher than listed: the
+    failures. What fell is :func:`slack`, reported and never a failure."""
+    return [line for grew, line in _differences(allowed, found) if grew]
+
+
+def slack(allowed: dict[str, Standing], found: dict[str, Standing]) -> list[str]:
+    """One line per listed violation gone or counted lower: room the list
+    holds that the code no longer uses, closed by ``--shrink`` at the
+    lead's merge, never a failure on a branch."""
+    return [line for grew, line in _differences(allowed, found) if not grew]
+
+
+def _differences(allowed: dict[str, Standing], found: dict[str, Standing]) -> list[tuple[bool, str]]:
+    """Every entry that differs from the list, grown (``True``) or fallen."""
+    lines: list[tuple[bool, str]] = []
     for name in CHECKS:
         listed, now = _counts(allowed.get(name)), _counts(found[name])
         counted = isinstance(found[name], dict)
@@ -477,10 +491,10 @@ def compare(allowed: dict[str, Standing], found: dict[str, Standing]) -> list[st
             before, after = listed.get(entry, 0), now.get(entry, 0)
             where = f"{entry} ({before} -> {after})" if counted and before and after else entry
             if after > before:
-                problems.append(f"{name}: NEW {where} - the roadmap is deleting this shape; do not add to it")
+                lines.append((True, f"{name}: NEW {where} - the roadmap is deleting this shape; do not add to it"))
             elif after < before:
-                problems.append(f"{name}: GONE {where} - remove it from scripts/ratchets.json (--shrink) so it cannot come back")
-    return problems
+                lines.append((False, f"{name}: SLACK {where} - gone from the code; the lead's merge runs --shrink so it cannot come back"))
+    return lines
 
 
 def shrink(allowed: dict[str, Standing], found: dict[str, Standing]) -> dict[str, Standing]:
@@ -508,6 +522,8 @@ def main() -> int:
     if args.counts:
         for name in CHECKS:
             print(f"{name}: {sum(_counts(found[name]).values())} (listed {sum(_counts(allowed.get(name)).values())})")
+    for line in slack(allowed, found):
+        print(line)
     problems = compare(allowed, found)
     for problem in problems:
         print(problem)
