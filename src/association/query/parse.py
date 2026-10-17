@@ -916,7 +916,7 @@ def _tagged(
     measure_context = _tagged_measure_context(settled, question, read, side=side, shot_value=shot_value, fields=fields)
     measure = measure_under(asked, read_measure(question), measure_context)
     period = period_under(asked, read_period(question))
-    cuts_context = CutsContext(opponent=settled.opponent, without=absent(companions))
+    cuts_context = CutsContext(opponent=settled.opponent, without=absent(companions), inactive=inactive)
     cuts = cuts_under(asked, read_cuts(question, cuts_context), split=split.split)
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
 

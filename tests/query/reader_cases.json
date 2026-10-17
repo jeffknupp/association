@@ -59042,8 +59042,8 @@
   }
  },
  {
-  "name": "a_calendar_day_on_a_career_is_refused_by_value",
-  "why": "On a career no season fixes the year: \"march 17 all time\" is a situation refused by value, never a date.",
+  "name": "a_calendar_day_on_a_career_is_every_seasons_day",
+  "why": "On a career no season fixes the year: \"march 17 all time\" is the situation of every season's March 17, never a date.",
   "question": "lebron james march 17 all time",
   "names": [
    "LeBron James"
@@ -59070,7 +59070,14 @@
     "date": null,
     "situation": {
      "text": "march 17",
-     "calendar": null,
+     "calendar": {
+      "kind": "day",
+      "value": [
+       3,
+       17
+      ],
+      "label": "on March 17"
+     },
      "alignment": null
     },
     "round": null,
@@ -59229,7 +59236,14 @@
      "date": null,
      "situation": {
       "text": "march 17",
-      "calendar": null,
+      "calendar": {
+       "kind": "day",
+       "value": [
+        3,
+        17
+       ],
+       "label": "on March 17"
+      },
       "alignment": null
      },
      "round": null,
@@ -59259,21 +59273,7 @@
     "minimum": null
    },
    "point_declined": null,
-   "point_refusal": null,
-   "unsupported": [
-    {
-     "kind": "non_calendar_situation",
-     "facts": {
-      "shape": {
-       "relation": "player_games",
-       "shape": "rows",
-       "by": "date"
-      },
-      "situation": "march 17",
-      "reads_as": "other"
-     }
-    }
-   ]
+   "point_refusal": null
   }
  },
  {

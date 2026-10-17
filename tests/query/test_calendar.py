@@ -57,6 +57,12 @@ from association.query.lexicon import DATE_RANGE, HOLIDAY_WORDS, UNREAD_HOLIDAYS
         ("new year's eve", "day", (12, 31)),
         ("new years", "day", (1, 1)),
         ("valentine's day", "day", (2, 14)),
+        # One day of the calendar, every season's, where no year fixes it (a
+        # career question, an inactive player's): "kobe bryant on november
+        # 22nd record" read 2025-11-22 beside his 1997-2016 career.
+        ("on november 22nd", "day", (11, 22)),
+        ("march 17", "day", (3, 17)),
+        ("feb 29", "day", (2, 29)),
     ],
 )
 def test_parse_situation_reads_the_calendar_shapes(text: str, kind: str, value: object) -> None:
@@ -65,7 +71,7 @@ def test_parse_situation_reads_the_calendar_shapes(text: str, kind: str, value: 
     assert (narrowing.kind, narrowing.value) == (kind, value)
 
 
-@pytest.mark.parametrize("text", ["18 year old", "western conference", "since returning", "before turning 27", "since 2/30/20", "since 13/1/20", "easter", "", "   ", None, 42])
+@pytest.mark.parametrize("text", ["18 year old", "western conference", "since returning", "before turning 27", "since 2/30/20", "since 13/1/20", "easter", "february 31", "", "   ", None, 42])
 def test_parse_situation_returns_none_for_anything_else(text: object) -> None:
     assert parse_situation(text) is None
 

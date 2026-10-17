@@ -804,7 +804,8 @@ by its `PointShape` key. The populations record the typed Reading
     venue, a situation (`SITUATION`: a weekday, a month, a holiday, "since
     <day>", the opponent's conference or division, or words nothing
     narrows by), one calendar day (`CALENDAR_DATE`, never on a career
-    question, where it is a situation), a range of days (`DATE_RANGE`, one
+    question or an inactive player's with no season named, where it is
+    the situation of that day in every season), a range of days (`DATE_RANGE`, one
     situation across seasons, handing the span its seasons), a round, a
     game of a series, an ordinal season - over the opponent and absent
     teammates the subject reading read - into `reading.Cuts`, the situation
