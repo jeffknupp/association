@@ -14,6 +14,7 @@ from association.query.reading import (
     GAMES_COUNTED,
     LINE_RECORD,
     NETPOINTS_FINGERPRINT,
+    PERIOD_LOG,
     PLAYER_COMPARISON,
     PLAYER_LINE,
     PLAYER_LOG,
@@ -26,6 +27,7 @@ from association.query.reading import (
     Cuts,
     Line,
     Measure,
+    Period,
     PointShape,
     Reading,
     Span,
@@ -478,6 +480,24 @@ def test_a_career_the_words_imply_is_said_with_the_wording_that_asks_one_season(
     said.update(text="No games found for Joel Embiid.", data={"message": "No games found for Joel Embiid."})
     refused = ask_routed(agent, "joel embiid 30 point games", route)
     assert refused.text == "No games found for Joel Embiid."
+
+
+def test_a_near_spelling_the_parser_read_as_a_word_is_said(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#457: the parser reads "quater" after an ordinal as the quarter and
+    records it (its ``period`` decision); the answer says it, with the
+    wording that asks about whole games instead."""
+    from association.query.answer import Answer
+    from association.query.decisions import Decision
+
+    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Answer:
+        return Answer(data={}, text="LeBron James scored 301 points in the 1st quarter over 60 games.")
+
+    monkeypatch.setattr("association.query.compose.answer", composed)
+    respelled = (Decision("parser", "period", "quater", "quarter", "'quater' is one edit from 'quarter', after an ordinal"),)
+    route = Routed(PERIOD_LOG, Reading(who=Who(kind="player", players=("LeBron James",)), period=Period(number=1)), decisions=respelled)
+    answer = ask_routed(_agent_with_players(tmp_path, "LeBron James"), "lebron james first quater log", route)
+    assert answer.text == "LeBron James scored 301 points in the 1st quarter over 60 games. ('quater' was read as 'quarter' - leave the quarter out to ask about whole games.)"
+    assert [each.kind for each in answer.decisions if each.kind] == ["spelling_read"]
 
 
 def test_a_name_reading_beneath_a_table_is_a_line_of_its_own(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -1941,6 +1941,33 @@ ORDINAL_PERIODS: dict[str, int] = {"first": 1, "1st": 1, "second": 2, "2nd": 2, 
 .. versionadded:: 6.0.0
 """
 
+
+def _one_edit_from(word: str) -> frozenset[str]:
+    """Every lowercase spelling one Damerau edit from ``word`` - a letter
+    left out, added, changed, or two neighbors swapped - but ``word``
+    itself (the metric the entity index reads a near spelling by)."""
+    letters = "abcdefghijklmnopqrstuvwxyz"
+    splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+    found = {left + right[1:] for left, right in splits if right}
+    found |= {left + right[1] + right[0] + right[2:] for left, right in splits if len(right) > 1}
+    found |= {left + letter + right[1:] for left, right in splits if right for letter in letters}
+    found |= {left + letter + right for left, right in splits for letter in letters}
+    return frozenset(found - {word})
+
+
+# A near spelling of "quarter" after an ordinal is the quarter: "lebron james
+# first quater log" answered his whole-game log, the period dropped (ISSUES.md
+# #457). Read as the word, as the entity index reads one near spelling of a
+# name, and said (``parse._tagged_decisions``, the ``spelling_read``
+# decision). Only beside an ordinal, where nothing else stands, and never a
+# word that is one: "quarters" is the word's plural, "quartet" no typo of it.
+QUARTER_NEAR_SPELLINGS: frozenset[str] = _one_edit_from("quarter") - {"quarters", "quartet"}
+"""The spellings one edit from "quarter" read as it after an ordinal.
+
+.. versionadded:: 7.0.0
+"""
+_QUARTER_NEAR = "|".join(sorted(QUARTER_NEAR_SPELLINGS, key=lambda spelling: (-len(spelling), spelling)))
+
 # Which quarter or half, in the forms questions actually use. All three
 # shapes come from the feed: "1st quarter", "q1"/"1q", and "first half"/"2h"
 # - and the hyphenated adjective, "first-quarter rebounds", which read no
@@ -1948,7 +1975,7 @@ ORDINAL_PERIODS: dict[str, int] = {"first": 1, "1st": 1, "second": 2, "2nd": 2, 
 # period 1, which is wrong for a team the same way it is for a player, so
 # the half is read first and apart (``period.which_period``).
 WHICH_QUARTER = re.compile(
-    r"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
+    rf"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q|(?P<near>{_QUARTER_NEAR}))\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
     re.IGNORECASE,
 )
 """Which quarter the words name, by ordinal or by number.
@@ -1967,7 +1994,10 @@ WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<
 # "quarter" is answered with a whole-game line: `[1-4]q` is the mirror of
 # `q[1-4]` ("Duncan Robison 1q log", "Devin Vassell nba player per game
 # stats 1q"), as "4th qtr" is of "4th quarter".
-QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
+QUARTER_WORDS = re.compile(
+    rf"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q|{_QUARTER_NEAR})\b"
+    r"|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b"
+)
 """A quarter named at all - one, or every one ("by quarter"). Read over the
 lowercased question, as the grammar's rule reads it.
 

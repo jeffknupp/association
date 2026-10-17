@@ -18,7 +18,7 @@ from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two r
 
 from association.query.compose.plan import cells_stated, cells_unhonored
 from association.query.line import read_period_line
-from association.query.period import PeriodRead, read_period, which_period
+from association.query.period import PeriodRead, read_period, respelled, which_period
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period
 from association.query.point import PERIOD_ASKS, period_under
@@ -67,6 +67,14 @@ def _read(question: str, shape: PointShape | None = PERIOD_LOG) -> Period | None
         ("jokic points by quarter", None),
         ("nba players points by quarter average", None),
         ("jokic stats", None),
+        # A near spelling of "quarter" after an ordinal is the quarter (#457): it answered the whole game.
+        ("lebron james first quater log", Period(number=1)),
+        ("Bam adeboyo 1st quater average", Period(number=1)),
+        ("jokic 4th qaurter points", Period(number=4)),
+        ("jokic second quarer points", Period(number=2)),
+        # ... and a word that is one, or a near spelling with no ordinal, is not.
+        ("lebron first quartet", None),
+        ("lebron quater points", None),
         # A ranking by a half-and-a-quarter wording reads the half: a half is never a quarter.
         ("most 1st quarter points in the second half of the season", Period(number=2, half=True)),
     ],
@@ -84,6 +92,16 @@ def test_the_value_is_kept_under_a_reader_that_takes_one_and_dropped_elsewhere()
         assert period_under(shape, read_period("Damian Lillard first quarter game log")) == PeriodRead(Period(number=1), (Claim(15, 28, "period"),))
     assert period_under(None, read_period("Damian L first quarter game log")) == PeriodRead(None, ())
     assert period_under(PERIOD_LOG, read_period("jokic game log")) == PeriodRead(None, ())
+
+
+def test_a_near_spelling_of_quarter_is_said_as_read() -> None:
+    """The near spelling the quarter was read by, as typed, for the answer
+    to say (#457); none where the word is spelled out or a half is named."""
+    assert respelled("lebron james first quater log") == "quater"
+    assert respelled("lebron 4th qaurter") == "qaurter"
+    assert respelled("lebron first quarter log") is None
+    assert respelled("lebron first half log") is None
+    assert respelled("lebron quater log") is None
 
 
 def test_which_period_is_the_one_reader_the_condition_reader_and_the_tagger_share() -> None:

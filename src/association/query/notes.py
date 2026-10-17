@@ -70,6 +70,7 @@ DECISION_KINDS: dict[str, str] = {
     "career_implied": "no season named, and the words imply the career (decision D13), so every season was read - said with the wording that asks one",
     "minimum": "the fewest games or attempts a ranking required",
     "cut": "how many qualified, and how many are shown",
+    "spelling_read": "a near spelling of a word the reader reads by, read as that word",
 }
 """Every kind a decision the answer states may have, with what it says.
 
@@ -110,6 +111,7 @@ FACTS: dict[str, frozenset[str]] = {
     "season_fallback": frozenset({"games", "season_type"}),
     "minimum": frozenset({"of", "column"}),
     "cut": frozenset({"total"}),
+    "spelling_read": frozenset(),
 }
 """The facts each kind may carry, by name - closed, as the kinds are. A
 writer needing another name adds it here, deliberately, where the next

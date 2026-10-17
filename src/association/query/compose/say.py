@@ -492,6 +492,11 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
         # with the wording that reaches the season instead (AGENTS.md, "A
         # reasonable default beats a question").
         text = f'(No season was named, so this reads {said_with["whose"]} - add one, "in {each.facts["season"]}", to ask about that season alone.)'
+    elif each.kind == "spelling_read":
+        # A near spelling read as the word (ISSUES.md #457): said, with the
+        # wording that reaches the whole game instead (AGENTS.md, "A
+        # reasonable default beats a question").
+        text = f"('{each.before}' was read as '{each.chose}' - leave the {each.chose} out to ask about whole games.)"
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "also_matched":
@@ -518,6 +523,16 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     else:
         raise ValueError(f"no phrase for decision kind {each.kind!r}")
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
+
+
+def say_spelling_read(typed: str, read_as: str) -> str:
+    """A near spelling the parser read as a word of the lexicon (the
+    ``spelling_read`` decision: "quater" as "quarter"), said with the
+    wording that asks without it.
+
+    .. versionadded:: 7.0.0
+    """
+    return decision_phrase(Decided(kind="spelling_read", field="period", chose=read_as, before=typed, why="one edit from the word"))
 
 
 def say_left_out(left_out: LeftOut) -> str:

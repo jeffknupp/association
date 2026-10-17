@@ -1348,7 +1348,8 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
     ("question", "names", "stat", "kind", "words"),
     [
         ("aaron gorodn lat 5 games", ["Aaron Gordon"], "points", "unread_number", ("5",)),
-        ("Bam adeboyo 1st quater average", ["Bam Adebayo"], "points", "unread_number", ("1st",)),  # codespell:ignore quater - the feed's own spelling
+        # Two edits from "quarter" is no near spelling of it: the ordinal stays unread ("1st quater" is the quarter, #457).
+        ("Bam adeboyo 1st quinter average", ["Bam Adebayo"], "points", "unread_number", ("1st",)),
         ("sga scored 20 points in the 2nd quarter", ["Shai Gilgeous-Alexander"], "points", "unread_number", ("20",)),
         # "20+" is a number too, not left in no class for the league's rebounding leaders to answer.
         ("murray games of 20+ rebounds", [], "rebounds", "unread_number", ("20+",)),

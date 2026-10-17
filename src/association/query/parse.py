@@ -35,7 +35,7 @@ from association.query.grammar import Asked, absent, settle
 from association.query.line import LinesNamed, LinesRead, lines_named, read_lines, read_period_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
-from association.query.period import read_period
+from association.query.period import read_period, respelled
 from association.query.point import cuts_under, lines_under, measure_under, minimum_under, period_under, read_point, span_under, window_under
 from association.query.reading import (
     NETPOINTS_FINGERPRINT,
@@ -953,15 +953,21 @@ def _tagged(
         ),
         *needed(question, span.claims, lambda q: _tagged_span(asked, q, settled, window=window.window, cuts=cuts, implied=implied), outside="span", gives_up=True),
     )
-    return scope, claims, _tagged_decisions(span)
+    return scope, claims, _tagged_decisions(span, question, scope)
 
 
-def _tagged_decisions(span: SpanRead) -> tuple[Decision, ...]:
-    """The taggers' decisions the trace records: the career the words imply
-    where no season is named (decision D13), with the rules that read it."""
-    if not span.implied:
-        return ()
-    return (Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"),)
+def _tagged_decisions(span: SpanRead, question: str, scope: Reading) -> tuple[Decision, ...]:
+    """The taggers' decisions the trace records, and the answer says: the
+    career the words imply where no season is named (decision D13), and a
+    near spelling of "quarter" read as the word where a quarter stands on
+    the Reading (ISSUES.md #457)."""
+    found: list[Decision] = []
+    if span.implied:
+        found.append(Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"))
+    near = respelled(question)
+    if near is not None and (scope.period is not None or any(line.period is not None for line in scope.lines)):
+        found.append(Decision("parser", "period", near, "quarter", f"{near!r} is one edit from 'quarter', after an ordinal"))
+    return tuple(found)
 
 
 def _tagged_window_words(question: str, asked: PointShape | None, context: CutsContext, split: str | None) -> str:

@@ -30,7 +30,7 @@ from association.query.result import Refusal
 
 from .answer import Answer, AnsweredBy, Timing
 from .compose.plan import Verdict, plan_point, planned_shape, refusal_result
-from .compose.say import nothing_answers, say, say_career_implied, say_left_out
+from .compose.say import nothing_answers, say, say_career_implied, say_left_out, say_spelling_read
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -79,6 +79,17 @@ def _career_implied(reading: Reading, composed: Answer) -> Answer:
         # cause such as an unread number is not corrected by naming a season.
         return composed
     return _noted(composed, say_career_implied(reading.who.kind, current_season()))
+
+
+def _spelling_read(reading: Reading, composed: Answer) -> Answer:
+    """``composed`` with each near spelling the parser read as a word of the
+    lexicon ("quater" as "quarter", its ``period`` decision) said as the
+    reading it is, with the wording that asks without it - the near-spelled
+    name's rule (AGENTS.md, "Typos are the entity index's job"), for a word."""
+    for each in reading.decisions:
+        if each.stage == "parser" and each.field == "period" and isinstance(each.before, str):
+            composed = _noted(composed, say_spelling_read(each.before, str(each.after)))
+    return composed
 
 
 def refusal_text(why: str, asked: PointShape | None = None) -> str:
@@ -508,6 +519,7 @@ class Agent:
         if note:
             composed = _noted(composed, note)
         composed = self._unmatched_fingerprint(reading, composed)
+        composed = _spelling_read(reading, composed)
         composed = _career_implied(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if composed.data is not None and key in composed.data}
         history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(shape)} point={point}")

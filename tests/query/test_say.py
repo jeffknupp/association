@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from routed import said
 
-from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_career_implied, say_player_log, say_team_log
+from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_career_implied, say_player_log, say_spelling_read, say_team_log
 from association.query.notes import Note, collect
 from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
@@ -70,6 +70,12 @@ def test_the_career_the_words_imply_is_said_by_whose_it_is() -> None:
     assert say_career_implied("player", 2026) == '(No season was named, so this reads his career - add one, "in 2026", to ask about that season alone.)'
     assert "reads their careers" in say_career_implied("pair", 2026)
     assert "reads every season on record" in say_career_implied("team", 2026)
+
+
+def test_a_near_spelling_read_as_a_word_is_said_with_the_wording_that_leaves_it_out() -> None:
+    """#457: "first quater" is the 1st quarter, said as read, with the
+    wording that reaches the whole game instead."""
+    assert say_spelling_read("quater", "quarter") == "('quater' was read as 'quarter' - leave the quarter out to ask about whole games.)"
 
 
 def test_each_note_kind_has_one_phrase() -> None:
