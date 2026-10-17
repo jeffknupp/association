@@ -843,6 +843,7 @@ def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | 
     # by points printed dates and figures and never said whose they were.
     who = ["pgl.player_name AS player"] if q.subject != "player" else []
     select = ", ".join([_row_select(rebuilt=rebuilt), *who, *(f'{measure_sql(m, rebuilt=_blanks(q, rebuilt))} AS "{m}"' for m in q.measures)])
+    ranked: tuple[str, str] | None = None
     if q.order == "measure":
         if not q.measures:
             raise Unsupported("ordering by a measure needs one")
@@ -850,10 +851,12 @@ def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | 
         # - and, within one game, by player, so a league-wide list cut at a
         # tie is the same list every run (ISSUES.md #99: Latrell Sprewell
         # or Vernon Maxwell, both with 9 on 1996-04-06, was the engine's).
-        order = f"{measure_sql(q.measures[0])} {'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST, g.date ASC, pgl.event_id, pgl.athlete_id"
+        ranked = (measure_sql(q.measures[0]), f"{'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST")
+        order = f"{' '.join(ranked)}, g.date ASC, pgl.event_id, pgl.athlete_id"
     else:
         order = f"g.date {'ASC' if q.direction == 'asc' else 'DESC'}, pgl.event_id, pgl.athlete_id"
-    sql, params = rows_sql(narrowed, select, order=order, limit=q.limit, offset=q.offset, rebuilt=rebuilt)
+    # Ranked by a measure, a tie at the limit is kept (ISSUES.md #476).
+    sql, params = rows_sql(narrowed, select, order=order, limit=q.limit, offset=q.offset, rebuilt=rebuilt, ties=ranked)
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
 
 
@@ -1012,9 +1015,11 @@ def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity
         raise Unsupported(f"no grouping {q.group!r}")
     selects = _scalar_selects(q, rebuilt)
     key, sel = GROUPS[q.group]
+    ranked: tuple[str, str] | None = None
     if q.order == "measure":
         target = "games" if q.aggregate == Aggregate.COUNT or not q.measures else f'"{q.measures[0]}"'
-        order = f"{target} {'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST, 1"
+        ranked = (target, f"{'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST")
+        order = f"{' '.join(ranked)}, 1"
     elif q.group == "season":
         # A history by season in date order, newest first unless asked
         # otherwise, so its limit keeps the LAST N seasons: ordered by the
@@ -1024,7 +1029,8 @@ def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity
     else:
         order = "1"
     having = f"{_ranked_games(q, rebuilt)} >= {int(q.minimum_games)}" if q.minimum_games else None
-    sql, params = grouped_sql(narrowed, key, [sel, *selects], having=having, order=order, limit=q.limit, rebuilt=rebuilt)
+    # Ranked by a figure, a tie at the limit is kept (ISSUES.md #476).
+    sql, params = grouped_sql(narrowed, key, [sel, *selects], having=having, order=order, limit=q.limit, rebuilt=rebuilt, ties=ranked)
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
 
 

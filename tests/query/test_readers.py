@@ -2365,6 +2365,34 @@ def test_a_tie_within_one_game_is_listed_in_one_order(sgh_ctx: AnswerContext) ->
     assert result.text.startswith("Nikola Jokic, Abe Tie and Zed Tie tied for the most points in a single game")
 
 
+def test_the_leagues_high_keeps_a_tie_past_its_limit(sgh_ctx: AnswerContext) -> None:
+    """ISSUES.md #476: the league's high lists three games, and a fourth
+    tied with the third was cut, the three said as the holders. Four
+    players' games at 40 are all said as tied, and the next figure after."""
+    s = current_season()
+    sgh_ctx.con.execute("INSERT INTO players VALUES ('9', 'Zed Tie'), ('8', 'Abe Tie'), ('7', 'Cy Tie')")
+    sgh_ctx.con.executemany(
+        "INSERT INTO player_game_log_rows VALUES (?,?,?,?,?,?,?,?,?,?,FALSE)",
+        [
+            ("9", s, 2, "Zed Tie", "2026-02-02T02:00Z", "MIA", 1, 40, 30, "e9"),
+            ("8", s, 2, "Abe Tie", "2026-02-04T02:00Z", "MIA", 1, 40, 30, "e8"),
+            ("7", s, 2, "Cy Tie", "2026-02-06T02:00Z", "MIA", 1, 40, 30, "e7"),
+        ],
+    )
+    result = game_highs(sgh_ctx, Reading(measure=Measure(key="points", as_typed="points")))
+    assert [g["value"] for g in result.data["games"]] == [40, 40, 40, 40]
+    assert result.text.startswith("Nikola Jokic, Zed Tie, Abe Tie and Cy Tie tied for the most points in a single game")
+
+
+def test_a_named_players_top_games_keep_a_tie_at_the_cut(sgh_ctx: AnswerContext) -> None:
+    """ISSUES.md #476's player half ("chris paul career high as a spur"): a
+    named player's games ranked by a figure keep the game tied with the last
+    one kept - his top two by points here, 40 and the two 30s."""
+    q = replace(planned_query(GAME_HIGHS, Reading(who=Who(kind="player", players=("Nikola Jokic",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True, season_type=2))), limit=2)
+    rows = rows_of(sgh_ctx.con, compile_query(sgh_ctx.con, q))
+    assert [row["points"] for row in rows] == [40, 30, 30]
+
+
 def test_game_highs_reports_a_tie_as_a_tie(sgh_ctx: AnswerContext) -> None:
     sgh_ctx.con.execute("UPDATE player_game_log_rows SET assists = 23 WHERE player_name = 'Nikola Jokic' AND opponent_abbr = 'DAL' AND season_type = 2")
     assert "tied for the most" in (game_highs(sgh_ctx, Reading(measure=Measure(key="assists", as_typed="assists"))).text or "")

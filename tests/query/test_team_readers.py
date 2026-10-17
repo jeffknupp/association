@@ -25,6 +25,7 @@ from association.query.compose.plan import cells_unhonored
 from association.query.coverage import check_coverage
 from association.query.reading import (
     LINE_RECORD,
+    TEAM_GAME_HIGHS,
     TEAM_LINE,
     TEAM_OUTLOOK,
     TEAM_PERIOD_TOTAL,
@@ -1494,3 +1495,22 @@ def test_a_combined_record_says_where_each_halfs_source_starts() -> None:
     )
     assert [each.kind for each in recorded.notes] == ["floor", "standings_short", "floor"]
     assert notes.unsaid(recorded, said.text or "") == []
+
+
+# ---------------- a team's best single game ----------------
+
+team_game_highs = answered_as(TEAM_GAME_HIGHS)
+
+
+def test_a_teams_best_game_keeps_a_tie_at_its_limit(team_ctx: AnswerContext) -> None:
+    """ISSUES.md #476, the feed sample's FS334: "most 3s made in a single game
+    by a team" listed three of the four games with 29 and said "by" the three
+    as if they were all. The read keeps three games, and a game tied with
+    the third is kept beside them: here the Spurs' 134 and the Knicks' 132
+    twice, and the Thunder's 132 of a game added at the cut."""
+    team_ctx.con.execute("INSERT INTO games VALUES ('g7', ?, 2, ?, '25', '27', 132, 100, '25', FALSE, 'Oklahoma City')", [S, f"{S}-02-05T01:00Z"])
+    real_games.build_table(team_ctx.con, {"games", "teams"})
+    result = team_game_highs(team_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season=S, season_type=2)))
+    figures = [game["value"] for game in result.data["games"]]
+    assert figures == [134, 132, 132, 132]
+    assert "the Oklahoma City Thunder (132" in (result.text or "")

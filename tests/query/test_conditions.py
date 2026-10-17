@@ -367,6 +367,17 @@ def test_a_rate_ranking_qualifies_on_the_games_the_rate_reads(rebuilt_league: An
     ]
 
 
+def test_a_ranking_keeps_a_tie_at_its_limit(rebuilt_league: AnswerContext) -> None:
+    """ISSUES.md #476's ranking half ("most playoff wins by player nba
+    1990s" listed two of the five players with 50): a ranking of players
+    by a figure keeps every player tied with the last one kept. Ranked by
+    games played (6, 4, 4, 2, 2) with a limit of two, the second's tie is
+    listed beside him."""
+    query = replace(_rate_ranking(0), aggregate=Aggregate.COUNT, measures=[], limit=2)
+    assert [row["games"] for row in run(rebuilt_league.con, replace(query, limit=None))["rows"]] == [6, 4, 4, 2, 2]
+    assert [row["games"] for row in run(rebuilt_league.con, query)["rows"]] == [6, 4, 4]
+
+
 def test_a_measure_read_over_every_game_carries_no_count_of_its_own(rebuilt_league: AnswerContext) -> None:
     """The count is said only where it is fewer: a group with no rebuilt
     line (LeBron's) keeps the row it always had, and a measure a rebuild
@@ -2370,3 +2381,20 @@ def test_a_record_when_teammates_start_splits_by_the_start(league: AnswerContext
     )
     lined_groups = {g["teammate_played"]: g["games"] for g in lined.data["groups"]}
     assert lined_groups[True] == 2 and "had 31+ points" in lined.text
+
+
+def test_a_tie_too_big_for_the_room_is_left_out_whole() -> None:
+    """ISSUES.md #476: a tie at the cut that the room past the limit cannot
+    hold ("most games with 20+ rebounds this season": more than ten players with
+    one, at the foot of a top five, the room ten past it) is left out whole, so the list ends
+    before it rather than naming two of them; a tie for the top is
+    cut at the room, nothing being ahead of it."""
+    from association.query.player_games import TIE_ROOM, ordered_cut
+
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE t (who INTEGER, games INTEGER)")
+    con.executemany("INSERT INTO t VALUES (?, ?)", [(1, 5), (2, 3), (3, 2), *((10 + n, 1) for n in range(TIE_ROOM + 3))])
+    kept = con.execute("SELECT games FROM t" + ordered_cut("games DESC, who", 5, ("games", "DESC NULLS LAST"))).fetchall()
+    assert [games for (games,) in kept] == [5, 3, 2]
+    top = con.execute("SELECT games FROM t WHERE games = 1" + ordered_cut("games DESC, who", 2, ("games", "DESC NULLS LAST"))).fetchall()
+    assert len(top) == 2 + TIE_ROOM

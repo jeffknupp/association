@@ -1005,22 +1005,59 @@ def league(season_clause: str, season_params: list[Any], season_type: int) -> Na
 ROWS_TIEBREAK = "pgl.event_id, pgl.player_name"
 
 
-def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None = None, offset: int = 0, rebuilt: bool = False) -> tuple[str, list[Any]]:
+def ordered_cut(order: str, limit: int | None, ties: tuple[str, str] | None = None, *, offset: int = 0) -> str:
+    """`` ORDER BY order`` and the cut a read is kept to: ``LIMIT limit``,
+    or - where the rows are ranked by a figure (``ties``: the ranked
+    expression and its direction, ``"DESC NULLS LAST"``) - every row ranked
+    within ``limit``, so the rows tied with the last one kept are kept too,
+    up to :data:`TIE_ROOM` rows past the limit.
+
+    A limit that cuts a tie lists some of the rows sharing a figure and the
+    answer says the cut list as if it were all of them: "most 3s made in a
+    single game by a team" named three of the four teams with 29, and a
+    player's "top 3 by points" two of his games with 18 (ISSUES.md #476).
+    A tie at the cut too big for the room (a hundred players with one game
+    at the foot of a ranking) is left out whole, so the list ends before
+    it rather than naming two of the hundred; only a tie for the top is
+    cut at the room, there being nothing ahead of it to list.
+
+    .. versionadded:: 7.0.0
+    """
+    if limit is None:
+        return f" ORDER BY {order}" + (f" OFFSET {int(offset)}" if offset else "")
+    if ties is None or offset:
+        return f" ORDER BY {order} LIMIT {int(limit)}" + (f" OFFSET {int(offset)}" if offset else "")
+    figure, direction = ties
+    rank = f"RANK() OVER (ORDER BY {figure} {direction})"
+    fits = f"{rank} + COUNT(*) OVER (PARTITION BY {figure}) - 1 <= {int(limit) + TIE_ROOM}"
+    return f" QUALIFY {rank} <= {int(limit)} AND ({rank} = 1 OR {fits}) ORDER BY {order} LIMIT {int(limit) + TIE_ROOM}"
+
+
+#: How many rows past its limit a ranked read keeps while they tie the
+#: last one kept (:func:`ordered_cut`).
+TIE_ROOM = 10
+"""The rows past a ranked read's limit kept for a tie at the cut.
+
+.. versionadded:: 7.0.0
+"""
+
+
+def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None = None, offset: int = 0, rebuilt: bool = False, ties: tuple[str, str] | None = None) -> tuple[str, list[Any]]:
     """The rows themselves - a log, a single game, the top game by a stat.
     ``select`` and ``order`` are column expressions written in code, ordered
-    after by :data:`ROWS_TIEBREAK` so no caller has to add its own.
+    after by :data:`ROWS_TIEBREAK` so no caller has to add its own. Rows
+    ranked by a figure (``ties``) keep a tie at the limit (:func:`ordered_cut`).
 
     .. versionchanged:: 5.0.0
        Appends :data:`ROWS_TIEBREAK` after ``order``.
+
+    .. versionchanged:: 7.0.0
+       Takes ``ties``.
     """
     where, params = narrowed.clauses(rebuilt=rebuilt)
     source, ahead = _source(narrowed)
     params = [*ahead, *params]
-    sql = f"SELECT {select} {source} WHERE {where} ORDER BY {order}, {ROWS_TIEBREAK}"
-    if limit is not None:
-        sql += f" LIMIT {int(limit)}"
-    if offset:
-        sql += f" OFFSET {int(offset)}"
+    sql = f"SELECT {select} {source} WHERE {where}" + ordered_cut(f"{order}, {ROWS_TIEBREAK}", limit, ties, offset=offset)
     return sql, params
 
 
@@ -1108,16 +1145,34 @@ def named(sql: str, params: list[Any], prefix: str = "r") -> tuple[str, dict[str
 
 
 def grouped_sql(
-    narrowed: Narrowed, group_by: str, selects: list[str], *, having: str | None = None, order: str | None = None, limit: int | None = None, rebuilt: bool = False
+    narrowed: Narrowed,
+    group_by: str,
+    selects: list[str],
+    *,
+    having: str | None = None,
+    order: str | None = None,
+    limit: int | None = None,
+    rebuilt: bool = False,
+    ties: tuple[str, str] | None = None,
 ) -> tuple[str, list[Any]]:
     """Aggregates per group - a ranking of players, a split by venue or month.
     A ``limit`` here is applied after grouping (the top N groups), never to
     the rows: "top 20 by average" and "the last 20 games, averaged" are
-    different questions and only the second is a row window."""
+    different questions and only the second is a row window. Groups ranked
+    by a figure (``ties``) keep a tie at the limit (:func:`ordered_cut`).
+
+    .. versionchanged:: 7.0.0
+       Takes ``ties``.
+    """
     source, params = _windowed(narrowed, rebuilt=rebuilt)
     sql = f"SELECT {', '.join(selects)} {source} GROUP BY {group_by}"
     if having:
         sql += f" HAVING {having}"
+    if order and ties is not None and limit is not None:
+        # The ranked figure is a select's alias (``"points"``), which a
+        # window in the same statement would read as the column it shadows:
+        # the groups are ranked from outside.
+        return f"SELECT * FROM ({sql}) grouped" + ordered_cut(order, limit, ties), params
     if order:
         sql += f" ORDER BY {order}"
     if limit is not None:
