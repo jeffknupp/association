@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the subject reading reads a lone surname (or a run of name words) of several players as typed where the reading holds no other subject - the rule "alone as the subject with nothing else to be" - for the entity index to resolve by the recency rule (visible) or ask; a dictionary word only where it is capitalized or beside another word of a name (`_question_players_in_full`, `37934b66`). Every refusal that turns fluent graded by the sample's key, never by reading the answer; then the rest of the 81.
 - **Priority:** P1 - six fluent answers about the league where a player was named.
 - **Source:** ours (the reader; the 3B's empty replies are the trigger).
+- **GitHub:** #488
 
 ### "but" between two companions is no joiner: "lakers record when AD plays but lebron doesnt" reads both as playing <!-- codespell:ignore doesnt - the wording as typed -->
 - **Found:** 2026-10-16, lane p6-subject, probing #479's clause reading.
@@ -1908,6 +1909,7 @@ those were found.
 - **Next step:** a lexicon set of the request verbs a question opens with ("trace", "show", "list", "display", "give", "plot", "chart", ...; the lexicon lane's file), and the subject reading drops a model name's leading word in it where the rest of the name stands as one player; a test. Held by question in the homograph harness until then.
 - **Priority:** P3 - a question back where one player was named.
 - **Source:** ours.
+- **GitHub:** #489
 
 ### A team's points off turnovers is on file and read by nothing: "toronto raptors points off turnovers" is refused
 - **Found:** 2026-10-16, lane p6-words, fixing #456 (points scored one way read as their last word).
