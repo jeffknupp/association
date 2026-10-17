@@ -4696,6 +4696,25 @@ reads the first into the ``fact_not_read`` cause before any point
 
 .. versionadded:: 6.0.0
 """
+# Points scored one way - off turnovers, on second chances, on the fast
+# break, in the paint - each a figure of its own that its last word is not:
+# "toronto raptors points off turnovers" answered the Raptors' turnovers per
+# game and "lebron points in the paint" his points, the phrase's other words
+# unread (ISSUES.md #456). A team's points in the paint and fast-break points
+# are read (the team metrics of those names, ``team_metrics.TEAM_METRICS``);
+# every other reading of these phrases is refused by name. Each with the
+# team metric that reads it, or None where nothing does.
+PLAY_TYPE_POINTS: tuple[tuple[str | None, re.Pattern[str]], ...] = (
+    ("points_in_paint", re.compile(r"\b(?:points?|pts?)\s+(?:(?:allowed|given\s+up|scored)\s+)?in\s+(?:the\s+)?paint\b|\bpaint\s+(?:points?|pts?)\b", re.IGNORECASE)),
+    ("fast_break_points", re.compile(r"\bfast[\s-]?break\s+(?:points?|pts?)\b", re.IGNORECASE)),
+    (None, re.compile(r"\b(?:points?|pts?)\s+off\s+(?:of\s+)?turnovers?\b|\bturnover\s+points\b", re.IGNORECASE)),
+    (None, re.compile(r"\b(?:second|2nd)[\s-]+chance\s+(?:points?|pts?)\b", re.IGNORECASE)),  # codespell:ignore nd - an ordinal suffix
+)
+"""Points scored one way, as worded, each with the team metric that reads
+it (``None`` where nothing does).
+
+.. versionadded:: 7.0.0
+"""
 BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
 """The word "bench", whole: "bench points" names a figure nothing reads.
 

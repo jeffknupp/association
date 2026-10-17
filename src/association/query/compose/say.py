@@ -4968,6 +4968,10 @@ _FACT_NOT_READ: dict[str, str] = {
         "No defensive field-goal percentage is on file here - the tracking that credits a defender with the shots he contested is not fetched - "
         "so {words!r} cannot be read. Ask for a team's field-goal percentage allowed, or a player's own shooting, instead."
     ),
+    "points by play": (
+        "No figure for {words!r} is read here - a player's box score carries none, and of a team's points by play only its points in the paint and fast-break points are read - "
+        "so it cannot be answered. Ask for the points, or for a team's points in the paint or fast-break points, instead."
+    ),
     "player rating": (
         "No player's {words} is on file here - the ratings are kept for teams (points per 100 possessions) - so it cannot be read for a player. "
         "Ask for a team's {words}, or the player's NetPoints (its defense side rates his defense), instead."

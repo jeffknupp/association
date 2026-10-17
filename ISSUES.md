@@ -135,15 +135,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #454
 
-### A compound stat nothing holds is read as its last word: "toronto raptors points off turnovers" answers the Raptors' turnovers
-- **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
-- **Evidence:** "toronto raptors points off turnovers" answers "The Toronto Raptors' turnovers per game was 13.7 in the 2026 regular season"; "points off turnovers" is a team stat the warehouse does not carry, the measure tagger reads "turnovers", and "points" is unread (a leftover guard applies only to the read measure's own words).
-- **User sees:** turnovers where points off turnovers were asked, fluently.
-- **Next step:** the phrases "points off turnovers", "second chance points", "fast break points", "points in the paint" are one measure each in the catalog, refused as a stat no table holds (`unknown_stat` with the phrase as typed), before the tagger reads a word inside them.
-- **Priority:** P1 - a fluent wrong answer.
-- **Source:** ours.
-- **GitHub:** #456
-
 ### A misspelled period word is dropped silently: "lebron james first quater log" answers his whole-game log <!-- codespell:ignore quater - the feed's question as typed -->
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
 - **Evidence:** "lebron james first quater log" answers "LeBron James, last 10 of 60 games of the 2026 regular season" - the whole game's line; `period.which_period` does not match "quater", so no period is read, "first" and "quater" are unread, and the log's default answers. <!-- codespell:ignore quater - the feed's question as typed -->
@@ -1965,6 +1956,14 @@ those were found.
 - **GitHub:** #467
 
 ## P3: refusal or gap
+
+### A team's points off turnovers is on file and read by nothing: "toronto raptors points off turnovers" is refused
+- **Found:** 2026-10-16, lane p6-words, fixing #456 (points scored one way read as their last word).
+- **Evidence:** `team_box_stats.turnoverPoints` is filled for every team-game 1995-2026 (2026: 2,632 rows, none NULL, mean 17.9); `team_season_stats.turnoverPoints` only through the 2021 regular season (0 for every team from the 2021 playoffs on). No team metric reads either (`team_metrics.TEAM_METRICS`, `compose.team.TEAM_GAME_FIGURES`), so the phrase is refused by `fact_not_read` (`lexicon.PLAY_TYPE_POINTS`). A season metric over `team_season_stats` would answer 0 for 2022-2026; the read needs the box rows summed per season. Second-chance points are on neither table.
+- **User sees:** a refusal saying the figure is not read, for a figure the warehouse holds; 1 of the 2,070 feed questions.
+- **Next step:** a `points_off_turnovers` team metric whose season figure sums the box rows (the narrowed path's `TEAM_GAME_FIGURES` entry `{b}.turnoverPoints`, the unnarrowed one off `team_box_stats` where the season table is 0), its first season 1995; then `PLAY_TYPE_POINTS` names it.
+- **Priority:** P3 - a refusal of a figure on file.
+- **Source:** ours (the season table's gap is ESPN's: worth a `DATA.md` line when this is read).
 
 ### A teammate's surname that is one player's exactly is read as him, though a near spelling was the subject's teammate: "rui hachimura stats without reeves" reads Antonio Reeves
 - **Found:** 2026-10-16, lane p6-span's prototype of D15, re-measured by lane p6-d15.

@@ -1272,6 +1272,10 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       default reading, the fact unread; and an award or an All-Star
       selection ("nba mvps in 2010's", "1999 sixth man of the year",
       ISSUES.md #146), answered as a points ranking.
+      Points scored one way that no reader reads (``fact_not_read``,
+      :data:`~association.query.lexicon.PLAY_TYPE_POINTS`): "toronto
+      raptors points off turnovers" answered the Raptors' turnovers (ISSUES.md
+      #456).
     - a coach named by "under" and his name, with no "coach" said
       (``no_coach_table``, with the ``words``;
       :data:`~association.query.lexicon.COACH_UNDER`): "Name the top 10
@@ -1301,7 +1305,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     career's own seasons, then a ranking's own conference."""
     if lexicon.CHAMPIONSHIP.search(question) and not lexicon.TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"shape": reading.asked})
-    fact = _refused_fact_not_read(question)
+    fact = _refused_fact_not_read(question) or _refused_play_type_points(question, reading)
     if fact is not None:
         return fact
     coach = _refused_coach_under(teams, question)
@@ -1347,6 +1351,22 @@ def _refused_fact_not_read(question: str) -> Cause | None:
         match = pattern.search(question)
         if match is not None:
             return Cause(kind="fact_not_read", facts={"fact": fact, "words": match.group(0)})
+    return None
+
+
+def _refused_play_type_points(question: str, reading: Reading) -> Cause | None:
+    """Points scored one way (:data:`~association.query.lexicon.PLAY_TYPE_POINTS`:
+    off turnovers, on second chances, on the fast break, in the paint) where
+    the measure read is not the team metric that reads them, as the
+    ``fact_not_read`` cause with the words (ISSUES.md #456): "toronto
+    raptors points off turnovers" answered the Raptors' turnovers and
+    "lebron points in the paint" his points. A team's points in the paint
+    and fast-break points are read, and pass."""
+    read = reading.measure.key if reading.measure is not None else None
+    for metric, pattern in lexicon.PLAY_TYPE_POINTS:
+        match = pattern.search(question)
+        if match is not None and (metric is None or metric != read):
+            return Cause(kind="fact_not_read", facts={"fact": "points by play", "words": match.group(0)})
     return None
 
 
