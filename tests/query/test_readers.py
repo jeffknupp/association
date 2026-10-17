@@ -604,6 +604,58 @@ def test_fouls_are_never_counted_from_a_rebuilt_line(rebuilt_counts: AnswerConte
     assert "not counted from a rebuilt line" in answer
 
 
+def test_a_count_over_made_threes_keeps_the_rebuilt_games(rebuilt_counts: AnswerContext) -> None:
+    """ISSUES.md #501, the yardstick's F160: "jamal murray games with 2 threes
+    including playoffs" counted 426 where the box scores hold 434, the 8
+    rebuilt games left out and an "empty box score" caveat said in their
+    place. A made three is a scoring play the plays hold (98.6% exact per
+    game, beside points' 98.3%), so a rebuilt line is read for it as for
+    points: the two rebuilt games with 2+ threes are counted and said as
+    rebuilt."""
+    for table in ("player_box_stats", "player_game_log"):
+        rebuilt_counts.con.execute(f"ALTER TABLE {table} ADD COLUMN threePointFieldGoalsMade INTEGER")
+    rebuilt_counts.con.execute("UPDATE player_box_stats SET threePointFieldGoalsMade = CASE event_id WHEN 'e1' THEN 3 WHEN 'e2' THEN 1 ELSE 0 END")
+    rebuilt_counts.con.execute("UPDATE player_game_log SET threePointFieldGoalsMade = CASE event_id WHEN 'e1' THEN 3 WHEN 'e2' THEN 1 ELSE 2 END")
+    answer = (
+        games_counted(
+            rebuilt_counts,
+            Reading(
+                who=Who(kind="player", players=("Anthony Davis",)),
+                lines=(Line(measure="threePointFieldGoalsMade", value=2, as_typed="2 threes", keyed=True),),
+                measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"),
+            ),
+        ).text
+        or ""
+    )
+    assert "had 3 games with 2+ 3-pointers" in answer
+    assert "2 of those 3 games have no box score from ESPN" in answer
+    assert "empty box score" not in answer
+
+
+@pytest.mark.parametrize(
+    ("measure", "why"),
+    [
+        ("turnovers", "rebuilt turnovers are wrong in about one game in thirteen"),
+        ("fouls", "rebuilt fouls are wrong in about one game in six"),
+    ],
+)
+def test_a_withheld_count_names_its_own_stat_s_reason(rebuilt_counts: AnswerContext, measure: str, why: str) -> None:
+    """ISSUES.md #501: the withheld stat's caveat gives that stat's reason,
+    never the fouls' error rate beside a stat it does not describe."""
+    rebuilt_counts.con.execute(f"ALTER TABLE player_game_log ADD COLUMN IF NOT EXISTS {measure} INTEGER")
+    rebuilt_counts.con.execute(f"UPDATE player_game_log SET {measure} = CASE WHEN reconstructed THEN 9 ELSE 0 END")
+    answer = (
+        games_counted(
+            rebuilt_counts,
+            Reading(who=Who(kind="player", players=("Anthony Davis",)), lines=(Line(measure=measure, value=6, as_typed=f"6 {measure}", keyed=True),), measure=Measure(key=measure, as_typed=measure)),
+        ).text
+        or ""
+    )
+    assert "not counted from a rebuilt line" in answer
+    assert why in answer
+    assert answer.count("wrong in about one game") == 1
+
+
 def test_the_low_count_caveat_drops_the_games_the_rebuild_counted(rebuilt_counts: AnswerContext) -> None:
     """The self-contradiction this avoids: counting a game from its rebuilt
     line and then reporting that same game as one the count could not see.

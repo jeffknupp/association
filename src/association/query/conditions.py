@@ -140,7 +140,7 @@ class BoxSource:
 #:
 #: The rebuild fills more columns than it got measured for. `REBUILT_STATS`
 #: (query/player_games.py) is the list a rebuilt figure may be READ for - points,
-#: rebounds, assists, steals, blocks, field goals made, free throws made, each
+#: rebounds, assists, steals, blocks, field goals, threes and free throws made, each
 #: wrong by hundredths of a game - and everything else the view substitutes is
 #: below that bar or was never measured at all: a rebuilt foul is wrong in
 #: about one game in six, and no attempt column was measured.
@@ -154,7 +154,6 @@ class BoxSource:
 UNGATED_ON_REBUILD: tuple[str, ...] = (
     "turnovers",
     "fouls",
-    "threePointFieldGoalsMade",
     "threePointFieldGoalsAttempted",
     "fieldGoalsAttempted",
     "freeThrowsAttempted",

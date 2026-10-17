@@ -121,9 +121,18 @@ def season_type_clause(column: str, season_type: int) -> tuple[str, list[Any]]:
 #: ``fouls``             83.3%     0.181
 #: ===================== ========= ==============
 #:
+#: ``threePointFieldGoalsMade`` 98.6% (the rebuild module's measurement over
+#: the 22,660 games, :mod:`association.fetch.repairs.reconstructed_box`), as
+#: close as ``points``: every made three is a scoring play the plays hold.
+#: Once left out, so a count of games with two threes left the
+#: rebuilt games out where one with twenty points kept them (ISSUES.md #501).
+#:
 #: ``turnovers`` and ``fouls`` are left out: an order of magnitude worse than
-#: the rest, and a foul is wrong in one game in six. The rest are wrong by
-#: hundredths of a point per game, which is why this is a PER-GAME list only.
+#: the rest, and a foul is wrong in one game in six. The attempts and the
+#: split rebounds are left out with minutes, which play-by-play cannot recover:
+#: a percentage or an attempt is read over the fetched games alone. The rest are
+#: wrong by hundredths of a point per game, which is why this is a PER-GAME
+#: list only.
 #:
 #: **A rebuilt SEASON total is a different matter and is not read anywhere.**
 #: A season is exact only when the net error over every game is zero, so it
@@ -134,7 +143,7 @@ def season_type_clause(column: str, season_type: int) -> tuple[str, list[Any]]:
 #: ``type = 'Not Available'``.
 #:
 #: .. versionadded:: 2.2.0
-REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "fieldGoalsMade", "freeThrowsMade"})
+REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "fieldGoalsMade", "threePointFieldGoalsMade", "freeThrowsMade"})
 
 
 # A rebuilt line has NULL minutes - play-by-play cannot recover them - so

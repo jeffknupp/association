@@ -305,7 +305,6 @@ def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
 _UNREBUILT_WORDS: dict[str, str] = {
     "turnovers": "turnovers",
     "fouls": "fouls",
-    "threePointFieldGoalsMade": "threes",
     "threePointFieldGoalsAttempted": "shot attempts",
     "fieldGoalsAttempted": "shot attempts",
     "freeThrowsAttempted": "free-throw attempts",
@@ -351,11 +350,23 @@ def _say_lines_unread(facts: dict[str, Any]) -> str:
     return f"{lead}, so {'those are' if len(labels) != 1 else 'that is'} read over the other {total - skipped:,}."
 
 
+#: Why a stat outside the rebuilt set is withheld, by its label: what the
+#: rebuild lacks for it (:func:`_say_stat_withheld`).
+_STAT_WITHHELD_WHY: dict[str, str] = {
+    "foul": "rebuilt fouls are wrong in about one game in six, against one in sixty for points.",
+    "turnover": "rebuilt turnovers are wrong in about one game in thirteen, against one in sixty for points.",
+    "minute": "play-by-play cannot recover minutes, so a rebuilt line has none.",
+}
+
+
 def _say_stat_withheld(facts: dict[str, Any]) -> str:
     """A stat outside the rebuilt set, with rebuilt lines in scope: a
     DECISION, not a gap - a count says it was not counted, a single-game
-    high (no ``stat`` fact) that it was not read."""
-    errors = "rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
+    high (no ``stat`` fact) that it was not read. The reason is the
+    withheld stat's own (ISSUES.md #501): a foul's or a turnover's error
+    rate, or minutes, which play-by-play cannot recover - never the fouls'
+    rate beside a stat it does not describe."""
+    errors = _STAT_WITHHELD_WHY.get(facts["label"], "a rebuilt line is read only for points, rebounds, assists, steals, blocks and made shots.")
     if "stat" in facts:
         return f"{facts['games']:,} of the games in that span were rebuilt from play-by-play, but a {facts['label']} is not counted from a rebuilt line: {errors}"
     return f"{facts['games']:,} of them were rebuilt from play-by-play, but a {facts['label']} is not read from a rebuilt line: {errors}"

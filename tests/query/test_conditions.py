@@ -306,8 +306,9 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
     three, 30 minutes) and e5 (rebuilt: 26 points, and a deliberately absurd 9
     turnovers and 9 threes).
 
-    Points are inside `REBUILT_STATS`, so both games count. Turnovers and
-    threes are not, so the average is taken over the game that carries them -
+    Points and threes made are inside `REBUILT_STATS`, so both games count
+    for them (a made three is a scoring play the plays hold, ISSUES.md #501).
+    Turnovers are not, so the average is taken over the game that carries them -
     the failure this rules out is the quiet one, where 9 is averaged in rather
     than a wrong number appearing on its own."""
     rows = _rows(player_splits(rebuilt_league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2), split="home_away")), "home_away")
@@ -315,7 +316,7 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
     assert home["games"] == 2
     assert home["points"] == pytest.approx(28.0), "the rebuilt 26 IS read"
     assert home["turnovers"] == pytest.approx(0.0), "e1 alone; averaging the rebuilt 9 in would give 4.5"
-    assert home["threes"] == pytest.approx(1.0), "e1 alone; averaging the rebuilt 9 in would give 5.0"
+    assert home["threes"] == pytest.approx(5.0), "both games: a rebuilt line is read for made threes (#501)"
     assert home["minutes"] == pytest.approx(30.0), "e1 alone; a rebuilt game has no minutes to count as zero"
     # A rate whose attempts the rebuild never measured is over e1 alone in BOTH
     # sums (core._rate_sql). Until 2026-10-04 the makes ran over both games and
@@ -324,13 +325,13 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
 
 
 def test_a_split_says_the_columns_a_rebuilt_line_cannot_fill(rebuilt_league: AnswerContext) -> None:
-    """#327: the split's minutes, turnovers, threes and FG% are over
+    """#327: the split's minutes, turnovers and FG% are over
     e1, e4 and e7 - e5's rebuilt line has none of them - while G and W-L count
     all four games. The table keeps G as the games he played (the heading
     counts them) and the note says which columns are over fewer, and how many
     fewer."""
     answer = player_splits(rebuilt_league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2), split="home_away")).text or ""
-    assert "1 of these 4 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no minutes, turnovers, 3PM or FG%, so those are read over the other 3." in answer
+    assert "1 of these 4 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no minutes, turnovers or FG%, so those are read over the other 3." in answer
 
 
 def _rate_ranking(minimum: int) -> Query:
