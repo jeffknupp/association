@@ -1922,16 +1922,20 @@ def _say_period_agreement(facts: dict[str, Any]) -> str:
             f"Rebuilt from play-by-play rather than an official per-quarter box score: a team-game's {period_columns_noun(facts['stat'])} rebuilt this way "
             f"match its box score {said} - treat a single game as approximate."
         )
-    season = facts["season"]
+    # One season's caveat, or several seasons' said once with each figure
+    # the lowest among them (``player_games.period_agreement_across``).
+    seasons = [facts["season"]] if "season" in facts else list(facts["seasons"])
+    when, least = _joined([str(season) for season in seasons]), ("" if len(seasons) == 1 else "at least ")
     if facts["what"] == "period_points_from_shots":
+        pct = facts["pct"][0] if isinstance(facts["pct"], list) else facts["pct"]
         return (
-            f"(Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
-            f"quarter scores {facts['pct']:.0f}% of the time, so treat a single game as approximate.)"
+            f"(Summed from shot data rather than an official per-quarter box score. In {when} that sum matches ESPN's own "
+            f"quarter scores {least}{pct:.0f}% of the time, so treat a single game as approximate.)"
         )
     said = ", ".join(f"{period_noun(column, 2)} {pct:.0f}%" for column, pct in zip(facts["columns"], facts["pct"], strict=True))
     return (
-        f"(Rebuilt from play-by-play rather than an official per-quarter box score. In {season} a game's figures rebuilt this way match its box score "
-        f"this often: {said} - treat a single game as approximate.)"
+        f"(Rebuilt from play-by-play rather than an official per-quarter box score. In {when} a game's figures rebuilt this way match its box score "
+        f"{least}this often: {said} - treat a single game as approximate.)"
     )
 
 

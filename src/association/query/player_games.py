@@ -426,6 +426,36 @@ def period_agreement_notes(season: int, measure: str, *, full_line: bool = False
     return notes
 
 
+def period_agreement_across(seasons: list[int], measure: str, *, full_line: bool = False) -> list[Note]:
+    """The caveats a period answer over the games of several seasons carries
+    (:func:`period_agreement_notes`, each season's), said once: each kind
+    with the seasons it holds, every column any of them names (in the
+    order the seasons name them) and, for each, its lowest agreement among
+    them - where a career read said one caveat per season, five times over
+    for "kyrie Irving second half stats vs denver". One season's are its own.
+
+    .. versionadded:: 7.0.0
+    """
+    each = [period_agreement_notes(season, measure, full_line=full_line) for season in sorted(set(seasons))]
+    if len(each) <= 1:
+        return each[0] if each else []
+    merged: list[Note] = []
+    for what in ("period_points_from_shots", "period_rebuilt"):
+        found = [note.facts for notes in each for note in notes if note.facts["what"] == what]
+        if len(found) == 1:
+            merged.append(Note("rebuilt_agreement", found[0]))
+            continue
+        if not found:
+            continue
+        lowest: dict[str, float] = {}
+        for facts in found:
+            pcts = facts["pct"] if isinstance(facts["pct"], list) else [facts["pct"]]
+            for column, pct in zip(facts["columns"], pcts, strict=True):
+                lowest[column] = min(pct, lowest.get(column, pct))
+        merged.append(Note("rebuilt_agreement", {"seasons": [facts["season"] for facts in found], "columns": list(lowest), "pct": list(lowest.values()), "what": what}))
+    return merged
+
+
 def period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: bool = True) -> str:
     """One row per player per game - ``event_id``, ``season``,
     ``athlete_id`` and every :data:`PERIOD_COLUMNS` column - summed over

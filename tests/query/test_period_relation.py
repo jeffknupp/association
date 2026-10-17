@@ -525,3 +525,24 @@ def test_a_teams_period_total_refuses_a_shooting_percentage_where_a_column_it_di
     )
     assert "total" not in result.data
     assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.text or "") and "free throws and free throw attempts match" in (result.text or "")
+
+
+def test_the_period_caveats_of_several_seasons_are_said_once() -> None:
+    """The widening checks' caveat_repeated ("kyrie Irving second half stats vs
+    denver" said five per-season caveats): a period read over several
+    seasons says each kind of caveat once, over the seasons it holds, each
+    column at its lowest agreement among them; one season's is its own."""
+    from association.query.compose.say import note_phrase
+    from association.query.player_games import period_agreement_across, period_agreement_notes
+
+    assert period_agreement_across([2017], "points", full_line=True) == period_agreement_notes(2017, "points", full_line=True)
+    notes = period_agreement_across([2017, 2018, 2019, 2017], "points", full_line=True)
+    rebuilt = [note for note in notes if note.facts["what"] == "period_rebuilt"]
+    assert len(rebuilt) == 1
+    facts = rebuilt[0].facts
+    assert facts["seasons"] == [2017, 2018, 2019]
+    assert dict(zip(facts["columns"], facts["pct"], strict=True))["rebounds"] == min(PERIOD_AGREEMENT["rebounds"][s] for s in (2017, 2018, 2019))
+    said = note_phrase(rebuilt[0])
+    assert said.startswith(
+        "(Rebuilt from play-by-play rather than an official per-quarter box score. In 2017, 2018 and 2019 a game's figures rebuilt this way match its box score at least this often: "
+    )
