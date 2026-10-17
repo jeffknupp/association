@@ -2512,13 +2512,21 @@ def _measure_whole_line(asked: PointShape | None, words: MeasureWords, key: str 
 
 def _measure_how(asked: PointShape | None, words: MeasureWords, key: str | None, unit: str | None, claims: list[Claim]) -> MeasureHow | None:
     """How the measure is asked: a unit's reading; a players' ranking asked
-    per game ("highest career ppg", "who averaged the most points in his
+    as a total ("total points leader"); a players' ranking asked per game ("highest career ppg", "who averaged the most points in his
     career") the per-game figure, where a career's bare name reads the
     career TOTAL (the record books' list) and answered LeBron's 43,440
     points to a per-game question; a quarter's or half's figure asked game
     by game (a log, or "games" with no stat named)."""
     if unit is not None:
         return how_of(unit)
+    if asked == PLAYER_RANKING and key not in (None, "shot_distance") and words.total is not None and words.ranked_per_game is None and key_of(key)[3] is None:
+        # (Not over a rate the measure's own words name: "total adjusted
+        # netpoints" is the per-100 figure "adjusted" names.)
+        # "total points leader in 1998 season": the season's total, which the
+        # ranking ranks by its catalog total (``measure.metric_name``), where
+        # it ranked the per-game figure with "total" unread (ISSUES.md #435).
+        claims.append(Claim(words.total.start(), words.total.end(), "measure"))
+        return "total"
     if asked == PLAYER_RANKING and key not in (None, "shot_distance") and words.ranked_per_game is not None:
         # (Not the shot-distance sentinel, which the ranking refuses by name:
         # "avg 3 point distance" is the shot's distance, no game's figure.)

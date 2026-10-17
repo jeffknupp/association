@@ -1523,6 +1523,23 @@ def test_a_players_ranking_with_no_measure_read_is_refused_naming_the_stat(con: 
     assert reading.defaulted is not None and reading.defaulted.kind == "ranking_needs_stat"
 
 
+@pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
+def test_a_total_asked_of_the_season_ranking_ranks_the_total(con: duckdb.DuckDBPyConnection, question: str, source: str) -> None:
+    """#435: "total" asks the season ranking for the season's total (its
+    catalog total, ``measure.metric_name``), and a ranking re-planned at the
+    game level sums the games, where both ranked the per-game figure."""
+    from association.query.compose.core import Query
+    from association.query.measure import metric_name
+
+    reading = _read(con, question)
+    assert reading.measure is not None and reading.measure.how == "total" and "total" not in reading.unread
+    assert metric_name(reading.measure) == "total_points"
+    planned = plan_point(reading)
+    assert isinstance(planned, Query) and planned.source == source
+    if source == "games":
+        assert planned.aggregate.value == "total"
+
+
 @pytest.mark.parametrize("question", ["list nba players most wins in a career", "most career wins", "most playoff wins by player nba 2020s"])
 def test_a_players_wins_rank_the_players_by_the_games_they_won(con: duckdb.DuckDBPyConnection, question: str) -> None:
     """#440: "most wins" ranks the players by the games their team won with

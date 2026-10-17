@@ -665,6 +665,8 @@ class MeasureWords:
     stats: tuple[tuple[str, Claim], ...] = ()
     #: A player's wins named, the count a ranking of players reads.
     wins: re.Match[str] | None = None
+    #: "total" named, the season ranking's total asked for outright.
+    total: re.Match[str] | None = None
 
 
 def stats_named(question: str) -> tuple[tuple[str, Claim], ...]:
@@ -733,6 +735,7 @@ def read_measure(question: str) -> MeasureWords:
         beside=_beside_words(question),
         stats=stats_named(question),
         wins=lexicon.PLAYER_WINS.search(question),
+        total=lexicon.TOTAL_WORD.search(question),
     )
 
 

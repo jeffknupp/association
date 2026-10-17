@@ -511,6 +511,11 @@ def _game_level(key: PointShape, q: Query) -> Query:
             raise cannot_honor(q, ["rate"], DeclineReason.BEYOND_WORDS)
         if q.measure is not None and q.measure.beside:
             raise Unsupported("the game-level ranking shows no columns beside its measure")
+        if q.measure is not None and q.measure.how == "total":
+            # A total asked ("most total points vs boston"): the games'
+            # sum, as the game-level ranking the point reader builds sums it
+            # (ISSUES.md #435), not the season line's per-game default.
+            q = replace(q, aggregate=Aggregate.TOTAL)
         return _game_level_minimum(replace(q, source="games"))
     raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
