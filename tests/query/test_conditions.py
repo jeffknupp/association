@@ -26,7 +26,7 @@ from typing import Any, NamedTuple
 import duckdb
 import pytest
 from routed import Said, answered_as, measure_of
-from test_readers import line_runs, player_meetings, player_splits, presence_split
+from test_readers import line_runs, player_log, player_meetings, player_splits, presence_split
 from warehouse_rows import insert_rows
 
 from association.fetch.repairs import real_games
@@ -43,6 +43,7 @@ from association.query.player_games import REBUILT_STATS
 from association.query.reading import (
     LINE_RECORD,
     LINE_RUNS,
+    PLAYER_LINE,
     PRESENCE_SPLIT,
     SEASON_HISTORY,
     SPLIT_KINDS,
@@ -306,8 +307,9 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
     three, 30 minutes) and e5 (rebuilt: 26 points, and a deliberately absurd 9
     turnovers and 9 threes).
 
-    Points are inside `REBUILT_STATS`, so both games count. Turnovers and
-    threes are not, so the average is taken over the game that carries them -
+    Points and threes made are inside `REBUILT_STATS`, so both games count
+    for them (a made three is a scoring play the plays hold, ISSUES.md #501).
+    Turnovers are not, so the average is taken over the game that carries them -
     the failure this rules out is the quiet one, where 9 is averaged in rather
     than a wrong number appearing on its own."""
     rows = _rows(player_splits(rebuilt_league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2), split="home_away")), "home_away")
@@ -315,7 +317,7 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
     assert home["games"] == 2
     assert home["points"] == pytest.approx(28.0), "the rebuilt 26 IS read"
     assert home["turnovers"] == pytest.approx(0.0), "e1 alone; averaging the rebuilt 9 in would give 4.5"
-    assert home["threes"] == pytest.approx(1.0), "e1 alone; averaging the rebuilt 9 in would give 5.0"
+    assert home["threes"] == pytest.approx(5.0), "both games: a rebuilt line is read for made threes (#501)"
     assert home["minutes"] == pytest.approx(30.0), "e1 alone; a rebuilt game has no minutes to count as zero"
     # A rate whose attempts the rebuild never measured is over e1 alone in BOTH
     # sums (core._rate_sql). Until 2026-10-04 the makes ran over both games and
@@ -324,13 +326,13 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
 
 
 def test_a_split_says_the_columns_a_rebuilt_line_cannot_fill(rebuilt_league: AnswerContext) -> None:
-    """#327: the split's minutes, turnovers, threes and FG% are over
+    """#327: the split's minutes, turnovers and FG% are over
     e1, e4 and e7 - e5's rebuilt line has none of them - while G and W-L count
     all four games. The table keeps G as the games he played (the heading
     counts them) and the note says which columns are over fewer, and how many
     fewer."""
     answer = player_splits(rebuilt_league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2), split="home_away")).text or ""
-    assert "1 of these 4 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no minutes, turnovers, 3PM or FG%, so those are read over the other 3." in answer
+    assert "1 of these 4 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no minutes, turnovers or FG%, so those are read over the other 3." in answer
 
 
 def _rate_ranking(minimum: int) -> Query:
@@ -364,6 +366,17 @@ def test_a_rate_ranking_qualifies_on_the_games_the_rate_reads(rebuilt_league: An
         "1 of the listed players' 10 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no FG%,"
         " so a player's FG% is read over his other games, counted beside the figure, and the minimum counts only those."
     ]
+
+
+def test_a_ranking_keeps_a_tie_at_its_limit(rebuilt_league: AnswerContext) -> None:
+    """ISSUES.md #476's ranking half ("most playoff wins by player nba
+    1990s" listed two of the five players with 50): a ranking of players
+    by a figure keeps every player tied with the last one kept. Ranked by
+    games played (6, 4, 4, 2, 2) with a limit of two, the second's tie is
+    listed beside him."""
+    query = replace(_rate_ranking(0), aggregate=Aggregate.COUNT, measures=[], limit=2)
+    assert [row["games"] for row in run(rebuilt_league.con, replace(query, limit=None))["rows"]] == [6, 4, 4, 2, 2]
+    assert [row["games"] for row in run(rebuilt_league.con, query)["rows"]] == [6, 4, 4]
 
 
 def test_a_measure_read_over_every_game_carries_no_count_of_its_own(rebuilt_league: AnswerContext) -> None:
@@ -783,15 +796,19 @@ def test_a_game_before_he_arrived_is_not_a_game_without_him(league: AnswerContex
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
     assert (groups[False]["wins"], groups[False]["losses"]) == (1, 1)
     assert (groups[True]["wins"], groups[True]["losses"]) == (5, 2)
-    assert result.data["tenure"] == [{"team": "Boston Celtics", "from": f"{S - 2}-10-20", "to": f"{S - 1}-11-30"}]
+    # His stint runs to the end of the season of his last row (#480: an
+    # injury that ends a season still counts), the fixture's last game.
+    assert result.data["tenure"] == [{"team": "Boston Celtics", "from": f"{S - 2}-10-20", "to": f"{S}-04-23"}]
 
 
 def test_a_traded_player_is_not_missing_from_his_old_team(league: AnswerContext) -> None:
     """Journeyman left the Celtics last season: this season's Celtics games are
-    not games they played without him, and the refusal says why."""
+    not games they played without him, and the refusal says why. His
+    Celtics time runs from his first row (e0b) to the end of that season
+    (e0d, 00:30 UTC on the 20th, the evening of the 19th in Boston), his
+    next team's first row being in the season after (#480)."""
     answer = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Journeyman Guy", predicate="absent"),), span=Span(season_type=2))).text
-    # e0a tips at 00:30 UTC on the 10th, which is the evening of the 9th in Boston.
-    assert "falls outside the" in answer and f"Boston Celtics {S - 2}-10-20 to {S - 2}-11-09" in answer
+    assert "falls outside the" in answer and f"Boston Celtics {S - 2}-10-20 to {S - 2}-11-19" in answer
 
 
 def test_over_one_season_a_player_without_a_traded_teammate_counts_the_games_after_the_trade(league: AnswerContext) -> None:
@@ -799,7 +816,9 @@ def test_over_one_season_a_player_without_a_traded_teammate_counts_the_games_aft
     plays e1 and e2 this season and is traded to the Lakers, for whom he plays
     e7. Brown's games without him are every Celtics game of Brown's he had no
     row in - e3 and e4, after the trade - not only those inside the time the
-    two shared. Over a career the shared time still bounds it."""
+    two shared. Over a career the shared time still bounds it, and his
+    Celtics time runs to the day before his first Lakers row (#480: the
+    trade's date is not held), so e3 and e4 are inside it there too."""
     league.con.execute("INSERT INTO players VALUES ('60', 'Traded Guy')")
     for event, team, opponent in (("e1", BOS, LAL), ("e2", BOS, LAL), ("e7", LAL, BOS)):
         league.con.execute("INSERT INTO player_box_stats VALUES (?,?,2,?,?,'60',TRUE,FALSE,20,10,5,3,0,0,0,1,5,10,0,0)", [event, S, team, opponent])
@@ -809,7 +828,24 @@ def test_over_one_season_a_player_without_a_traded_teammate_counts_the_games_aft
     assert groups[True]["games"] == 2 and groups[False]["player_games"] == 3
     assert "Counted: every game Jaylen Brown's team played in the" in (result.text or "") and "traded or injured alike" in (result.text or "")
     career = presence_split(league, replace(reading, span=Span(season_type=2, career=True)))
-    assert {g["teammate_played"]: g for g in career.data["groups"]}[False]["player_games"] == 0
+    assert {g["teammate_played"]: g for g in career.data["groups"]}[False]["player_games"] == 2
+
+
+def test_a_career_log_without_a_traded_teammate_keeps_his_old_teams_games_until_his_next_team(league: AnswerContext) -> None:
+    """ISSUES.md #480, the feed sample's FS354 ("kyrie second half game log
+    without luka"): Luka Doncic's last Dallas row is 2024-12-25 and his first
+    for the Lakers is in February, and a stint ended at his last row left
+    Kyrie Irving's January games out - 18 of the key's 30. Here a Celtic
+    plays e1 and e2 and next appears for the Lakers in e7: Brown's career
+    log without him holds e3 and e4, played between, read by the player
+    relation over the same stints the with/without split reads."""
+    league.con.execute("INSERT INTO players VALUES ('60', 'Traded Guy')")
+    for event, team, opponent in (("e1", BOS, LAL), ("e2", BOS, LAL), ("e7", LAL, BOS)):
+        league.con.execute("INSERT INTO player_box_stats VALUES (?,?,2,?,?,'60',TRUE,FALSE,20,10,5,3,0,0,0,1,5,10,0,0)", [event, S, team, opponent])
+    # A career log names the seasons he has a line in.
+    league.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN gamesPlayed INTEGER DEFAULT 1")
+    result = player_log(league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Traded Guy", predicate="absent"),), span=Span(season_type=2, career=True)))
+    assert sorted(game["date"] for game in result.data["games"]) == [f"{S - 1}-11-04", f"{S - 1}-11-06"]
 
 
 def test_over_one_season_a_player_never_on_his_team_is_no_absence(league: AnswerContext) -> None:
@@ -839,8 +875,16 @@ def test_a_player_who_left_and_came_back_has_two_spells_not_one(league: AnswerCo
         league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), companions=(Companion(player="Boomerang Guy", predicate="absent"),), span=Span(season_type=2, career=True))
     )
     groups = {g["teammate_played"]: g for g in result.data["groups"]}
-    assert groups[False]["games"] == 0 and groups[True]["games"] == 2
-    assert [t["team"] for t in result.data["tenure"]] == ["Boston Celtics", "Boston Celtics"]
+    # Each spell runs to the day before his next team's first row, or to the
+    # end of the season of his last row (#480): e0b and e0c before the Lakers
+    # took him, e4 and e7 after his return, are without him; e0d, played
+    # while he was a Laker, is in neither.
+    assert groups[False]["games"] == 4 and groups[True]["games"] == 2
+    assert result.data["tenure"] == [
+        {"team": "Boston Celtics", "from": f"{S - 2}-10-15", "to": f"{S - 2}-11-08"},
+        {"team": "Boston Celtics", "from": f"{S - 1}-11-04", "to": f"{S}-04-23"},
+    ]
+    assert "which runs from the first box score that lists him there until a box score lists him for another team, or to the team's last game of the season of the last." in (result.text or "")
 
 
 def test_a_teammate_who_never_played_for_the_team_is_refused_by_name(league: AnswerContext) -> None:
@@ -2369,3 +2413,41 @@ def test_a_record_when_teammates_start_splits_by_the_start(league: AnswerContext
     )
     lined_groups = {g["teammate_played"]: g["games"] for g in lined.data["groups"]}
     assert lined_groups[True] == 2 and "had 31+ points" in lined.text
+
+
+def test_a_tie_too_big_for_the_room_is_left_out_whole() -> None:
+    """ISSUES.md #476: a tie at the cut that the room past the limit cannot
+    hold ("most games with 20+ rebounds this season": more than ten players with
+    one, at the foot of a top five, the room ten past it) is left out whole, so the list ends
+    before it rather than naming two of them; a tie for the top is
+    cut at the room, nothing being ahead of it."""
+    from association.query.player_games import TIE_ROOM, ordered_cut
+
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE t (who INTEGER, games INTEGER)")
+    con.executemany("INSERT INTO t VALUES (?, ?)", [(1, 5), (2, 3), (3, 2), *((10 + n, 1) for n in range(TIE_ROOM + 3))])
+    kept = con.execute("SELECT games FROM t" + ordered_cut("games DESC, who", 5, ("games", "DESC NULLS LAST"))).fetchall()
+    assert [games for (games,) in kept] == [5, 3, 2]
+    top = con.execute("SELECT games FROM t WHERE games = 1" + ordered_cut("games DESC, who", 2, ("games", "DESC NULLS LAST"))).fetchall()
+    assert len(top) == 2 + TIE_ROOM
+
+
+def test_none_of_his_games_says_the_games_it_could_not_read(rebuilt_league: AnswerContext) -> None:
+    """ISSUES.md #477: "Anthony Davis plays 45 minutes against the jazz" said
+    "Anthony Davis played 398 games over his career (2019-2026)", the games
+    with a minutes figure, where he played 808 from 2013 - his New Orleans
+    seasons rebuilt from play-by-play, which recovers no minutes. Tatum
+    played four games, e5 rebuilt: none reached 50 minutes, and the answer
+    says the four, the three it read, and the one it could not."""
+    result = answered_as(PLAYER_LINE)(
+        rebuilt_league,
+        Reading(
+            who=Who(kind="player", players=("Jayson Tatum",)),
+            lines=(TypedLine(measure="minutes", value=50, as_typed="50 minutes", narrows=True),),
+            measure=Measure(key="minutes", as_typed="minutes"),
+            span=Span(season_type=2),
+        ),
+    )
+    text = result.text or ""
+    assert "Jayson Tatum played 4 games" in text
+    assert f"That is of the 3 with a box score from ESPN: the other 1 ({S}) has only a line rebuilt from play-by-play" in text

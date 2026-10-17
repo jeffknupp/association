@@ -21,13 +21,17 @@
 # the 17s the hooks cost. It is the gate that catches a malformed docstring,
 # so a commit touching one runs the full check.
 #
-# Both commands read their exit status through `set -e`, which is the point:
+# Every command reads its exit status through `set -e`, which is the point:
 # `pre-commit run --all-files | tail` hides a failure in the FIRST hook, and
-# ruff is first.
+# ruff is first. Each is its own line, never `a && b`: `set -e` ignores a
+# failure anywhere in an `&&` list but its last command, so the hooks'
+# failure was dropped and the script exited with pytest's status - a line of
+# 219 characters passed it green (2026-10-17).
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-uv run pre-commit run --all-files && SKIP=docs uv run pre-commit run --all-files --hook-stage pre-push
+uv run pre-commit run --all-files
+SKIP=docs uv run pre-commit run --all-files --hook-stage pre-push
 uv run pytest -q -n auto

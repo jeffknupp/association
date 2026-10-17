@@ -84,7 +84,7 @@ def _situation(text: str) -> Situation:
         ("Desmond bane march 17", PLAYER_LOG, Cuts(date=f"{S}-03-17")),
         ("bam adebayo november 11 2019", PLAYER_LOG, Cuts(date="2019-11-11")),
         ("jokic stats on october 25 in 2024", PLAYER_LINE, Cuts(date="2023-10-25")),
-        # A date on a career question fixes no year: a situation, refused by value.
+        # A date on a career question fixes no year: a situation, the day of every season.
         ("lebron on march 17 all time", PLAYER_LOG, Cuts(situation=_situation("march 17"))),
         # A day no calendar has names nothing, and is a situation.
         ("lebron on february 31", PLAYER_LOG, Cuts(situation=_situation("february 31"))),
@@ -491,3 +491,14 @@ def test_a_quarter_as_a_vague_condition_is_a_situation_nothing_reads(question: s
 
 def test_a_quarter_as_a_condition_with_a_line_is_no_situation() -> None:
     assert read_cuts("jokic assists after making 3 threes in the first quarter", CutsContext()).cuts.situation is None
+
+
+def test_an_inactive_players_day_without_a_year_is_every_seasons_day() -> None:
+    """Decision D13 reads an inactive player's question with no season named
+    as his career, so a day without its year fixes no season: "kobe bryant
+    on november 22nd record" read 2025-11-22 beside his 1997-2016 career
+    and answered "No games ... on 2025-11-22". It is the day of every
+    season, a situation; an active player's is this season's day."""
+    assert _read("kobe bryant on november 22nd record", PLAYER_LINE, inactive=True) == Cuts(situation=_situation("november 22nd"))
+    assert _read("kobe bryant on november 22nd record in 2010", PLAYER_LINE, inactive=True) == Cuts(date="2009-11-22")
+    assert _read("Desmond bane march 17", PLAYER_LOG) == Cuts(date=f"{S}-03-17")

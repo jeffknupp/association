@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from routed import said
 
-from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_career_implied, say_player_log, say_spelling_read, say_team_log
+from association.query.compose.say import mixed_where, note_phrase, phrase_player_stat, refusal_phrase, say, say_career_implied, say_player_log, say_spelling_read, say_team_log
 from association.query.notes import Note, collect
 from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
@@ -613,3 +613,16 @@ def test_every_decline_reason_is_said_by_one_phrase_and_a_row_holds_no_sentence(
     assert ShapeCells(unstated={"date": DeclineReason.RUN_ONE_GAME}).unstated == {"date": "run_one_game"}
     with pytest.raises(TypeError, match="not a DeclineReason"):
         ShapeCells(unstated={"date": "one game is not a run"})  # type: ignore[dict-item]
+
+
+def test_a_per_game_figure_rounded_to_zero_is_said_from_its_total() -> None:
+    """ISSUES.md #478, the feed sample's FS292 ("tim duncan threes made"): the
+    season line stores a per-game figure to a tenth, so 30 threes over 1,392
+    games read "averaged 0 3-pointers per game" before "That is 30 of 168".
+    The figure is said from the total, as small as it is; a real zero stays 0."""
+    values = {"gamesPlayed": 1392, "avgThreePointFieldGoalsMade": 0.0, "threePointFieldGoalsMade": 30}
+    said = phrase_player_stat("Tim Duncan", "career", values, ["threePointFieldGoalsMade"], when="over his career", attempted=168)
+    assert said.startswith("Tim Duncan averaged 0.022 3-pointers per game in 1,392 games over his career.")
+    assert "That is 30 of 168 (17.9%)." in said
+    none = phrase_player_stat("Tim Duncan", "career", {**values, "threePointFieldGoalsMade": 0}, ["threePointFieldGoalsMade"], when="over his career")
+    assert none.startswith("Tim Duncan averaged 0 3-pointers per game")

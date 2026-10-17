@@ -65,7 +65,7 @@ from association.query.coverage import floor_refusal
 from association.query.entities import Entity, name_missing, resolved_team
 from association.query.lines import threshold_of
 from association.query.measure import won
-from association.query.player_games import BOTH_SEASON_TYPES
+from association.query.player_games import BOTH_SEASON_TYPES, ordered_cut
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
     DEFAULT_STREAK_LIMIT,
@@ -765,7 +765,9 @@ def compile_team_high(narrowed: TeamNarrowed, team: Entity | None, span: Resolve
     # A game with no figure (no box row, or no attempts) ranks nothing; a
     # percentage ranks by made over attempted, the newer game first on a tie.
     kept, rank = ("figure IS NOT NULL AND attempts > 0", "figure * 1.0 / attempts") if attempts is not None else ("figure IS NOT NULL", "figure")
-    sql = f"SELECT * FROM ({sql}) ranked WHERE {kept} ORDER BY {rank} DESC, day DESC LIMIT {int(limit)}"
+    # A tie at the limit is kept (ISSUES.md #476: the fourth team with 29
+    # threes in a game was cut and the three listed said as the holders).
+    sql = f"SELECT * FROM ({sql}) ranked WHERE {kept}" + ordered_cut(f"{rank} DESC, day DESC", limit, (rank, "DESC"))
     return TeamCompiled(sql, params, team, span, narrowed)
 
 

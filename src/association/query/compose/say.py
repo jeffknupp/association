@@ -269,7 +269,12 @@ def _say_tenure_counted(facts: dict[str, Any], about: str) -> str:
     stints = list(facts["stints"])
     several = len({stint["team"] for stint in stints}) > 1
     spelled = "; ".join(f"{stint['team']} {stint['from']} to {stint['to']}" if several else f"{stint['from']} to {stint['to']}" for stint in stints)
-    return f"Counted: games inside {about} ({spelled}), which runs from the first box score that lists {'him' if len(facts['names']) == 1 else 'them'} there to the last."
+    # The stint's own rule (``conditions.stints``, ISSUES.md #480): from
+    # the first box score there to the next team's first, or to the end of
+    # the season of the last.
+    whom = "him" if len(facts["names"]) == 1 else "them"
+    runs = f"from the first box score that lists {whom} there until a box score lists {whom} for another team, or to the team's last game of the season of the last"
+    return f"Counted: games inside {about} ({spelled}), which runs {runs}."
 
 
 #: What a run is counted over, by who has it - the rule beneath a streak.
@@ -306,7 +311,6 @@ def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
 _UNREBUILT_WORDS: dict[str, str] = {
     "turnovers": "turnovers",
     "fouls": "fouls",
-    "threePointFieldGoalsMade": "threes",
     "threePointFieldGoalsAttempted": "shot attempts",
     "fieldGoalsAttempted": "shot attempts",
     "freeThrowsAttempted": "free-throw attempts",
@@ -352,11 +356,39 @@ def _say_lines_unread(facts: dict[str, Any]) -> str:
     return f"{lead}, so {'those are' if len(labels) != 1 else 'that is'} read over the other {total - skipped:,}."
 
 
+#: Why a stat outside the rebuilt set is withheld, by its label: what the
+#: rebuild lacks for it (:func:`_say_stat_withheld`).
+_STAT_WITHHELD_WHY: dict[str, str] = {
+    "foul": "rebuilt fouls are wrong in about one game in six, against one in sixty for points.",
+    "turnover": "rebuilt turnovers are wrong in about one game in thirteen, against one in sixty for points.",
+    "minute": "play-by-play cannot recover minutes, so a rebuilt line has none.",
+}
+
+
+def _none_matched_unread(facts: Mapping[str, Any]) -> str:
+    """The games "none of them" could not read (ISSUES.md #477): those with
+    only a line rebuilt from play-by-play, which the read's figures (minutes,
+    attempts, turnovers) are never taken from, so the narrowing was looked
+    for in the rest alone."""
+    if "read" not in facts:
+        return ""
+    unread = facts["games"] - facts["read"]
+    first, last = facts["unread_first"], facts["unread_last"]
+    seasons = "" if first is None else f" ({first})" if first == last else f" ({first}-{last})"
+    return (
+        f" That is of the {facts['read']:,} with a box score from ESPN: the other {unread:,}{seasons} {'have' if unread != 1 else 'has'} only a line rebuilt from play-by-play,"
+        " which the figures asked are not read from, so they could not be checked."
+    )
+
+
 def _say_stat_withheld(facts: dict[str, Any]) -> str:
     """A stat outside the rebuilt set, with rebuilt lines in scope: a
     DECISION, not a gap - a count says it was not counted, a single-game
-    high (no ``stat`` fact) that it was not read."""
-    errors = "rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
+    high (no ``stat`` fact) that it was not read. The reason is the
+    withheld stat's own (ISSUES.md #501): a foul's or a turnover's error
+    rate, or minutes, which play-by-play cannot recover - never the fouls'
+    rate beside a stat it does not describe."""
+    errors = _STAT_WITHHELD_WHY.get(facts["label"], "a rebuilt line is read only for points, rebounds, assists, steals, blocks and made shots.")
     if "stat" in facts:
         return f"{facts['games']:,} of the games in that span were rebuilt from play-by-play, but a {facts['label']} is not counted from a rebuilt line: {errors}"
     return f"{facts['games']:,} of them were rebuilt from play-by-play, but a {facts['label']} is not read from a rebuilt line: {errors}"
@@ -1407,15 +1439,14 @@ def say_game_ranking(result: Result) -> Answer:
 
 
 def _game_ranking_table(body: Grouped, facts: GameRankingFacts) -> list[str]:
-    """A game-level ranking's rows, then the players its count cut from a
-    tie with the last shown, then - beneath a ranking of games counted -
-    the whole count."""
+    """A game-level ranking's rows, then the players its count left out
+    whole for a tie too big to list, then - beneath a ranking of games
+    counted - the whole count."""
     lines = [_game_ranking_line(facts, row) for row in body.rows]
     if facts.tied_past:
-        # The count cut a tie: the players past it who tie the last
-        # shown are said, never silently left out.
-        last = body.rows[-1]
-        tied_at = f"{last.get('games')} G" if not facts.measures else f"{LABELS.get(facts.measures[0], facts.measures[0])} {_fmt(last['values'].get(facts.measures[0]), facts.measures[0])}"
+        # The count left a tie out whole: its players are said, never
+        # silently dropped.
+        tied_at = f"{facts.tied_at} G" if not facts.measures else f"{LABELS.get(facts.measures[0], facts.measures[0])} {_fmt(facts.tied_at, facts.measures[0])}"
         lines.append(f"  and {facts.tied_past} more tied at {tied_at}")
     if body.ranked_by == "count" and len(body.rows) > 1 and facts.total is not None:
         # A count by player is usually asked for its total too ("thunder
@@ -1727,8 +1758,15 @@ def phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: l
     games = values.get("gamesPlayed")
     parts = []
     for stat in wanted:
-        per_game_col, _, label = PLAYER_STAT_COLUMNS[stat]
+        per_game_col, total_col, label = PLAYER_STAT_COLUMNS[stat]
         per_game = values.get(per_game_col)
+        total = values.get(total_col) if total_col else None
+        if not per_game and total and games:
+            # A per-game figure stored rounded to a tenth reads 0 from a
+            # total that is not: "Tim Duncan averaged 0 3-pointers per game"
+            # over his 30 in 1,392 games (ISSUES.md #478). The figure is
+            # the total over the games, said as small as it is.
+            per_game = total / games
         if per_game is not None:
             parts.append(f"{format_value(per_game)} {label}")
     if not parts:
@@ -1997,16 +2035,20 @@ def _say_period_agreement(facts: dict[str, Any]) -> str:
             f"Rebuilt from play-by-play rather than an official per-quarter box score: a team-game's {period_columns_noun(facts['stat'])} rebuilt this way "
             f"match its box score {said} - treat a single game as approximate."
         )
-    season = facts["season"]
+    # One season's caveat, or several seasons' said once with each figure
+    # the lowest among them (``player_games.period_agreement_across``).
+    seasons = [facts["season"]] if "season" in facts else list(facts["seasons"])
+    when, least = _joined([str(season) for season in seasons]), ("" if len(seasons) == 1 else "at least ")
     if facts["what"] == "period_points_from_shots":
+        pct = facts["pct"][0] if isinstance(facts["pct"], list) else facts["pct"]
         return (
-            f"(Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
-            f"quarter scores {facts['pct']:.0f}% of the time, so treat a single game as approximate.)"
+            f"(Summed from shot data rather than an official per-quarter box score. In {when} that sum matches ESPN's own "
+            f"quarter scores {least}{pct:.0f}% of the time, so treat a single game as approximate.)"
         )
     said = ", ".join(f"{period_noun(column, 2)} {pct:.0f}%" for column, pct in zip(facts["columns"], facts["pct"], strict=True))
     return (
-        f"(Rebuilt from play-by-play rather than an official per-quarter box score. In {season} a game's figures rebuilt this way match its box score "
-        f"this often: {said} - treat a single game as approximate.)"
+        f"(Rebuilt from play-by-play rather than an official per-quarter box score. In {when} a game's figures rebuilt this way match its box score "
+        f"{least}this often: {said} - treat a single game as approximate.)"
     )
 
 
@@ -5040,7 +5082,7 @@ _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "no_games_in_span": _say_no_games_in_span,
     "no_shots": _say_no_shots,
     "not_teammates_then": lambda facts: f"{facts['teammate']} was not {facts['player']}'s teammate in any of his {count_games(facts['games'])} {facts['during']}.",
-    "none_matched": lambda facts: f"{facts['player']} played {count_games(facts['games'])} {facts['during']}, none of them{facts['narrowing']}.",
+    "none_matched": lambda facts: f"{facts['player']} played {count_games(facts['games'])} {facts['during']}, none of them{facts['narrowing']}." + _none_matched_unread(facts),
     "listed_not_played": _say_player_listed,
     "no_player_games": _say_player_listed,
     "no_team_games": lambda facts: f"The warehouse has no games with a result for the {facts['team']} {facts['where']}.",

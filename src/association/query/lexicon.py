@@ -1662,6 +1662,13 @@ its year).
 
 .. versionadded:: 6.0.0
 """
+SITUATION_DAY = re.compile(rf"^(?:on\s+)?(?:the\s+)?{_MONTH_WORD}\.?\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+"""A situation value that is one day of the calendar, every season's ("on
+november 22nd" on a career question, or an inactive player's: decision
+D13 reads his career, which fixes no year for the day).
+
+.. versionadded:: 7.0.0
+"""
 SITUATION_SINCE_DAY = re.compile(rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_WORD}\.?\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
 """A situation value opening a range on a day of each season - its month
 written out or short ("after dec 11", ISSUES.md #353).

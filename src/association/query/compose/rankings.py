@@ -401,7 +401,7 @@ def read_game_ranking(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unan
     read = read_compiled(con, q)
     span = read["span"]
     rows = tuple(_game_ranking_row(q, r) for r in read["rows"])
-    tied = _game_ranking_tied_past(con, q, read)
+    tied, tied_at = _game_ranking_tied_past(con, q, read)
     return Result(
         subject=read["player"],
         relation="everyone",
@@ -417,26 +417,32 @@ def read_game_ranking(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unan
             stated_minimum=q.minimum_games if q.minimum is not None else None,
             most_played=read["minimum_scaled"][1] if read["minimum_scaled"] is not None else None,
             tied_past=tied,
+            tied_at=tied_at,
         ),
     )
 
 
-def _game_ranking_tied_past(con: duckdb.DuckDBPyConnection, q: Query, read: dict[str, Any]) -> int:
-    """How many players the ranking's count cut who tie the last one shown:
-    "least games played with lakers" lists ten, and seven of the nine with
-    two games are among them - the list said nothing of the other two
-    (decision D17's measurement, the feed sample's FS214). Read again
-    without the count, where the rows filled it."""
+def _game_ranking_tied_past(con: duckdb.DuckDBPyConnection, q: Query, read: dict[str, Any]) -> tuple[int, Any]:
+    """How many players the ranking's count left out whole for a tie, and
+    the figure they tie at. The cut lists a tie at the limit whole where it
+    fits (``player_games.ordered_cut``) and leaves out one too big to list,
+    so the list ends short of its count: "least games played with lakers"
+    once listed seven of the nine with two games and said nothing of the
+    other two (decision D17's measurement, the feed sample's FS214), and a
+    dozen players with one game left out whole are said, not dropped
+    silently. Read again without the count, where the rows fell short of it."""
     ran: Query = read["query"]
     rows = read["rows"]
-    if not ran.limit or len(rows) < ran.limit:
-        return 0
+    if not ran.limit or not rows or len(rows) >= ran.limit:
+        return 0, None
     ranked = ran.measures[0] if ran.measures else "games"
-    last = rows[-1].get(ranked)
-    if last is None:
-        return 0
     every = read_compiled(con, replace(ran, limit=None))["rows"]
-    return sum(1 for r in every[len(rows) :] if r.get(ranked) == last)
+    if len(every) <= len(rows):
+        return 0, None
+    left = every[len(rows)].get(ranked)
+    if left is None:
+        return 0, None
+    return sum(1 for r in every[len(rows) :] if r.get(ranked) == left), left
 
 
 def _game_ranking_minimum(q: Query, scaled: tuple[int, int, int] | None) -> tuple[Decided, ...]:

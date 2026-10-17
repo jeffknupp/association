@@ -26,7 +26,7 @@ from warehouse_rows import insert_rows
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
-from association.query import compose
+from association.query import compose, player_games
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
@@ -666,6 +666,8 @@ def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate
     s = current_season()
     cx_ctx.con.execute("INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)", ["g9", s, f"{s}-03-15T20:00Z", BOS, GS, 90, 101, GS])
     cx_ctx.con.execute(f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})", _box("g9", s, GS, BOS, PODZ, minutes=31, pts=24, reb=6, ast=5))
+    # A teammate's stints are read over the shared filtered game list (#480).
+    real_games.build_table(cx_ctx.con, {"games", "teams"})
     result = compose_answer(
         cx_ctx,
         PLAYER_LOG,
@@ -1464,17 +1466,23 @@ def test_a_ranking_by_games_played_counts_each_players_games(cx_ctx: AnswerConte
     assert [line.split()[-2] for line in said.splitlines()[1:]] == ["22", "22", "4", "4", "2", "2"]
 
 
-def test_a_ranking_says_the_players_its_count_cut_from_a_tie(cx_ctx: AnswerContext) -> None:
+def test_a_ranking_says_the_players_its_count_cut_from_a_tie(cx_ctx: AnswerContext, monkeypatch: pytest.MonkeyPatch) -> None:
     """A widening's trap: "least games played with lakers" listed ten, seven
     of the nine with two games among them, and said nothing of the other
-    two (the feed sample's FS214). The players past the count who tie the
-    last one shown are said; a count that cut no tie says nothing more."""
+    two (the feed sample's FS214). A tie at the count is listed whole where
+    it fits (``player_games.ordered_cut``); one too big to list is left out
+    whole and said by its count, never dropped silently; a count that cut
+    no tie says nothing more."""
     q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="games_played", as_typed="games played"), span=Span(season_type=2)), "most games played this season")
     assert isinstance(q, Query)
     said = _ranked(cx_ctx.con, replace(q, limit=3))
-    assert [line.split()[-2] for line in said.splitlines()[1:4]] == ["22", "22", "4"]
-    assert said.splitlines()[-1] == "  and 1 more tied at 4 G"
+    assert [line.split()[-2] for line in said.splitlines()[1:5]] == ["22", "22", "4", "4"]
+    assert "tied" not in said
     assert "tied" not in _ranked(cx_ctx.con, replace(q, limit=2))
+    monkeypatch.setattr(player_games, "TIE_ROOM", 0)
+    said = _ranked(cx_ctx.con, replace(q, limit=3))
+    assert [line.split()[-2] for line in said.splitlines()[1:3]] == ["22", "22"]
+    assert said.splitlines()[-1] == "  and 2 more tied at 4 G"
 
 
 @pytest.mark.parametrize(
@@ -2006,9 +2014,10 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
     assert lines[0] == f"Brandin Podziemski, last 4 games of the {current_season()} regular season:"
     # The full box line beside it (ISSUES.md #471): a column a rebuild does
     # not fill is blank on the rebuilt row, and the note names it.
-    assert lines[2].split() == [f"{current_season()}-03-01", "vs", "BOS", "W", "-", "10", "3", "2", "1", "0", "-", "-", "-", "-", "-"]
+    # Made threes are a figure the rebuild has (ISSUES.md #501): shown, never blank.
+    assert lines[2].split() == [f"{current_season()}-03-01", "vs", "BOS", "W", "-", "10", "3", "2", "1", "0", "-", "-", "0", "-", "-"]
     assert lines[-1] == (
-        "1 of these games has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes, turnovers, threes, shot attempts and free-throw attempts cannot be recovered at all."
+        "1 of these games has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes, turnovers, shot attempts and free-throw attempts cannot be recovered at all."
     )
     # The rates are over the games that carry both halves: 56.4% over the
     # three fetched games, never the rebuilt game's makes over their attempts.

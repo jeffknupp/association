@@ -36,12 +36,13 @@ already resolved, and never a name.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
-from association.nba.season import eastern_date_sql
+from association.nba.season import eastern_date_sql, eastern_day_utc_range
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, alignment_clause, calendar_clause
 from association.query.measures import PERIOD_COLUMNS as PERIOD_COLUMNS
 
@@ -121,9 +122,18 @@ def season_type_clause(column: str, season_type: int) -> tuple[str, list[Any]]:
 #: ``fouls``             83.3%     0.181
 #: ===================== ========= ==============
 #:
+#: ``threePointFieldGoalsMade`` 98.6% (the rebuild module's measurement over
+#: the 22,660 games, :mod:`association.fetch.repairs.reconstructed_box`), as
+#: close as ``points``: every made three is a scoring play the plays hold.
+#: Once left out, so a count of games with two threes left the
+#: rebuilt games out where one with twenty points kept them (ISSUES.md #501).
+#:
 #: ``turnovers`` and ``fouls`` are left out: an order of magnitude worse than
-#: the rest, and a foul is wrong in one game in six. The rest are wrong by
-#: hundredths of a point per game, which is why this is a PER-GAME list only.
+#: the rest, and a foul is wrong in one game in six. The attempts and the
+#: split rebounds are left out with minutes, which play-by-play cannot recover:
+#: a percentage or an attempt is read over the fetched games alone. The rest are
+#: wrong by hundredths of a point per game, which is why this is a PER-GAME
+#: list only.
 #:
 #: **A rebuilt SEASON total is a different matter and is not read anywhere.**
 #: A season is exact only when the net error over every game is zero, so it
@@ -134,7 +144,7 @@ def season_type_clause(column: str, season_type: int) -> tuple[str, list[Any]]:
 #: ``type = 'Not Available'``.
 #:
 #: .. versionadded:: 2.2.0
-REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "fieldGoalsMade", "freeThrowsMade"})
+REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "fieldGoalsMade", "threePointFieldGoalsMade", "freeThrowsMade"})
 
 
 # A rebuilt line has NULL minutes - play-by-play cannot recover them - so
@@ -416,6 +426,36 @@ def period_agreement_notes(season: int, measure: str, *, full_line: bool = False
     return notes
 
 
+def period_agreement_across(seasons: list[int], measure: str, *, full_line: bool = False) -> list[Note]:
+    """The caveats a period answer over the games of several seasons carries
+    (:func:`period_agreement_notes`, each season's), said once: each kind
+    with the seasons it holds, every column any of them names (in the
+    order the seasons name them) and, for each, its lowest agreement among
+    them - where a career read said one caveat per season, five times over
+    for "kyrie Irving second half stats vs denver". One season's are its own.
+
+    .. versionadded:: 7.0.0
+    """
+    each = [period_agreement_notes(season, measure, full_line=full_line) for season in sorted(set(seasons))]
+    if len(each) <= 1:
+        return each[0] if each else []
+    merged: list[Note] = []
+    for what in ("period_points_from_shots", "period_rebuilt"):
+        found = [note.facts for notes in each for note in notes if note.facts["what"] == what]
+        if len(found) == 1:
+            merged.append(Note("rebuilt_agreement", found[0]))
+            continue
+        if not found:
+            continue
+        lowest: dict[str, float] = {}
+        for facts in found:
+            pcts = facts["pct"] if isinstance(facts["pct"], list) else [facts["pct"]]
+            for column, pct in zip(facts["columns"], pcts, strict=True):
+                lowest[column] = min(pct, lowest.get(column, pct))
+        merged.append(Note("rebuilt_agreement", {"seasons": [facts["season"] for facts in found], "columns": list(lowest), "pct": list(lowest.values()), "what": what}))
+    return merged
+
+
 def period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: bool = True) -> str:
     """One row per player per game - ``event_id``, ``season``,
     ``athlete_id`` and every :data:`PERIOD_COLUMNS` column - summed over
@@ -550,10 +590,6 @@ def _teammate_played(box: BoxSource) -> str:
     return f"EXISTS (SELECT 1 FROM {box.table} m WHERE m.athlete_id = ? AND m.event_id = pgl.event_id AND m.season = pgl.season AND NOT m.did_not_play AND {appeared})"
 
 
-# An open end of a stint, as a string that sorts before or after any date.
-_OPEN_START, _OPEN_END = "0000", "9999"
-
-
 def _joined(names: list[str], word: str = "and") -> str:
     """ "A", "A and B", "A, B and C" - a list of names as a sentence holds it."""
     if len(names) <= 1:
@@ -583,7 +619,7 @@ class Condition:
     (opponent, played) were special cases of.
 
     ``tenure`` bounds an OWN-side absence to the games inside the player's
-    time on the subject's team (:func:`_teammate_stints`): "Nets record
+    time on the subject's team (:func:`_tenure_clause`): "Nets record
     without KD" must not count the decades before he arrived.
 
     .. versionadded:: 5.0.0
@@ -996,22 +1032,59 @@ def league(season_clause: str, season_params: list[Any], season_type: int) -> Na
 ROWS_TIEBREAK = "pgl.event_id, pgl.player_name"
 
 
-def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None = None, offset: int = 0, rebuilt: bool = False) -> tuple[str, list[Any]]:
+def ordered_cut(order: str, limit: int | None, ties: tuple[str, str] | None = None, *, offset: int = 0) -> str:
+    """`` ORDER BY order`` and the cut a read is kept to: ``LIMIT limit``,
+    or - where the rows are ranked by a figure (``ties``: the ranked
+    expression and its direction, ``"DESC NULLS LAST"``) - every row ranked
+    within ``limit``, so the rows tied with the last one kept are kept too,
+    up to :data:`TIE_ROOM` rows past the limit.
+
+    A limit that cuts a tie lists some of the rows sharing a figure and the
+    answer says the cut list as if it were all of them: "most 3s made in a
+    single game by a team" named three of the four teams with 29, and a
+    player's "top 3 by points" two of his games with 18 (ISSUES.md #476).
+    A tie at the cut too big for the room (a hundred players with one game
+    at the foot of a ranking) is left out whole, so the list ends before
+    it rather than naming two of the hundred; only a tie for the top is
+    cut at the room, there being nothing ahead of it to list.
+
+    .. versionadded:: 7.0.0
+    """
+    if limit is None:
+        return f" ORDER BY {order}" + (f" OFFSET {int(offset)}" if offset else "")
+    if ties is None or offset:
+        return f" ORDER BY {order} LIMIT {int(limit)}" + (f" OFFSET {int(offset)}" if offset else "")
+    figure, direction = ties
+    rank = f"RANK() OVER (ORDER BY {figure} {direction})"
+    fits = f"{rank} + COUNT(*) OVER (PARTITION BY {figure}) - 1 <= {int(limit) + TIE_ROOM}"
+    return f" QUALIFY {rank} <= {int(limit)} AND ({rank} = 1 OR {fits}) ORDER BY {order} LIMIT {int(limit) + TIE_ROOM}"
+
+
+#: How many rows past its limit a ranked read keeps while they tie the
+#: last one kept (:func:`ordered_cut`).
+TIE_ROOM = 10
+"""The rows past a ranked read's limit kept for a tie at the cut.
+
+.. versionadded:: 7.0.0
+"""
+
+
+def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None = None, offset: int = 0, rebuilt: bool = False, ties: tuple[str, str] | None = None) -> tuple[str, list[Any]]:
     """The rows themselves - a log, a single game, the top game by a stat.
     ``select`` and ``order`` are column expressions written in code, ordered
-    after by :data:`ROWS_TIEBREAK` so no caller has to add its own.
+    after by :data:`ROWS_TIEBREAK` so no caller has to add its own. Rows
+    ranked by a figure (``ties``) keep a tie at the limit (:func:`ordered_cut`).
 
     .. versionchanged:: 5.0.0
        Appends :data:`ROWS_TIEBREAK` after ``order``.
+
+    .. versionchanged:: 7.0.0
+       Takes ``ties``.
     """
     where, params = narrowed.clauses(rebuilt=rebuilt)
     source, ahead = _source(narrowed)
     params = [*ahead, *params]
-    sql = f"SELECT {select} {source} WHERE {where} ORDER BY {order}, {ROWS_TIEBREAK}"
-    if limit is not None:
-        sql += f" LIMIT {int(limit)}"
-    if offset:
-        sql += f" OFFSET {int(offset)}"
+    sql = f"SELECT {select} {source} WHERE {where}" + ordered_cut(f"{order}, {ROWS_TIEBREAK}", limit, ties, offset=offset)
     return sql, params
 
 
@@ -1099,16 +1172,34 @@ def named(sql: str, params: list[Any], prefix: str = "r") -> tuple[str, dict[str
 
 
 def grouped_sql(
-    narrowed: Narrowed, group_by: str, selects: list[str], *, having: str | None = None, order: str | None = None, limit: int | None = None, rebuilt: bool = False
+    narrowed: Narrowed,
+    group_by: str,
+    selects: list[str],
+    *,
+    having: str | None = None,
+    order: str | None = None,
+    limit: int | None = None,
+    rebuilt: bool = False,
+    ties: tuple[str, str] | None = None,
 ) -> tuple[str, list[Any]]:
     """Aggregates per group - a ranking of players, a split by venue or month.
     A ``limit`` here is applied after grouping (the top N groups), never to
     the rows: "top 20 by average" and "the last 20 games, averaged" are
-    different questions and only the second is a row window."""
+    different questions and only the second is a row window. Groups ranked
+    by a figure (``ties``) keep a tie at the limit (:func:`ordered_cut`).
+
+    .. versionchanged:: 7.0.0
+       Takes ``ties``.
+    """
     source, params = _windowed(narrowed, rebuilt=rebuilt)
     sql = f"SELECT {', '.join(selects)} {source} GROUP BY {group_by}"
     if having:
         sql += f" HAVING {having}"
+    if order and ties is not None and limit is not None:
+        # The ranked figure is a select's alias (``"points"``), which a
+        # window in the same statement would read as the column it shadows:
+        # the groups are ranked from outside.
+        return f"SELECT * FROM ({sql}) grouped" + ordered_cut(order, limit, ties), params
     if order:
         sql += f" ORDER BY {order}"
     if limit is not None:
@@ -1295,70 +1386,45 @@ def scope_without_guard(alias: str, season: int | None, season_type: int) -> tup
     return f"{alias}.season = ? AND {type_clause}", [season, *type_params]
 
 
-def _teammate_stints(con: duckdb.DuckDBPyConnection, athlete_id: str) -> list[tuple[int, str, str, str]]:
-    """When a player was on each team: ``(season, team_id, start, end)``, with
-    ``start``/``end`` compared against ``games.date``.
-
-    There is no roster table, so this is read off his own box-score rows, and
-    the one fact that makes that hard is that an injured player mostly has NO
-    row: Stephen Curry's 2026 is 43 rows, none of them did-not-play, for an
-    82-game Warriors season. So a stint runs from his first row for a team to
-    his last, and then:
-
-    - it is open at the start of the season when he ended the previous one on
-      that team (or has no earlier rows at all) - LeBron James's first 2026 row
-      is 2025-11-19, and the Lakers' 14 games before it were played without
-      him;
-    - it is open at the end when no later row that season is for another team,
-      so an injury that ends a season still counts.
-
-    A mid-season arrival from another team is not extended backwards: Seth
-    Curry's first 2026 Warriors row is 2025-12-03, and their October games were
-    not played "without" somebody who was in Charlotte's plans. The gap between
-    a traded player's last game for one team and his first for the next belongs
-    to neither, which undercounts rather than guesses."""
-    phantom = COVERAGE["player_game_log"].phantom
-    excluded = f" AND season NOT IN ({', '.join('?' for _ in phantom)})" if phantom else ""
-    rows = con.execute(
-        f"SELECT season, team_id, MIN(game_date), MAX(game_date) FROM player_game_log WHERE athlete_id = ?{excluded} GROUP BY season, team_id ORDER BY season, MIN(game_date)",
-        [athlete_id, *phantom],
-    ).fetchall()
-    by_season: dict[int, list[tuple[str, str, str]]] = {}
-    for season, team_id, first, last in rows:
-        by_season.setdefault(int(season), []).append((str(team_id), str(first), str(last)))
-    stints: list[tuple[int, str, str, str]] = []
-    carried: str | None = None  # the team he ended the previous season on
-    for season in sorted(by_season):
-        spells = by_season[season]
-        final = max(range(len(spells)), key=lambda i: spells[i][2])
-        for index, (team_id, first, last) in enumerate(spells):
-            start = _OPEN_START if index == 0 and carried in (None, team_id) else first
-            end = _OPEN_END if index == final else last
-            stints.append((season, team_id, start, end))
-        carried = spells[final][0]
-    return stints
-
-
 def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | None, *, side: str = "own") -> tuple[str, list[Any]]:
     """SQL keeping the games ``pgl`` played on a team ``mate`` was on at the
-    time - see _teammate_stints for how "was on" is read - or, with ``side``
+    time - his stints (:func:`~association.query.conditions.stints`, the one
+    reading of a teammate's time on a team) - or, with ``side``
     ``"opponent"``, the games played AGAINST a team he was on at the time
     ("vs lakers without lebron": the Lakers games of his Lakers years).
-    ``season`` is the one season asked about, or None for
-    a career.
+    ``season`` is the one season asked about, or None for a career; the
+    span's own clause keeps the games to it, so it only drops the stints
+    outside it.
 
     .. versionchanged:: 5.0.0
        Takes ``side``.
+
+    .. versionchanged:: 7.0.0
+       Reads the stints the with/without split reads (ISSUES.md #480): a
+       stint ends at the day before his first row for his next team, not at
+       his last row for this one.
     """
-    stints = [s for s in _teammate_stints(con, mate.id) if season is None or s[0] == season]
-    if not stints:
+    from association.query.conditions import stints as read_stints
+
+    spells = read_stints(con, mate.id, COVERAGE["player_game_log"].phantom)
+    if season is not None:
+        spells = [spell for spell in spells if _tenure_clause_reaches(spell.first, spell.last, season)]
+    if not spells:
         return "FALSE", []
-    rows = ", ".join("(?, ?, ?, ?)" for _ in stints)
+    # A stint's Eastern days as the stamps ``pgl.game_date`` holds: from
+    # the first day's first stamp up to, not including, the day after the last's.
+    bounds = [(spell.team_id, eastern_day_utc_range(spell.first.isoformat())[0], eastern_day_utc_range(spell.last.isoformat())[1]) for spell in spells]
+    rows = ", ".join("(?, ?, ?)" for _ in bounds)
     team = "pgl.team_id" if side == "own" else "pgl.opponent_team_id"
     return (
-        f"EXISTS (SELECT 1 FROM (VALUES {rows}) AS stint(season, team_id, start_date, end_date) "
-        f"WHERE stint.season = pgl.season AND stint.team_id = {team} AND pgl.game_date BETWEEN stint.start_date AND stint.end_date)"
-    ), [value for stint in stints for value in stint]
+        f"EXISTS (SELECT 1 FROM (VALUES {rows}) AS stint(team_id, start_stamp, end_stamp) WHERE stint.team_id = {team} AND pgl.game_date >= stint.start_stamp AND pgl.game_date < stint.end_stamp)"
+    ), [value for bound in bounds for value in bound]
+
+
+def _tenure_clause_reaches(first: date, last: date, season: int) -> bool:
+    """Whether a stint from ``first`` to ``last`` reaches into ``season``
+    (named for the year it ends, its games from July of the year before)."""
+    return first <= date(season, 6, 30) and last >= date(season - 1, 7, 1)
 
 
 # Stat key -> real player_box_stats column. A whitelist, not a passthrough:

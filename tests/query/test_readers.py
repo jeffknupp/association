@@ -604,6 +604,58 @@ def test_fouls_are_never_counted_from_a_rebuilt_line(rebuilt_counts: AnswerConte
     assert "not counted from a rebuilt line" in answer
 
 
+def test_a_count_over_made_threes_keeps_the_rebuilt_games(rebuilt_counts: AnswerContext) -> None:
+    """ISSUES.md #501, the yardstick's F160: "jamal murray games with 2 threes
+    including playoffs" counted 426 where the box scores hold 434, the 8
+    rebuilt games left out and an "empty box score" caveat said in their
+    place. A made three is a scoring play the plays hold (98.6% exact per
+    game, beside points' 98.3%), so a rebuilt line is read for it as for
+    points: the two rebuilt games with 2+ threes are counted and said as
+    rebuilt."""
+    for table in ("player_box_stats", "player_game_log"):
+        rebuilt_counts.con.execute(f"ALTER TABLE {table} ADD COLUMN threePointFieldGoalsMade INTEGER")
+    rebuilt_counts.con.execute("UPDATE player_box_stats SET threePointFieldGoalsMade = CASE event_id WHEN 'e1' THEN 3 WHEN 'e2' THEN 1 ELSE 0 END")
+    rebuilt_counts.con.execute("UPDATE player_game_log SET threePointFieldGoalsMade = CASE event_id WHEN 'e1' THEN 3 WHEN 'e2' THEN 1 ELSE 2 END")
+    answer = (
+        games_counted(
+            rebuilt_counts,
+            Reading(
+                who=Who(kind="player", players=("Anthony Davis",)),
+                lines=(Line(measure="threePointFieldGoalsMade", value=2, as_typed="2 threes", keyed=True),),
+                measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade"),
+            ),
+        ).text
+        or ""
+    )
+    assert "had 3 games with 2+ 3-pointers" in answer
+    assert "2 of those 3 games have no box score from ESPN" in answer
+    assert "empty box score" not in answer
+
+
+@pytest.mark.parametrize(
+    ("measure", "why"),
+    [
+        ("turnovers", "rebuilt turnovers are wrong in about one game in thirteen"),
+        ("fouls", "rebuilt fouls are wrong in about one game in six"),
+    ],
+)
+def test_a_withheld_count_names_its_own_stat_s_reason(rebuilt_counts: AnswerContext, measure: str, why: str) -> None:
+    """ISSUES.md #501: the withheld stat's caveat gives that stat's reason,
+    never the fouls' error rate beside a stat it does not describe."""
+    rebuilt_counts.con.execute(f"ALTER TABLE player_game_log ADD COLUMN IF NOT EXISTS {measure} INTEGER")
+    rebuilt_counts.con.execute(f"UPDATE player_game_log SET {measure} = CASE WHEN reconstructed THEN 9 ELSE 0 END")
+    answer = (
+        games_counted(
+            rebuilt_counts,
+            Reading(who=Who(kind="player", players=("Anthony Davis",)), lines=(Line(measure=measure, value=6, as_typed=f"6 {measure}", keyed=True),), measure=Measure(key=measure, as_typed=measure)),
+        ).text
+        or ""
+    )
+    assert "not counted from a rebuilt line" in answer
+    assert why in answer
+    assert answer.count("wrong in about one game") == 1
+
+
 def test_the_low_count_caveat_drops_the_games_the_rebuild_counted(rebuilt_counts: AnswerContext) -> None:
     """The self-contradiction this avoids: counting a game from its rebuilt
     line and then reporting that same game as one the count could not see.
@@ -2311,6 +2363,34 @@ def test_a_tie_within_one_game_is_listed_in_one_order(sgh_ctx: AnswerContext) ->
     # Jokic's 40 came first (2026-01-02); the two of one game follow by athlete id.
     assert [g["player"] for g in result.data["games"][:3]] == ["Nikola Jokic", "Abe Tie", "Zed Tie"]
     assert result.text.startswith("Nikola Jokic, Abe Tie and Zed Tie tied for the most points in a single game")
+
+
+def test_the_leagues_high_keeps_a_tie_past_its_limit(sgh_ctx: AnswerContext) -> None:
+    """ISSUES.md #476: the league's high lists three games, and a fourth
+    tied with the third was cut, the three said as the holders. Four
+    players' games at 40 are all said as tied, and the next figure after."""
+    s = current_season()
+    sgh_ctx.con.execute("INSERT INTO players VALUES ('9', 'Zed Tie'), ('8', 'Abe Tie'), ('7', 'Cy Tie')")
+    sgh_ctx.con.executemany(
+        "INSERT INTO player_game_log_rows VALUES (?,?,?,?,?,?,?,?,?,?,FALSE)",
+        [
+            ("9", s, 2, "Zed Tie", "2026-02-02T02:00Z", "MIA", 1, 40, 30, "e9"),
+            ("8", s, 2, "Abe Tie", "2026-02-04T02:00Z", "MIA", 1, 40, 30, "e8"),
+            ("7", s, 2, "Cy Tie", "2026-02-06T02:00Z", "MIA", 1, 40, 30, "e7"),
+        ],
+    )
+    result = game_highs(sgh_ctx, Reading(measure=Measure(key="points", as_typed="points")))
+    assert [g["value"] for g in result.data["games"]] == [40, 40, 40, 40]
+    assert result.text.startswith("Nikola Jokic, Zed Tie, Abe Tie and Cy Tie tied for the most points in a single game")
+
+
+def test_a_named_players_top_games_keep_a_tie_at_the_cut(sgh_ctx: AnswerContext) -> None:
+    """ISSUES.md #476's player half ("chris paul career high as a spur"): a
+    named player's games ranked by a figure keep the game tied with the last
+    one kept - his top two by points here, 40 and the two 30s."""
+    q = replace(planned_query(GAME_HIGHS, Reading(who=Who(kind="player", players=("Nikola Jokic",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True, season_type=2))), limit=2)
+    rows = rows_of(sgh_ctx.con, compile_query(sgh_ctx.con, q))
+    assert [row["points"] for row in rows] == [40, 30, 30]
 
 
 def test_game_highs_reports_a_tie_as_a_tie(sgh_ctx: AnswerContext) -> None:

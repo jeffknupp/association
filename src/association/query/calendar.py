@@ -162,6 +162,10 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
        reaches it straight, folded where the question entered the parser
        (:func:`association.query.parse.read_route`).
 
+    .. versionchanged:: 7.0.0
+       Reads one day of the calendar, every season's ("on november 22nd"),
+       as a ``day``: on a career question no year fixes it.
+
     .. versionchanged:: 6.0.0
        Reads a "since" worded with its year ("since january 31st 2020", a
        ``since_date``) and a month written short ("after dec 11"), ISSUES.md #353;
@@ -180,6 +184,15 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     if m:
         month = lexicon.month_number(m.group("month"))
         return CalendarNarrowing("month", month, f"in {_MONTH_NAMES[month - 1]}")
+    m = lexicon.SITUATION_DAY.fullmatch(words)
+    if m:
+        month, day = lexicon.month_number(m.group("month")), int(m.group("num"))
+        try:
+            # A leap year, so February 29 is a day some seasons hold.
+            date(2000, month, day)
+        except ValueError:
+            return None  # "february 31"
+        return CalendarNarrowing("day", (month, day), f"on {_MONTH_NAMES[month - 1]} {day}")
     m = lexicon.SITUATION_SINCE_MONTH.fullmatch(words)
     if m:
         first = month_opened(int(m.group("year")), lexicon.month_number(m.group("month")), after=m.group("lead") == "after")

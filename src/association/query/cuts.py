@@ -49,6 +49,11 @@ class CutsContext:
 
     opponent: str | None = None
     without: tuple[str, ...] = ()
+    #: Whether every player the subject reading named is inactive - no box
+    #: score in the latest season - whose question with no season named
+    #: reads his career (decision D13), so a day the words name without its
+    #: year fixes no season either and is the situation it is.
+    inactive: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,7 +135,7 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
         day, day_claim = None, None
     else:
         situation, situation_claim = _situation(question)
-        day, day_claim = _day(question)
+        day, day_claim = _day(question, inactive=context.inactive)
         dated = _dated_day(question, situation_claim) or _dated_month(question, situation_claim)
         if dated is not None:
             # A range opened on a worded day with its year is that day on,
@@ -220,7 +225,7 @@ def _situation(question: str) -> tuple[str | None, Claim | None]:
     return match.group(0).casefold(), Claim(match.start(), match.end(), "situation")
 
 
-def _day(question: str) -> tuple[str | None, Claim | None]:
+def _day(question: str, *, inactive: bool = False) -> tuple[str | None, Claim | None]:
     """One calendar day as ``YYYY-MM-DD``, or None if the question names none,
     with the characters that named it.
 
@@ -233,7 +238,10 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
     ``PLAYER_LOG`` answers it with that game. The season that fixes it is the
     one a reader would use - the season the words name, or the current one,
     the default they all apply - EXCEPT on a career question, which spans
-    twenty Octobers and fixes nothing, so that refuses. Reading an absent
+    twenty Octobers and fixes nothing, so that refuses: one whose words
+    name the career, or an ``inactive`` player's with no season named,
+    which decision D13 reads as his career ("kobe bryant on november 22nd
+    record" read 2025-11-22 beside his 1997-2016 career). Reading an absent
     season as "current" rather than "unknown" matters: "Desmond bane march
     17" names none.
 
@@ -256,7 +264,7 @@ def _day(question: str) -> tuple[str | None, Claim | None]:
     stated = match.group("year")
     if stated is not None:
         year = int(stated)
-    elif career_named(question)[0]:
+    elif career_named(question)[0] or (inactive and lexicon.season_from_text(question) is None):
         return None, None
     else:
         season = lexicon.season_from_text(question) or current_season()

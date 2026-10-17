@@ -30,7 +30,7 @@ from typing import Any
 import duckdb
 
 from association.nba.franchises import season_name
-from association.query.conditions import _PLAYER_GAME_TABLES, _names, _overlaps, _Scope, _stints, _with_without_group, presence_games
+from association.query.conditions import _PLAYER_GAME_TABLES, _names, _overlaps, _Scope, _with_without_group, presence_games, stints
 from association.query.entities import BOX_SCORES, Entity, optional_team, resolved_player
 from association.query.notes import Note
 from association.query.player_games import _joined
@@ -311,17 +311,17 @@ def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], s
     stints on the team - or the refusal naming whichever teammate has no
     box-score appearance to build a stint from at all."""
     named = [m.name for m in mates]
-    stints = [_stints(con, m.id, scope.phantoms) for m in mates]
-    absent = next((m for m, spells in zip(mates, stints, strict=True) if not spells), None)
+    spelled = [stints(con, m.id, scope.phantoms) for m in mates]
+    absent = next((m for m, spells in zip(mates, spelled, strict=True) if not spells), None)
     if absent is not None:
         # Named, rather than reported as "one of them": which player the
         # warehouse has never seen is the fact that is missing.
         return Refusal(kind="teammate_never_seen", facts={"teammate": absent.name}, shown={"teammate": absent.name, "teammates": named, "groups": []}, under=("headline",))
-    windows = stints[0]
-    for spells in stints[1:]:
+    windows = spelled[0]
+    for spells in spelled[1:]:
         windows = _overlaps(windows, spells)
     if subject is not None:
-        own = _stints(con, subject.id, scope.phantoms)
+        own = stints(con, subject.id, scope.phantoms)
         together = _overlaps(own, windows)
         # A teammate never on his team at all is no absence to divide by
         # ("rui hachimura stats without reeves" read as Antonio Reeves): the

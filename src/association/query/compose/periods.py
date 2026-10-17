@@ -52,6 +52,7 @@ from association.query.player_games import (
     REGULATION_QUARTERS,
     Narrowed,
     most_games,
+    period_agreement_across,
     period_agreement_notes,
     period_columns,
     period_distrust,
@@ -356,13 +357,13 @@ def _period_log_span(span: ResolvedSpan | None, scope: Filtered, rows: list[dict
 
 
 def _period_log_notes(con: duckdb.DuckDBPyConnection, compiled: Compiled, seasons: list[int], measure: str, *, full_line: bool, left_out: list[Note]) -> list[Note]:
-    """A period log's remarks: the agreement caveat of each season the games
-    are from (measured per season; a whole line's names every column, since
+    """A period log's remarks: the agreement caveat of the seasons the games
+    are from, said once (measured per season; a whole line's names every column, since
     the line is shown beneath the figure where no stat was named,
     ``_period_full_line``), the games a read across seasons left out, and
     what "without" was taken to mean (decision D15)."""
     assert compiled.player is not None
-    notes = [each for one in seasons for each in period_agreement_notes(one, measure, full_line=full_line)] + left_out
+    notes = period_agreement_across(seasons, measure, full_line=full_line) + left_out
     if compiled.narrowed.without and compiled.span is not None:
         notes += without_notes(con, compiled.player, compiled.span, compiled.narrowed)
     return notes
@@ -524,8 +525,8 @@ def _period_quarters_span(span: ResolvedSpan | None, scope: Filtered, seasons: l
 
 def _period_quarters_notes(seasons: list[int], measure: str) -> list[Note]:
     """The four quarters' remarks: that overtime is no quarter, and the
-    agreement caveat of each season the games are from."""
-    return [Note("definition", {"term": "overtime_excluded"}), *(each for one in seasons for each in period_agreement_notes(one, measure))]
+    agreement caveat of the seasons the games are from, said once."""
+    return [Note("definition", {"term": "overtime_excluded"}), *period_agreement_across(seasons, measure)]
 
 
 def _period_quarters_season(scope: Filtered, rows: list[dict[str, Any]], measure: str) -> int | Unanswered:
