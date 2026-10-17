@@ -2413,6 +2413,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
         claims.append(words.worded[1])
     key = _measure_key_by_ask(asked, words, context, key, from_words=words.worded is not None)
     key = _measure_key_by_words(asked, words, context, key, claims)
+    key = _measure_whole_line(asked, words, key, claims)
     key, unit = _measure_rate(asked, words, key, claims)
     how = _measure_how(asked, words, key, unit, claims)
     of_wins = None
@@ -2443,6 +2444,62 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
         beside=beside,
     )
     return MeasureRead(measure, distinct)
+
+
+#: The stats a whole line shows where no stat is named, by the key that
+#: reads it: a player's season or narrowed line and his log, and of them the
+#: ones a quarter's or a half's line shows (no minutes: the period's line is
+#: rebuilt from the plays, which carry none).
+_WHOLE_LINE_STATS: frozenset[str] = frozenset(
+    {
+        "points",
+        "rebounds",
+        "assists",
+        "steals",
+        "blocks",
+        "turnovers",
+        "fouls",
+        "minutes",
+        "fieldGoalsMade",
+        "fieldGoalsAttempted",
+        "freeThrowsMade",
+        "freeThrowsAttempted",
+        "threePointFieldGoalsMade",
+        "threePointFieldGoalsAttempted",
+        "fieldGoalPct",
+        "threePointFieldGoalPct",
+        "freeThrowPct",
+    }
+)
+_WHOLE_LINES: dict[PointShape, frozenset[str]] = {
+    PLAYER_LINE: _WHOLE_LINE_STATS,
+    PLAYER_LOG: _WHOLE_LINE_STATS,
+    PERIOD_LOG: _WHOLE_LINE_STATS - {"minutes"},
+    # The splits' columns, the history's points, rebounds and assists by
+    # season (``season_line.HISTORY_LINE``), and the team line's counting
+    # stats and its three-point percentage (``team_metrics.DEFAULT_TEAM_LINE``).
+    PLAYER_SPLITS: frozenset({"points", "rebounds", "assists", "steals", "blocks", "turnovers", "minutes", "threePointFieldGoalsMade", "fieldGoalPct"}),
+    SEASON_HISTORY: frozenset({"points", "rebounds", "assists"}),
+    TEAM_LINE: frozenset({"points", "rebounds", "assists", "turnovers", "threePointFieldGoalPct"}),
+}
+
+
+def _measure_whole_line(asked: PointShape | None, words: MeasureWords, key: str | None, claims: list[Claim]) -> str | None:
+    """No one measure where the words name two stats or more on a key that
+    reads a whole line and the whole line shows every one of them
+    (ISSUES.md #454): "James harden rebound and assist vs POR" answered his
+    rebounds alone, "Giannis first half points rebounds assists gamelog vs
+    washington" his first-half rebounds - the line with no stat named says
+    them all. Each stat word is claimed: the reading turns on it."""
+    shown = _WHOLE_LINES.get(asked) if asked is not None else None
+    if shown is None or len(words.stats) < 2 or not all(stat in shown for stat, _ in words.stats):
+        return key
+    if key is not None and key_of(key)[0] not in shown:
+        # A measure the words name beyond the box-score words (an advanced
+        # metric, a team metric's alias) is no stat the whole line shows.
+        return key
+    claims.extend(claim for _, claim in words.stats)
+    return None
 
 
 def _measure_how(asked: PointShape | None, words: MeasureWords, key: str | None, unit: str | None, claims: list[Claim]) -> MeasureHow | None:

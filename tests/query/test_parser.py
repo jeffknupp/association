@@ -1361,6 +1361,9 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
         ("tyler herro last week", ["Tyler Herro"], "points", "unread_window", ("last",)),
         ("Tyrese maxey last first quarter game stats", ["Tyrese Maxey"], "points", "unread_window", ("last",)),
         ("curry stats november", ["Stephen Curry"], "points", "unread_date", ("november",)),
+        # A second stat on a line or a history that says one stat, where its whole line does not show both (#454).
+        ("lebron points and true shooting this season", ["LeBron James"], "", "unread_stat", ("points",)),
+        ("lebron steals and blocks by season", ["LeBron James"], "steals", "unread_stat", ("blocks",)),
     ],
 )
 def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, kind: str, words: tuple[str, ...]) -> None:

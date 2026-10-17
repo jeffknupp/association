@@ -1545,7 +1545,7 @@ def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedCon
     ("3ot", "20222-23") is an unread number too."""
     named = measure.named(lower)
     if named is not None and named[0] != context.key and not _leftover(lower, context.read_words):
-        if not _one_stat_shape(context.shape):
+        if not _one_stat_shape(context.shape, context.key):
             return None
         names_read[lower] = measure.CATALOG[named[0]].label if named[0] in measure.CATALOG else named[0]
         return "stat"
@@ -1560,12 +1560,18 @@ def _defaulted_class(lower: str, before: str, after: str, context: _DefaultedCon
     return None
 
 
-def _one_stat_shape(shape: PointShape | None) -> bool:
+def _one_stat_shape(shape: PointShape | None, key: str | None) -> bool:
     """Whether the point reads one stat, so a second stat word asks for
-    another answer: a ranking, a count, a single game's high or a total; a
-    log, a line, a split, a history or a comparison show the whole line."""
+    another answer: a ranking, a count, a single game's high or a total;
+    and a line or a history by season where a measure stands, which says
+    that stat alone (ISSUES.md #454: "lebron points and true shooting this
+    season" answered his true shooting) - where the words name two stats its whole line
+    shows, the measure tagger read none (``point._measure_whole_line``). A
+    log, a split or a comparison shows the whole line beside a measure."""
     if shape is None:
         return False
+    if key is not None and ((shape.shape == "scalar" and shape.by == "line") or (shape.shape == "split" and shape.by == "season")):
+        return True
     return shape.shape == "ranking" or (shape.shape == "rows" and shape.by == "measure") or (shape.shape == "scalar" and shape.by in ("count", "total"))
 
 
