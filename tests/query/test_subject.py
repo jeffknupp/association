@@ -1263,6 +1263,12 @@ def test_who_sat_out_and_who_played_is_read_from_the_question_without_the_model(
         # A companion keyword inside another's phrase, either way round.
         ("lakers record when AD plays without lebron", ("Anthony Davis", "LeBron James"), [("Anthony Davis", "played"), ("LeBron James", "absent")]),
         ("lakers record without lebron when AD plays", ("Anthony Davis", "LeBron James"), [("LeBron James", "absent"), ("Anthony Davis", "played")]),
+        # A bare name before a companion keyword keeps its own keyword's role.
+        (
+            "boston celtics record in games with jaylen brown and without jayson tatum in the 2025/26 regular season",
+            ("Jaylen Brown", "Jayson Tatum"),
+            [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")],
+        ),
         # One role for every name where the names share it.
         ("PHI record when Embiid and Paul George play", ("Joel Embiid", "Paul George"), [("Joel Embiid", "played"), ("Paul George", "played")]),
         ("celtics record without Tatum and Brown", ("Jayson Tatum", "Jaylen Brown"), [("Jayson Tatum", "absent"), ("Jaylen Brown", "absent")]),

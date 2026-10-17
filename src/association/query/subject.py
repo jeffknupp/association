@@ -838,32 +838,40 @@ def _conditions_read_clauses(question: str, match: re.Match[str], players: tuple
 def _conditions_read_clauses_split(word: str, text: str) -> list[tuple[str, int, int]]:
     """A companion phrase's words as clauses: ``(keyword, start, end)`` in
     the words, split at each joiner and at a companion keyword inside them,
-    a chunk stating no role of its own joined to the one after it."""
-    chunks: list[tuple[str, int, int]] = []
-    keyword, start, end = word, 0, 0
+    a chunk stating no role of its own joined to the one after it - but
+    never across a companion keyword, which states the next names' role
+    itself ("with jaylen brown and without jayson tatum": Brown is the
+    "with"'s)."""
+    chunks: list[tuple[str, int, int, bool]] = []
+    keyword, start, end, led = word, 0, 0, False
     for piece in lexicon.NAME_PIECES.finditer(text):
         nested = lexicon.COMPANION.match(text, piece.start())
-        if piece.group(0).casefold() in lexicon.NAME_JOINERS or (nested is not None and nested.end(1) == piece.end()):
+        keyed = nested is not None and nested.end(1) == piece.end()
+        if piece.group(0).casefold() in lexicon.NAME_JOINERS or keyed:
             if end > start:
-                chunks.append((keyword, start, end))
-            if nested is not None and nested.end(1) == piece.end():
-                keyword = piece.group(0).casefold()
+                chunks.append((keyword, start, end, led))
+                led = False
+            if keyed:
+                keyword, led = piece.group(0).casefold(), True
             start = end = piece.end()
             continue
         end = piece.end()
     if end > start:
-        chunks.append((keyword, start, end))
+        chunks.append((keyword, start, end, led))
     clauses: list[tuple[str, int, int]] = []
-    held: tuple[str, int] | None = None
-    for own, at, end in chunks:
-        keyword, start = held if held is not None else (own, at)
+    held: tuple[str, int, int] | None = None
+    for own, at, end, keyed in chunks:
+        if keyed and held is not None:
+            clauses.append(held)
+            held = None
+        keyword, start = (held[0], held[1]) if held is not None else (own, at)
         if _conditions_read_clauses_states_role(keyword, text[start:end]):
             clauses.append((keyword, start, end))
             held = None
         else:
-            held = (keyword, start)
+            held = (keyword, start, end)
     if held is not None:
-        clauses.append((held[0], held[1], len(text)))
+        clauses.append(held)
     return clauses
 
 
