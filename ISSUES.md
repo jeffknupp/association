@@ -91,15 +91,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #445
 
-### "may" is read as the player Sean May: "how many points may luka score tonight" answers a Sean May comparison
-- **Found:** 2026-10-14, the Phase 5 review, probing step 1's date class.
-- **Evidence:** the subject reading reads "may" as a whole word of Sean May's name (`players_named_in`'s rule, one whole word of exactly one player) and the question becomes a comparison of Luka Doncic and Sean May; the verb "may" before another verb names nobody. Step 1's date class read "may" as a month on the same wording until its narrowing (2026-10-14, the lead); the subject reading's half is this entry.
-- **User sees:** a comparison with a player the question never named, fluently.
-- **Next step:** "may" (and the other modal/month homographs: "will", "march", "august" are names too) names a player only where the reading holds no verb after it, or where it is capitalized or beside another name word; `lexicon.NEVER_A_NAME`/`NOT_A_SUBJECT` are the tables; measure on the 2,710 and the feed.
-- **Priority:** P1 - a different question answered fluently.
-- **Source:** ours.
-- **GitHub:** #447
-
 ### Two stat words on a one-stat shape, one read: "James harden rebound and assist vs POR" answers his rebounds alone
 - **Found:** 2026-10-15, the lead, the unread-meaning harness on `f365d627`.
 - **Evidence:** "James harden rebound and assist vs POR" answers "averaged 4 rebounds per game in 2 games vs Portland"; "Giannis first half points rebounds assists gamelog vs washington" answers "16 rebounds in the 1st half over 3 games" (a period total of one stat where a log of three was asked). The measure tagger reads one stat from the words, so the `unread_stat` class (which triggers only where the measure did NOT come from the words) does not fire, and the other stat words stay unread; `measures_combined` refuses two stats only where the point reads a combined measure.

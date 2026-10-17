@@ -101311,7 +101311,7 @@
    "who": {
     "kind": "player",
     "players": [
-     "lebron"
+     "LeBron James"
     ],
     "teams": [],
     "position": null
@@ -101362,7 +101362,7 @@
    "subject": {
     "kind": "player",
     "players": [
-     "lebron"
+     "LeBron James"
     ],
     "teams": [],
     "position": null,
@@ -101387,14 +101387,14 @@
      "field": "kind",
      "before": null,
      "after": "player",
-     "reason": "question names players ['LeBron James']; model players the question supports ['lebron']; the words 'best scoring game' name player_games/rows/measure"
+     "reason": "question names players ['LeBron James']; model players the question supports ['lebron']; question spells 'lebron' as 'LeBron James'; the words 'best scoring game' name player_games/rows/measure"
     },
     {
      "stage": "subject",
      "field": "players",
      "before": null,
      "after": [
-      "lebron"
+      "LeBron James"
      ],
      "reason": "from the question's own words"
     },
@@ -101484,7 +101484,7 @@
     "who": {
      "kind": "player",
      "players": [
-      "lebron"
+      "LeBron James"
      ],
      "teams": [],
      "position": null

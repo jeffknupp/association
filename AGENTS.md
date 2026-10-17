@@ -211,7 +211,7 @@ The rules:
   differ and exits 1 on one: they measure one thing two ways, so a
   disagreement is a finding - a claim over a word the reading does not
   depend on, or a word a stage reads without claiming it. The corpus's
-  three are held by question with their reasons (`HELD_DISAGREEMENTS`,
+  two are held by question with their reasons (`HELD_DISAGREEMENTS`,
   the subject reading's, which is read once and never probed), the feed's
   in `ledger_held.json`; a held one that agrees now leaves the list with
   the change that cleared it. The other direction found answers: a word

@@ -2533,10 +2533,10 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
     bounds = _question_derived_player_multi_anchor_window(q_words, anchors) if len(anchors) >= 2 else _question_derived_player_single_anchor_window(q_words, name_words, positions, anchors)
     if bounds is None:
         return None
-    window, min_size = bounds
+    window, min_size, alone = bounds
 
     try:
-        return _question_derived_player_search(players, window, min_size)
+        return _question_derived_player_search(players, window, min_size, alone)
     except duckdb.CatalogException:
         # A warehouse without `players` (a partial load, or a test double) has
         # nothing here to resolve against - the same best-effort rule
@@ -2545,7 +2545,7 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
         return None
 
 
-def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: set[int]) -> tuple[list[str], int] | None:
+def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: set[int]) -> tuple[list[str], int, int | None] | None:
     """The window and size floor for two or more anchored words - resolved
     from exactly that range of the question, one word narrower at a time,
     but never down to a single word alone. See
@@ -2557,10 +2557,10 @@ def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: se
     too spread out to be one coherent name."""
     if max(anchors) - min(anchors) > 4:
         return None
-    return q_words[min(anchors) : max(anchors) + 1], 2
+    return q_words[min(anchors) : max(anchors) + 1], 2, None
 
 
-def _question_derived_player_single_anchor_window(q_words: list[str], name_words: list[str], positions: list[int | None], anchors: set[int]) -> tuple[list[str], int]:
+def _question_derived_player_single_anchor_window(q_words: list[str], name_words: list[str], positions: list[int | None], anchors: set[int]) -> tuple[list[str], int, int | None]:
     """The window and size floor for exactly one anchored word: a small
     window around it, never the whole question - what keeps
     :func:`question_derived_player` from becoming the rejected
@@ -2569,21 +2569,30 @@ def _question_derived_player_single_anchor_window(q_words: list[str], name_words
     name "Grady", and the window's "grady dick" is what resolves it) - what
     is trusted only from the surname position (the floor of 1 rather than 2)
     is falling all the way back to the anchor WORD ALONE, with nothing else
-    corroborating it; see the docstring's "Kareem" measurement."""
+    corroborating it; see the docstring's "Kareem" measurement. The word
+    alone is the ANCHOR's, never a neighbor's: "how many points may luka
+    score" anchors on "luka", which alone names several Lukas, and its
+    neighbor "may" alone is Sean May - a player nobody named, read as the
+    model's "luka" (ISSUES.md #447). The third value is where in the window
+    the anchor stands."""
     anchor_index = next(i for i, p in enumerate(positions) if p is not None)
     anchor = next(iter(anchors))
-    window = q_words[max(0, anchor - 1) : min(len(q_words), anchor + 2)]
+    start = max(0, anchor - 1)
+    window = q_words[start : min(len(q_words), anchor + 2)]
     min_size = 1 if anchor_index == len(name_words) - 1 else 2
-    return window, min_size
+    return window, min_size, anchor - start
 
 
-def _question_derived_player_search(players: names.PlayerIndex, window: list[str], min_size: int) -> Entity | None:
+def _question_derived_player_search(players: names.PlayerIndex, window: list[str], min_size: int, alone: int | None = None) -> Entity | None:
     """``window``, tried longest span first down to ``min_size``, exact
     words before near ones - the shared search both
     :func:`_question_derived_player_multi_anchor_window` and
-    :func:`_question_derived_player_single_anchor_window` resolve into."""
+    :func:`_question_derived_player_single_anchor_window` resolve into. A
+    single word is tried only where it is the anchor (``alone``, its place
+    in the window)."""
     for size in range(min(lexicon.MAX_NAME_WORDS, len(window)), min_size - 1, -1):
-        found = [resolved for start in range(len(window) - size + 1) if (resolved := _resolve_word_span(players, window[start : start + size])) is not None]
+        starts = range(len(window) - size + 1) if size > 1 or alone is None else [alone]
+        found = [resolved for start in starts if (resolved := _resolve_word_span(players, window[start : start + size])) is not None]
         unique_ids = {c.id for c in found}
         if len(unique_ids) == 1:
             return found[0]

@@ -429,10 +429,6 @@ def _report_held_disagreements(rows: list[dict[str, Any]], held: dict[str, Any])
 #: on one of these that no longer differs, which is removed from the list with
 #: the change that cleared it (``scripts/check_ratchets.py``'s GONE rule).
 HELD_DISAGREEMENTS: dict[str, str] = {
-    "lebron vs kawhi head to head": (
-        '"head" stops the subject reading\'s spelling reader completing "kawhi" (the window "kawhi head" names nobody); '
-        'deleting it lets "kawhi" be spelled Kawhi Leonard, so the deletion counts it read, while the reading carries nothing for it'
-    ),
     "How many points did the 76ers score in the 4th quarter against Boston this season?": (
         '"against" is claimed with the opponent it stands before, and the second team named is the opponent without it: the subject reading declares its claims, so it claims the versus word it read'
     ),
