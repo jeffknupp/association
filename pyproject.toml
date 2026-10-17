@@ -61,6 +61,7 @@ dev = [
     "pyright>=1.1.390",
     "pytest>=8.0",
     "pytest-xdist>=3.8.0",
+    "radon>=6.0",
     "ruff>=0.16.5",
     "shellcheck-py>=0.11",
     "vulture>=2.14",
@@ -140,8 +141,10 @@ optional_dependencies_dev_groups = ["dev", "docs"]
 
 [tool.deptry.per_rule_ignores]
 # docs/conf.py is the docs extra's own code: importing that extra is the point
-# there, not a dev dependency leaking into the package.
-DEP004 = ["packaging", "sphinx_autodoc_typehints"]
+# there, not a dev dependency leaking into the package. scripts/check_complexity.py
+# is a gate and imports radon, the dev tool it runs (xenon's own engine): the
+# dev extra is where a gate's tool belongs.
+DEP004 = ["packaging", "sphinx_autodoc_typehints", "radon"]
 # scripts/check_web_ui.py drives the page in a real browser and is run as
 # `uv run --with playwright python scripts/check_web_ui.py`, which supplies the
 # package for that one command. Declaring it in the `dev` extra would be false:

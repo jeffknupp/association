@@ -44,10 +44,15 @@ somehow skipped this step.
 Cutting a release
 -----------------
 
-#. Describe the change under a ``## Unreleased`` heading in ``CHANGES.md``.
-   This is a hard requirement, not a convention — the bump script stops if the
-   section is missing, because a release with no description of what changed is
-   worse than a release that failed to happen.
+#. Build the ``## Unreleased`` section from the commits::
+
+      $ scripts/changelog_from_git.py --write
+
+   Every commit touching ``src/`` carries its entry in its message (the
+   subject leads, the body follows, the moves it enumerates included), and
+   the section is generated from them rather than edited by hand; read it
+   over before bumping. The bump script still stops if the section is
+   missing.
 
 #. Bump, commit and tag::
 

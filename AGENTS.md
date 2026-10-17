@@ -271,9 +271,15 @@ The rules:
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all eighteen gates
-uv run pytest -q -n auto            # fully offline: no network, no ollama
+uv run pre-commit run --all-files                      # the thirteen per-commit gates
+uv run pytest -q -n auto                               # fully offline: no network, no ollama
+uv run pre-commit run --all-files --hook-stage pre-push  # the five slow gates, before a push
 ```
+
+The five slow gates (`verifytypes`, `vulture`, `deptry`, `xenon`'s module
+grades, the docs build) run at the push and in CI, not per commit
+(decision D19). A commit is gated by the thirteen and the suite; a push by
+all eighteen.
 
 Both must be clean. Everything in `pre-commit` also runs in CI
 (`.github/workflows/ci.yml`), so a green local run should mean a green PR.
@@ -319,14 +325,11 @@ history):
   offline). It runs in `.github/workflows/audit.yml` on every push and
   weekly. Run it by hand after changing `uv.lock`; an accepted advisory
   goes in its `IGNORED` list with a comment saying why it does not apply.
-- **The CHANGES rule is also held per COMMIT**, by a CI job a hook cannot
-  replace (`scripts/check_changes_per_commit.py`, `changelog-per-commit`
-  in `ci.yml`): the hook reads only the index it runs on, and a rebase
-  that folds commits or a skipped hook leaves a commit holding `src/`
-  with no entry. Run it on a branch before pushing: `uv run python
-  scripts/check_changes_per_commit.py --range origin/master..HEAD`. A
-  commit it names is amended or split; a later commit cannot fix it.
-  (history)
+- **A commit touching `src/` carries its changelog entry in its message**
+  (decision D20): the subject is the entry's lead, the body its text with
+  the moves it enumerates. `scripts/changelog_from_git.py --write` builds
+  the `## Unreleased` section from those commits at release; nobody edits
+  the section by hand, and no hook or CI job asks for an entry per commit.
 
 The local run has been *weaker* than CI three times, never the reverse:
 
@@ -360,11 +363,12 @@ What surprises people about the gates:
   because `--verifytypes` inspects an installed package. New public
   symbols need real annotations - no bare `dict`/`list`/`tuple`.
 
-**`CHANGES.md`.** Any commit touching `src/` touches `CHANGES.md`, under
-`## Unreleased`; a hook enforces it. The same hook checks that there is
-exactly ONE `## Unreleased` heading (two branches each adding one merge
-without a conflict, and `bump_version.py` renames only the first) and that
-every released version keeps its own heading (the version in
+**`CHANGES.md`.** The `## Unreleased` section is generated from the commits
+at release (`scripts/changelog_from_git.py`, decision D20); what stands
+above its marker line was written by hand before D20 and stays. A hook
+checks the headings: exactly ONE `## Unreleased` (two branches each adding
+one merge without a conflict, and `bump_version.py` renames only the
+first) and every released version keeping its own (the version in
 `pyproject.toml` everywhere, every tag where the clone has tags; CI's
 shallow clone has none and says so). (history)
 
@@ -399,11 +403,15 @@ turned off.
   that stopped bundling it would break the import with nothing here
   changed. A dev or docs tool goes in its extra, never in the core list.
 - **No function is more complex than radon grade C** (cyclomatic
-  complexity 20), no module worse than C, the average no worse than B - a
-  xenon gate. The way past it: split the body into named steps called in
-  the original order, each keeping the comment that explains it. A pure
-  refactor is proven by a golden comparison, not by the suite alone
-  ("Verifying your work").
+  complexity 20) unless its `def` line carries `# complexity: <reason>` -
+  a flat rule or dispatch table that reads better whole than as a chain of
+  named steps (decision D18; `scripts/check_complexity.py`, per commit);
+  no module worse than C, the average no worse than B (xenon, at the
+  push). Otherwise the way past it: split the body into named steps called
+  in the original order, each keeping the comment that explains it. A
+  chain that was split only for the gate is collapsed back when a change
+  touches it. A pure refactor is proven by a golden comparison, not by the
+  suite alone ("Verifying your work").
 - **Every module lives in a package; the root of `src/association` holds
   only `__init__.py` and `py.typed`.** Where things go:
   - `cli/` - the `association` command (`commands.py`) and the default

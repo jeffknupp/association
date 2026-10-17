@@ -29,5 +29,5 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SKIP=docs uv run pre-commit run --all-files
+uv run pre-commit run --all-files && SKIP=docs uv run pre-commit run --all-files --hook-stage pre-push
 uv run pytest -q -n auto
