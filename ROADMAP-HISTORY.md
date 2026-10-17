@@ -2208,6 +2208,30 @@ with nothing to read fills the silence from its own weights), and more data
     planned query identical on every question; the lead's re-proof
     confirmed all 12 as the sentence appended, F133 and F098 kept.
 
+62. **The playoff round (2026-10-17, master `0cf5a6c9`).** Lane p6-round,
+    alone on the seam and the fetch path, D4/D11 lifted for it. Surveyed
+    first: ESPN serves a `playoff` series object with the wins as of each
+    game for every postseason 1989-2026, a round type on the scoreboard
+    from 2004 and a round-and-game note from 2009 - #10's "the games carry
+    no round label" was true of our table, not of ESPN. `real_games` gains
+    `playoff_round`, `series_game`, `playoff_conference`, derived from the
+    bracket (15 series a postseason, 8/4/2/1); the derivation agreed with
+    all 1,915 typed games and 1,610 round notes, so no "derived" caveat;
+    the fetch parses ESPN's own fields for the backfill's check
+    (`scripts/backfill_series_games.py`, `check_playoff_rounds.py`, not
+    run). The lead rebuilt `real_games` on the warehouse before the merge
+    (43,353 rows, unchanged; 3,076 rounds) and re-ran master's baseline on
+    it: 628 identical, 9 feed moves from row order alone (shot-chart file
+    names, filed). The merge: keyed score 23 graded moves, 0 regressions,
+    12 sample ids to their keys (the lead checked FS069, FS103, FS252,
+    FS386); feed 91 refusal->fluent (the lane recomputed every one from
+    the box scores) and 32 refusal->refusal, corpus 2; widening 0 flags;
+    feed ledger 2,540 -> 2,521. Fixed with it: a team's log, record, best
+    game and quarter answering the whole postseason under a round, a
+    team's record over a teammate's line dropping every cut but venue and
+    opponent, quarters named together refused by name, "kareem abdul
+    jabbar". Open for Jeff: whether a round implies the career (FS189).
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

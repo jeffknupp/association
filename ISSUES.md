@@ -46,6 +46,14 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A lone word of a name reads the only player on record with it, the rest of the name unread: "tyrese maxi last 5 games vs pistons" answers for Maxi Kleber
+- **Found:** 2026-10-17, lane p6-round (the playoff round), probing its moved readings.
+- **Evidence:** a word that is a whole word of exactly one player's name resolves to him even where the question's other name word belongs to someone else: "tyrese maxi last 5 games vs pistons" answers Maxi Kleber's games ("tyrese" unread), "wilt chamberlain vs kareem stats" Kareem Rush's. A blanket rule breaks right readings ("lebron rookie stats", "zion william"): 288 lone-first-name matches across the 2,698 readings.
+- **User sees:** a fluent answer about a player the question did not name.
+- **Next step:** a rule on the reader's own unread words (a name word left unread beside the matched one refuses or re-resolves), measured on the 288.
+- **Priority:** P1 - fluent wrong player.
+- **Source:** ours.
+
 ### "before / until / through <bare year>" is read as that one season: "most 3s in an nba game before 2010" answers 2010's high
 - **Found:** 2026-10-17, lane p6-sentence (D17), measuring the feed sample's FS142 after the game-level ranking moved to its reader.
 - **Evidence:** the span tagger reads a bare year after "before", "until", "through" as the season itself, not a range bound. Feed wordings: "most 3s in an nba game before 2010" (FS142; the key: Kobe Bryant and Donyell Marshall, 12 each), "most made 3 pointers before 1991", "Most made 3 pointers before 1995", "which team has made the most three pointers in a season before 2015". A closing date ("prior to 02/03/2024") is a different entry, refused by value.
@@ -121,6 +129,14 @@ before that commit needs re-checking against the current warehouse.
 
 ## P2: misleading or incomplete
 
+### Team readers rebuild the cuts field by field, so a new cut is dropped silently until each is taught
+- **Found:** 2026-10-17, lane p6-round (the playoff round), fixing `320546c9` ("knicks second round record 2026" answered the postseason's 16-3, the round's 4-0).
+- **Evidence:** `compose/highs.py`, `logs.py`, `periods.py`, `meetings.py` build a team's `Cuts` by naming each field, so a cut added to `reading.Cuts` reaches them only when each is edited; the round was the third such drop (`7ae6a571`: a team's record over a teammate's line kept only venue and opponent).
+- **User sees:** a fluent answer over more games than asked, nothing said - the failure shape the project keeps producing.
+- **Next step:** pass the scope's cuts whole (a `dataclasses.replace` over the read's own), or a source test that every `Cuts(` built on the answer side names every field.
+- **Priority:** P2 - a silent narrowing dropped, found three times.
+- **Source:** ours.
+
 ### "best 3 point shooters" is read as made threes, not the percentage: "nba best 3 point shooters last 5 years" ranks 3PM
 - **Found:** 2026-10-17, lane p6-sentence (D17), FS253 against its key.
 - **Evidence:** the key ranks 3P% with a floor of 1,000+ attempts over the five seasons; the measure tagger reads "3 point" as made threes, and the game-level ranking qualifies by games only, not attempts.
@@ -157,12 +173,12 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #503
 
-### "final" beside a year is not the Finals: "Leonard final 2013" is refused for an unread window word
-- **Found:** 2026-10-17, lane p6-causes (step 3), the sample's FS059; "leonard 2019 final", "Brunson final 2026" the same.
-- **Evidence:** the round reader matches "the final(s)", "nba final(s)" and "finals" (#455's fix); a bare "final" beside a year is left to the window class and refused `unread_window`, where the key answers the 2013 Finals.
-- **User sees:** a refusal naming the wrong missing thing.
-- **Next step:** in the lexicon's round words, "final" beside a year (not before a count) is the round.
-- **Priority:** P2 - a refusal with a false cause on three recorded wordings.
+### A name is not eliminated by season type: "Leonard final 2013" asks Kawhi Leonard or Meyers Leonard, though only Kawhi played that postseason
+- **Found:** 2026-10-17, lane p6-causes (the sample's FS059); the round half fixed by lane p6-round (`f3190215`: "final" beside a year is the Finals).
+- **Evidence:** with Kawhi named, FS059 asks "Kawhi Leonard or Meyers Leonard?"; the name elimination (`entities.resolve_player`, `_named_in_full`) asks who played in the SEASONS asked, not in the season type - both played 2013, only Kawhi the 2013 postseason. The recorded reply names nobody, so on the recorded population FS059 is refused "No player or team is read" (the entry below on a unique name the model leaves out).
+- **User sees:** a question back where one candidate alone could be meant.
+- **Next step:** the elimination reads the span's season type where it is the postseason.
+- **Priority:** P3.
 - **Source:** ours.
 - **GitHub:** #491
 
@@ -820,36 +836,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
-### A named playoff round is refused - the games carry no round label, and the Finals are derivable
-- **Found:** 2026-09-11, repo audit; **re-measured 2026-09-18** over the
-  2,285-question large StatMuse set (`~/association-research/statmuse-2026-09-large/`):
-  **124 of 2,285 (5.4%) mention the Finals in some form**, and a read of a
-  sample says nearly all need the round `games` does not carry (Finals-only
-  lookups, Finals game logs, "who won the Finals", Finals MVP). The set's own
-  capability classifier flags 3 of the 124, because "needs a round" is not in
-  its checklist - so this entry's share of real traffic is well above what its
-  worked example suggested.
-- **Evidence:** `check_scope` (the planner since 2026-10-05) raises on `round`, and `agent.py` then hands the
-  question to the SQL agent, although `games` has no series or round column.
-  This is the "nothing does better here" case where `check_coverage` returns a
-  refusal instead.
-- **User sees:** "tatum stats in the 2024 finals" takes 30-120 seconds, and the
-  agent is free to answer for the whole postseason.
-- **Next step:** return a refusal naming the missing round data, the way
-  `_conference_refusal` does. Deriving rounds from series order is a separate
-  P3 job.
-- **Re-measured 2026-09-21: the largest single fall-through cause in a live
-  sample, and the Finals are derivable.** 10 of 200 seeded-random reasonable
-  large-set questions fell through on `round` (all ten say "finals": "michael
-  jordan career finals stats", "how many 40 point finals games does kobe
-  have"); 124 of the 1,972 reasonable questions (6.3%) name a round. The
-  Finals need no round column: the series holding each calendar year's last
-  postseason game in `real_games` is 4-7 games for 36 of 38 years (2001 shows 1
-  game - DATA.md's missing 2001 playoffs - and 1994 shows 14, the phantom-1993
-  duplicates, so key on `season` too). Prefer answering the Finals and refusing
-  the other rounds to refusing all of them. Evidence:
-  `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/`.
-- **GitHub:** #10
 - **Re-measured 2026-09-24:** the fall-through half is fixed - `round` is
   now refused fast, naming the missing label and the repair (the two teams
   and the season), by `association.query.refusals` after the template and
@@ -1543,6 +1529,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a question back naming the wrong men, where the honest sentence names the era.
 - **Next step:** a table of the pre-1994 names people ask about (the Hall of Fame, say) checked before the surname back-off, so a name on it is refused by the era outright - a declared vocabulary, like `PLAYER_NICKNAMES`; or the back-off's candidates narrowed to those sharing the given name's initial before the clause is said. Measure how many feed questions name a pre-1994 player first (the 26 betting wordings were counted the same way).
 - **Source:** ours (the warehouse's floor is ESPN's, `DATA.md` "Coverage floors").
+- **Partly fixed (lane p6-round, `7a06b501`, 2026-10-17):** "kareem abdul jabbar" is read as the whole name, not Kareem Rush; the other legends stand.
 - **GitHub:** #123
 ### No future template gets a renderer for free
 - **Found:** 2026-09-18, scoping study requested ("richer HTML answers -
@@ -1935,6 +1922,30 @@ those were found.
 - **GitHub:** #467
 
 ## P3: refusal or gap
+
+### A round with no season named reads the current season, where the words imply the career: "jimmy butler nba finals stats"
+- **Found:** 2026-10-17, lane p6-round (the playoff round), FS189 against its key.
+- **Evidence:** FS189's key reads Butler's two Finals (2020, 2023: 11 games, 24.1 points); the answer is "No 2026 postseason games found for Jimmy Butler III ... ask for his career". The same on "lebron james win loss record in the finals", "lebron james 4th quarter in all finals", "Caleb martin ecf", "kyrie in nba finals game 7". And the league's "most blocks / steals / free throws / three-pointers in a game 7" is refused: honoring a series game there is one clause, but D13's guard keeps a game of a series off the career "most X in a game" reads, so it would rank 2026's Game 7s alone.
+- **User sees:** a refusal pointing at the career wording, where the career was what was asked.
+- **Next step:** Jeff's call under D13 - whether a named round (and a game of a series) implies the career (`span.IMPLIED_CAREERS`); then the game-7 clause.
+- **Priority:** P3 pending Jeff's call.
+- **Source:** ours.
+
+### When the recorded reply names nobody, a name only the words hold is not read: "dirk 2011 finals stats" is refused "No player or team is read"
+- **Found:** 2026-10-17, lane p6-round (the playoff round), reading the round's refusals.
+- **Evidence:** "dirk 2011 finals stats", "shaquille o'neal 2004 finals stats" and Duncan, Brunson, Leonard, Gasol and Fox wordings (FS059, FS182, FS188, FS348 among them) are refused for no subject where the recorded normalizer reply named no player; with the name supplied each answers its key. The before tree does the same on "dirk 2011 playoff stats", so it is not the round's.
+- **User sees:** a refusal on a question naming a player plainly.
+- **Next step:** measure whether the subject reading should read a unique whole-name match from the words when the model names none (`subject.players_named_in`), against the invented-name rules in AGENTS.md ("Names").
+- **Priority:** P3.
+- **Source:** ours (the model's reply, read past).
+
+### The round's remainders: the rounds around one, the meetings tally, a team ranking and a quarter within a round
+- **Found:** 2026-10-17, lane p6-round (the playoff round), closing #10.
+- **Evidence:** "before / until / vs the finals" stay the `playoff_round` cause; the two-team meetings tally refuses a round ("knicks record vs spurs in the 2026 finals"); a team ranking refuses it; the period readers step aside for a round, so "Lebron total 4th quarter stats 4th quarter nba finals vs miami" is the compiler's log of six games, no total (`result.RoundOf`, `PERIOD_ROUND`). "nba finals game log 2025" (the yardstick's F165) is now declined as having no player subject, where the Finals' games are a team log of the two teams.
+- **User sees:** a refusal, or a log where a total was asked.
+- **Next step:** each reader honors the `round` cell through its relation's shared step; the league's Finals log reads the two teams.
+- **Priority:** P3.
+- **Source:** ours.
 
 ### The warehouse holds no trade dates, so a teammate's stint ends at his next team's first game: "kyrie second half game log without luka" counts 33 of the key's 30
 - **Found:** 2026-10-17, lane p6-traps, fixing #480 (a stint now runs to the day before his first row for his next team).
@@ -2902,6 +2913,30 @@ those were found.
 - **GitHub:** #469
 
 ## P4: tooling, docs, low impact
+
+### Champions are derivable from the round-4 series winner
+- **Found:** 2026-10-17, lane p6-round (the playoff round), the survey of what ESPN serves.
+- **Evidence:** every postseason holds 15 series (8/4/2/1); the Finals' winner is the team with four wins in round 4 (`real_games.playoff_round`, `series_game`). "Who won the NBA Finals in 2003-04?" is `championship`, refused.
+- **User sees:** a refusal on a fact the warehouse holds.
+- **Next step:** a champion read needs a new shape (D11, Jeff's lifting).
+- **Priority:** P4.
+- **Source:** ours.
+
+### A shot chart's file name depends on the rows' order, so a warehouse rebuild renames it
+- **Found:** 2026-10-17, the lead, a baseline run on master before and after `real_games` was rebuilt (no code change).
+- **Evidence:** "Kawhi shot chart 2018 2019" wrote `shotchart_kawhi_leonard_69g_400975179_401071603.html` before and `..._401071028_401071783.html` after, every figure identical: the name takes the first and last event id of rows read without an order (DuckDB keeps none, `preserve_insertion_order=false`). Four feed answers.
+- **User sees:** nothing but the file name; the populations see a move no change made.
+- **Next step:** name the file from the sorted ids (min, max).
+- **Priority:** P4.
+- **Source:** ours.
+
+### A per-game figure at an exact half rounds to even: Kobe's 2002 Finals assists said 5.2 where the key says 5.3
+- **Found:** 2026-10-17, the lead, FS103 against its key.
+- **Evidence:** 21 assists over 4 games is 5.25; the sayer's format rounds the float half to even (5.2), the key and the record books half up (5.3).
+- **User sees:** a figure 0.1 off the published one.
+- **Next step:** round half up in the sayer's per-game format (`decimal`), measured on the populations.
+- **Priority:** P4.
+- **Source:** ours.
 
 ### The rebuild's attempts and rebound sides are measured but nothing reads them
 - **Found:** 2026-10-17, lane p6-traps, fixing #501.
