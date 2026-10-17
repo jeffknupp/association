@@ -933,10 +933,17 @@ grammar, the window and the span read a misspelling alike.
 # already leads with the one asked about and adds "Next: ..." (a ranking, a
 # count over a line, a single game's high), and a limit of 1 would cost those
 # answers their runners-up.
+# "last" misspelled before a count of games - the feed's "jalen brunson
+# lasst 5 games" (the feed sample's FS007) and "aaron gorodn lat 5 games",
+# each refused for an unread number where the key reads the last 5 games.
+# Only spellings that are no word of their own: "least" ("at least 5
+# games"), "lost", "list", "past" (read as itself) and "ast" (assists:
+# "hield ast 5 games") are not "last".
+_LAST_NEAR = "lasst|lastt|laast|lsat|alst|lat"  # codespell:ignore lsat - a misspelling of "last" the window reads
 WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
     (
         re.compile(
-            rf"\b(last|past|previous|most recent|latest|final)\s+{COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}({WINDOW_GAMES}|outings?|contests?|starts?)\b",
+            rf"\b(last|past|previous|most recent|latest|final|{_LAST_NEAR})\s+{COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}({WINDOW_GAMES}|outings?|contests?|starts?)\b",
             re.IGNORECASE,
         ),
         "recent",
@@ -944,6 +951,12 @@ WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
     ),
     # A bare count closing the question is games: "magic vs nets last 10".
     (re.compile(rf"\b(last|past|previous)\s+{COUNT}\s*[?.!]*\s*\Z", re.IGNORECASE), "recent", 0),
+    # And a bare count before "stats": "Sengun last 5 stats vs knicks" (the
+    # feed sample's FS015) was refused for an unread number where the key
+    # reads his last 5 games against New York. Not before a versus word:
+    # "last 10 vs denver" would make the "games" of every "last 10 games vs
+    # denver" a word the window reads without.
+    (re.compile(rf"\b(last|past|previous)\s+{COUNT}\s+(?=stats?\b)", re.IGNORECASE), "recent", 0),
     (re.compile(rf"\bfirst\s+{COUNT}\s+{WINDOW_GAMES}\b", re.IGNORECASE), "first", 0),
     (re.compile(r"\b(last|most recent|latest|final)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", re.IGNORECASE), "recent", 1),
     (re.compile(r"\b(first|opening)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b|\b(season\s+)?opener\b", re.IGNORECASE), "first", 1),

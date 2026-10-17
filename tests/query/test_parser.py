@@ -1346,7 +1346,6 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
 @pytest.mark.parametrize(
     ("question", "names", "stat", "kind", "words"),
     [
-        ("aaron gorodn lat 5 games", ["Aaron Gordon"], "points", "unread_number", ("5",)),
         # Two edits from "quarter" is no near spelling of it: the ordinal stays unread ("1st quater" is the quarter, #457).
         ("Bam adeboyo 1st quinter average", ["Bam Adebayo"], "points", "unread_number", ("1st",)),
         ("sga scored 20 points in the 2nd quarter", ["Shai Gilgeous-Alexander"], "points", "unread_number", ("20",)),
@@ -1371,8 +1370,8 @@ def test_game_score_is_ranked_by_game_score_not_by_points(con: duckdb.DuckDBPyCo
 def test_a_word_of_meaning_the_reading_defaulted_past_is_a_refusal_by_name(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str, kind: str, words: tuple[str, ...]) -> None:
     """An unread number, window word or month the reading took a default past
     is a ``defaulted`` cause naming the words, which the planner says where
-    it would otherwise answer past them ("aaron gorodn lat 5 games" with the
-    5 unread). The cause claims its words, so they leave
+    it would otherwise answer past them ("sga scored 20 points in the 2nd
+    quarter" with the 20 unread). The cause claims its words, so they leave
     ``Reading.unread``."""
     reading = _read(con, question, names, stat)
     assert reading.defaulted is not None and reading.defaulted.kind == kind and reading.defaulted.facts["words"] == words
@@ -1571,6 +1570,30 @@ def test_a_named_high_with_no_stat_reads_points_and_says_so(con: duckdb.DuckDBPy
         if "asistss" in question:
             # The word no reader reads is named as the stat, and claimed.
             assert reading.point_refusal.facts["stat"] == "asistss" and "asistss" not in reading.unread
+
+
+@pytest.mark.parametrize(
+    ("question", "count"),
+    [
+        ("tyrese maxey lasst 5 games", 5),
+        ("tyrese maxey lat 5 games", 5),
+        ("tyrese maxey last 5 stats vs knicks", 5),
+        ("tyrese maxey games with at least 5 assists", None),
+        ("tyrese maxey ast 5 games", None),
+    ],
+)
+def test_last_misspelled_or_before_stats_reads_the_window_of_games(con: duckdb.DuckDBPyConnection, question: str, count: int | None) -> None:
+    """The feed sample's FS007 ("jalen brunson lasst 5 games") and FS015
+    ("Sengun last 5 stats vs knicks") were refused for an unread number,
+    where the keys read the last 5 games: a near spelling of "last" that is
+    no word of its own, and a bare count before "stats", read the window.
+    "at least" and "ast" (assists) are not "last"."""
+    reading = _read(con, question)
+    if count is None:
+        assert reading.window.order != "recent" or reading.window.count != 5
+    else:
+        assert reading.window.order == "recent" and reading.window.count == count
+        assert reading.defaulted is None
 
 
 @pytest.mark.parametrize(("question", "source"), [("total points leader in 1998 season", "seasons"), ("most total points vs boston this season", "games")])
