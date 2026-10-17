@@ -921,7 +921,9 @@ def _tagged(
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
 
     window = window_under(asked, read_window(_tagged_window_words(question, asked, cuts_context, split.split), window_context))
-    implied = _SpanImplied.of(companions, cuts, kept.minimum, inactive=inactive, teams=settled.subject.teams, yes_no_stat=window_context.boolean_stat)
+    # A team's players ranked by their games ("least games played with lakers"): the franchise's.
+    franchise_games = bool(settled.subject.teams) and settled.subject.player is None and measure.measure is not None and measure.measure.key == "games_played"
+    implied = _SpanImplied.of(companions, cuts, kept.minimum, inactive=inactive, teams=settled.subject.teams, yes_no_stat=window_context.boolean_stat, franchise_games=franchise_games)
     span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts, implied=implied)))
     scope = Reading(
         who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span, minimum=kept.minimum
@@ -1034,7 +1036,7 @@ class _SpanImplied:
     each a value another family typed or the subject reading settled: an
     opponent the cuts read, a companion who played, a holiday, every
     player named inactive in the latest season, a ranking's floor of
-    games."""
+    games, a team's players ranked by their games."""
 
     opponent: bool = False
     companion_played: bool = False
@@ -1045,9 +1047,12 @@ class _SpanImplied:
     minimum_games: int | None = None
     former_era: bool = False
     yes_no_stat: bool = False
+    franchise_games: bool = False
 
     @classmethod
-    def of(cls, companions: tuple[Companion, ...], cuts: CutsRead, minimum: Minimum | None, *, inactive: bool, teams: tuple[str, ...], yes_no_stat: bool = False) -> _SpanImplied:
+    def of(
+        cls, companions: tuple[Companion, ...], cuts: CutsRead, minimum: Minimum | None, *, inactive: bool, teams: tuple[str, ...], yes_no_stat: bool = False, franchise_games: bool = False
+    ) -> _SpanImplied:
         """The facts from the typed companions, cuts, minimum and teams."""
         situation = cuts.cuts.situation
         calendar = situation.calendar if situation is not None else None
@@ -1062,6 +1067,7 @@ class _SpanImplied:
             inactive=inactive,
             minimum_games=minimum.count if minimum is not None and minimum.unit == "games" else None,
             yes_no_stat=yes_no_stat,
+            franchise_games=franchise_games,
         )
 
 
@@ -1097,6 +1103,7 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
         minimum_games=implied.minimum_games,
         former_era=implied.former_era,
         yes_no_stat=implied.yes_no_stat,
+        franchise_games=implied.franchise_games,
     )
 
 

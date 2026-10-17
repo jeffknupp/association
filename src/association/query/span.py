@@ -108,6 +108,12 @@ class SpanContext:
     #: a log of the games it holds in is every one on record ("lebron james
     #: triple double log", the feed sample's FS073), as their count is.
     yes_no_stat: bool = False
+    #: Whether a team's players are ranked by their games ("least games
+    #: played with lakers", "most games played by a player denver
+    #: nuggets"): one season's games played rank its roster by who was
+    #: healthy, and the words ask the franchise's history (the feed sample's
+    #: FS214, decision D17's measurement).
+    franchise_games: bool = False
 
 
 @dataclass(frozen=True)
@@ -485,6 +491,12 @@ def _implied_yes_no(question: str, context: SpanContext) -> bool:
     return context.player_named and context.yes_no_stat
 
 
+def _implied_franchise(question: str, context: SpanContext) -> bool:
+    """A team's players ranked by their games: the franchise's history."""
+    del question
+    return context.franchise_games
+
+
 IMPLIED_CAREERS: dict[str, Callable[[str, SpanContext], bool]] = {
     "versus": _implied_versus,
     "pair": _implied_pair,
@@ -497,6 +509,7 @@ IMPLIED_CAREERS: dict[str, Callable[[str, SpanContext], bool]] = {
     "minimum": _implied_minimum,
     "playoff_window": _implied_playoff_window,
     "yes_no": _implied_yes_no,
+    "franchise": _implied_franchise,
 }
 """The careers a question implies where it names no season (decision D13,
 Jeff's: a question naming no season reads the career where its words imply

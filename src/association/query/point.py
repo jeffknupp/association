@@ -2361,6 +2361,7 @@ _SPAN_IMPLIED: dict[str, frozenset[PointShape]] = {
     "playoff_window": frozenset({PLAYER_LOG}),
     "in_a_game": frozenset({GAME_HIGHS, TEAM_GAME_HIGHS, PLAYER_RANKING, PLAYER_LINE}),
     "yes_no": frozenset({PLAYER_LOG}),
+    "franchise": frozenset({PLAYER_RANKING}),
 }
 
 
