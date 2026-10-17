@@ -1386,20 +1386,7 @@ def say_game_ranking(result: Result) -> Answer:
         text = f"No player{where} played {stated:,} games in the {span}, the minimum asked for." if stated is not None else f"No games for {result.subject}{where} in the {span}."
     else:
         head = f"{result.subject}{where}, {span}{predicates_phrase(facts.predicates, grouped=True)}, by player" + _game_ranking_by(result, facts)
-        lines = [_game_ranking_line(facts, row) for row in body.rows]
-        if facts.tied_past:
-            # The count cut a tie: the players past it who tie the last
-            # shown are said, never silently left out.
-            last = body.rows[-1]
-            tied_at = f"{last.get('games')} G" if not facts.measures else f"{LABELS.get(facts.measures[0], facts.measures[0])} {_fmt(last['values'].get(facts.measures[0]), facts.measures[0])}"
-            lines.append(f"  and {facts.tied_past} more tied at {tied_at}")
-        if body.ranked_by == "count" and len(body.rows) > 1 and facts.total is not None:
-            # A count by player is usually asked for its total too ("thunder
-            # all-time triple doubles": 193, then who had them) - the whole
-            # count, not the listed rows' (core._grouped_total).
-            listed = " listed" if facts.total != sum(int(row.get("games") or 0) for row in body.rows) else ""
-            lines.append(f"  {'Total':24s} {facts.total} G" + (f" ({len(body.rows)} players{listed} of more)" if listed else ""))
-        text = head + ":\n" + "\n".join(lines)
+        text = head + ":\n" + "\n".join(_game_ranking_table(body, facts))
     headline = text.split("\n")[0].rstrip(":")
     # Each note on its own line beneath the table, as the compiler's own
     # sentence set them (a caveat glued to the last row read as its figure).
@@ -1417,6 +1404,26 @@ def say_game_ranking(result: Result) -> Answer:
         "notes": said,
     }
     return Answer(data=data, text=text, artifacts=[])
+
+
+def _game_ranking_table(body: Grouped, facts: GameRankingFacts) -> list[str]:
+    """A game-level ranking's rows, then the players its count cut from a
+    tie with the last shown, then - beneath a ranking of games counted -
+    the whole count."""
+    lines = [_game_ranking_line(facts, row) for row in body.rows]
+    if facts.tied_past:
+        # The count cut a tie: the players past it who tie the last
+        # shown are said, never silently left out.
+        last = body.rows[-1]
+        tied_at = f"{last.get('games')} G" if not facts.measures else f"{LABELS.get(facts.measures[0], facts.measures[0])} {_fmt(last['values'].get(facts.measures[0]), facts.measures[0])}"
+        lines.append(f"  and {facts.tied_past} more tied at {tied_at}")
+    if body.ranked_by == "count" and len(body.rows) > 1 and facts.total is not None:
+        # A count by player is usually asked for its total too ("thunder
+        # all-time triple doubles": 193, then who had them) - the whole
+        # count, not the listed rows' (core._grouped_total).
+        listed = " listed" if facts.total != sum(int(row.get("games") or 0) for row in body.rows) else ""
+        lines.append(f"  {'Total':24s} {facts.total} G" + (f" ({len(body.rows)} players{listed} of more)" if listed else ""))
+    return lines
 
 
 def _game_ranking_by(result: Result, facts: GameRankingFacts) -> str:
