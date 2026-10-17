@@ -1330,6 +1330,13 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
         # "has 4 fta": a box-score word the threshold spellings do not hold
         # (ISSUES.md #340), the column MEASURE_WORDS names it by.
         return "reached", Line(measure=lexicon.MEASURE_WORDS[has.group(2).lower()], value=int(has.group(1)), as_typed=has.group(0).casefold()), has.end()
+    bare = _condition_role_bare_number(text)
+    if bare is not None:
+        # "when tatum has 30": a line whose words name no stat (ISSUES.md
+        # #340) - read as a line on nothing, which the relation refuses by
+        # its words (``line_names_no_stat``), where reading no line answered
+        # the with/without split, a different question.
+        return "reached", Line(measure=None, value=bare[0], as_typed=bare[1]), bare[2]
     started = lexicon.CONDITION_STARTED.search(text)
     if started is not None:
         return "started", None, started.end()
@@ -1340,6 +1347,24 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
     if word in ("without", "excluding") or absent is not None:
         return "absent", None, absent.end() if absent is not None else None
     return "played", None, None
+
+
+def _condition_role_bare_number(text: str) -> tuple[int, str, int] | None:
+    """A number standing after a companion's name with no stat word read
+    beside it - "tatum has 30", "maxey has 20+" - as ``(value, the words
+    from the one before it, where it ends)``; None where the phrase holds
+    none. A year or an ordinal is no count of a stat (three digits at
+    most, digits alone)."""
+    pieces = list(lexicon.NAME_PIECES.finditer(text))
+    for at, (before, piece) in enumerate(itertools.pairwise(pieces), start=2):
+        digits = piece.group(0).removesuffix("+")
+        after = pieces[at].group(0).casefold() if at < len(pieces) else None
+        # A word after the number that is no joiner or function word is a
+        # stat the line spellings do not hold ("shoots 4 ft"): not a line
+        # on nothing, and left to the reading's unread number.
+        if digits.isdigit() and len(digits) <= 3 and int(digits) >= 1 and (after is None or after in lexicon.NAME_JOINERS or after in lexicon.NAME_STOPWORDS):
+            return int(digits), text[before.start() : piece.end()].casefold(), piece.end()
+    return None
 
 
 def _team_names(index: names.NameIndex, question: str, scope: Filtered, team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:

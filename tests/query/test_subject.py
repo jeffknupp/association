@@ -283,8 +283,25 @@ def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConne
     player = reading.who.player
     team_subject = reading.subject.kind in ("team", "team_players") and not reading.subject.players
     if reading.asked in PLAYER_ASKS and team_subject and player:
-        no_line = reading.asked == LINE_RECORD and not (threshold_of(reading) and reading.measure is not None and reading.measure.named)
+        # A record over a line with no stat is refused by the cause naming
+        # the stat missing ("celtics record when jayson tatum has 30", #340).
+        no_line = reading.asked == LINE_RECORD and not (threshold_of(reading) and reading.measure is not None and reading.measure.named) and reading.point_refusal is None
         assert not find_teams(teams_of(con), player) and not no_line, (question, reading.asked, player)
+
+
+@pytest.mark.parametrize("question", ["celtics record when jayson tatum has 30", "sixers record when maxey has 20+", "celtics record when tatum had 30 and brown plays"])
+def test_a_companions_number_with_no_stat_is_refused_by_the_stat_missing(con: duckdb.DuckDBPyConnection, question: str) -> None:
+    """ "celtics record when tatum has 30" names no stat after the number:
+    no line could be read, and the team's record fell back to the
+    with/without split over Tatum - a different question, fluently (ISSUES.md
+    #340). The number is read as the companion's line on no stat, and the
+    record over it is refused by the cause naming the stat it lacks; the
+    model's stat is no evidence for it (empty on a third of the recorded
+    "record when X scores N points" replies that name the stat outright)."""
+    from association.query.parse import read_route
+
+    reading = read_route(names_of(con), question, [], "points")
+    assert reading.asked == LINE_RECORD and reading.point_refusal is not None and reading.point_refusal.kind == "threshold_needs_stat", (question, reading.asked, reading.point_refusal)
 
 
 def test_a_models_name_filed_as_the_wrong_kind_is_dropped(con: duckdb.DuckDBPyConnection) -> None:

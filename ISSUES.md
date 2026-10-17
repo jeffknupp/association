@@ -91,14 +91,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #247
 
-### A team's record when a companion "has N" with no stat word is answered as the with/without split
-- **Found:** 2026-10-09, Phase 3 step 0, while measuring whether `refusals._team_where_a_player_belongs` was reachable (it was not, and this is why). Rewritten 2026-10-13 (lane N of the P1 sweep), which read a companion's line after "has N" on any box-score word (`lexicon.CONDITION_HAS_LINE`: "when mitchell robinson has 4 fta" is the Knicks' record in his 4+ FTA games, `CHANGES.md`).
-- **Evidence:** probed with names, "sixers record when maxey has 20+" (stat points) and "celtics record when tatum has 30" answer the with/without split: no stat word follows the number, so no line is read, the grammar's rules decline `record_when`, and the parent for a team with a companion is the with/without split. 0 of the 628 and of the 2,082 hold this wording.
-- **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
-- **Next step:** where a number follows "has"/"had" in a companion's phrase and no line can be read, refuse naming the missing stat (`line_names_no_stat`) rather than fall back to the parent - or read the normalizer's stat as the line's where the words name none, measured first.
-- **GitHub:** #340
-- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14).
-
 ### "top N games" and "best game(s)" are read as the newest games: "steph curry top 5 games this season" lists his last 5
 - **Found:** 2026-10-14, the Phase 5 review, probing step 1's refusals on both trees (`520a94b`, `3dc37821`).
 - **Evidence:** the window tagger reads "top 5 games" as a window of the newest 5 (`lexicon.ORDER_WORDS`' "top" beside a count), so "steph curry top 5 games this season" lists his last 5 games and "luka doncic best game this season" his last 10; the player's best games by points are the single-game high's shape (`player_games/rows/measure`, "most points in a game"), which these words never reach. Step 1's own refusal for "top" with no count suggests "top 5 games" as the rewording, which then answers wrong.
