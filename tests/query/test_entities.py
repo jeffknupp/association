@@ -397,6 +397,21 @@ def test_a_teams_single_near_spelling_is_read_and_said(league_teams: duckdb.Duck
     assert said == ["('sours' matches no team exactly and was read as the San Antonio Spurs, the only near spelling on record - spell the name exactly to ask about another team.)"]
 
 
+def test_a_word_near_a_team_and_a_player_is_asked_about(league_teams: duckdb.DuckDBPyConnection) -> None:
+    """ "vs magics" is one edit from the Orlando Magic and from Magic Johnson:
+    no single team's typo, so the resolution asks which - never chooses,
+    and never reads it as neither, which answered the subject's line over
+    every opponent with the word named nowhere (ISSUES.md #247). "sours" is
+    near no player and stays the Spurs."""
+    from association.query.entities import resolved_team
+    from association.query.result import Clarify
+
+    league_teams.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    league_teams.execute("INSERT INTO players VALUES ('1', 'Magic Johnson'), ('2', 'Tim Duncan')")
+    assert resolved_team(league_teams, "magics") == Clarify(asked="magics", candidates=("Orlando Magic", "Magic Johnson"), kind="name")
+    assert resolved_team(league_teams, "sours") == Entity(id="24", name="San Antonio Spurs")
+
+
 def test_nickname_resolves_to_the_player_it_unambiguously_means(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander'),('10','Victor Wembanyama')")
     assert resolve_player(con, "SGA") == Entity(id="9", name="Shai Gilgeous-Alexander")

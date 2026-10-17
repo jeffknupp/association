@@ -908,7 +908,8 @@ class Refusal:
 class Clarify:
     """A question back (``ROADMAP-TYPES.md``, "Outcome": ``Clarify``): the
     name as typed (``asked``), the players or teams it could be
-    (``candidates``, in the order they are named), what kind of name it is,
+    (``candidates``, in the order they are named), what kind of name it is
+    (``"name"`` where it could be a team or a player),
     how many of the candidates played in the span asked about (``active``,
     always named), and why it is asked - several on record by that name
     (``"ambiguous"``) or none, with near spellings (``"near_spelling"``).
@@ -916,11 +917,14 @@ class Clarify:
     held the sentence rather than the candidates.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       ``kind`` may be ``"name"``.
     """
 
     asked: str
     candidates: tuple[str, ...]
-    kind: Literal["player", "team"] = "player"
+    kind: Literal["player", "team", "name"] = "player"
     active: int = 0
     why: Literal["ambiguous", "near_spelling"] = "ambiguous"
     shown: Mapping[str, Any] | None = None

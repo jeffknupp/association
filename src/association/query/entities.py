@@ -1609,7 +1609,7 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
 # question about that player's games rather than about two franchises.
 
 
-def clarify(text: str, candidates: list[str], kind: Literal["player", "team"] = "player", active: int = 0) -> Clarify:
+def clarify(text: str, candidates: list[str], kind: Literal["player", "team", "name"] = "player", active: int = 0) -> Clarify:
     """A handled outcome: the reader knows exactly what
     is ambiguous, so it asks instead of passing the problem along. The
     sentence is the sayer's (``compose.say.clarification``), because the
@@ -1622,6 +1622,9 @@ def clarify(text: str, candidates: list[str], kind: Literal["player", "team"] = 
     .. versionchanged:: 5.0.0
        Returns a :class:`~association.query.result.Clarify` rather than its
        worded answer.
+
+    .. versionchanged:: 7.0.0
+       ``kind`` may be ``"name"``: a word that could be a team or a player.
     """
     return Clarify(asked=text, candidates=tuple(candidates), kind=kind, active=active)
 
@@ -1713,6 +1716,13 @@ def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
             if near is not None:
                 named = resolve_team(con, near.name, season)
                 chosen = named if isinstance(named, Entity) else near
+                # A word near a player's name as well ("houson": the Rockets,
+                # Allan Houston) is no single team's typo: asked, never
+                # chosen (ISSUES.md #247).
+                index = names_of(con)
+                players = _suggest_players_by_spelling(index, [text.strip()]) if index.players.error is None else []
+                if players:
+                    return clarify(text, [chosen.name, *(p.name for p in players)], kind="name")
                 note_team_typo_reading(text, chosen)
                 return chosen
             return Refusal(kind="name_unmatched", facts={"asked": text, "kind": "team"})

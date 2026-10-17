@@ -591,15 +591,18 @@ def _read_opponent_near(index: names.NameIndex, question: str) -> str | None:
     as typed - names arrive as typed - so the relation's team resolution
     reads it and the answer says so
     (:func:`~association.query.entities.resolved_team`). Not a word that is
-    a whole word of some player's name, or within the budget of one ("vs
-    hawes" is Spencer Hawes, one edit from the Hawks)."""
-    players = checked_players(index.players)
+    a whole word of some player's name ("vs hawes" is Spencer Hawes, one
+    edit from the Hawks). A word near a player as well as a team ("vs
+    houson": the Rockets, Allan Houston) is kept too, and the resolution
+    asks which (:func:`~association.query.entities.resolved_team`): read
+    as neither, the answer was the subject's line over every opponent, the
+    word named nowhere in it (ISSUES.md #247)."""
     for match in lexicon.AGAINST_PHRASE.finditer(question):
         words = _team_words(match.group(1))[:1]
         if not words:
             continue
         word = words[0]
-        if near_team(index.teams, word) is None or _exact_name_span(index.players, [word]) or players.near([(word, _edit_budget(word))]):
+        if near_team(index.teams, word) is None or _exact_name_span(index.players, [word]):
             continue
         return word
     return None
@@ -1446,6 +1449,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     # question is about.
     own_team = _read_subject_own_team(index.teams, question, players, own, season, opponent)
     teams = _team_names(index, question, scope, team_word, opponent, own_team)
+    teams = _read_subject_near_team(index, question, opponent, teams, others=(*players, *companions, position, own_team))
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
         evidence = (*evidence, f"companions the model named nobody for {list(unrouted)}")
@@ -1463,6 +1467,35 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
         filler=filler,
         claims=(*subject.claims, *_read_subject_season_claims(question)),
     )
+
+
+def _read_subject_near_team(index: names.NameIndex, question: str, opponent: str | None, teams: list[str], *, others: tuple[str | None, ...]) -> list[str]:
+    """The team a question naming no other subject names by a typo -
+    "nuggers record this season" - as typed, where exactly one of its words
+    is a near spelling of a team (:func:`~association.query.entities.near_team`)
+    and that word is no ordinary word ("rings" is one edit from the Kings),
+    no word of a player's name and near no player's: read as nobody, the
+    question ranked every team. Resolving it, and saying it was read as a
+    near spelling, is the entity index's
+    (:func:`~association.query.entities.resolved_team`), as for the word a
+    versus word leads (ISSUES.md #247). ``teams`` as read where the words
+    name a team or ``others`` holds another subject (a player, a companion,
+    a position, an own team), and empty where no word, or several, are
+    near one."""
+    if teams or any(others):
+        return teams
+    players = checked_players(index.players)
+    dictionary = _dictionary()
+    found: dict[str, str] = {}
+    for word in dict.fromkeys(_team_words(question)):
+        lowered = word.casefold()
+        if lowered in dictionary or (opponent is not None and question_supports(opponent, word)):
+            continue
+        team = near_team(index.teams, word)
+        if team is None or _exact_name_span(index.players, [lowered]) or players.near([(lowered, _edit_budget(lowered))]):
+            continue
+        found.setdefault(team.id, word)
+    return list(found.values()) if len(found) == 1 else []
 
 
 def _read_subject_own_team(teams: names.TeamIndex, question: str, players: tuple[str, ...], own: tuple[Entity, int] | None, season: int | None, opponent: str | None) -> str | None:

@@ -82,15 +82,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
 
-### A word after a versus word near both a team and a player is read as neither: "Kmart vs houson" answers without the opponent
-- **Found:** 2026-09-27, plan item 6 step (d) part 3 (#131, "gui last 5 games vs sours"); rewritten 2026-10-13 twice by the P1 sweep's lane N, which read a near spelling of exactly one team after a versus word (`subject._read_opponent_near`, `entities.near_team`: "gui last 5 games vs sours" and 11 more) and refused a word after a versus word that names nothing on record (`subject.versus_word_unread`, the `opponent_not_read` cause: "steph curry vs phnx", "og annuby vs philidalephis stats", "Vucevic vs magocs", "suns v kingsrecord last 20 games" and 4 more, `CHANGES.md`).
-- **Evidence:** what is left, on the 2,082 feed questions (no model names): a word after "vs" near a team AND a player is read as neither and refused by nothing - "Kmart vs houson" (Houston, Allan Houston), "austin reaves 2nd half game log vs clevland" (the Cavaliers, Antonius Cleveland), "Bobby Portis vs magics Gamelog" (the Magic, Magic Johnson); a nickname split in two, "lebron record vs t wolves"; a typo'd TEAM subject ("nuggers record"), since only the word a versus word leads is tried. Each answers the subject's line or log over every opponent.
-- **User sees:** a fluent answer to the un-narrowed question, the opponent named nowhere in it.
-- **Next step:** a word near a team and a player asks which (a `Clarify` naming both); "t wolves" joins the nicknames; a typo'd team subject read through `near_team` where no other subject stands. A test per wording.
-- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14: the review found it untagged in the P1 section).
-- **Source:** ours.
-- **GitHub:** #247
-
 ### "top N games" and "best game(s)" are read as the newest games: "steph curry top 5 games this season" lists his last 5
 - **Found:** 2026-10-14, the Phase 5 review, probing step 1's refusals on both trees (`520a94b`, `3dc37821`).
 - **Evidence:** the window tagger reads "top 5 games" as a window of the newest 5 (`lexicon.ORDER_WORDS`' "top" beside a count), so "steph curry top 5 games this season" lists his last 5 games and "luka doncic best game this season" his last 10; the player's best games by points are the single-game high's shape (`player_games/rows/measure`, "most points in a game"), which these words never reach. Step 1's own refusal for "top" with no count suggests "top 5 games" as the rewording, which then answers wrong.

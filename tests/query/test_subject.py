@@ -304,6 +304,25 @@ def test_a_companions_number_with_no_stat_is_refused_by_the_stat_missing(con: du
     assert reading.asked == LINE_RECORD and reading.point_refusal is not None and reading.point_refusal.kind == "threshold_needs_stat", (question, reading.asked, reading.point_refusal)
 
 
+def test_a_word_after_versus_near_a_team_and_a_player_is_kept_for_the_resolution_to_ask(con: duckdb.DuckDBPyConnection) -> None:
+    """ "Bobby Portis vs magics Gamelog": "magics" is near the Orlando Magic
+    and Magic Johnson, and was read as neither - his log over every
+    opponent (ISSUES.md #247). Kept as typed, the opponent's resolution asks
+    which; a whole word of a player's name is still his ("vs hawes")."""
+    s = _read(con, "luka vs magics Gamelog", PLAYER_LOG, scope=Reading(who=Who(kind="player", players=("Luka Doncic",))))
+    assert s.opponent == "magics"
+
+
+@pytest.mark.parametrize(("question", "teams"), [("celtcs record this season", ("celtcs",)), ("most rings all time", ()), ("kngs record vs lakers", ("kngs",))])
+def test_a_teams_typo_is_the_subject_where_no_other_subject_stands(con: duckdb.DuckDBPyConnection, question: str, teams: tuple[str, ...]) -> None:
+    """ "nuggers record this season" named its team by a typo and was read
+    as no subject: every team ranked (ISSUES.md #247). A word near exactly
+    one team, no ordinary word ("rings" is one edit from the Kings) and no
+    player's, is that team where nothing else is the subject - kept as
+    typed for the team's resolution to read and say so."""
+    assert _read(con, question, TEAM_RECORD).teams == teams
+
+
 def test_a_models_name_filed_as_the_wrong_kind_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
     """ "Alamhamed Embiid" handed as a team; "Boston Celtics" as a player.
     Neither is what the subject's field claims."""
