@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** `span.read_span` reads a bare year after these words as a range bound (`until`), deciding whether "before" excludes the year named (it should: "before 2010" ends with 2009); a reader case per wording; the feed moves enumerated.
 - **Priority:** P1 - a fluent answer for the wrong span, on four feed wordings.
 - **Source:** ours.
+- **GitHub:** #505
 
 ### "most points without missing in a nba game" answers the plain high, past "without missing"
 - **Found:** 2026-10-17, lane p6-sentence (D17), reading its feed moves.
@@ -61,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** read a perfect-shooting condition (field goals attempted = made, or free throws too) as a line on the games, or refuse it by a cause naming the words; until then `Reading.defaulted` should refuse the unread "without missing".
 - **Priority:** P1 - fluent wrong.
 - **Source:** ours.
+- **GitHub:** #506
 
 ### Two adjacent bare years are read as a two-season range: "nba most steals player 2023 2024" answers the two seasons' total where the key reads 2023-24
 - **Found:** 2026-10-17, lane p6-sentence (D17), FS243 against its key.
@@ -69,6 +71,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** Jeff's call between the two readings; if one season, "YYYY YYYY+1" reads as that season (the name it ends in), a reader case per wording.
 - **Priority:** P1 pending Jeff's call - fluent, the span visible in the heading.
 - **Source:** ours.
+- **GitHub:** #507
 
 ### A singular "game" against a team is read as the career's log: "D'Angelo Russell game against the Timberwolves" lists his last 10 of 21 meetings
 - **Found:** 2026-10-17, the lead, the keyed score (`~/association-research/stages/score_keyed.py`) over step 2 (runs 79 -> 86): the feed sample's FS331, graded `correct` when it answered his most recent game, moved under decision D13's "versus" career rule to "D'Angelo Russell vs the Minnesota Timberwolves, last 10 of 21 games of his career (2016-2026 regular seasons)".
@@ -125,6 +128,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** "best <stat> shooters" reads the stat's percentage, with an attempts qualifier the ranking states (`Reading.minimum` by attempts on the game-level ranking).
 - **Priority:** P2 - a fluent answer to a neighboring question, its measure in the heading.
 - **Source:** ours.
+- **GitHub:** #508
 
 ### Three wrong causes on rankings: "nba best shooting percentages 2023", "most career points by a point guard below 8000", "most 10+ pointd regular season games"
 - **Found:** 2026-10-17, lane p6-sentence (D17), the sample's ranking ids.
@@ -133,6 +137,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** per id: name which percentage (FG%, 3P%, TS%) the ranking needs; refuse FS137 by the career-total line; a near spelling of a stat word reads as the stat, as a name's does.
 - **Priority:** P2 - wrong causes.
 - **Source:** ours.
+- **GitHub:** #509
 
 ### "vs <player>" on a game log reads the games both played, not the subject's games against his team: "jay huff game log vs Embiid" shows 4 of 6
 - **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F142, `partial`).
@@ -1938,6 +1943,7 @@ those were found.
 - **Next step:** Phase 8: read ESPN's transactions and end a stint at the trade date (`conditions.stints`).
 - **Priority:** P3 - a published fact not pulled; the error is a few games.
 - **Source:** the pull (ESPN publishes transactions).
+- **GitHub:** #510
 
 ### A waived player's stint runs to his team's last game of the season
 - **Found:** 2026-10-17, lane p6-traps, writing `conditions.stints`.
@@ -1946,6 +1952,7 @@ those were found.
 - **Next step:** measure on the feed's "without" wordings how often each rule is wrong; transactions (above) settle both.
 - **Priority:** P3.
 - **Source:** ours.
+- **GitHub:** #511
 
 ### The highs reader reads no offensive or defensive rebounds, nor a high under a yes/no predicate
 - **Found:** 2026-10-17, lane p6-sentence (D17), measuring what `compose/sentence.py` still answers.
@@ -1954,6 +1961,7 @@ those were found.
 - **Next step:** the highs reader takes the rebound sides and a predicate's games.
 - **Priority:** P3.
 - **Source:** ours.
+- **GitHub:** #512
 
 ### A career ranking by position reads the box scores only, so a pre-1994 career is short: "most career rebounds by a small forward" leaves out Pippen
 - **Found:** 2026-10-17, lane p6-sentence (D17), FS026.
@@ -1962,6 +1970,7 @@ those were found.
 - **Next step:** a ranking by position over a career reads the season line where it holds the position; otherwise say the floor in the sentence.
 - **Priority:** P3.
 - **Source:** ours.
+- **GitHub:** #513
 
 ### A period read leaves 2016 out where the key counts it: "harrison barnes 1st quarter stats each game vs magic" says 24 games of 26
 - **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F028, F058, F059, each `partial`; the sample's FS027).
@@ -2901,6 +2910,7 @@ those were found.
 - **Next step:** decide whether FGA, FTA, OREB, DREB join `player_games.REBUILT_STATS`.
 - **Priority:** P4.
 - **Source:** ours.
+- **GitHub:** #514
 
 ### A tie for the top larger than TIE_ROOM is cut at limit + 10
 - **Found:** 2026-10-17, lane p6-traps, writing `player_games.ordered_cut`.
@@ -2909,6 +2919,7 @@ those were found.
 - **Next step:** say "and N more" where a top tie is cut.
 - **Priority:** P4.
 - **Source:** ours.
+- **GitHub:** #515
 
 ### Research tooling: the widening harness flags whole ties; page_renders pulls an unpinned playwright
 - **Found:** 2026-10-17, lanes p6-traps and p6-sentence.
@@ -2917,6 +2928,7 @@ those were found.
 - **Next step:** the tie check reads whether the NEXT row past the listing ties (the warehouse) or skips rows listed beyond the asked count; pin `playwright==1.63.0`.
 - **Priority:** P4.
 - **Source:** ours.
+- **GitHub:** #516
 
 ### A module-level constant reassigned in its own module is caught by no gate
 - **Found:** 2026-10-17, lane p6-causes: `lexicon.POSITION_GROUPS` assigned twice in the lexicon; ruff, mypy and `check_duplicate_names.py` (cross-module only) said nothing, and one test failed.
