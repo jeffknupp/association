@@ -291,6 +291,10 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         # ISSUES.md #390), which the ranking keeps its players past.
         taken=Measure.CELLS | ReadLine.SEASON_CELLS,
     ),
+    # The league's players ranked over their games (compose.rankings.read_game_ranking,
+    # decision D17): the compiler's ranking of each player's games, narrowed by
+    # the relation's shared steps - every cell the relation carries is stated.
+    PointShape("player_games", "ranking", "player"): ShapeCells(unstated={}),
     # Players ranked by how many of their seasons a season line holds
     # (ISSUES.md #391) pool every season on record: no span is stated, and a
     # season's figure is no game to cut.

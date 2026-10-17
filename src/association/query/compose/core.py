@@ -1208,7 +1208,7 @@ def _rebuilt_shown_count(q: Query, rows: list[dict[str, Any]]) -> int:
     return sum(int(r.pop("rebuilt_shown", 0) or 0) for r in rows)
 
 
-def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list[dict[str, Any]]) -> list[str]:
+def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list[dict[str, Any]]) -> list[Note]:
     """What this answer has to say about its own box scores - a teammate's
     absence explained, the empty lines left out of the count, the games
     rebuilt from play-by-play rather than fetched, and a career predating
@@ -1226,12 +1226,10 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
        ``data["rows"]`` for exactly the subject this function returns early
        for.
     """
-    from association.query.compose.say import note_phrase
-
     rebuilt_shown = _rebuilt_shown_count(q, rows)
     unread = unread_note(q, rows)
     if c.player is None:
-        return [note(unread.kind, note_phrase(unread), **unread.facts)] if unread is not None else []
+        return [unread] if unread is not None else []
     # A dated read's "career" span is only how the game was FOUND (binding
     # parity, K1 rule 6), not what the answer is about - the same reason
     # `game_log`'s own notes turn this note off for one.
@@ -1242,7 +1240,7 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
         # measures skip: one sentence says both, in the shown note's place.
         shown = [i for i, each in enumerate(notes) if each.kind == "lines_rebuilt"]
         notes = [*notes[: shown[0]], unread, *notes[shown[0] + 1 :]] if shown else [*notes, unread]
-    return [note(each.kind, note_phrase(each), **each.facts) for each in notes]
+    return notes
 
 
 def _unread_read(q: Query, r: dict[str, Any], columns: list[str]) -> int | None:
@@ -1382,7 +1380,9 @@ def _executed(con: duckdb.DuckDBPyConnection, statement: Compiled | TeamCompiled
 
 
 def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
-    """Compile and execute: rows as dicts, with what the relation settled.
+    """Compile and execute: rows as dicts, with what the relation settled
+    (:func:`read_compiled`), its notes phrased for the compiler's own
+    sentence - each written as it is said (:func:`~association.query.notes.note`).
 
     .. versionchanged:: 4.4.0
        Carries ``notes`` - the box-score caveats a named player's answer
@@ -1400,6 +1400,24 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
        Carries ``entity`` (the resolved player, or ``None`` for the league)
        and ``rebuilt_by_row`` (each row's own rebuilt-game count), which
        a reader (``compose.counts``) carries into its notes.
+    """
+    from association.query.compose.say import note_phrase
+
+    out = read_compiled(con, q)
+    out["notes"] = [note(each.kind, note_phrase(each), **each.facts) for each in out["notes"]]
+    return out
+
+
+def read_compiled(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
+    """Compile and execute, as :func:`run` does, with the notes as values
+    (:class:`~association.query.notes.Note`) a reader carries on its Result
+    for the sayer to phrase and record once - the game-level ranking's
+    reader (:func:`~association.query.compose.rankings.read_game_ranking`),
+    where :func:`run` phrases them for the compiler's own sentence. Also
+    ``query``, the point as it ran (its qualifier scaled where the default
+    kept everyone out).
+
+    .. versionadded:: 7.0.0
     """
     try:
         c = compile_query(con, q)
@@ -1430,6 +1448,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
         "measures": ran.measures,
         "notes": notes,
         "minimum_scaled": scaled,
+        "query": q,
     }
 
 

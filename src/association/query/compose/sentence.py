@@ -10,6 +10,7 @@ follow-up (`AGENTS.md`, "A reasonable default beats a question").
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from association.query.measure import won
@@ -144,12 +145,20 @@ _LINE_WORDS: dict[str, str] = {
 
 
 def _predicates(q: Query, *, grouped: bool = False) -> str:
+    """The point's predicates as a trailing phrase (:func:`predicates_phrase`)."""
+    return predicates_phrase(q.predicates, grouped=grouped)
+
+
+def predicates_phrase(predicates: Sequence[tuple[str, str, Any]], *, grouped: bool = False) -> str:
     """ " with a triple-double" / " won and with 10+ rebounds" - the predicates on a point, as a trailing phrase.
     Over a grouping's heading the games are counted, not had: "in games won"
     ("every player, regular season career (2010-2019) in games won, by
-    player", ISSUES.md #440), where "had 32 games won" says a count."""
+    player", ISSUES.md #440), where "had 32 games won" says a count.
+
+    .. versionadded:: 7.0.0
+    """
     parts = []
-    for name, op, value in q.predicates:
+    for name, op, value in predicates:
         if grouped and name == "won" and value is True:
             parts.append("in games won")
         elif name in PREDICATE_WORDS and value is True:

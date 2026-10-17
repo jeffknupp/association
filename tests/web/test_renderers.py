@@ -90,7 +90,11 @@ CASES: dict[str, tuple[PointShape, Reading]] = {
     "ranking.counts": (GAMES_COUNTED, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=_POINTS)),
     "ranking.periods": (PERIOD_RANKING, Reading(span=Span(season=2026), period=Period(number=1))),
     "ranking.teams": (TEAM_RANKING, Reading(measure=Measure(key="record", as_typed="record"), span=Span(season=2026))),
-    "ranking.compiled": (PLAYER_RANKING, Reading(measure=_POINTS, cuts=Cuts(venue="home"), span=Span(season=2026))),
+    # A count of games over a line by player at home, which the count's reader
+    # steps aside for (a venue its words do not state): the compiler's own
+    # ranking. (A ranking of players over their games is read and said by its
+    # own reader since decision D17 - the leaders' body.)
+    "ranking.compiled": (GAMES_COUNTED, Reading(lines=(_THIRTY,), measure=_POINTS, cuts=Cuts(venue="home"), span=Span(season=2026))),
     "rows.games": (PLAYER_LOG, Reading(who=_ADA, window=Window(count=3))),
     "rows.highs": (GAME_HIGHS, Reading(measure=_POINTS)),
     "rows.figures": (PERIOD_LOG, Reading(who=_ADA, span=Span(season=2026), period=Period(number=1))),
@@ -406,6 +410,20 @@ def test_every_key_a_body_reads_is_a_key_its_reader_produces(ctx: AnswerContext,
             data = _read(ctx, case)[1].data
             missing = [key for key in renderers[shape][body] if data.get(key) is None]
             assert missing == [], f"{case} no longer produces {missing} - the page's renderer would fall back to text"
+
+
+def test_a_ranking_over_the_players_games_is_drawn_as_the_leaders(ctx: AnswerContext) -> None:
+    """Decision D17: the league's players ranked over their games at home (a
+    ranking the season line does not read) is its reader's and sayer's, not
+    the compiler's own sentence - its data carries what the leaders' body
+    reads, and no compiler skeleton to send the page to the text."""
+    scope = Reading(measure=_POINTS, cuts=Cuts(venue="home"), span=Span(season=2026))
+    reading = with_point("", replace(scope, asked=PLAYER_RANKING, subject=read_subject(names_of(ctx.con), "", PLAYER_RANKING, scope)))
+    result = planned_answer(ctx, reading)
+    assert result is not None and planned_shape(reading, plan_point(reading)) == PointShape("player_games", "ranking", "player")
+    assert "skeleton" not in result.data
+    assert [key for key in _renderers()["ranking"]["leaders"] if result.data.get(key) is None] == []
+    assert result.data["leaders"][0]["display_name"] and result.data["question_shape"].startswith("points per game, ")
 
 
 def test_the_data_a_body_reads_is_json_serializable_as_is(ctx: AnswerContext) -> None:

@@ -162,12 +162,13 @@ SOURCES: dict[PointShape, Tables] = {
     PointShape("player_seasons", "split", "season"): ("player_season_stats_deduped",),
     # A season-line ranking's table depends on the metric asked for. The
     # game-level ranking (the planner's re-plan of a season-line ranking its
-    # reader did not read, which no reader takes) has no entry: it reads
-    # the box scores, and RELATION_SOURCES floors it there - never the
-    # metric's table, none for a line the season line has no metric for,
-    # under which "how many players averaged 30 ppg in 1986" would answer
-    # "No games for every player in the 1986 regular season", the wrong cause.
+    # reader did not read, compose.rankings.read_game_ranking) reads the box
+    # scores - never the metric's table, none for a line the season line has
+    # no metric for, under which "how many players averaged 30 ppg in 1986"
+    # would answer "No games for every player in the 1986 regular season",
+    # the wrong cause.
     PointShape("player_seasons", "ranking", "player"): _metric_tables,
+    PointShape("player_games", "ranking", "player"): _PLAYER_BOX_SOURCES,
     PointShape("player_seasons", "scalar", "count"): _metric_tables,
     PointShape("player_seasons", "ranking", "seasons"): ("player_season_stats",),
     PointShape("netpoints", "scalar", "ratings"): ("net_points_player", "net_points_player_fingerprint"),

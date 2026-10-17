@@ -34,11 +34,11 @@ from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, qualifies_by
 from association.query.notes import Note
-from association.query.reading import MAX_LIMIT, Filtered, ShapeDeclined, Unsupported, _clamp_limit
-from association.query.result import Decided, Grouped, Part, RankingFacts, Refusal, Result, Scalar, Span, Unanswered
+from association.query.reading import MAX_LIMIT, Aggregate, Filtered, ShapeDeclined, Unsupported, _clamp_limit
+from association.query.result import Decided, GameRankingFacts, Grouped, Narrowing, Part, RankingFacts, Refusal, Result, Scalar, Span, Unanswered
 from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, LeaderboardResult, rank_season_line, rank_seasons_counted
 
-from .core import Query
+from .core import Query, read_compiled
 
 DEFAULT_LEADERBOARD_LIMIT = 10
 """How many leaders a ranking shows when the question names no count.
@@ -359,3 +359,92 @@ def _leaderboard_career_refusals(scope: Filtered, fields: list[str]) -> None:
         raise Unsupported("a career ranking cannot add per-game columns")
     if scope.who.team is not None:
         raise ShapeDeclined("franchise_career_ranking", {}, "franchise career leaderboards are not supported")
+
+
+def game_ranking_reads(q: Query) -> bool:
+    """Whether :func:`read_game_ranking` reads ``q``: the league's players
+    (or a team's, or a position group's) ranked over their games - by a
+    box-score measure per game or in total, or by the games themselves -
+    the point the planner plans at the game level where the season line
+    does not read it (``player_games/ranking/player``).
+
+    .. versionadded:: 7.0.0
+    """
+    return q.skeleton == "grouped" and q.group == "player" and q.subject == "everyone"
+
+
+#: What a ranking over the games is ranked by (:attr:`Grouped.ranked_by
+#: <association.query.result.Grouped.ranked_by>`), by the planned
+#: aggregate: a measure per game, a measure's total, or the games counted.
+GAME_RANKED_BY: dict[Aggregate, str] = {Aggregate.PER_GAME: "per_game", Aggregate.TOTAL: "total", Aggregate.COUNT: "count"}
+"""How a game-level ranking's rows are reduced, as its body names it.
+
+.. versionadded:: 7.0.0
+"""
+
+
+def read_game_ranking(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
+    """A ranking of players over their games - the planned point the
+    compiler reads at the game level (decision D17): each player's games in
+    the span, narrowed by every cell the relation applied, reduced by the
+    planned aggregate and ordered by it, under the qualifier. Read into a
+    Result whose body is a :class:`~association.query.result.Grouped` by
+    ``player`` ranked by the reduction (:data:`GAME_RANKED_BY`), each row's
+    games and figures as values; said by
+    :func:`~association.query.compose.say.say_game_ranking`. ``None``
+    where the point is not that ranking.
+
+    .. versionadded:: 7.0.0
+    """
+    if not game_ranking_reads(q) or q.aggregate not in GAME_RANKED_BY:
+        return None
+    read = read_compiled(con, q)
+    span = read["span"]
+    rows = tuple(_game_ranking_row(q, r) for r in read["rows"])
+    return Result(
+        subject=read["player"],
+        relation="everyone",
+        span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=span.first or None, until=span.until),
+        narrowing=Narrowing(phrase=read["narrowing"]),
+        parts=(Part(body=Grouped(by="player", rows=rows, ranked_by=GAME_RANKED_BY[q.aggregate])),),
+        notes=tuple(read["notes"]),
+        decisions=_game_ranking_minimum(q, read["minimum_scaled"]),
+        facts=GameRankingFacts(
+            measures=tuple(q.measures),
+            predicates=tuple(tuple(each) for each in q.predicates),
+            total=read["total"],
+            stated_minimum=q.minimum_games if q.minimum is not None else None,
+            most_played=read["minimum_scaled"][1] if read["minimum_scaled"] is not None else None,
+        ),
+    )
+
+
+def _game_ranking_minimum(q: Query, scaled: tuple[int, int, int] | None) -> tuple[Decided, ...]:
+    """The qualifier a ranking by a measure applied where the question
+    stated none, as the ``minimum`` decision: the default (``Query.minimum_games``),
+    or - where it kept every player in the pool out (ISSUES.md #422) - half
+    the most games any of them played, ``(chose, most, default)`` from the
+    read. None where the question stated one: what was asked is no decision
+    (ISSUES.md #377)."""
+    if not q.measures or q.minimum is not None:
+        return ()
+    if scaled is not None:
+        chose, most, default = scaled
+        return (Decided(kind="minimum", field="minimum", chose=chose, instead_of=(default,), why=f"the most games any player in the pool played: {most}", facts={"of": "games"}),)
+    if not q.minimum_games:
+        return ()
+    return (Decided(kind="minimum", field="minimum", chose=q.minimum_games, facts={"of": "games"}),)
+
+
+def _game_ranking_row(q: Query, r: dict[str, Any]) -> dict[str, Any]:
+    """One player's row of a game-level ranking: his name (``key``), his
+    games, each measure's figure (``values``), how many of his games a
+    measure read where it read fewer (``read``: a rate a rebuilt line never
+    has), and his team's record in them where the read counted one."""
+    row: dict[str, Any] = {"key": str(r["group"]), "games": r.get("games"), "values": {m: r.get(m) for m in q.measures}}
+    read = {m: r[f"{m}_games"] for m in q.measures if f"{m}_games" in r}
+    if read:
+        row["read"] = read
+    if "wins" in r:
+        row["wins"], row["losses"] = r.get("wins"), r.get("losses")
+    return row

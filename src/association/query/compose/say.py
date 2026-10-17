@@ -72,6 +72,7 @@ from association.query.result import (
     CountFacts,
     Decided,
     GameOfSeries,
+    GameRankingFacts,
     Grouped,
     Line,
     LineFacts,
@@ -118,7 +119,7 @@ from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VA
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
 
 from .logs import LOG_COLUMNS, LOG_PERCENTAGES, log_key
-from .sentence import LABELS
+from .sentence import LABELS, _fmt, _games, _span_phrase, predicates_phrase
 
 # --- notes: one phrase per kind -----------------------------------------------
 
@@ -1355,7 +1356,107 @@ def _say_ranking(result: Result) -> Answer:
         return say_seasons_counted(result)
     if result.narrowing.period is not None or body.ranked_by == "quarters":
         return say_period_leaderboard(result)
+    if body.ranked_by in _GAME_RANKINGS:
+        return say_game_ranking(result)
     return say_leaderboard(result)
+
+
+#: How a ranking over the players' games reduced them, as it is said beside
+#: the measure (``compose.rankings.GAME_RANKED_BY``).
+_GAME_RANKINGS: dict[str, str] = {"per_game": "per game", "total": "total", "count": "count"}
+
+
+def say_game_ranking(result: Result) -> Answer:
+    """A ranking of players over their games (decision D17), worded: who
+    was ranked, over which games and span, by what and under which
+    qualifier, then a row per player - his games, his team's record where
+    the read counted one, each measure's figure and, beside a figure a
+    rebuilt line could not give, the games it read - the whole count
+    beneath a ranking of games counted, and the notes.
+
+    .. versionadded:: 7.0.0
+    """
+    body = result.grouped
+    assert body is not None and body.ranked_by is not None
+    facts = _facts(result, GameRankingFacts)
+    span = _span_phrase(result.span)
+    where = result.narrowing.phrase
+    if not body.rows:
+        stated = facts.stated_minimum
+        text = f"No player{where} played {stated:,} games in the {span}, the minimum asked for." if stated is not None else f"No games for {result.subject}{where} in the {span}."
+    else:
+        head = f"{result.subject}{where}, {span}{predicates_phrase(facts.predicates, grouped=True)}, by player" + _game_ranking_by(result, facts)
+        lines = [_game_ranking_line(facts, row) for row in body.rows]
+        if body.ranked_by == "count" and len(body.rows) > 1 and facts.total is not None:
+            # A count by player is usually asked for its total too ("thunder
+            # all-time triple doubles": 193, then who had them) - the whole
+            # count, not the listed rows' (core._grouped_total).
+            listed = " listed" if facts.total != sum(int(row.get("games") or 0) for row in body.rows) else ""
+            lines.append(f"  {'Total':24s} {facts.total} G" + (f" ({len(body.rows)} players{listed} of more)" if listed else ""))
+        text = head + ":\n" + "\n".join(lines)
+    headline = text.split("\n")[0].rstrip(":")
+    # Each note on its own line beneath the table, as the compiler's own
+    # sentence set them (a caveat glued to the last row read as its figure).
+    said = [note(each.kind, note_phrase(each), **each.facts) for each in result.notes]
+    for each in said:
+        text += f"\n{each}"
+    measure = facts.measures[0] if facts.measures else None
+    label = f"{LABELS.get(measure, measure)} {_GAME_RANKINGS[body.ranked_by]}" if measure else "games played"
+    leaders = [{"display_name": row["key"], "value": row["values"][measure] if measure else row.get("games"), "games": row.get("games")} for row in body.rows]
+    data = {
+        "question_shape": f"{label}, {span}",
+        "leaders": leaders,
+        "fields": ["games"] if measure else [],
+        "headline": headline,
+        "notes": said,
+    }
+    return Answer(data=data, text=text, artifacts=[])
+
+
+def _game_ranking_by(result: Result, facts: GameRankingFacts) -> str:
+    """What a game-level ranking is ranked by, in parentheses after its
+    heading: the measure and how the games were reduced with the
+    qualifier, or, for players ranked by their games with no line on them,
+    "games played" (ISSUES.md #408). The default qualifier is the
+    ``minimum`` decision, said and recorded here; one the question stated is
+    what was asked, said the same way (ISSUES.md #377)."""
+    body = result.grouped
+    assert body is not None and body.ranked_by is not None
+    if not facts.measures:
+        if body.ranked_by == "count" and not facts.predicates:
+            return " (games played" + (f", minimum {_games(facts.stated_minimum)}" if facts.stated_minimum else "") + ")"
+        return ""
+    measure = facts.measures[0]
+    return f" ({LABELS.get(measure, measure)} {_GAME_RANKINGS[body.ranked_by]}" + _game_ranking_minimum(result, facts) + ")"
+
+
+def _game_ranking_minimum(result: Result, facts: GameRankingFacts) -> str:
+    """ ", minimum 20 games", or nothing: the qualifier the question stated,
+    or the default's decision - scaled to the pool where the default kept
+    every player out (ISSUES.md #422), said with why and how to state
+    another."""
+    if facts.stated_minimum is not None:
+        return f", minimum {_games(facts.stated_minimum)}"
+    minimum = next((each for each in result.decisions if each.kind == "minimum"), None)
+    if minimum is None:
+        return ""
+    if minimum.instead_of:
+        said = f", minimum {_games(minimum.chose)}: none played the usual {minimum.instead_of[0]} here, so half the most any did ({facts.most_played}) - state a minimum to set another"
+    else:
+        said = f", minimum {_games(minimum.chose)}"
+    return decided("minimum", said, field="minimum", chose=minimum.chose, instead_of=minimum.instead_of, why=minimum.why, **minimum.facts)
+
+
+def _game_ranking_line(facts: GameRankingFacts, row: Mapping[str, Any]) -> str:
+    """One player's row: his name, games, his team's record where the read
+    counted one, and each measure's figure - with the games it read where a
+    rebuilt line could not give it."""
+    cells = [f"{row.get('games')} G"]
+    if "wins" in row:
+        cells.append(f"{row.get('wins')}-{row.get('losses')}")
+    read = row.get("read") or {}
+    cells += [f"{LABELS.get(m, m)} {_fmt(row['values'].get(m), m)}" + (f" ({read[m]} G)" if m in read else "") for m in facts.measures]
+    return f"  {row['key']:24s} " + "  ".join(cells)
 
 
 def _say_comparison(result: Result) -> Answer:
@@ -5266,6 +5367,9 @@ _ASKED_AS: dict[PointShape, str] = {
     SHOT_CHART: "a shot chart",
     SHOT_DISTANCE: "an average shot distance",
     PLAYER_RANKING: "a ranking of players",
+    # The game-level ranking's reader is its point's only answer (decision
+    # D17): a decline names it.
+    PointShape("player_games", "ranking", "player"): "a ranking of players over their games",
     PLAYERS_COUNTED: "a count of players",
     PLAYER_COMPARISON: "a comparison of players",
     SEASON_HISTORY: "a season-by-season history",

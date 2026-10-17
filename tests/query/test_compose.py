@@ -31,6 +31,7 @@ from association.query.answer import AnswerContext
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import aggregate_of, plan, plan_point, refusal_of, refusal_result
+from association.query.compose.rankings import read_game_ranking
 from association.query.compose.say import decline_reason_phrase, say
 from association.query.compose.seasons import player_history_reads
 from association.query.compose.sentence import sentence, team_sentence
@@ -1376,6 +1377,14 @@ def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: AnswerCon
     assert out["rows"][0]["points"] == pytest.approx(30.5)  # (35 + 40 + 25 + 22) / 4
 
 
+def _ranked(con: duckdb.DuckDBPyConnection, q: Query) -> str:
+    """A game-level ranking as the answer says it: its reader, then its sayer
+    (decision D17; the compiler's own sentence said it until then)."""
+    read = read_game_ranking(con, q)
+    assert isinstance(read, Result), read
+    return say(read).text or ""
+
+
 @pytest.mark.parametrize("floor", ["minimum 2 games played", "at least 2 gp", "with a minimum of 2 games"])
 def test_a_stated_minimum_in_any_wording_is_the_rankings_qualifier_said_as_asked(cx_ctx: AnswerContext, floor: str) -> None:
     """#377: "minimum N games played", "at least N gp" and "a
@@ -1386,7 +1395,7 @@ def test_a_stated_minimum_in_any_wording_is_the_rankings_qualifier_said_as_asked
     q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=2)), f"highest points per game this season by a point guard {floor}")
     assert isinstance(q, Query) and q.minimum_games == 2 and q.minimum is not None
     with collect() as remarks:
-        said = sentence(q, run(cx_ctx.con, q))
+        said = _ranked(cx_ctx.con, q)
     assert ", minimum 2 games)" in said and not remarks.decisions
     emptied = move_point(
         cx_ctx.con,
@@ -1395,7 +1404,7 @@ def test_a_stated_minimum_in_any_wording_is_the_rankings_qualifier_said_as_asked
         f"highest points per game this season by a point guard {floor.replace('2', '5')}",
     )
     assert isinstance(emptied, Query)
-    assert sentence(emptied, run(cx_ctx.con, emptied)).startswith("No player played 5 games in the ")
+    assert _ranked(cx_ctx.con, emptied).startswith("No player played 5 games in the ")
 
 
 def test_a_stated_minimum_is_the_qualifier_where_the_season_lines_ranking_is_read_at_the_game_level(cx_ctx: AnswerContext) -> None:
@@ -1409,7 +1418,7 @@ def test_a_stated_minimum_is_the_qualifier_where_the_season_lines_ranking_is_rea
     q = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most points vs boston this season minimum 2 games")
     assert isinstance(q, Query) and q.source == "games" and q.minimum_games == 2
     with collect() as remarks:
-        said = sentence(q, run(cx_ctx.con, q))
+        said = _ranked(cx_ctx.con, q)
     assert said.startswith("every player vs the Boston Celtics, ") and ", minimum 2 games)" in said and not remarks.decisions
     assert [line.split()[:2] for line in said.splitlines()[1:]] == [["Stephen", "Curry"], ["Brandin", "Podziemski"]]
     # An attempts floor the season line qualifies 3-point percentage by, and
@@ -1432,17 +1441,17 @@ def test_a_default_minimum_no_player_met_is_scaled_to_the_pool_and_said_as_a_dec
     q = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most points vs boston this season")
     assert isinstance(q, Query) and q.minimum_games == 20 and q.minimum is None
     with collect() as remarks:
-        said = sentence(q, run(cx_ctx.con, q))
+        said = _ranked(cx_ctx.con, q)
     assert said.startswith("every player vs the Boston Celtics, ")
     assert ", minimum 1 game: none played the usual 20 here, so half the most any did (2) - state a minimum to set another)" in said
     assert [line.split()[:2] for line in said.splitlines()[1:]] == [["Stephen", "Curry"], ["Brandin", "Podziemski"]]
     assert [(d.kind, d.after, d.instead_of) for d in remarks.decisions] == [("minimum", 1, (20,))]
     stated = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most points vs boston this season minimum 3 games")
     assert isinstance(stated, Query)
-    assert sentence(stated, run(cx_ctx.con, stated)).startswith("No player vs the Boston Celtics played 3 games in the ")
+    assert _ranked(cx_ctx.con, stated).startswith("No player vs the Boston Celtics played 3 games in the ")
     nobody = move_point(cx_ctx.con, PLAYER_RANKING, replace(scope, cuts=Cuts(opponent="Los Angeles Lakers"), span=Span(season_type=3)), "most points vs the lakers in the playoffs")
     assert isinstance(nobody, Query)
-    assert sentence(nobody, run(cx_ctx.con, nobody)).startswith("No games for every player vs the Los Angeles Lakers in the ")
+    assert _ranked(cx_ctx.con, nobody).startswith("No games for every player vs the Los Angeles Lakers in the ")
 
 
 def test_a_ranking_by_games_played_counts_each_players_games(cx_ctx: AnswerContext) -> None:
@@ -1450,7 +1459,7 @@ def test_a_ranking_by_games_played_counts_each_players_games(cx_ctx: AnswerConte
     ranks by points per game, says so, and adds no total of them."""
     q = move_point(cx_ctx.con, PLAYER_RANKING, Reading(measure=Measure(key="games_played", as_typed="games played"), span=Span(season_type=2)), "most games played this season")
     assert isinstance(q, Query) and q.aggregate == "count" and q.measures == [] and q.minimum_games is None
-    said = sentence(q, run(cx_ctx.con, q))
+    said = _ranked(cx_ctx.con, q)
     assert said.startswith("every player, ") and ", by player (games played):" in said and "Total" not in said
     assert [line.split()[-2] for line in said.splitlines()[1:]] == ["22", "22", "4", "4", "2", "2"]
 
@@ -1464,7 +1473,7 @@ def test_a_rebound_side_is_said_by_its_abbreviation_not_its_column(cx_ctx: Answe
     scope = Reading(measure=Measure(key=key, as_typed=key), span=Span(season_type=2), cuts=Cuts(opponent="Boston Celtics"))
     q = move_point(cx_ctx.con, PLAYER_RANKING, scope, "most rebounds vs boston this season minimum 1 game")
     assert isinstance(q, Query)
-    said = sentence(q, run(cx_ctx.con, q))
+    said = _ranked(cx_ctx.con, q)
     assert f"({label} per game, minimum 1 game)" in said and key not in said
 
 
@@ -1670,7 +1679,9 @@ def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: AnswerContext)
     assert "with a triple-double" in result.data["headline"]
     # Asked as a player's line, the team still makes it the same count.
     as_stat = compose_answer(cx_ctx, PLAYER_LINE, Reading(who=Who(kind="team", teams=("Golden State Warriors",)), span=Span(career=True)), "golden state warriors all-time triple doubles")
-    assert as_stat is not None and as_stat.data["rows"][0]["games"] == 1
+    # (A ranking of the team's players by their games, read and said by the
+    # game-level ranking's reader and sayer, decision D17.)
+    assert as_stat is not None and as_stat.data["leaders"][0]["games"] == 1 and "with a triple-double" in as_stat.data["headline"]
 
 
 def test_a_grouped_by_player_count_carries_the_whole_total_a_window_cut(cx_ctx: AnswerContext) -> None:
@@ -2362,6 +2373,9 @@ def test_a_reader_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: Ans
         TEAM_RECORD,
         # A team's best single game, its point's only answer.
         TEAM_GAME_HIGHS,
+        # The league's players ranked over their games, its point's only
+        # answer (decision D17).
+        PointShape("player_games", "ranking", "player"),
     }
     # And the team-season readers' (compose.team_stats), a team's history
     # among them (#372).

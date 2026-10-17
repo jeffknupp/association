@@ -630,6 +630,30 @@ class RankingFacts:
 
 
 @dataclass(frozen=True, kw_only=True)
+class GameRankingFacts:
+    """A ranking of players over their games (``player_games/ranking/player``,
+    :func:`~association.query.compose.rankings.read_game_ranking`), besides
+    its rows: the box-score measures each row carries, the first the one
+    ranked by (none where the players are ranked by their games); the
+    yes/no or line predicates the games were kept by; the whole count
+    behind a ranking of games counted where the rows shown hold less of it
+    (``total``); the qualifier the question stated (``stated_minimum``, its
+    games), where a default one is the ``minimum`` decision instead; and
+    where the default kept every player in the pool out and was scaled to
+    half the most games any of them played, that most (``most_played``),
+    which the decision's sentence says.
+
+    .. versionadded:: 7.0.0
+    """
+
+    measures: tuple[str, ...] = ()
+    predicates: tuple[tuple[str, str, Any], ...] = ()
+    total: int | None = None
+    stated_minimum: int | None = None
+    most_played: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class RecordFacts:
     """A record over a line, a streak or a with/without split, besides its
     body: the teams it was counted on (``teams``), who the split is about
@@ -788,6 +812,7 @@ Facts = (
     | TeamPeriodFacts
     | TeamHistoryFacts
     | RankingFacts
+    | GameRankingFacts
     | RecordFacts
     | MatchupFacts
     | MeetingsFacts
