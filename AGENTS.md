@@ -958,6 +958,9 @@ by its `PointShape` key. The populations record the typed Reading
     "with best shooting"), and a near spelling counts only for a word that
     is no ordinary word and is near exactly one player.
   - **"with and without X" is the split over X**, read from its "without".
+  - **"vs X" on a subject's games is the games both played** (Jeff's
+    ruling, 2026-10-18): never the subject's games against X's team. A
+    game either sat out is not a game "vs" him.
 
 ### What the words ask
 

@@ -157,15 +157,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #509
 
-### "vs <player>" on a game log reads the games both played, not the subject's games against his team: "jay huff game log vs Embiid" shows 4 of 6
-- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F142, `partial`).
-- **Evidence:** the key has 6 games Huff played against Embiid's team; the answer's 4 are the games Embiid himself played (the pair relation's meetings). A log "vs <player>" asks the subject's games against that player's team; the meetings reading is a comparison's, not a log's.
-- **User sees:** a log two games short, fluently.
-- **Next step:** on a log (not a matchup or a comparison), "vs <player>" narrows by the opponent's team over the player's tenure there (`subject._versus_companions`, the `opponent` cut from the companion's team by season), not by his presence.
-- **Priority:** P2.
-- **Source:** ours.
-- **GitHub:** #502
-
 ### A log asked game by game shows its newest ten: "Rudy gobert first half games this season" lists 10 of 76
 - **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade: 6 yardstick wordings (F060, F149, F153, F156, F158, F159) and 11 sample ids (FS016, FS058, FS068, FS098, FS132, FS208, FS096, FS126, FS282, FS378, FS400) were graded `partial` for showing the newest ten of N rows where the reading asked every game; held at the yardstick's standing standard (correct with N said) for the run-to-run comparison.
 - **Evidence:** the log's default limit is ten; "each game", "every game", "game log", "gamelog" and a count of games asked ("last 15 games") are the wordings that want all N.
