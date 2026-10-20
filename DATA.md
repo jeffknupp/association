@@ -1035,6 +1035,7 @@ the useful half of this entry is what is wrong with it.
   was ISSUES.md #43, "Three wrong statements in the docs," fixed 2026-09-16 (see
   ISSUES.md #93's note that both comments now give the re-measured 436/7,941
   and 340/7,845 figures); the dedup itself needed no further action either way.
+- **Seen elsewhere (2026-10-20):** a commercial ESPN scraper's FAQ documents the same leak as a known quirk ("a run asking for the postseason may occasionally include a regular-season game ... filter on each row's season_type yourself"); nobody names the cause.
 
 ### `disqualifications` in the season table undercounts foul-outs
 ESPN's career endpoint carries a `disqualifications` total per season, and it
@@ -1278,6 +1279,22 @@ measured. Count foul-outs from the box score.
   a team's missing makes per quarter are an integer partition of the
   linescore's gap, the box's missing 2s and 3s and each short player's own
   missing 2s and 3s - unique in some games, bounded in the rest.
+- **Seen elsewhere (searched 2026-10-20):** nobody has written the fault up
+  as absent rows. The one project loading the same feed at scale,
+  sportsdataverse's hoopR/sportsdataverse-py, landed a running-score rebuild
+  in August 2026 (hoopR PR #237, sportsdataverse-py PR #830) for late-keyed
+  rows that ESPN never re-bases (401766458 ends 119-95 against 120-95),
+  stale duplicated rows (hoopR issue #146, 401616465: part of a period
+  recorded twice), neutral-site home/away swaps, and made free throws
+  shipped with ``scoreValue: 0`` across 2013-19 (400829116, a 2016 game:
+  counted by its text here, so unaffected); its sweep rebuilds the final
+  from the scoring plays in 653 of 2016's 1,317 games and falls back on 661,
+  the outlier among its seasons, with no explanation offered - the same
+  count as the simulation branch's 657 of 1,315 and this entry's 984 short
+  team-games, seen from the score's side. A second source that covers
+  2015-16 and 2012-13: stats.nba.com's play-by-play and shot details from
+  1996-97 (archived with playoffs at github.com/shufinskiy/nba_data), the
+  candidate for filling the absent rows under Phase 8.
 - **How we handle it:** a team's per-quarter figure is caveated with its
   season's measured agreement and refused under 90%
   (`templates.games._team_quarter_points_rebuilt`).
