@@ -1986,6 +1986,7 @@ those were found.
 - **Next step:** Jeff's call: count the untrusted season with its caveat (the figure approximate), or keep it out and said as now; either way the key and the reader agree.
 - **Priority:** P3 - a stated limit, Jeff's policy.
 - **Source:** ours.
+- **Re-measured 2026-10-20 (the lead):** the games are complete for the player asked in all six cases, so the choice is not caveat-or-drop: #278's per-player completeness flag counts them exactly. #504 closes with #278.
 - **GitHub:** #504
 
 ### "shooting percentages" names no measure: "nba current best shooting percentages" is refused for a ranking stat
@@ -2672,22 +2673,13 @@ those were found.
   counts it as"
 - **GitHub:** #276
 
-### 2013 and 2016 period lines could read the made shots the plays mistype
-- **Found:** 2026-09-29, period relation's team half
-- **Evidence:** DATA.md, "A team's play-by-play does not add up to its box
-  score in six seasons": the plays are short a made field goal in 304 of
-  2013's and 985 of 2016's team-games while their own running score reaches
-  the final score in 299 and 975 of them. `TEAM_PERIOD_AGREEMENT` refuses
-  field goals in both seasons (83.1%, 56.7%), 2016 assists (65.6%) and 2016
-  turnovers (64.9%); the player table caveats 2016 at 90.4%.
-- **User sees:** a refusal for a team's per-quarter field goals, assists or
-  turnovers in 2013 or 2016, and a caveat on a player's.
-- **Next step:** measure whether a shot play whose team's running score rises
-  by its value on the next play can be read as the make (2016's "Kyle Korver
-  misses three point jumper", the score rising by three) - a rule in
-  `period_line_sql`'s shots, checked by both checkers.
-- **Source:** DATA.md, "A team's play-by-play does not add up to its box
-  score in six seasons"
+### 2016's period lines leave out games that are complete for the player asked: a per-player, per-stat completeness flag from the box score recovers them
+- **Found:** 2026-09-29, the period relation's team half; **re-measured 2026-10-20 by the lead** (DATA.md, "A team's play-by-play does not add up to its box score in six seasons", the 2016 paragraph) for the yardstick's F028, F058, F059.
+- **Evidence:** the period reads trust a SEASON (`player_games.PERIOD_RECONCILIATION`, 2016 at 76.5%, refused under 90) and drop 2016 whole, saying so. The fault is absent rows, at the source (a refetch returns the same rows), and it is per game and per player: 87.6% of 2016 player-games are complete on points, makes and free throws, 99.3% on rebounds, 90.6% on assists - the box score says which, stat by stat (box figure equals the plays' count). All six 2016 games behind F028, F058 and F059 are complete for their player on points, makes, rebounds and assists (attempts short: the misses are absent too). The score-step repair proposed here before was measured and rejected (recovers ~420 of 2,852 makes, worsens 2015 and 2017).
+- **User sees:** "Not counted: 2 games from 2016" on a figure the warehouse holds exactly; the key counts them.
+- **Next step:** a load-time table beside the rebuild (`fetch/repairs/`): per player-game, per stat, whether the plays agree with the box (`plays_complete`: points/FGM/3PM/FTM, rebounds, assists, steals, blocks, turnovers; attempts counted with blocked shots, whose text has no "misses"); the period reads count a game of an under-threshold season where the asked stats are complete for the player, and say the games and stats left out per player, not per season; a team's period points from the linescores; FG% and attempts stay out for 2016. Then the integer-partition recovery of a team's missing makes per quarter (bounded where not unique) as a second step, if a team question needs it.
+- **Priority:** P2 - a stated limit that is false for most of the games it drops.
+- **Source:** ESPN's 2016 feed (absent rows); the per-season refusal is ours.
 - **GitHub:** #278
 
 ### A team's splits count blank box-score columns from field-goal attempts alone

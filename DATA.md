@@ -1250,7 +1250,34 @@ measured. Count foul-outs from the box score.
     turnover; in 2018, 481 player-games are still a personal foul short once
     the mislabeled types above are read. Team turnovers agree in 86.2% (2007)
     and 89.4% (2008) of team-games, 2018 fouls in 83.2%.
-- **Does a refetch fix it?** untested.
+- **Does a refetch fix it?** **No - tested 2026-10-20** on `400827996` (TOR at
+  NYK, 2016-02-22, Toronto 37 made field goals in the box and 24 in the
+  plays): ESPN's summary served the same 477 rows the warehouse holds, row
+  for row. The fault is at the source.
+- **What the 2016 fault is (measured 2026-10-20, the lead):** the rows are
+  ABSENT, not mistyped. Toronto's running score steps with no row to explain
+  it (28 at 9:48 of the 2nd, 32 on the next row at 8:19; 34 then 36; 37 then
+  39) - a made shot, its assist and its rebound simply missing - and the
+  misses are missing too: the box's attempts exceed the plays' shot rows in
+  nearly every 2016 team-game (4-12 short), where 2015 and 2017 agree.
+  Season-wide: 984 of 2,458 non-empty team-games are short a make (2,852
+  makes), and by player-game the figures are COMPLETE (box equals plays) for
+  87.6% on points, makes and free throws (2015: 98.3%, 2017: 96.5%), 99.3%
+  on rebounds and 90.6% on assists; by team-quarter, 6,107 of 8,552 carry
+  no missing point against the linescore and the rest are short by a known
+  amount (1,315 short exactly 2, 453 exactly 4). Two repairs measured and
+  rejected: a "miss" row whose score steps by the shot's value (#278's
+  proposal) recovers about 420 of the 2,852 and makes 2015 and 2017 WORSE
+  (the running score lags a row on a few percent of rows, so it fires on
+  real misses); the simulation branch's rebuild meets the same fault and
+  excludes 2013 and 2016 from its estimates. What recovers: a player's
+  period figure is exact wherever his GAME figure is complete, which is the
+  box score's to say per stat (and all six 2016 games behind the yardstick's
+  F028, F058 and F059 are complete for Jokic, Barnes and Durant on points,
+  makes, rebounds and assists); a team's period points are the linescore's;
+  a team's missing makes per quarter are an integer partition of the
+  linescore's gap, the box's missing 2s and 3s and each short player's own
+  missing 2s and 3s - unique in some games, bounded in the rest.
 - **How we handle it:** a team's per-quarter figure is caveated with its
   season's measured agreement and refused under 90%
   (`templates.games._team_quarter_points_rebuilt`).
