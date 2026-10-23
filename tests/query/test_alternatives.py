@@ -12,6 +12,7 @@ write is read again here and must reach what it says.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,10 @@ from reader_cases import load_cases, read, warehouse
 from association.cli.commands import cli
 from association.query.answer import Answer
 from association.query.compose.plan import PlannedQuery, plan_point
+from association.query.entities import find_players, names_of
+from association.query.names import ActivePlayers
 from association.query.normalizer import Normalized
+from association.query.parse import read_route
 from association.query.reading import Alternative, Reading
 
 CASES = load_cases()
@@ -62,12 +66,39 @@ def test_a_season_read_by_default_offers_the_career(con: duckdb.DuckDBPyConnecti
     assert _alternatives(con, "how many times did the 76ers play boston?", ["76ers", "boston"]) == [("season", "career", "how many times did the 76ers play boston of all time?")]
 
 
+def test_a_game_of_a_series_read_in_the_season_offers_the_career(con: duckdb.DuckDBPyConnection) -> None:
+    """ "game 4" narrows the games, not the seasons: the season's game 4s and
+    his career's are the two readings (the yardstick's F150, whose key reads
+    the career)."""
+    assert _alternatives(con, "Ayton stats in game 4 playoff games", ["Ayton"]) == [("season", "career", "Ayton stats in game 4 playoff games over his career")]
+
+
+def test_a_player_with_no_game_this_season_is_offered_no_season(con: duckdb.DuckDBPyConnection) -> None:
+    """The season would say only that he has no games in it (the feed
+    sample's FS168, two retired players' meetings): neither is offered where
+    a player named has no box score in the latest season, and the season is
+    where one does."""
+    question, players = "lamarcus aldridge vs marc gasol", ["lamarcus aldridge", "marc gasol"]
+    index = names_of(con)
+    gasol = find_players(index.players, "marc gasol", limit=None)[0].id
+
+    def read_with(active: frozenset[str]) -> Reading:
+        return read_route(replace(index, read_active=lambda: ActivePlayers(season=2026, ids=active)), question, players, "")
+
+    assert read_with(frozenset()).alternatives == ()
+    assert read_with(frozenset({gasol})).alternatives == ()
+    everyone = frozenset(each.id for name in players for each in find_players(index.players, name, limit=None))
+    assert [each.instead for each in read_with(everyone).alternatives] == ["season"]
+
+
 @pytest.mark.parametrize(
     ("question", "names", "stat"),
     [
         # A season, a career, a range named: the words settled it.
         ("stephen curry 50 point games in 2024", ["stephen curry"], "points"),
         ("what was steph curry's avg 3pt shot distance this season", ["steph curry"], ""),
+        # "this postseason", which the span reads as the default season's type.
+        ("show maxey's stats for game 4 against the knicks this postseason", ["maxey"], ""),
         ("steph curry career 3pt shot distance", ["steph curry"], ""),
         ("how many 20+ point games did SGA have in the past two seasons?", ["SGA"], "points"),
         # A window of the newest games is no season's.

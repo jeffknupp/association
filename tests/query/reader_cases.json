@@ -17118,7 +17118,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Chris Paul playoff game 7 record over his career"
+    }
+   ]
   }
  },
  {
@@ -43197,7 +43206,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Ayton stats in game 4 playoff games over his career"
+    }
+   ]
   }
  },
  {
@@ -43368,7 +43386,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Ayton stats in game 4 playoff games over his career"
+    }
+   ]
   }
  },
  {
@@ -43665,7 +43692,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "lebron in game 7s over his career"
+    }
+   ]
   }
  },
  {
@@ -68270,7 +68306,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Ayton stats in game 4 playoff games over his career"
+    }
+   ]
   }
  },
  {

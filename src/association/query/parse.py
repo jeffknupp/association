@@ -1214,34 +1214,42 @@ def _reading(
         # question as it was asked (the fold keeps every position).
         unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], read_by_model, model_stat),
     )
-    return replace(read, alternatives=_reading_alternatives(asked, read))
+    return replace(read, alternatives=_reading_alternatives(index, asked, read))
 
 
-def _reading_alternatives(question: str, reading: Reading) -> tuple[Alternative, ...]:
+def _reading_alternatives(index: names.NameIndex, question: str, reading: Reading) -> tuple[Alternative, ...]:
     """The other readings of a span the words left open, each as the asker's
     own words with the span stated (decision D23's pilot, on D13's class):
     where the words imply the career (the parser's ``span`` decision), the
     current season ("... in 2026", the wording the D13 sentence names) and,
     for one player's figure against an opponent, his latest meeting
     ("... in his last game", the yardstick's F028, whose key reads the most
-    recent meeting); where no season is named and the current one is read,
-    the career. None where the words named the span, a window of games
-    (the newest N are no season's), a day, a game of a series or an ordinal
-    season, or where no point was read: each is a question the words
-    already settled. The answering loop reads each wording again before it
+    recent meeting) - neither where a player named has no game this season
+    (the season would say only that: "LaMarcus Aldridge has no games in the
+    2026 regular season", beside "lamarcus aldridge vs marc gasol"); where
+    no season is named and the current one is read, the career. None where
+    the words named the span, a window of games (the newest N are no
+    season's), a day or an ordinal season, or where no point was read: each
+    is a question the words already settled. A game of a series ("game 4")
+    keeps the career: the season's game 4s are no narrower a question than
+    his career's. The answering loop reads each wording again before it
     offers one (``agent._offered``)."""
     if not reading.has_point or reading.refused is not None or reading.defaulted is not None:
         return ()
     cuts, span = reading.cuts, reading.span
-    if cuts.date is not None or cuts.game_n is not None or cuts.season_n is not None or reading.window.count is not None:
+    if cuts.date is not None or cuts.season_n is not None or reading.window.count is not None:
         return ()
     season = current_season()
     if any(each.stage == "parser" and each.field == "span" and each.after == "career" for each in reading.decisions):
+        if cuts.game_n is not None or any(_inactive(index, (player,)) for player in reading.who.players):
+            return ()
         found = [Alternative(kind="span", read="career", instead="season", season=season, question=_alternative_worded(question, f"in {season}"))]
         if _alternative_latest(reading):
             found.append(Alternative(kind="span", read="career", instead="latest", season=None, question=_alternative_worded(question, "in his last game")))
         return tuple(found)
-    if span.named or span.both or reading.read_as.relation == "team_snapshots":
+    if span.named or span.both or reading.read_as.relation == "team_snapshots" or lexicon.SEASON_WORDS.search(question):
+        # (A season named relatively and read as the default - "this
+        # postseason" - is a season the words named: no career beside it.)
         return ()
     whose = _ALTERNATIVE_CAREER_WORDS.get(reading.who.kind, "of all time")
     return (Alternative(kind="span", read="season", instead="career", season=season, question=_alternative_worded(question, whose)),)
