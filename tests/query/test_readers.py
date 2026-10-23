@@ -16,6 +16,7 @@ from routed import answered_as, measure_of, planned_answer, planned_query, said
 
 from association.fetch.repairs import real_games
 from association.nba import shot_value
+from association.nba.period_line import PLAYS_COMPLETE, complete_column
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
@@ -6022,15 +6023,57 @@ def test_a_season_whose_shots_cannot_be_valued_is_refused(period_ctx: AnswerCont
     assert "cannot be answered for 2002" in answer
 
 
-def test_the_worst_reconcilable_season_is_refused_and_the_merely_poor_ones_are_caveated(period_ctx: AnswerContext) -> None:
-    """2016 reconciles at 76.5% - one quarter in four - and is refused. 2004 is
-    95.7%, which is worth answering with the figure attached rather than
-    withholding. `PERIOD_REFUSE_BELOW` sits between them on purpose."""
-    assert "cannot be answered for 2016" in (
-        period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=2016, season_type=2), period=Period(number=1))).text or ""
-    )
+def _period_2016(con: duckdb.DuckDBPyConnection, *, checked: bool) -> None:
+    """Three of Curry's 2016 games, each a made three in the first quarter: in
+    e16a his play-by-play adds up to his box score; in e16b it does not on
+    points (a make absent from the plays, 2016's fault); in e16c it does not
+    on 3-point attempts alone (Kevin Durant's 2016-04-01 against the
+    Clippers). ``checked`` writes the completeness table that says so."""
+    for event, day in (("e16a", "2015-11-10T00:30Z"), ("e16b", "2015-11-12T00:30Z"), ("e16c", "2015-11-14T00:30Z")):
+        con.execute("INSERT INTO games VALUES (?,2016,2,?,'9','13',110,100,'9')", [event, day])
+        con.execute("INSERT INTO player_box_stats VALUES (?,2016,2,'9','1',FALSE,30)", [event])
+        con.execute("INSERT INTO shot_chart VALUES ('1',2016,2,?,'9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [event])
+    if checked:
+        flags = ", ".join(f"{complete_column(c)} BOOLEAN" for c in PERIOD_COLUMNS)
+        con.execute(f"CREATE TABLE {PLAYS_COMPLETE} (event_id VARCHAR, season BIGINT, season_type BIGINT, athlete_id VARCHAR, {flags})")
+        short = {"e16a": (), "e16b": ("points", "fieldGoalsMade", "threePointFieldGoalsMade"), "e16c": ("threePointFieldGoalsAttempted",)}
+        for event, columns in short.items():
+            values = [c not in columns for c in PERIOD_COLUMNS]
+            con.execute(f"INSERT INTO {PLAYS_COMPLETE} VALUES (?,2016,2,'1',{', '.join('?' for _ in PERIOD_COLUMNS)})", [event, *values])
+
+
+def test_an_untrusted_season_counts_the_games_whose_plays_add_up_and_says_the_rest(period_ctx: AnswerContext) -> None:
+    """2016 reconciles at 76.5% - one quarter in four - because rows are
+    absent from its plays at the source, and a game counts where the
+    player's own plays add up to his box score in the stat asked
+    (``plays_complete``, ISSUES.md #278): e16a is counted, e16b left out and
+    said, by player and stat - where until 2026-10-23 the season was refused
+    whole. 2004 is 95.7%, which is worth answering with the figure attached
+    rather than withholding. `PERIOD_REFUSE_BELOW` sits between them on
+    purpose."""
+    _period_2016(period_ctx.con, checked=True)
+    asked = Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2016, season_type=2), period=Period(number=1))
+    answer = period_log(period_ctx, asked)
+    assert [g["date"] for g in answer.data["games"]] == ["2015-11-09", "2015-11-13"]
+    assert answer.data["total"] == 6
+    assert "(Not counted: 1 of Stephen Curry's games from 2016, whose play-by-play does not add up to his box score in points.)" in (answer.text or "")
+    # A whole line reads every column it shows: the game short a 3-point
+    # attempt is left out of it, and said.
+    line = period_log(period_ctx, replace(asked, measure=None))
+    assert [g["date"] for g in line.data["games"]] == ["2015-11-09"]
+    assert "(Not counted: 2 of Stephen Curry's games from 2016, whose play-by-play does not add up to his box score in points, field goals, 3-pointers and 3-point attempts.)" in (line.text or "")
+    # The counted game is checked whole, so the season's agreement caveat is not its own.
+    assert "76%" not in (answer.text or "") and "77%" not in (answer.text or "")
     caveated = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=2004, season_type=2), period=Period(number=1))).text or ""
     assert "96% of the time" in caveated, "a poor season answers, and says how poor"
+
+
+def test_an_untrusted_season_nothing_checks_is_refused(period_ctx: AnswerContext) -> None:
+    """A warehouse without the completeness table has nothing to count a
+    2016 game by: the season is refused, as it always was."""
+    _period_2016(period_ctx.con, checked=False)
+    asked = Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=2016, season_type=2), period=Period(number=1))
+    assert "cannot be answered for 2016" in (period_log(period_ctx, asked).text or "")
 
 
 def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximated(period_ctx: AnswerContext) -> None:

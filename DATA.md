@@ -1295,9 +1295,14 @@ measured. Count foul-outs from the box score.
   2015-16 and 2012-13: stats.nba.com's play-by-play and shot details from
   1996-97 (archived with playoffs at github.com/shufinskiy/nba_data), the
   candidate for filling the absent rows under Phase 8.
-- **How we handle it:** a team's per-quarter figure is caveated with its
-  season's measured agreement and refused under 90%
-  (`templates.games._team_quarter_points_rebuilt`).
+- **How we handle it:** a team's per-quarter points are its linescore's; any
+  other team column is caveated with its season's measured agreement and
+  refused under 90% (`compose.periods._team_quarter_points_rebuilt`). A
+  player's period figure in a season under 90% counts each game where his
+  play-by-play adds up to his box score in the columns read - the load-time
+  table `plays_complete` (`fetch/repairs/plays_complete.py`), per
+  player-game and per column - and leaves out and names the rest
+  (`player_games.period_counted`, since 2026-10-23).
 - **Tracked in:** ISSUES.md, "A quarter or half is answered for a player or
   a team, and for nobody else".
 

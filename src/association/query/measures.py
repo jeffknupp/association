@@ -77,7 +77,7 @@ GAME_COLUMNS: frozenset[str] = frozenset(MEASURE_WORDS.values()) | frozenset(
 """
 
 DERIVED_MEASURES: frozenset[str] = frozenset(
-    {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct", "opponent_name", "season_type"}
+    {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct", "opponent_name", "season_type", "period_incomplete"}
 )
 """Measures computed from columns per game, by name; the SQL is
 :data:`association.query.compose.core.DERIVED`'s.
@@ -94,12 +94,16 @@ says the same thing, and the test checks it.
 .. versionadded:: 5.0.0
 """
 
-LABEL_MEASURES: frozenset[str] = frozenset({"opponent_name", "season_type"})
+LABEL_MEASURES: frozenset[str] = frozenset({"opponent_name", "season_type", "period_incomplete"})
 """Measures that name something about a game rather than count it - listed
 beside a game's figures, never averaged, summed, counted or read as a stat
 a question asks about.
 
 .. versionadded:: 5.0.0
+
+.. versionchanged:: 7.0.0
+   Holds ``period_incomplete``, the columns a period-narrowed game's
+   play-by-play does not add up in (``player_games.PERIOD_INCOMPLETE``).
 """
 
 BOOLEAN_MEASURES: frozenset[str] = YES_NO_MEASURES

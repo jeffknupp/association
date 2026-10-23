@@ -83,7 +83,7 @@ FACTS: dict[str, frozenset[str]] = {
     # notes
     "partial_season": frozenset({"season", "season_type"}),
     "floor": frozenset({"table", "first", "what", "earliest", "last", "whose", "season_type"}),
-    "games_unseen": frozenset({"games", "why", "whose", "what", "of", "first", "last", "seasons"}),
+    "games_unseen": frozenset({"games", "why", "whose", "what", "of", "first", "last", "seasons", "columns"}),
     "lines_rebuilt": frozenset({"games", "what", "total", "whose", "columns"}),
     "rebuilt_agreement": frozenset({"season", "seasons", "pct", "columns", "stat", "what"}),
     "stat_withheld": frozenset({"games", "stat", "label"}),

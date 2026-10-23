@@ -420,6 +420,13 @@ def _say_games_unseen(facts: dict[str, Any], consequence: str = "") -> str:
             f"(Not counted: {count} game{'' if count == 1 else 's'} from {_joined([str(season) for season in seasons])}, whose per-quarter figures rebuilt from "
             f"play-by-play agree with the official ones too seldom to answer.)"
         )
+    if facts.get("why") == "period_incomplete":
+        # A game of an untrusted season counted on its own check
+        # (``player_games.period_counted``), left out where his play-by-play
+        # does not add up to his box score in a column the answer reads.
+        seasons = list(facts["seasons"])
+        nouns = _joined([period_noun(column, 2) for column in facts["columns"]])
+        return f"(Not counted: {count} of {facts['whose']}'s games from {_joined([str(season) for season in seasons])}, whose play-by-play does not add up to his box score in {nouns}.)"
     if facts.get("what") == "meetings":
         return f" {count} game{'' if count == 1 else 's'} between their teams while both were playing for them {'has' if count == 1 else 'have'} no box score, so a meeting there is not counted."
     if facts.get("why") == "no_box_score":

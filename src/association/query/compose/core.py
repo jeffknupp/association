@@ -131,6 +131,11 @@ DERIVED: dict[str, str] = {
     # The game's season type, a label of the game as ``won`` is: a period's
     # log over both types counts the games of each (decision D14).
     "season_type": "pgl.season_type",
+    # The columns a period-narrowed game's play-by-play does not add up in
+    # against his box score (``player_games.PERIOD_INCOMPLETE``), a label of
+    # the game the period log counts it by (``player_games.period_counted``);
+    # only a period's relation carries it.
+    "period_incomplete": "pgl.period_incomplete",
 }
 """A measure name that is not a stored column, and the SQL that computes it per game.
 
@@ -551,7 +556,9 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
 #: What a period-narrowed read may measure: the columns the period's line
 #: rebuilds, and the measures computed only from them (a rate is a ratio of
 #: the period's sums; a game's result is the game's).
-_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "opponent_name", "season_type"}
+_PERIOD_READABLE: frozenset[str] = (
+    frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home"} | {"opponent_name", "season_type", "period_incomplete"}
+)
 
 
 def _check_period_measures(q: Query) -> None:

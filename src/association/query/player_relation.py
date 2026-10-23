@@ -24,6 +24,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE, REGULAR_SEASON
+from association.nba.period_line import PLAYS_COMPLETE
 from association.nba.season import current_season, eastern_day_utc_range
 from association.query.conditions import _game_scope, _Scope, box_source
 from association.query.entities import BOX_SCORES, Ambiguous, Availability, Entity, clarify, find_players, players_of, resolve_player, resolve_team, resolved_player, resolved_team, teammate_names
@@ -226,8 +227,10 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
     # per SEASON against ESPN's own linescores, so a read across seasons - a
     # career, a range, both season types, the last N games across seasons
     # (decisions D13, D14) - is caveated season by season and labeled by the
-    # seasons and types it holds (`compose.periods`); a season under
-    # PERIOD_REFUSE_BELOW is left out of such a read and said. The period
+    # seasons and types it holds (`compose.periods`); in a season under
+    # PERIOD_REFUSE_BELOW a game counts where his play-by-play adds up to his
+    # box score in the columns read (`player_games.period_counted`), and the
+    # rest are left out and said. The period
     # CONDITION (a quarter conditioning which games count, beside the quarter
     # measured) is excluded from the reader's WORDS, not from the point: it steps
     # aside and the compiler's own sentence, which names both quarters, answers.
@@ -937,7 +940,7 @@ def apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Filt
     asked = period_narrowing(scope)
     if asked is not None:
         log_columns = frozenset(row[0] for row in con.execute("DESCRIBE player_game_log").fetchall())
-        narrowed.narrow_periods(*asked, plays=has_table(con, "plays"), log_columns=log_columns)
+        narrowed.narrow_periods(*asked, plays=has_table(con, "plays"), log_columns=log_columns, checked=has_table(con, PLAYS_COMPLETE))
 
 
 def has_table(con: duckdb.DuckDBPyConnection, name: str) -> bool:

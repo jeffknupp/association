@@ -42,7 +42,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
-from association.nba.period_line import PERIOD_PLAYS_COLUMNS, period_line_sql
+from association.nba.period_line import PERIOD_PLAYS_COLUMNS, PLAYS_COMPLETE, complete_column, period_line_sql
 from association.nba.season import eastern_date_sql, eastern_day_utc_range
 from association.nba.shot_value import UNSEPARABLE_SHOT_VALUES
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, alignment_clause, calendar_clause
@@ -351,6 +351,84 @@ def period_distrust(season: int, measure: str) -> dict[str, Any] | None:
     return None
 
 
+PERIOD_INCOMPLETE = "period_incomplete"
+"""The column every period-narrowed row carries beside the period's line:
+the :data:`PERIOD_COLUMNS` of that player's game whose line, summed over the
+whole game, does not equal his box score (``[]`` where every one does), or
+NULL where nothing checks the game - read from the completeness table
+(:data:`~association.nba.period_line.PLAYS_COMPLETE`) by
+:func:`period_counted`.
+
+.. versionadded:: 7.0.0
+"""
+
+
+@dataclass(frozen=True)
+class PeriodCounted:
+    """A period read's games divided by what can be counted
+    (:func:`period_counted`).
+
+    .. versionadded:: 7.0.0
+    """
+
+    #: The games counted: of a season the period's figures can be trusted
+    #: in, or checked complete for the columns read.
+    kept: list[dict[str, Any]]
+    #: The games of an untrusted season whose play-by-play does not add up
+    #: to the box score in a column read.
+    incomplete: list[dict[str, Any]]
+    #: The games of an untrusted season nothing checks: a shot's value the
+    #: season does not carry, or no completeness row (an empty box score, a
+    #: warehouse without the table).
+    unchecked: list[dict[str, Any]]
+    #: The untrusted seasons a kept game is from - each kept on its own
+    #: game's check, so the season's agreement caveat is not theirs.
+    checked: frozenset[int]
+
+    def incomplete_columns(self, columns: tuple[str, ...]) -> list[str]:
+        """The ``columns`` some left-out game's play-by-play does not add up
+        in, in :data:`PERIOD_COLUMNS` order."""
+        short = {column for row in self.incomplete for column in row[PERIOD_INCOMPLETE]}
+        return [column for column in PERIOD_COLUMNS if column in short and column in columns]
+
+
+def period_counted(rows: list[dict[str, Any]], measure: str, columns: tuple[str, ...]) -> PeriodCounted:
+    """The games of a period read that can be counted for ``measure``, read
+    as ``columns`` (its own, :func:`period_columns`, or a whole line's).
+
+    A season whose per-period ``measure`` can be trusted
+    (:func:`period_distrust` is None) keeps every game, as it always has. In
+    one that cannot - 2016's points, whose plays lack rows at the source - a
+    game counts where the player's line summed over the whole game equals
+    his box score in every one of ``columns`` (each row's
+    :data:`PERIOD_INCOMPLETE`): nothing he did in it is missing from the
+    plays, and its quarters read as any season's do (where every player of a
+    2016 team is complete on points, the period line's team-quarters agree
+    with the linescore in 99.98% of 4,544). A season whose shots carry no
+    value (``unseparable``) and a game nothing checks are left out whole.
+
+    .. versionadded:: 7.0.0
+    """
+    kept: list[dict[str, Any]] = []
+    incomplete: list[dict[str, Any]] = []
+    unchecked: list[dict[str, Any]] = []
+    checked: set[int] = set()
+    distrust = {season: period_distrust(season, measure) for season in {int(row["season"]) for row in rows}}
+    for row in rows:
+        season = int(row["season"])
+        facts = distrust[season]
+        if facts is None:
+            kept.append(row)
+        elif facts["unseparable"] or row.get(PERIOD_INCOMPLETE) is None:
+            unchecked.append(row)
+        elif set(row[PERIOD_INCOMPLETE]) & set(columns):
+            incomplete.append(row)
+        else:
+            kept.append(row)
+            checked.add(season)
+    return PeriodCounted(kept=kept, incomplete=incomplete, unchecked=unchecked, checked=frozenset(checked))
+
+
 def period_agreement_notes(season: int, measure: str, *, full_line: bool = False) -> list[Note]:
     """The caveats a period answer carries for ``measure`` in ``season``, as
     notes: points by their per-period agreement with ESPN's own quarter
@@ -442,13 +520,29 @@ def _period_source(narrowed: Narrowed) -> tuple[str, list[Any]]:
     star = f"pgl.* REPLACE ({replaced})" if replaced else "pgl.*"
     extra = "".join(f", {_period_figure(c)} AS {c}" for c in added)
     covered = "pgl.event_id IN (SELECT DISTINCT cov.event_id FROM shot_chart cov WHERE cov.season = pgl.season)"
+    incomplete, checked = _period_incomplete(narrowed.period_checked)
     sql = (
         f"FROM (WITH _period_line AS ({line}) "
-        f"SELECT {star}{extra} FROM player_game_log pgl "
+        f"SELECT {star}{extra}, {incomplete} AS {PERIOD_INCOMPLETE} FROM player_game_log pgl "
         "LEFT JOIN _period_line l ON l.event_id = pgl.event_id AND l.season = pgl.season AND l.athlete_id = pgl.athlete_id "
-        f"WHERE {covered}) pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season"
+        f"{checked}WHERE {covered}) pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season"
     )
     return sql, list(narrowed.base_params)
+
+
+def _period_incomplete(checked: bool) -> tuple[str, str]:
+    """A period-narrowed row's :data:`PERIOD_INCOMPLETE` - the
+    :data:`PERIOD_COLUMNS` whose whole-game line does not add up to the box
+    score, read from the completeness table
+    (:data:`~association.nba.period_line.PLAYS_COMPLETE`) - and the join
+    that reads it. NULL where the game has no row there (a line ESPN served
+    empty, rebuilt from the very plays it would be checked against) or the
+    warehouse has no such table: unknown, never complete."""
+    if not checked:
+        return "CAST(NULL AS VARCHAR[])", ""
+    short = ", ".join(f"CASE WHEN NOT pc.{complete_column(c)} THEN '{c}' END" for c in PERIOD_COLUMNS)
+    join = f"LEFT JOIN {PLAYS_COMPLETE} pc ON pc.event_id = pgl.event_id AND pc.season = pgl.season AND pc.athlete_id = pgl.athlete_id "
+    return f"(CASE WHEN pc.event_id IS NULL THEN NULL ELSE list_filter([{short}], x -> x IS NOT NULL) END)", join
 
 
 def _source(narrowed: Narrowed) -> tuple[str, list[Any]]:
@@ -627,6 +721,11 @@ class Narrowed:
     #: Whether the warehouse holds ``plays``, which every period column but
     #: the shot ones is read from (:data:`PERIOD_PLAYS_COLUMNS`).
     period_plays: bool = True
+    #: Whether the warehouse holds the completeness table
+    #: (:data:`~association.nba.period_line.PLAYS_COMPLETE`), which every
+    #: period-narrowed row reads its ``period_incomplete`` from
+    #: (:func:`period_counted`); without it the column is NULL - unknown.
+    period_checked: bool = False
     #: The columns ``player_game_log`` actually has, where the caller looked -
     #: an older warehouse (or a fixture) lacks the advanced ones, and a
     #: REPLACE naming a missing column fails to bind.
@@ -831,19 +930,25 @@ class Narrowed:
         self.narrow(clause, *params)
         self.alignment = narrowing
 
-    def narrow_periods(self, periods: tuple[int, ...], label: str, *, plays: bool = True, log_columns: frozenset[str] | None = None) -> None:
+    def narrow_periods(self, periods: tuple[int, ...], label: str, *, plays: bool = True, log_columns: frozenset[str] | None = None, checked: bool = False) -> None:
         """Only ``periods`` of each game - a quarter, a half, an overtime -
         read from the line :func:`period_line_sql` rebuilds, over the games
         the shot table covers. The row filters still read the whole game
         (see :func:`_period_source`); what a reader SELECTs is the period's.
+        ``checked``: the warehouse holds the completeness table each row's
+        ``period_incomplete`` is read from.
 
         .. versionadded:: 5.0.0
+
+        .. versionchanged:: 7.0.0
+           Takes ``checked``.
         """
         period_line_sql(periods, "SELECT 1")  # validates the periods before anything is read
         self.periods = tuple(periods)
         self.period_label = label
         self.period_plays = plays
         self.period_log_columns = log_columns
+        self.period_checked = checked
 
     def narrow_period_condition(self, periods: tuple[int, ...], column: str, threshold: int, phrase: str, *, op: str = ">=", plays: bool = True, log_columns: frozenset[str] | None = None) -> None:
         """Only the games whose line in ``periods`` - a quarter, a half - held
