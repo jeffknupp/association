@@ -15,7 +15,7 @@ import duckdb
 from association.nba.franchises import season_name_sql
 
 from . import advanced_stats
-from .repairs import duplicate_athletes, game_repair, real_games, reconstructed_box, season_totals_repair, team_box_repair
+from .repairs import duplicate_athletes, game_repair, plays_complete, real_games, reconstructed_box, season_totals_repair, team_box_repair
 
 log: logging.Logger = logging.getLogger("association.fetch.warehouse")
 
@@ -184,6 +184,11 @@ def _repair_and_build_views(con: duckdb.DuckDBPyConnection) -> None:
     real_games.build_table(con, existing)
     existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
     _build_views(con, existing)
+    # Whether each played player-game's plays add up to his box score, stat
+    # by stat (see fetch/repairs/plays_complete.py): read off player_game_log,
+    # so after it, and rebuilt on every load, so it is never a pull behind
+    # the plays or the box scores it compares.
+    plays_complete.build_table(con, _existing_tables(con))
 
 
 def _tune(con: duckdb.DuckDBPyConnection) -> None:

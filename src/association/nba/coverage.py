@@ -56,6 +56,7 @@ KNOWN_TABLES: frozenset[str] = frozenset(
         "player_game_log",
         "player_season_stats_deduped",
         "plays",
+        "plays_complete",
         "player_advanced_stats",
         "player_season_advanced_stats",
         "net_points_player",
@@ -416,6 +417,23 @@ COVERAGE: dict[str, Coverage] = {
             {
                 2002: "ESPN's shot data covers only 509 of 2002's 1,190 games, so the answer covers part of the year rather than all of it",
                 2003: "ESPN's shot data covers only 986 of 2003's 1,190 games, so the answer covers part of the year rather than all of it",
+            }
+        ),
+    ),
+    # Built at load time from the shots and the plays against the box score
+    # (fetch/repairs/plays_complete.py): its floor is theirs by construction.
+    # The period shapes declare `shot_chart` (query.coverage.SOURCES), whose
+    # floor and partial seasons say the same; this one is a check over the
+    # games they cover, so it adds no caveat of its own.
+    "plays_complete": Coverage(
+        subject="Play-by-play completeness checks",
+        first_season=2002,
+        reason="they compare the play-by-play with the box score, and ESPN has no play-by-play before 2002",
+        # The games the shot table covers, and no others.
+        partial=MappingProxyType(
+            {
+                2002: "ESPN's shot data covers only 509 of 2002's 1,190 games, so only those games' play-by-play is checked",
+                2003: "ESPN's shot data covers only 986 of 2003's 1,190 games, so only those games' play-by-play is checked",
             }
         ),
     ),

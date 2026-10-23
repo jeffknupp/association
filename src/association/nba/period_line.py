@@ -203,3 +203,26 @@ def period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: bool 
         SELECT event_id, season, athlete_id, {sums}, CAST(SUM(offensiveRebounds) + SUM(defensiveRebounds) AS BIGINT) AS rebounds
         FROM _period_parts WHERE athlete_id IS NOT NULL AND athlete_id <> ''
         GROUP BY event_id, season, athlete_id"""
+
+
+PLAYS_COMPLETE = "plays_complete"
+"""The load-time table saying, per played player-game and per
+:data:`PERIOD_COLUMNS` column, whether :func:`period_line_sql` summed over
+the whole game equals the box score (built by
+:mod:`association.fetch.repairs.plays_complete`, read by the period
+relation): where it does, every period of that game can be read for that
+column; where it does not, some of what he did is missing from the plays.
+
+.. versionadded:: 7.0.0
+"""
+
+
+def complete_column(column: str) -> str:
+    """The :data:`PLAYS_COMPLETE` column for a period-line ``column``:
+    ``points`` -> ``points_complete``.
+
+    .. versionadded:: 7.0.0
+    """
+    if column not in PERIOD_COLUMNS:  # written in code: a programming error, not a refusal
+        raise ValueError(f"no period-line column {column!r}")
+    return f"{column}_complete"
