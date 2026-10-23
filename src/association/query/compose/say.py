@@ -1132,12 +1132,24 @@ def _aligned(titles: list[str], rows: list[list[str]], left: int) -> list[str]:
     return [_line(titles), *(_line(row) for row in rows)]
 
 
-def _scope_words(count: int, ascending: bool, date: str | None) -> str:
+def _scope_words(count: int, ascending: bool, date: str | None, *, every: bool = False) -> str:
+    """How many games a log lists: on one date; ``every`` game its reading
+    selects, where the words stated no window (decision D24: "all 76
+    games", never "the last 76"); or the window the words stated, from its
+    end."""
     if date:
         return f"on {date}"
+    if every:
+        return _every_game(count)
     if count == 1:
         return "first game" if ascending else "most recent game"
     return f"first {count} games" if ascending else f"last {count} games"
+
+
+def _every_game(count: int) -> str:
+    """A log of every game its reading selects, said as the whole (decision
+    D24): "all 76 games", "both games", "the only game"."""
+    return "the only game" if count == 1 else "both games" if count == 2 else f"all {count:,} games"
 
 
 def mixed_where(season: int, counts: dict[int, int]) -> str:
@@ -1158,17 +1170,22 @@ def mixed_where(season: int, counts: dict[int, int]) -> str:
 
 def _player_log_header(result: Result, body: Rows) -> str:
     """The listing's headline: how many games, over what span, filtered how -
-    naming how many games the window cut from ("last 10 of 49 games")
-    whenever the count before the window exceeds what is listed (F149)."""
+    every game the reading selects said as the whole ("all 76 games",
+    decision D24), and a window the words stated naming how many games it
+    cut from ("last 5 of 49 games") whenever the count before the window
+    exceeds what is listed (F149)."""
     span, window = result.span, result.window
     assert window is not None
     count = len(body.rows)
+    every = window.limit is None
     if body.by_season_type:
-        return f"{result.subject}{result.narrowing.phrase}, {_scope_words(count, False, None)}{mixed_where(span.season or 0, dict(body.by_season_type))}:"
+        return f"{result.subject}{result.narrowing.phrase}, {_scope_words(count, False, None, every=every)}{mixed_where(span.season or 0, dict(body.by_season_type))}:"
     total = body.total_before_window
     cut = total is not None and total > count
     if span.date:
         scope_text = f"{'game' if count == 1 else 'games'} on {span.date}"
+    elif every:
+        scope_text = _every_game(count)
     elif count == 1:
         scope_text = f"{'first' if window.ascending else 'most recent'} of {total} games" if cut else ("first game" if window.ascending else "most recent game")
     else:
@@ -1282,13 +1299,14 @@ def _team_total_data(games: list[dict[str, Any]], stat: Any) -> dict[str, Any]:
     return {"differential": diff, "differential_per_game": round(diff / len(games), 2)}
 
 
-def _team_log_scope(count: int, ascending: bool, date: str | None, total: int | None) -> str:
-    """How many games a team's log lists, and of how many where the window
-    cut them from more - "last 10 of 82 games", "most recent of 41 games" -
-    the player log's rule (F149, :func:`_player_log_header`), so a log of
-    the newest ten never reads as the season's every game (ISSUES.md #402)."""
-    if date or total is None or total <= count:
-        return _scope_words(count, ascending, date)
+def _team_log_scope(count: int, ascending: bool, date: str | None, total: int | None, *, every: bool) -> str:
+    """How many games a team's log lists: every game its reading selects,
+    as the whole (decision D24), or the window the words stated and of how
+    many where it cut them from more - "last 10 of 82 games", "most recent
+    of 41 games" - the player log's rule (F149, :func:`_player_log_header`),
+    so a window never reads as the season's every game (ISSUES.md #402)."""
+    if every or date or total is None or total <= count:
+        return _scope_words(count, ascending, date, every=every)
     if count == 1:
         return f"{'first' if ascending else 'most recent'} of {total:,} games"
     return f"{'first' if ascending else 'last'} {count} of {total:,} games"
@@ -1362,7 +1380,7 @@ def say_team_log(result: Result) -> Answer:
     assert window is not None
     if body.by_season_type:
         where = mixed_where(span.season or 0, dict(body.by_season_type))
-        scope_text = _scope_words(len(games), False, None)
+        scope_text = _scope_words(len(games), False, None, every=window.limit is None)
     else:
         # A season type of 0 is both types (BOTH_SEASON_TYPES), not "none named".
         where = (
@@ -1370,7 +1388,7 @@ def say_team_log(result: Result) -> Answer:
             if span.season is not None
             else (f" ({span.years})" if span.date else f" ({_team_log_range(span)}, {span.years})")
         )
-        scope_text = _team_log_scope(len(games), window.ascending, span.date, body.total_before_window)
+        scope_text = _team_log_scope(len(games), window.ascending, span.date, body.total_before_window, every=window.limit is None)
     header = f"{result.subject}{result.narrowing.phrase}, {scope_text}{where} ({record}):"
     mark = {True: "W", False: "L", None: "?"}
     facts = _facts(result, LogFacts)
@@ -1561,12 +1579,19 @@ def say(result: Result | Refusal | Clarify) -> Answer:
     .. versionchanged:: 5.0.0
        Chooses the sayer from the body alone (2026-10-05), where it read
        the span's source and the relation as well.
+
+    .. versionchanged:: 7.0.0
+       The answer carries the cause it refuses by (``Answer.refusal``): a
+       Refusal's kind, a Clarify's ``"clarify"``, an empty read's reason.
     """
     if isinstance(result, Refusal):
         return say_refusal(result)
     if isinstance(result, Clarify):
         return say_clarify(result)
-    return _sayer(result)(result)
+    said = _sayer(result)(result)
+    # A read that found nothing is said by its shape's sayer, and refuses by
+    # its reason all the same (Answer.refusal).
+    return said if result.empty is None else replace(said, refusal=result.empty.kind)
 
 
 # --- a record over a line ----------------------------------------------------------
@@ -2258,8 +2283,9 @@ def _period_header(result: Result, games: list[dict[str, Any]], season_label: st
     """The headline: one game's own wording when there is only one, the
     recent-games log appended when the question asked for one ("log", "by
     game", "each game"), or the plain season figure otherwise. The figure
-    stays over EVERY game; the log is the newest N (or the first N, for
-    ``order`` "first"), and says which."""
+    stays over EVERY game; the log is every game too (decision D24), or the
+    newest N (the first N, for ``order`` "first") where the words stated a
+    window, and says which."""
     facts, summary, period, window = _facts(result, PeriodFacts), result.rows.summary if result.rows is not None else {}, result.narrowing.period, result.window
     assert period is not None and window is not None
     measure, period_label, subject = facts.stat, period.label, result.subject
@@ -2282,7 +2308,8 @@ def _period_header(result: Result, games: list[dict[str, Any]], season_label: st
         against = f"the {g['opponent']}" if g["opponent"] else "their opponent"
         return f"{subject} {did} in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({_period_one_game_season(result, season_label)})."
     if facts.per_game:
-        count = window.limit
+        # Every game the figure is over, or the window the words stated (D24).
+        count = len(games) if window.limit is None else window.limit
         earliest = window.ascending
         shown = games[:count] if earliest else games[-count:]
         label = "every game" if len(shown) == len(games) else f"the {len(shown)} {'earliest' if earliest else 'most recent'}"
@@ -2889,7 +2916,10 @@ def say_player_matchup(result: Result) -> Answer:
         (str(m["day"]), [f"{m['team']} {m['team_score']}-{m['opponent_score']} {m['opponent']}", *(f"{m[side]['points']}/{m[side]['rebounds']}/{m[side]['assists']}" for side in ("a", "b"))])
         for m in detail.rows
     ]
-    answer += "\n\n" + _table(f"Most recent {len(detail.rows)} of {count} (points/rebounds/assists):", ["score", *names], log)
+    # Every meeting, said as the whole, or the newest N the words asked for (D24).
+    listed = len(detail.rows)
+    which = f"Most recent {listed} of {count}" if listed < count else ("The only meeting" if listed == 1 else f"All {listed} meetings")
+    answer += "\n\n" + _table(f"{which} (points/rebounds/assists):", ["score", *names], log)
     answer += f"\n{caveat.strip()}" if caveat else ""
     games = [{"date": str(m["day"]), "won": m["won"], "team_score": m["team_score"], "opponent_score": m["opponent_score"], names[0]: m["a"], names[1]: m["b"]} for m in detail.rows]
     averages = {line["key"]: {k: v for k, v in line.items() if k not in ("key", "wins")} for line in (a, b)}
@@ -5903,7 +5933,7 @@ def say_refusal(refusal: Refusal) -> Answer:
     .. versionadded:: 5.0.0
     """
     message = refusal_phrase(refusal.kind, refusal.facts)
-    return Answer(data={**refusal.shown, **dict.fromkeys(refusal.under, message)}, text=message)
+    return Answer(data={**refusal.shown, **dict.fromkeys(refusal.under, message)}, text=message, refusal=refusal.kind)
 
 
 def say_clarify(asked: Clarify) -> Answer:
@@ -5920,7 +5950,7 @@ def say_clarify(asked: Clarify) -> Answer:
     else:
         message = clarification(asked.asked, candidates, asked.kind, asked.active)
         shown = {"ambiguous": asked.asked, "candidates": candidates} if asked.shown is None else dict(asked.shown)
-    return Answer(data={**shown, **dict.fromkeys(asked.under, message)}, text=message)
+    return Answer(data={**shown, **dict.fromkeys(asked.under, message)}, text=message, refusal="clarify")
 
 
 # --- the sayer table: the body decides -----------------------------------------

@@ -42,13 +42,6 @@ SHOOTING_RATES: dict[str, str] = {"fieldGoalPct": "fg_pct", "threePointFieldGoal
 .. versionadded:: 5.0.0
 """
 
-#: How many of the meetings behind an average against one opponent are listed.
-RECENT_MEETINGS = 5
-"""The newest meetings an average against one opponent lists beneath it.
-
-.. versionadded:: 5.0.0
-"""
-
 #: The figures each listed meeting shows.
 _MEETING_MEASURES: tuple[str, ...] = ("points", "rebounds", "assists")
 
@@ -150,18 +143,21 @@ def _player_stat_sums(compiled: Compiled, line: dict[str, Any]) -> dict[str, Any
 
 
 def _player_stat_meetings(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, games: int) -> Part:
-    """The newest meetings behind an average against one opponent, newest
-    first: the compiler's ``rows`` read over the same narrowed games and the
-    same rebuilt-line rule the line was read under, with the line's own
-    measures beside the three each meeting shows.
+    """Every meeting behind an average against one opponent, newest first:
+    the compiler's ``rows`` read over the same narrowed games and the same
+    rebuilt-line rule the line was read under, with the line's own measures
+    beside the three each meeting shows.
 
-    A product decision: "stats vs X" is the averages over every
-    meeting in scope, the game count, and a short footer of the meetings
-    themselves - which is what makes "in 1 game" honest, and what a reader
-    asking "vs X" is usually after. A per-game log is still ``PLAYER_LOG``'s,
-    for a question that says log, each game or last N."""
+    A product decision: "stats vs X" is the averages over every meeting in
+    scope, the game count, and the meetings themselves beneath - which is
+    what makes "in 1 game" honest, and what a reader asking "vs X" is
+    usually after. Every one of them, never the newest five (decision D24:
+    a game-by-game list shows every row; the feed sample's FS058 was graded
+    partial for "only 5 of the 6"). A per-game log with the whole box line
+    is still ``PLAYER_LOG``'s, for a question that says log, each game or
+    last N."""
     assert compiled.player is not None
-    meetings = replace(q, skeleton="rows", aggregate=Aggregate.NONE, measures=[*_MEETING_MEASURES, *compiled.measures], order="date", direction="desc", limit=RECENT_MEETINGS, offset=0)
+    meetings = replace(q, skeleton="rows", aggregate=Aggregate.NONE, measures=[*_MEETING_MEASURES, *compiled.measures], order="date", direction="desc", limit=None, offset=0)
     found = rows_of(con, _compile_rows(meetings, copy.deepcopy(compiled.narrowed), compiled.rebuilt, compiled.player, compiled.span))
     rows = tuple(
         {

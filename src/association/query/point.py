@@ -64,7 +64,6 @@ from association.query.measures import (
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, SEASON_FIGURES, qualifies_by
 from association.query.period import PeriodRead
 from association.query.reading import (
-    DEFAULT_GAME_LOG_LIMIT,
     DEFAULT_LIMIT,
     DEFAULT_NAMED_RUNS,
     DEFAULT_SINGLE_GAME_LIMIT,
@@ -409,7 +408,9 @@ def _everyone_multi_line_games(asked: PointShape | None, scope: Filtered, questi
         predicates=lines,
         order="date",
         direction="desc",
-        limit=_clamp_limit(scope.window.count, 25),
+        # Every game clearing the lines, a window only where the words state
+        # one: a game-by-game list shows every row (decision D24).
+        limit=scope.window.count,
         relation="everyone",
     )
 
@@ -715,7 +716,9 @@ def _everyone_position_log(asked: PointShape | None, scope: Filtered, question: 
         predicates=[],
         order="date",
         direction="desc",
-        limit=_clamp_limit(scope.window.count, 10),
+        # A position's log is a log: every game, a window only where the
+        # words state one (decision D24).
+        limit=scope.window.count,
         relation="everyone",
     )
 
@@ -891,8 +894,9 @@ def _compare_point(scope: Filtered) -> Reading:
 
 
 def _default_game_log(scope: Filtered) -> Reading:
-    """A player's log's default point (``PLAYER_LOG``): the newest games, in
-    date order. A REAL stat neither the log's columns nor the relation
+    """A player's log's default point (``PLAYER_LOG``): every game the
+    reading selects, newest first - a count only where the words state a
+    window (decision D24). A REAL stat neither the log's columns nor the relation
     carries is declined (:func:`~association.query.measures.log_extras`):
     "luka shot distance log" listed without it would be the narrower answer
     passed off as the one asked for. A ``threshold`` on a log is the line it
@@ -918,7 +922,9 @@ def _default_game_log(scope: Filtered) -> Reading:
         predicates=[(boolean, "=", True)] if boolean is not None else _threshold_line(scope),
         order="date",
         direction="asc" if scope.window.order == "first" else "desc",
-        limit=_clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT),
+        # Every game the reading selects; a count only where the words state
+        # a window ("last 5 games"), never a default (decision D24).
+        limit=scope.window.count,
         subject_span=scope.span.over_career() if date else scope.span,
     )
 
@@ -943,12 +949,13 @@ def _default_player_stat(scope: Filtered) -> Reading:
     season line (``on="player_seasons"``) for an unnarrowed season or career. A
     window ("Jokic averages last 10 games") is the log of exactly those
     games with averages beneath - the shape the question has - so the point
-    is ``PLAYER_LOG``'s."""
+    is ``PLAYER_LOG``'s; so is the whole line on one day of the calendar a
+    year ("anthony davis stats on christmas"), each game a row."""
     if not _named_player_in(scope):
         raise Unsupported("a player's line needs a player")
     col = stat_column(scope.measure)
     measures = [col] if col else list(STAT_LINE)
-    if scope.window.count or scope.window.order:
+    if scope.window.count or scope.window.order or (col is None and _default_player_stat_one_day_a_year(scope)):
         return _default_game_log(scope)
     if not (scope_reads_box_scores(scope, measure_filters(scope)) or scope.cuts.date):
         return Reading(**scope.filters(), read_as=PLAYER_LINE, measures=_measured(*measures), group="none", predicates=[])
@@ -961,6 +968,17 @@ def _default_player_stat(scope: Filtered) -> Reading:
         predicates=[],
         subject_span=scope.span.over_career() if date else scope.span,
     )
+
+
+def _default_player_stat_one_day_a_year(scope: Filtered) -> bool:
+    """Whether the games are narrowed to one day of the calendar - a holiday
+    ("stats on christmas", a date or the nth weekday of a month): one game a
+    season at most, so a whole line asked of them is each game listed with
+    the per-game line beneath (the log's), as the yardstick's key reads
+    F147 - never only the averages of games each asked for. A weekday or a
+    month holds a season's dozens and stays a line."""
+    situation = scope.cuts.situation
+    return situation is not None and situation.calendar is not None and situation.calendar.kind in ("day", "nth_weekday")
 
 
 def _default_player_splits(scope: Filtered) -> Reading:
@@ -1040,7 +1058,9 @@ def _default_period_split(scope: Filtered) -> Reading:
         predicates=[],
         order="date",
         direction="asc" if scope.window.order == "first" else "desc",
-        limit=_clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT),
+        # Every game the reading selects; a count only where the words state
+        # a window ("last 5 games"), never a default (decision D24).
+        limit=scope.window.count,
         available=SHOT_AVAILABILITY,
         subject_span=scope.span.over_career() if date else scope.span,
     )
@@ -1493,7 +1513,9 @@ def team_log_point(scope: Filtered, subject: Subject) -> Reading | None:
         predicates=[],
         order="date",
         direction="asc" if scope.window.order == "first" else "desc",
-        limit=_clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT),
+        # Every game the reading selects; a count only where the words state
+        # a window ("last 5 games"), never a default (decision D24).
+        limit=scope.window.count,
         relation="team",
     )
 
