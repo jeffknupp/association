@@ -949,12 +949,13 @@ def _default_player_stat(scope: Filtered) -> Reading:
     season line (``on="player_seasons"``) for an unnarrowed season or career. A
     window ("Jokic averages last 10 games") is the log of exactly those
     games with averages beneath - the shape the question has - so the point
-    is ``PLAYER_LOG``'s."""
+    is ``PLAYER_LOG``'s; so is the whole line on one day of the calendar a
+    year ("anthony davis stats on christmas"), each game a row."""
     if not _named_player_in(scope):
         raise Unsupported("a player's line needs a player")
     col = stat_column(scope.measure)
     measures = [col] if col else list(STAT_LINE)
-    if scope.window.count or scope.window.order:
+    if scope.window.count or scope.window.order or (col is None and _default_player_stat_one_day_a_year(scope)):
         return _default_game_log(scope)
     if not (scope_reads_box_scores(scope, measure_filters(scope)) or scope.cuts.date):
         return Reading(**scope.filters(), read_as=PLAYER_LINE, measures=_measured(*measures), group="none", predicates=[])
@@ -967,6 +968,17 @@ def _default_player_stat(scope: Filtered) -> Reading:
         predicates=[],
         subject_span=scope.span.over_career() if date else scope.span,
     )
+
+
+def _default_player_stat_one_day_a_year(scope: Filtered) -> bool:
+    """Whether the games are narrowed to one day of the calendar - a holiday
+    ("stats on christmas", a date or the nth weekday of a month): one game a
+    season at most, so a whole line asked of them is each game listed with
+    the per-game line beneath (the log's), as the yardstick's key reads
+    F147 - never only the averages of games each asked for. A weekday or a
+    month holds a season's dozens and stays a line."""
+    situation = scope.cuts.situation
+    return situation is not None and situation.calendar is not None and situation.calendar.kind in ("day", "nth_weekday")
 
 
 def _default_player_splits(scope: Filtered) -> Reading:

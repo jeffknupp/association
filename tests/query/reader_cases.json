@@ -31205,9 +31205,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -31882,9 +31894,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -32068,9 +32092,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -32255,9 +32291,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -32440,9 +32488,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -32625,9 +32685,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -32810,9 +32882,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -32995,9 +33079,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -33180,9 +33276,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -33365,9 +33473,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -33559,9 +33679,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -33997,9 +34129,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34175,9 +34319,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34344,9 +34500,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34513,9 +34681,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34682,9 +34862,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34851,9 +35043,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35020,9 +35224,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35189,9 +35405,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35358,9 +35586,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35527,9 +35767,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35696,9 +35948,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35865,9 +36129,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36034,9 +36310,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36203,9 +36491,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36372,9 +36672,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36542,9 +36854,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36712,9 +37036,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36882,9 +37218,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37052,9 +37400,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37222,9 +37582,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,

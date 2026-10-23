@@ -1995,6 +1995,23 @@ def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_
     assert result.data["measures"] == ["ts_pct"] and result.data["skeleton"] == "scalar" and result.data["rows"][0]["games"] == 2
 
 
+def test_a_whole_line_on_one_day_a_year_lists_each_game() -> None:
+    """F147, "anthony davis stats on christmas": a holiday is one game a
+    season at most, so the whole line asked of it is each game listed with
+    the per-game line beneath - the log's point - as the yardstick's key
+    reads it. A weekday or a month stays a line, and so does one stat."""
+    from association.query.calendar import CalendarNarrowing
+    from association.query.reading import Situation
+
+    def on(kind: str, value: Any, measure: Measure | None = None) -> Reading:
+        situation = Situation(text="x", calendar=CalendarNarrowing(kind, value, "x"))
+        return default_point(PLAYER_LINE, Reading(who=Who(kind="player", players=("Anthony Davis",)), cuts=Cuts(situation=situation), measure=measure))
+
+    assert on("day", (12, 25)).read_as == PLAYER_LOG and on("nth_weekday", (1, 1, 3)).read_as == PLAYER_LOG
+    assert on("weekday", 5).read_as != PLAYER_LOG and on("month", 3).read_as != PLAYER_LOG
+    assert on("day", (12, 25), Measure(key="points", as_typed="points")).read_as != PLAYER_LOG
+
+
 def test_a_log_shows_every_game_its_reading_selects_and_a_window_only_where_the_words_state_one(cx_ctx: AnswerContext) -> None:
     """Decision D24 (ISSUES #503): a log with no window in its words lists
     EVERY game - Marcus Fillmore's 22, where ten were listed "last 10 of 22"
