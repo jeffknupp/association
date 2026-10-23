@@ -1995,6 +1995,21 @@ def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_
     assert result.data["measures"] == ["ts_pct"] and result.data["skeleton"] == "scalar" and result.data["rows"][0]["games"] == 2
 
 
+def test_a_log_shows_every_game_its_reading_selects_and_a_window_only_where_the_words_state_one(cx_ctx: AnswerContext) -> None:
+    """Decision D24 (ISSUES #503): a log with no window in its words lists
+    EVERY game - Marcus Fillmore's 22, where ten were listed "last 10 of 22"
+    - and says the whole; a window the words state ("last 5 games") still
+    cuts, and says of how many. The point reads no default count."""
+    fillmore = Reading(who=Who(kind="player", players=("Marcus Fillmore",)))
+    assert planned_query(PLAYER_LOG, fillmore).limit is None
+    every = compose_answer(cx_ctx, PLAYER_LOG, fillmore, "marcus fillmore game log")
+    assert every is not None and len(every.data["games"]) == every.data["qualifying_games"] == 22
+    assert every.text.split("\n")[0] == f"Marcus Fillmore, all 22 games of the {current_season()} regular season:"
+    five = compose_answer(cx_ctx, PLAYER_LOG, replace(fillmore, window=Window(count=5)), "marcus fillmore last 5 games")
+    assert five is not None and len(five.data["games"]) == 5
+    assert five.text.split("\n")[0] == f"Marcus Fillmore, last 5 of 22 games of the {current_season()} regular season:"
+
+
 def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext) -> None:
     """A log lists a game rebuilt from play-by-play: ``minutes`` is exempt
     from the rebuilt-line rule - play-by-play cannot recover it, so the
@@ -2012,7 +2027,7 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
     composed = compose_answer(cx_ctx, PLAYER_LOG, Reading(who=Who(kind="player", players=("Brandin Podziemski",))), "podziemski's game log")
     assert composed is not None
     lines = composed.text.split("\n")
-    assert lines[0] == f"Brandin Podziemski, last 4 games of the {current_season()} regular season:"
+    assert lines[0] == f"Brandin Podziemski, all 4 games of the {current_season()} regular season:"
     # The full box line beside it (ISSUES.md #471): a column a rebuild does
     # not fill is blank on the rebuilt row, and the note names it.
     # Made threes are a figure the rebuild has (ISSUES.md #501): shown, never blank.

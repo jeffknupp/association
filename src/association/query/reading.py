@@ -2509,22 +2509,21 @@ DEFAULT_LIMIT = 5
 
 MAX_LIMIT = 50
 """The most rows a question's ``limit`` reaches (:func:`_clamp_limit`): the
-games a log lists, the players or teams a ranking lists, the runs a streak
-listing shows. One cap for every shape; the season-line ranking
-(``season_line.ranking_statement``) applies it to its SQL as well.
+players or teams a ranking lists, the runs a streak listing shows. One cap
+for every listing but a log; the season-line ranking
+(``season_line.ranking_statement``) applies it to its SQL as well. A log
+is no listing of leaders: it shows every game its reading selects, and a
+count is only a window its words state (decision D24), uncapped.
 
 .. versionchanged:: 5.0.0
    Lives on the reader's side, and is the only one: ``leaderboard`` had a
    ``MAX_LIMIT`` of its own (100, for the retired agent's model-supplied
    count) that no answer reached, since every ranking's count was clamped
    to this one first.
-"""
 
-DEFAULT_GAME_LOG_LIMIT = 10
-"""How many games a log lists by default.
-
-.. versionchanged:: 5.0.0
-   Lives on the reader's side (``templates.games`` re-exported it until Phase 2, step 6).
+.. versionchanged:: 7.0.0
+   No longer caps a log (decision D24): ``DEFAULT_GAME_LOG_LIMIT``, the ten
+   games a log listed where its words stated no window, is gone with it.
 """
 
 DEFAULT_SINGLE_GAME_LIMIT = 3

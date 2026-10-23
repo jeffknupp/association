@@ -13,7 +13,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import answered_as, measure_of, planned_answer, planned_query, said
-from warehouse_rows import plays_all_complete, plays_short
+from warehouse_rows import insert_rows, plays_all_complete, plays_short
 
 from association.fetch.repairs import real_games
 from association.nba import shot_value
@@ -1360,6 +1360,23 @@ def gl_con(tmp_path: Path) -> AnswerContext:
     c.execute("INSERT INTO team_box_stats VALUES ('e3',?,2,'18','2','home'),('e1b',?,2,'18','2','home')", [s, s])
     real_games.build_table(c, {"games", "teams"})
     return AnswerContext(con=c, out_dir=tmp_path)
+
+
+def test_a_teams_log_shows_every_game_its_reading_selects(gl_con: AnswerContext) -> None:
+    """Decision D24 for a team's log (ISSUES #503): with twelve more Knicks
+    games, the log lists all fourteen and says the whole, where the newest
+    ten were listed "last 10 of 14"; a window the words state still cuts."""
+    c, s = gl_con.con, current_season()
+    extra = [(f"k{n}", s, 2, f"{s - 1}-11-{n + 1:02d}T00:00Z", "18", "2", 100 + n, 90, "18", False, "New York") for n in range(12)]
+    insert_rows(c, "games", extra)
+    insert_rows(c, "team_box_stats", [(f"k{n}", s, 2, "18", "2", "home") for n in range(12)])
+    real_games.build_table(c, {"games", "teams"})
+    knicks = Reading(who=Who(kind="team", teams=("Knicks",)))
+    every = player_log(gl_con, knicks)
+    assert len(every.data["games"]) == 14
+    assert every.text.startswith(f"New York Knicks, all 14 games of the {s} regular season (13-1):")
+    three = player_log(gl_con, replace(knicks, window=Window(count=3)))
+    assert len(three.data["games"]) == 3 and three.text.startswith(f"New York Knicks, last 3 of 14 games of the {s} regular season")
 
 
 @pytest.fixture
@@ -4700,7 +4717,7 @@ def test_player_log_lists_only_the_games_against_the_named_opponent(pg_ctx: Answ
     opponent alone, never the Celtics' last eight games against anybody."""
     result = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=Cuts(opponent="Detroit Pistons")))
     assert [g["opponent"] for g in result.data["games"]] == ["DET", "DET"]
-    assert result.text.startswith(f"Brandin Podziemski vs the Detroit Pistons, last 2 games of the {current_season()} regular season:")
+    assert result.text.startswith(f"Brandin Podziemski vs the Detroit Pistons, both games of the {current_season()} regular season:")
 
 
 def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: AnswerContext) -> None:
@@ -5743,7 +5760,7 @@ def test_season_history_career_states_the_combined_total(ps_con: AnswerContext) 
 def test_a_teams_log_honors_opponent_and_venue(gl_con: AnswerContext) -> None:
     home = player_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home")))
     assert [g["date"] for g in home.data["games"]] == ["2026-04-10"]
-    assert home.text.startswith(f"New York Knicks at home, most recent game of the {current_season()} regular season (1-0):")
+    assert home.text.startswith(f"New York Knicks at home, the only game of the {current_season()} regular season (1-0):")
     assert len(player_log(gl_con, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(opponent="Boston Celtics"))).data["games"]) == 2
 
 

@@ -3455,7 +3455,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -3778,7 +3778,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -3957,7 +3957,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -11446,7 +11446,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -11629,7 +11629,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -12692,7 +12692,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -15176,7 +15176,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -15497,7 +15497,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -15661,7 +15661,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -18197,7 +18197,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -19871,7 +19871,7 @@
     ],
     "order": "date",
     "direction": "desc",
-    "limit": 25,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -22125,7 +22125,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -23874,7 +23874,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -24056,7 +24056,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -24238,7 +24238,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -24420,7 +24420,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -27341,7 +27341,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -27714,7 +27714,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -28254,7 +28254,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -28459,7 +28459,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -30739,7 +30739,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -37763,7 +37763,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -39087,7 +39087,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -43194,7 +43194,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -43374,7 +43374,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -43857,7 +43857,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -44707,7 +44707,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -44895,7 +44895,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -45069,7 +45069,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -45637,7 +45637,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -45829,7 +45829,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -46023,7 +46023,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -46235,7 +46235,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -47461,7 +47461,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -47612,7 +47612,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -50172,7 +50172,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -54641,7 +54641,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -55916,7 +55916,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -56076,7 +56076,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -56258,7 +56258,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -56438,7 +56438,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -56618,7 +56618,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -56811,7 +56811,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -58231,7 +58231,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -58390,7 +58390,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -58547,7 +58547,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -58711,7 +58711,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -58877,7 +58877,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -59037,7 +59037,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -61751,7 +61751,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -63305,7 +63305,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -64672,7 +64672,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -64902,7 +64902,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -65117,7 +65117,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -68273,7 +68273,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -69517,7 +69517,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -69704,7 +69704,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -70215,7 +70215,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -71583,7 +71583,7 @@
     "predicates": [],
     "order": "date",
     "direction": "asc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -75839,7 +75839,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -78768,7 +78768,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -79190,7 +79190,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -80037,7 +80037,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -80972,7 +80972,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -82294,7 +82294,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -83709,7 +83709,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -84312,7 +84312,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -87674,7 +87674,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -88192,7 +88192,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"

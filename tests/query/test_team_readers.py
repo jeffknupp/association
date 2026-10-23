@@ -407,7 +407,7 @@ def test_a_teams_home_games_leave_out_a_neutral_site_game_and_say_so(team_ctx: A
     and the narrowing's phrase says how many it left out."""
     home = player_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="home")))
     assert [g["date"] for g in home.data["games"]] == [f"{S - 1}-11-19"]
-    assert home.text.startswith("New York Knicks at home (1 neutral-site game left out), most recent game")
+    assert home.text.startswith("New York Knicks at home (1 neutral-site game left out), the only game")
     road = player_log(team_ctx, Reading(who=Who(kind="team", teams=("Knicks",)), cuts=Cuts(venue="away")))
     assert [g["date"] for g in road.data["games"]] == [f"{S - 1}-12-31"]
     spurs = player_log(team_ctx, Reading(who=Who(kind="team", teams=("Spurs",)), cuts=Cuts(venue="home")))
