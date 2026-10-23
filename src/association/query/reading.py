@@ -1662,6 +1662,73 @@ class LeftOut:
     names: tuple[str, ...] = ()
 
 
+AlternativeKind = Literal["span"]
+"""What an :class:`Alternative` changes: the span alone, for now (decision
+D23's pilot, D13's class - a season against a career). A kind is added
+with the detection its class needs, never as a free value.
+
+.. versionadded:: 7.0.0
+"""
+
+SpanAs = Literal["career", "season", "latest"]
+"""A span as an :class:`Alternative` names it: every season on record
+(``career``), one season (``season``, the number beside it), or the most
+recent game the read holds (``latest``: "in his last game").
+
+.. versionadded:: 7.0.0
+"""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Alternative:
+    """The other reasonable reading of a default the words left open,
+    offered as a question that asks it (decision D23, revised 2026-10-23):
+    what the reading ``read`` where no season was named (the career D13's
+    words imply, or the current season), what this one reads
+    ``instead``, the ``season`` either names, and the ready ``question`` -
+    the asker's own words with the span stated, a wording the parser reads
+    to exactly that alternative. Written by the parser's last step where
+    the span is defaulted (``parse._reading_alternatives``); offered only
+    once the answering loop has read the wording again and found it reaches
+    what it says (``agent._offered``).
+
+    .. versionadded:: 7.0.0
+    """
+
+    kind: AlternativeKind
+    read: SpanAs
+    instead: SpanAs
+    season: int | None
+    question: str
+
+    def reached_by(self, asked: Filtered, read: Filtered, asked_key: PointShape | None, read_key: PointShape | None) -> bool:
+        """Whether ``read`` - the parser's reading of :attr:`question` -
+        reads exactly this alternative of ``asked``, the reading it was
+        offered beside: the same key (``read_key`` against ``asked_key``)
+        and every filter as it stood, but the span it states (and, for the
+        latest game, the one game it keeps). A wording that reads the
+        default again, or anything else beside it, re-asks some other
+        question, and is never offered.
+
+        .. versionadded:: 7.0.0
+        """
+        if read_key != asked_key and not (self.instead == "latest" and read_key in (PLAYER_LOG, PERIOD_LOG)):
+            # (One game of his, the latest: a log of that game, where the
+            # words asked his line or a quarter's figure over the career.)
+            return False
+        kept = ("who", "cuts", "companions", "lines", "measure", "split", "period", "minimum")
+        if any(getattr(read, name) != getattr(asked, name) for name in kept):
+            return False
+        span = read.span
+        if self.instead == "latest":
+            return read.window.count == 1 and read.window.order == "recent"
+        if read.window != asked.window or span.since is not None or span.season_type != asked.span.season_type:
+            return False
+        if self.instead == "season":
+            return span.season == self.season and not span.career
+        return span.career and span.season is None
+
+
 @dataclass(frozen=True)
 class PointShape:
     """What a planned point is read and said as (``ROADMAP-TYPES.md``: the
@@ -2264,6 +2331,14 @@ class Reading(Filtered):
     #:
     #: .. versionadded:: 6.0.0
     defaulted: Cause | None = None
+    #: The other readings of a span the words left open, each a question
+    #: that asks it (:class:`Alternative`, decision D23): the season a
+    #: career D13's words imply could have been, or the career a defaulted
+    #: season could have been. Read by the parser's last step; none where
+    #: the words named the span.
+    #:
+    #: .. versionadded:: 7.0.0
+    alternatives: tuple[Alternative, ...] = ()
 
     @property
     def has_point(self) -> bool:

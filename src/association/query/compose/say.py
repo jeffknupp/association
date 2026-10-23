@@ -491,17 +491,30 @@ def _say_record_note(kind: str, facts: dict[str, Any]) -> str:
     return " - the first the warehouse holds every game of"
 
 
-def say_career_implied(kind: str, season: int) -> str:
+def say_career_implied(kind: str, season: int, asks: Sequence[str] = ()) -> str:
     """The career a question naming no season was read over because its
     words imply one (decision D13), said with the wording that asks about
     one season instead: whose career by the subject's ``kind`` (a player's,
     two players', or every season on record for anything else), and
-    ``season`` the season the suggested wording names.
+    ``season`` the season the suggested wording names; ``asks`` the ready
+    questions offered beside it (decision D23), recorded as its facts.
 
     .. versionadded:: 7.0.0
     """
     whose = {"player": "his career", "pair": "their careers"}.get(kind, "every season on record")
-    return decision_phrase(Decided(kind="career_implied", field="season", chose="career", why="implied", facts={"season": season}), whose=whose)
+    facts: dict[str, Any] = {"season": season, **({"asks": list(asks)} if asks else {})}
+    return decision_phrase(Decided(kind="career_implied", field="season", chose="career", why="implied", facts=facts), whose=whose)
+
+
+def say_season_default(season: int, season_type: int, asks: Sequence[str]) -> str:
+    """The season a question naming none was read in - the current one, as
+    the heading names it - recorded with the ready questions that ask the
+    career instead (``asks``, decision D23): the heading's own phrase, so
+    the remark is the words the answer already says.
+
+    .. versionadded:: 7.0.0
+    """
+    return decision_phrase(Decided(kind="season_default", field="season", chose=season, instead_of=("career",), why="no_season_named", facts={"season_type": season_type, "asks": list(asks)}))
 
 
 def decision_phrase(each: Decided, **said_with: Any) -> str:

@@ -984,8 +984,15 @@ def test_a_mark_typed_into_the_question_forges_no_value(con: duckdb.DuckDBPyConn
     char = mark
     typed = question.format(*[char] * question.count("{}"))
     spaced = question.format(*[" "] * question.count("{}"))
-    assert _read(con, typed) == _read(con, spaced)
-    assert _read(con, typed, ["nikola jokic"]) == _read(con, spaced, ["nikola jokic"])
+
+    def read_as_typed(names: list[str] | None = None) -> Reading:
+        # An alternative's ready question is the asker's own words, the mark
+        # among them (decision D23): what it reads is the same.
+        read = _read(con, typed, names)
+        return replace(read, alternatives=tuple(replace(each, question=each.question.replace(char, " ")) for each in read.alternatives))
+
+    assert read_as_typed() == _read(con, spaced)
+    assert read_as_typed(["nikola jokic"]) == _read(con, spaced, ["nikola jokic"])
 
 
 @pytest.mark.parametrize(

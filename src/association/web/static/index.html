@@ -329,6 +329,22 @@
     cursor: pointer;
   }
   .examples button:hover { border-color: var(--accent); }
+  /* The other readings of a default span, each a question to ask instead
+     (decision D23): the examples' pill, smaller, under the answer. */
+  .alternatives { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .alternatives button {
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--accent);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    cursor: pointer;
+    text-align: left;
+    max-width: 100%;
+  }
+  .alternatives button:hover { border-color: var(--accent); }
   footer { border-top: 1px solid var(--line); background: var(--panel); padding: 14px 20px 18px; }
   form { max-width: 820px; margin: 0 auto; display: flex; gap: 10px; }
   textarea {
@@ -1958,6 +1974,19 @@
     source.addEventListener("answer", finish);
   }
 
+  // One button per alternative, asking its question as typed into the box.
+  function alternativesRow(alternatives) {
+    const row = el("div", "alternatives");
+    for (const each of alternatives) {
+      const button = el("button", null, each.question);
+      button.type = "button";
+      button.title = "Ask this instead";
+      button.addEventListener("click", () => { input.value = each.question; ask(); });
+      row.appendChild(button);
+    }
+    return row;
+  }
+
   // The planned shape in words for the meta line: "ranking by player, player
   // seasons" - what one row is, and the relation it was read from.
   function shapeWords(shape) {
@@ -1985,6 +2014,10 @@
       // A rendered form when this answer's shape draws one, the text otherwise.
       const rendered = renderAnswer(a);
       answer.appendChild(rendered || prose(a));
+      // The other readings of the default span the answer read by (decision
+      // D23), each a button that asks its ready question - beside the
+      // sentence that states the default, never in place of it.
+      if (Array.isArray(a.alternatives) && a.alternatives.length) answer.appendChild(alternativesRow(a.alternatives));
 
       const meta = el("div", "meta");
       const badge = el("span", "badge " + a.answered_by, a.answered_by === "fast" ? "answered" : "refused");

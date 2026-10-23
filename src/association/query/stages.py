@@ -232,6 +232,9 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         **({"unsupported": plain(reading.unsupported, mask=mask)} if reading.unsupported else {}),
         **({"left_out": plain(reading.left_out, mask=mask)} if reading.left_out is not None else {}),
         **({"defaulted": plain(reading.defaulted, mask=mask)} if reading.defaulted is not None else {}),
+        # The other readings of a defaulted span, each a ready question
+        # (decision D23): recorded where the Reading holds one.
+        **({"alternatives": plain(reading.alternatives, mask=mask)} if reading.alternatives else {}),
     }
 
 
@@ -324,6 +327,9 @@ def snapshot(
             "shape": plain(answer.shape, mask=mask),
             "artifacts": [artifact.kind for artifact in answer.artifacts],
             "unanswered": unanswered,
+            # The alternatives offered beside the answer - the page's
+            # buttons - recorded where it offers one.
+            **({"alternatives": plain(answer.alternatives, mask=mask)} if answer.alternatives else {}),
         },
     }
 

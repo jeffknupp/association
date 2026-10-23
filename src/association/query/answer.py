@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from association.query.decisions import Decision
 from association.query.notes import Note
-from association.query.reading import PointShape
+from association.query.reading import Alternative, PointShape
 
 if TYPE_CHECKING:
     import duckdb
@@ -196,3 +196,12 @@ class Answer:
     #:
     #: .. versionadded:: 6.0.0
     shape: PointShape | None = None
+    #: The other readings of a default the answer read by, each offered as
+    #: a question that asks it (:class:`~association.query.reading.Alternative`,
+    #: decision D23): the season a career the words imply could have been,
+    #: or the career a defaulted season could have been. Only those the
+    #: answering loop read again and found reach what they say - the page's
+    #: buttons and the CLI's "Also:" lines; the text says the default.
+    #:
+    #: .. versionadded:: 7.0.0
+    alternatives: tuple[Alternative, ...] = ()

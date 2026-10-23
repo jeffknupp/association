@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from association.nba.season import current_season
 from association.query import lexicon, measure, names
 from association.query.calendar import HOLIDAYS
 from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
@@ -61,6 +62,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    Alternative,
     Cause,
     Claim,
     Companion,
@@ -1201,7 +1203,7 @@ def _reading(
         # single season is read by nothing, the feed sample's FS114).
         refused, unsupported = aged, tuple(cause for cause in unsupported if cause is not aged)
     found = list(claimed_once([*found, *defaulted_claims]))
-    return replace(
+    read = replace(
         pointed,
         refused=refused,
         unsupported=unsupported,
@@ -1212,6 +1214,63 @@ def _reading(
         # question as it was asked (the fold keeps every position).
         unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], read_by_model, model_stat),
     )
+    return replace(read, alternatives=_reading_alternatives(asked, read))
+
+
+def _reading_alternatives(question: str, reading: Reading) -> tuple[Alternative, ...]:
+    """The other readings of a span the words left open, each as the asker's
+    own words with the span stated (decision D23's pilot, on D13's class):
+    where the words imply the career (the parser's ``span`` decision), the
+    current season ("... in 2026", the wording the D13 sentence names) and,
+    for one player's figure against an opponent, his latest meeting
+    ("... in his last game", the yardstick's F028, whose key reads the most
+    recent meeting); where no season is named and the current one is read,
+    the career. None where the words named the span, a window of games
+    (the newest N are no season's), a day, a game of a series or an ordinal
+    season, or where no point was read: each is a question the words
+    already settled. The answering loop reads each wording again before it
+    offers one (``agent._offered``)."""
+    if not reading.has_point or reading.refused is not None or reading.defaulted is not None:
+        return ()
+    cuts, span = reading.cuts, reading.span
+    if cuts.date is not None or cuts.game_n is not None or cuts.season_n is not None or reading.window.count is not None:
+        return ()
+    season = current_season()
+    if any(each.stage == "parser" and each.field == "span" and each.after == "career" for each in reading.decisions):
+        found = [Alternative(kind="span", read="career", instead="season", season=season, question=_alternative_worded(question, f"in {season}"))]
+        if _alternative_latest(reading):
+            found.append(Alternative(kind="span", read="career", instead="latest", season=None, question=_alternative_worded(question, "in his last game")))
+        return tuple(found)
+    if span.named or span.both or reading.read_as.relation == "team_snapshots":
+        return ()
+    whose = _ALTERNATIVE_CAREER_WORDS.get(reading.who.kind, "of all time")
+    return (Alternative(kind="span", read="season", instead="career", season=season, question=_alternative_worded(question, whose)),)
+
+
+#: The words that ask a career, by whose it is (the subject's kind), "of all
+#: time" for anyone else: each read by the span tagger as every season on
+#: record. Not a bare "all time": after a companion's name it was read into
+#: the name ("Celtics record without Tatum and Brown all time" spelled the
+#: second "brown", the reader case companions_are_the_subject_readings#1).
+_ALTERNATIVE_CAREER_WORDS: dict[str, str] = {"player": "over his career"}
+
+
+def _alternative_latest(reading: Reading) -> bool:
+    """Whether the latest meeting is the other reading of a career D13's
+    versus words imply: one player's figure (a stat named, no log asked)
+    against one opponent - "how many points did jokic score in the 3rd
+    quarter against boston" is his last meeting's quarter as reasonably as
+    his career's (the yardstick's F028, whose key reads the most recent)."""
+    return reading.who.kind == "player" and reading.cuts.opponent is not None and reading.measure is not None and reading.asked != PLAYER_LOG
+
+
+def _alternative_worded(question: str, stated: str) -> str:
+    """``question`` with the words ``stated`` (a span) added at its end,
+    before any closing punctuation: the asker's own question, asked of the
+    other span."""
+    body = question.rstrip()
+    closing = body[len(body.rstrip("?.! ")) :]
+    return f"{body[: len(body) - len(closing)]} {stated}{closing}"
 
 
 def _reading_high_by_points(question: str, reading: Reading, pointed: Reading, found: list[Claim], names: tuple[str, ...], stat: str) -> tuple[Reading, list[Claim]]:

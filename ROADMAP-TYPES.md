@@ -978,6 +978,28 @@ otherwise.
   under the mapping from the old record to the flat one
   (`~/association-research/stages/flatten_map.py`).
 
+- **Declared in code by decision D23's pilot** (2026-10-23, lane p6-alts; a
+  draft change for Jeff's review): `Reading.alternatives: tuple[Alternative,
+  ...]` and `Answer.alternatives`, the other readings of a span the words
+  left open, each offered as a ready question. `Alternative(kind, read,
+  instead, season, question)`: `kind` a closed `AlternativeKind` (`span`
+  alone - a kind comes with the detection its class needs: season type,
+  a round with no season, a bare year pair and "last season" wait for
+  Phase 7's reader), `read` and `instead` a `SpanAs` (`career`, `season`,
+  `latest` - one season's number in `season`, the latest meeting the one
+  newest game), `question` the asker's own words with the span stated.
+  Written by the parser's last step (`parse._reading_alternatives`): the
+  current season and, for one player's figure against an opponent, his
+  latest meeting where D13's career was read; the career where the
+  current season was read by default. Not in the draft, which has no
+  ambiguity on the Reading. The answering loop offers one only where the
+  parser reads its wording again (the question's own names and stat) to
+  exactly that alternative (`Alternative.reached_by`: the key and every
+  other filter as they stood) and it plans to a query - so `Answer.
+  alternatives` is a subset of `Reading.alternatives`, which the stage
+  snapshots record apart. No new `PointShape`, relation or second planned
+  point: an alternative is a question, asked when its button is pressed.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |

@@ -94,6 +94,19 @@ def test_the_answer_carries_the_planned_shape_the_page_renders_by(tmp_path: Path
     assert unshaped["shape"] is None
 
 
+def test_the_answer_carries_its_alternatives_as_ready_questions(tmp_path: Path) -> None:
+    """The other readings of a default span reach the page as values - what
+    each reads and the question its button asks (decision D23) - and as an
+    empty list where the answer offers none."""
+    from association.query.reading import Alternative
+
+    offered = Alternative(kind="span", read="career", instead="season", season=2026, question="stephen curry 50 point games in 2026")
+    body = _client(StubAnswerer(_answer("the answer", alternatives=(offered,))), tmp_path).post("/api/ask", json={"question": "stephen curry 50 point games"}).json()
+    assert body["alternatives"] == [{"kind": "span", "read": "career", "instead": "season", "season": 2026, "question": "stephen curry 50 point games in 2026"}]
+    plain = _client(StubAnswerer(), tmp_path).post("/api/ask", json={"question": "who leads the league in assists?"}).json()
+    assert plain["alternatives"] == []
+
+
 def test_the_answer_carries_its_decisions_as_values(tmp_path: Path) -> None:
     """What was decided on the way - the subject reading, an override of a
     routed field - reaches the client as values off the answer, never parsed

@@ -292,7 +292,12 @@ def query(question: str, model: str, db_path: str, out_dir: str, verbose: bool) 
     agent = Agent(db_path, Path(out_dir), verbose=verbose, model=model)
     # Agent.ask reads no sys.argv - a caller says what the request was, and
     # for this caller that really is the command line.
-    click.echo(agent.ask(question, label=shlex.join(sys.argv)).text)
+    answer = agent.ask(question, label=shlex.join(sys.argv))
+    click.echo(answer.text)
+    # The other readings of a default span, each a question to ask instead
+    # (decision D23) - the page's buttons, as lines.
+    for each in answer.alternatives:
+        click.echo(f"Also: {each.question}")
 
 
 @cli.command("web")

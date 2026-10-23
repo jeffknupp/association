@@ -19,6 +19,7 @@ import traceback
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import duckdb
 
@@ -29,8 +30,8 @@ from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDecli
 from association.query.result import Refusal
 
 from .answer import Answer, AnsweredBy, Timing
-from .compose.plan import Verdict, plan_point, planned_shape, refusal_result
-from .compose.say import nothing_answers, say, say_career_implied, say_left_out, say_spelling_read, say_stat_default
+from .compose.plan import PlannedQuery, Verdict, plan_point, planned_shape, refusal_result
+from .compose.say import nothing_answers, say, say_career_implied, say_left_out, say_season_default, say_spelling_read, say_stat_default
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -39,7 +40,11 @@ from .names import loaded as names_loaded
 from .notes import collect as collect_remarks
 from .notes import unsaid
 from .parse import MIN_QUESTION_WORDS, too_short
-from .reading import Reading, ScopeError
+from .reading import Alternative, Reading, ScopeError
+from .season_text import season_phrase
+
+if TYPE_CHECKING:
+    from .normalizer import Normalized
 
 # The subset of the said Answer's data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
@@ -78,7 +83,8 @@ def _career_implied(reading: Reading, composed: Answer) -> Answer:
         # and `say_clarify`'s data): nothing was read over the career, and a
         # cause such as an unread number is not corrected by naming a season.
         return composed
-    return _noted(composed, say_career_implied(reading.who.kind, current_season()))
+    asks = [each.question for each in composed.alternatives if each.read == "career"]
+    return _noted(composed, say_career_implied(reading.who.kind, current_season(), asks))
 
 
 def _read_nothing(composed: Answer) -> bool:
@@ -215,6 +221,10 @@ class Agent:
         #:
         #: .. versionadded:: 5.0.0
         self.unsaid: list[str] = []
+        # The normalizer's reply to the last question, which an alternative's
+        # wording is read again with (``_reaches``): the same names and stat,
+        # since the wording is the question's own words with a span added.
+        self._normalized: Normalized | None = None
         self.trace = trace
         #: The warehouse, read-only and cut off from the disk
         #: (:func:`~association.query.connection.connect_read_only`).
@@ -411,6 +421,7 @@ class Agent:
         from association.query.parse import read_route
 
         normalized = normalize(self.model, question)
+        self._normalized = normalized
         if normalized is None:
             return None
         history.log(f"  -> (normalizer) names={normalized.names} stat={normalized.stat!r}")
@@ -543,10 +554,52 @@ class Agent:
         composed = self._unmatched_fingerprint(reading, composed)
         composed = _spelling_read(reading, composed)
         composed = _stat_default(reading, composed)
+        composed = self._offered(reading, composed, history)
         composed = _career_implied(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if composed.data is not None and key in composed.data}
         history.log(f"  -> (compose) asked={key_path(reading.asked)} shape={key_path(shape)} point={point}")
         return composed
+
+    def _offered(self, reading: Reading, composed: Answer, history: RunHistory) -> Answer:
+        """``composed`` carrying the alternatives of its default span that
+        reach what they say (:attr:`Answer.alternatives
+        <association.query.answer.Answer.alternatives>`, decision D23):
+        each wording the parser wrote (:attr:`Reading.alternatives
+        <association.query.reading.Reading.alternatives>`) read again with
+        the question's own names and stat, and offered only where that
+        reading is the alternative's span over everything else as it stood,
+        and plans to a query - a button that re-asks the same question, or
+        asks one nothing here answers, is worse than none. Not beside a
+        refusal or a question back, which read no span. The season default
+        an offered career stands beside is recorded as the ``season_default``
+        decision where the heading names it; the career's, in the D13
+        sentence (:func:`_career_implied`)."""
+        if not reading.alternatives or _read_nothing(composed) or self._normalized is None:
+            return composed
+        offered = tuple(each for each in reading.alternatives if self._reaches(reading, each, history))
+        if not offered:
+            return composed
+        for each in offered:
+            season_type = reading.span.season_type or 2
+            if each.read == "season" and each.season is not None and season_phrase(each.season, season_type) in composed.text:
+                # Recorded where the heading names the season it read: the
+                # remark is the heading's own phrase, said already.
+                say_season_default(each.season, season_type, [each.question])
+        return replace(composed, alternatives=offered)
+
+    def _reaches(self, reading: Reading, alternative: Alternative, history: RunHistory) -> bool:
+        """Whether ``alternative``'s wording, read by the parser with the
+        question's own names and stat, reads exactly that alternative of
+        ``reading`` (:meth:`Alternative.reached_by
+        <association.query.reading.Alternative.reached_by>`) and plans to a
+        query; traced either way."""
+        from association.query.parse import read_route
+
+        assert self._normalized is not None
+        read = read_route(names_of(self.con), alternative.question, self._normalized.names, self._normalized.stat)
+        reached = alternative.reached_by(reading, read, reading.asked, read.asked) and isinstance(plan_point(read), PlannedQuery)
+        history.log(f"  -> (alternative) {'offered' if reached else 'not offered'}: {alternative.question!r}")
+        return reached
 
     def _unmatched_fingerprint(self, reading: Reading, composed: Answer) -> Answer:
         """A "vs" fingerprint that drew one polygon answered half of itself:
