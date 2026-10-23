@@ -2249,6 +2249,33 @@ with nothing to read fills the silence from its own weights), and more data
     flag (the shot table, 89.3% complete in 2016) - the brief had kept them
     out; the lane measured and the lead agreed.
 
+64. **Period reads keep every game and state the bound (2026-10-23, master
+    `3f074179`; #525, #526, Jeff's call).** Dropping a game whose columns did
+    not add up moved graded answers away from their keys (the keys come from
+    the same plays); so every game counts, `plays_complete` holds the signed
+    gap per column (box less plays), each column the answer shows says its
+    bound ("1st-quarter assists may be short by up to 2: on 2016-02-10 ..."),
+    and a read refuses only where more than one game in ten miss in a column
+    read (2004 first-quarter assists stay refused at 70%). The season tables
+    (`PERIOD_RECONCILIATION`, `PERIOD_AGREEMENT`) are retired. Moves: corpus
+    15, feed 33, toward the keys (F058 117/26, F059 29 games, FS078 exact
+    231/33; F060, FS016, FS208, FS381 at the key's counts); one refusal (a
+    Giannis log, over an unasked column, filed). The local merge commit
+    deployed before the live load, so the site's period reads failed
+    17:34-17:37; Jeff: that downtime is acceptable, add no process for it.
+
+65. **D23's pilot: the span default's other reading offered as a ready
+    question (2026-10-23, master `64083636`).** `Reading.alternatives`
+    (`reading.Alternative`, kind `span`), each wording re-read by the parser
+    and offered only if it reaches the alternative and plans (631 offered on
+    the populations, 0 fail; 566 answer the other reading); a button under
+    the answer, "Also:" in the CLI. Of the measurement's 24 span cases, 14
+    now offer a question reaching the key's dominant reading, 2 with figures
+    off. The inline second figure measured at +13.8% mean time, not built.
+    Fixed on the way: "No season was named" over a named range, the D13
+    sentence on a question back, a raw error on a career ranking with no
+    career form (`no_career_ranking`, CAUSES 68). No answer regressed.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

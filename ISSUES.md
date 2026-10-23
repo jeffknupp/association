@@ -139,6 +139,42 @@ before that commit needs re-checking against the current warehouse.
 
 ## P2: misleading or incomplete
 
+### A franchise career ranking is declined at RUN, not by the planner: "Most reb by a hawk player history of all time" says "Nothing here answers"
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** `rankings._leaderboard_career_refusals` declines a franchise's career leaderboard after the planner planned it; 3 feed answers, and 5 offered alternatives lead to it.
+- **User sees:** a generic decline where a cause or an answer belongs.
+- **Next step:** move it to the planner as a cause (one enumerated commit), or let the game-level ranking answer it.
+- **Priority:** P2.
+- **Source:** ours.
+- **GitHub:** #528
+
+### The compiler's own-sentence log skips D15's tenure cut: "Quentin grimes individual gamelog usage rating without joel embiid over his career" reads 2022-2026
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** the usage log reads Grimes's whole career; "...game log without joel embiid over his career" reads the 2025-2026 tenure (63 games); F159's key is 67.
+- **User sees:** a career "without" log over seasons the two were never teammates.
+- **Next step:** the compiler's log narrows by the companion's tenure as the readers do.
+- **Priority:** P2.
+- **Source:** ours.
+- **GitHub:** #529
+
+### "active players" is unread: "highest plus minus active players" ranks every player
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** `Reading.unread` holds "active"; the ranking reads every player, and its career alternative every career since 1994 per game, where the keys (FS112, FS390) want active players' career totals.
+- **User sees:** a ranking over players the words excluded.
+- **Next step:** read "active" as the players with a box score in the latest season (`names.ActivePlayers` holds them).
+- **Priority:** P2.
+- **Source:** ours.
+- **GitHub:** #530
+
+### The research harness counts a RUN refusal as fluent, because the snapshot records none
+- **Found:** 2026-10-23, lane p6-periods; the lead measured it
+- **Evidence:** `fluent()` (`~/association-research/reviews/phase5-2026-10-14/harness/fluent.py`, used by `classify82` and `score_keyed`) reads only `answered_by`, `refused` and "Nothing here answers"; 72 of the feed's "fluent" answers at sweep93 are RUN refusals ("No 2026 regular season games found for Damian Lillard", "No player found matching 'mpj'"); a fluent -> refusal move (Giannis's period log) was classed F->F.
+- **User sees:** nothing; the proof's classes miss refusal moves.
+- **Next step:** the stage snapshot records the RUN refusal's kind on the answer (`stages.py`, one field), and `fluent()` reads it.
+- **Priority:** P2 - tooling the proof rests on.
+- **Source:** ours.
+- **GitHub:** #531
+
 ### Team readers rebuild the cuts field by field, so a new cut is dropped silently until each is taught
 - **Found:** 2026-10-17, lane p6-round (the playoff round), fixing `320546c9` ("knicks second round record 2026" answered the postseason's 16-3, the round's 4-0).
 - **Evidence:** `compose/highs.py`, `logs.py`, `periods.py`, `meetings.py` build a team's `Cuts` by naming each field, so a cut added to `reading.Cuts` reaches them only when each is edited; the round was the third such drop (`7ae6a571`: a team's record over a teammate's line kept only venue and opponent).
@@ -1925,23 +1961,50 @@ those were found.
 
 ## P3: refusal or gap
 
-### A season's period reads keep games whose play-by-play does not add up to the box score, above the threshold
-- **Found:** 2026-10-23, lane p6-complete (#278), measuring before moving answers.
-- **Evidence:** `player_games.period_counted` applies the per-game completeness flag (`plays_complete`) only to seasons under `PERIOD_REFUSE_BELOW`; of the 75 period-log answers on both populations, 35 keep at least one game whose play-by-play does not add up in a column they read (51 of 2,474 games, 34 of them 2026), with no caveat where the season is not in `PERIOD_RECONCILIATION`.
-- **User sees:** a period figure possibly a play off in that game, said as exact.
-- **Next step:** Jeff's call: apply `period_counted` to every season (35 answers move, each checked against its key), retiring the season table for the per-game fact.
-- **Priority:** P3 pending Jeff's call.
-- **Source:** ESPN's play-by-play; the season table is ours.
-- **GitHub:** #525
-
-### The four-quarters read and the period leaderboard still refuse a season whose reconciliation is under the bar
-- **Found:** 2026-10-23, lane p6-complete (#278), writing `period_counted`.
-- **Evidence:** `compose/periods._period_by_quarter` and `read_period_leaderboard` call `_period_untrusted` and refuse 2016 whole ("jokic points by quarter career" is refused for his 2016 games); neither reads the per-game flag. No population question holds either.
-- **User sees:** a refusal naming 2016.
-- **Next step:** a `Narrowed` clause on `period_incomplete` and the counted note, as the log reads have.
+### The period floor refuses over a column the words did not ask: "Giannis first half points rebounds assists gamelog vs washington" is refused for field goal attempts
+- **Found:** 2026-10-23, lane p6-periods (keep-and-bound, #525/#526)
+- **Evidence:** a list of three stats is read as the whole line, so the floor (more than one game in ten missing) reads every column: 5 of 37 games miss on FGA.
+- **User sees:** a refusal naming a stat he did not ask about.
+- **Next step:** the floor reads the named stats when the words name several (or the reader reads a list of stats) - Jeff's call which.
 - **Priority:** P3.
 - **Source:** ours.
-- **GitHub:** #526
+- **GitHub:** #532
+
+### Team period reads are still trusted per season
+- **Found:** 2026-10-23, lane p6-periods (keep-and-bound, #525/#526)
+- **Evidence:** `team_games.TEAM_PERIOD_AGREEMENT` and `TEAM_PERIOD_REFUSE_BELOW` remain; no per-game gap exists for a team line, so 2016 team columns other than points are refused whole.
+- **User sees:** a refusal for a team's 2016 quarter rebounds or assists.
+- **Next step:** a team-game gap table beside `plays_complete`, and the keep-and-bound rule.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #533
+
+### A career offered to a one-season player returns the same figures
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** 37 of 631 offered alternatives answer as the original (28 of them VJ Edgecombe, "over his career (2026 regular season)").
+- **User sees:** a button that changes nothing.
+- **Next step:** a relation-side first-season check before a career is offered.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #534
+
+### "against in 2026" reads "in" as the Indiana Pacers
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** "How many teams has Luka recorded a triple double against in 2026" takes opponent = Indiana; the offered-wording guard caught it, so no button offers it.
+- **User sees:** a narrowing to Indiana the words did not ask (on the typed question).
+- **Next step:** the opponent reader takes no lone "in" before a year.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #535
+
+### A career comparison and a career fingerprint comparison are declined
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** the planner's `cannot_honor` career cell blocks F137's, F013's and FS255's other reading.
+- **User sees:** no career alternative where a season comparison was answered.
+- **Next step:** a career comparison reader over the season line's career rows.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #536
 
 ### A round with no season named reads the current season, where the words imply the career: "jimmy butler nba finals stats"
 - **Found:** 2026-10-17, lane p6-round (the playoff round), FS189 against its key.
@@ -2909,6 +2972,33 @@ those were found.
 - **GitHub:** #469
 
 ## P4: tooling, docs, low impact
+
+### The web check's documented command no longer launches
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** `uv run --with playwright python scripts/check_web_ui.py` resolves playwright 1.64, which wants chromium build 1248; the box has 1243; `--with playwright==1.63.0` works.
+- **User sees:** nothing.
+- **Next step:** pin `playwright==1.63.0` in AGENTS.md's command (and `page_renders.py`'s).
+- **Priority:** P4.
+- **Source:** ours.
+- **GitHub:** #537
+
+### A "since" range is worded as a career: "the past two seasons" says "regular season career (2025 on)"
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** the span's phrase for a range with no end is the career's.
+- **User sees:** a heading that calls two seasons a career.
+- **Next step:** say the range ("since 2024-25").
+- **Priority:** P4.
+- **Source:** ours.
+- **GitHub:** #538
+
+### A one-game window carries the D13 sentence: "... in his last game" says "No season was named"
+- **Found:** 2026-10-23, lane p6-alts (D23's pilot)
+- **Evidence:** the offered latest-meeting wording answers one game and still appends the career sentence.
+- **User sees:** a sentence about seasons beside one game.
+- **Next step:** no D13 sentence where the window is one game.
+- **Priority:** P4.
+- **Source:** ours.
+- **GitHub:** #539
 
 ### Champions are derivable from the round-4 series winner
 - **Found:** 2026-10-17, lane p6-round (the playoff round), the survey of what ESPN serves.
