@@ -2,7 +2,7 @@
 """Warehouse check for player_games.PERIOD_AGREEMENT.
 
 A period's line - a player's first-quarter rebounds, his second-half assists -
-is rebuilt from the shots and the plays (``player_games.period_line_sql``),
+is rebuilt from the shots and the plays (``nba.period_line.period_line_sql``),
 because nothing ESPN serves splits a box score by period. The one independent
 check such a figure has is the game it belongs to: summed over every period,
 overtime included, it has to equal the player's box score. This sums it, per
@@ -26,7 +26,8 @@ import sys
 import duckdb
 
 from association.cli.paths import default_db_path
-from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, period_line_sql
+from association.nba.period_line import PERIOD_COLUMNS, period_line_sql
+from association.query.player_games import PERIOD_AGREEMENT
 
 # How far a listed figure may drift before the table is stale. A re-fetch of a
 # few games moves a season by hundredths; a changed rule moves it by points.

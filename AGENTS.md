@@ -418,7 +418,10 @@ turned off.
     warehouse and data paths the scripts share (`paths.py`).
   - `nba/` - what both `fetch` and `query` need: seasons and Eastern
     dates, franchise names by season, coverage floors, NetPoints
-    categories. It imports nothing else from `association`.
+    categories, the shot frame and a shot's value (`court.py`,
+    `shot_value.py`) and the period line's rules (`period_line.py`, which
+    the period relation reads and the fetch path's completeness table is
+    built over). It imports nothing else from `association`.
   - `fetch/` - the ESPN and NetPoints clients, parsing, the pipeline and
     the warehouse build; `fetch/repairs/` - load-time repairs of ESPN's
     faults and the tables built beside them.
@@ -1230,8 +1233,8 @@ relation's statements):
   (`say.say_left_out`, attached by `agent._unmatched_fingerprint`). Shots
   (`compose.shots.ShotQuery`; every statement in `query/shots.py`):
   `read_shot_chart` and `read_shot_distance`, over
-  `shotchart.SHOT_VALUE_SQL` and the court's `HAS_POSITION_SQL` and
-  `SHOT_DISTANCE_SQL`, the chart drawn by `compose.shots.draw_shot_chart`
+  `nba.shot_value.SHOT_VALUE_SQL` and the frame's `HAS_POSITION_SQL` and
+  `SHOT_DISTANCE_SQL` (`nba/court.py`), the chart drawn by `compose.shots.draw_shot_chart`
   over `court.render_court_html` before the sayer.
 - **A shape with a default point** (`point.DEFAULT_POINTS`) is declined
   beyond the scoping its row states (`declined="plan"`) by the planner, and
@@ -1554,9 +1557,9 @@ others).
   - **`player_season_stats` reaches back to 1977 but is a survivor
     sample**, so a lookup and a ranking have different floors
     (`first_ranking_season`).
-- **Shot coordinates measure y from the rim (`court.HOOP_Y`), and
+- **Shot coordinates measure y from the rim (`nba.court.HOOP_Y`), and
   `points_attempted = 0` means unlabeled, not zero points.** **Never filter
-  `points_attempted` for a shot's value**; read `shotchart.SHOT_VALUE_SQL`,
+  `points_attempted` for a shot's value**; read `nba.shot_value.SHOT_VALUE_SQL`,
   which derives it and keeps the per-season refusals and caveats beside it.
   Free throws carry a position through 2018. The method that caught it:
   **where a column has a sibling that restates it, fit against the sibling

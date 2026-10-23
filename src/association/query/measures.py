@@ -12,6 +12,13 @@ leaves no second copy to disagree with (`ISSUES.md` #164).
 
 from __future__ import annotations
 
+# The columns a quarter or half rebuilds (`association.nba.period_line`, the
+# line's own list, which the fetch path's completeness table is built over),
+# here because the parser reads it to check a period condition's stat and
+# the reader imports nothing from the answer side; player_games re-exports
+# it.
+from association.nba.period_line import PERIOD_COLUMNS as PERIOD_COLUMNS
+
 # The words a question calls a column by are the lexicon's; re-exported here
 # under the name every column list is built from.
 from association.query.lexicon import MEASURE_WORDS
@@ -22,36 +29,6 @@ from association.query.lexicon import MEASURE_WORDS
 from association.query.lexicon import STAT_ALIASES as STAT_ALIASES
 from association.query.measure import YES_NO_MEASURES, column_name, measure_name, metric_name
 from association.query.reading import LINE_RUNS, PLAYER_LOG, Cause, Measure, PointRefused
-
-# The columns a quarter or half rebuilds - the period relation's own list,
-# here because the parser reads it to check a period condition's stat and
-# the reader imports nothing from the answer side; player_games re-exports
-# it.
-
-PERIOD_COLUMNS: tuple[str, ...] = (
-    "points",
-    "fieldGoalsMade",
-    "fieldGoalsAttempted",
-    "threePointFieldGoalsMade",
-    "threePointFieldGoalsAttempted",
-    "freeThrowsMade",
-    "freeThrowsAttempted",
-    "rebounds",
-    "offensiveRebounds",
-    "defensiveRebounds",
-    "assists",
-    "steals",
-    "blocks",
-    "turnovers",
-    "fouls",
-)
-"""The box-score columns a period narrowing rebuilds from the shots and plays,
-under their ``player_game_log`` names - the columns a reader of a narrowed
-relation sees restricted to the period.
-
-.. versionadded:: 5.0.0
-"""
-
 
 TEAM_PERIOD_COLUMNS: tuple[str, ...] = (
     "points",

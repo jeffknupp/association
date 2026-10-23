@@ -67,6 +67,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from association.nba.franchises import season_name_sql
+from association.nba.period_line import PERIOD_COLUMNS, PERIOD_FREE_THROW_SQL, PERIOD_HEAVE_MISS_SQL, PERIOD_PLAYS_COLUMNS, PERIOD_TURNOVER_SQL, period_line_sql
 from association.nba.season import eastern_date_sql
 
 from .entities import Entity
@@ -450,7 +451,7 @@ class TeamNarrowed:
 # A team's period line (the period relation's team half; ISSUES.md #161).
 # Nothing ESPN serves splits a team's box score by period except the
 # linescore, which holds points alone, so the rest is rebuilt: the sum of the
-# team's players' period lines (`player_games.period_line_sql`, each player
+# team's players' period lines (`nba.period_line.period_line_sql`, each player
 # placed on his team by his own `player_box_stats` row) PLUS the team's own
 # plays that name no player. The two relations share no base class
 # (see `named`), and this does not add one: it shares the READ of the plays -
@@ -778,17 +779,13 @@ def team_period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: 
     games ``games`` names: SQL selecting ``event_id, season`` pairs.
 
     The sum of the team's players' period lines
-    (:func:`association.query.player_games.period_line_sql`) and the team's
+    (:func:`association.nba.period_line.period_line_sql`) and the team's
     own plays - the shots ESPN charted with no shooter and the turnovers it
     charged to the team rather than a player. With ``plays`` false every
     column the plays carry is NULL - unknown, never zero.
 
     .. versionadded:: 5.0.0
     """
-    # Called here, not imported at the top: player_games imports conditions,
-    # which imports this module.
-    from association.query.player_games import _PERIOD_FREE_THROW, _PERIOD_HEAVE_MISS, _PERIOD_TURNOVER, PERIOD_COLUMNS, PERIOD_PLAYS_COLUMNS, period_line_sql
-
     in_periods = _team_period_in(periods)
     # The team's own turnovers are carried a second time on their own, as
     # `teamTurnovers`, so the check can read the players' share by itself.
@@ -799,19 +796,19 @@ def team_period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: 
     plays_zero = ", ".join(f"{'0' if plays else 'CAST(NULL AS BIGINT)'} AS {c}" for c in columns if c in PERIOD_PLAYS_COLUMNS and c != "turnovers")
     own_shots = f"""
         SELECT sc.event_id, sc.season, sc.team_id,
-            SUM(CASE WHEN sc.made AND NOT {_PERIOD_FREE_THROW} THEN 1 ELSE 0 END) AS fieldGoalsMade,
-            SUM(CASE WHEN NOT {_PERIOD_FREE_THROW} AND NOT {_PERIOD_HEAVE_MISS} THEN 1 ELSE 0 END) AS fieldGoalsAttempted,
+            SUM(CASE WHEN sc.made AND NOT {PERIOD_FREE_THROW_SQL} THEN 1 ELSE 0 END) AS fieldGoalsMade,
+            SUM(CASE WHEN NOT {PERIOD_FREE_THROW_SQL} AND NOT {PERIOD_HEAVE_MISS_SQL} THEN 1 ELSE 0 END) AS fieldGoalsAttempted,
             0 AS threePointFieldGoalsMade, 0 AS threePointFieldGoalsAttempted,
-            SUM(CASE WHEN sc.made AND {_PERIOD_FREE_THROW} THEN 1 ELSE 0 END) AS freeThrowsMade,
-            SUM(CASE WHEN {_PERIOD_FREE_THROW} THEN 1 ELSE 0 END) AS freeThrowsAttempted,
+            SUM(CASE WHEN sc.made AND {PERIOD_FREE_THROW_SQL} THEN 1 ELSE 0 END) AS freeThrowsMade,
+            SUM(CASE WHEN {PERIOD_FREE_THROW_SQL} THEN 1 ELSE 0 END) AS freeThrowsAttempted,
             {plays_zero}, {"0" if plays else "CAST(NULL AS BIGINT)"} AS turnovers, {"0" if plays else "CAST(NULL AS BIGINT)"} AS teamTurnovers
         FROM shot_chart sc
         WHERE {keyed.format(a="sc")} AND (sc.athlete_id IS NULL OR sc.athlete_id = '') AND sc.team_id IS NOT NULL AND {in_periods.format(alias="sc")}
         GROUP BY 1, 2, 3"""
     own_plays = f"""
         SELECT p.event_id, p.season, p.team_id, {shot_zero}, {plays_zero.replace("CAST(NULL AS BIGINT)", "0")},
-            SUM(CASE WHEN {_PERIOD_TURNOVER} THEN 1 ELSE 0 END) AS turnovers,
-            SUM(CASE WHEN {_PERIOD_TURNOVER} THEN 1 ELSE 0 END) AS teamTurnovers
+            SUM(CASE WHEN {PERIOD_TURNOVER_SQL} THEN 1 ELSE 0 END) AS turnovers,
+            SUM(CASE WHEN {PERIOD_TURNOVER_SQL} THEN 1 ELSE 0 END) AS teamTurnovers
         FROM plays p
         WHERE {keyed.format(a="p")} AND (p.athlete_id IS NULL OR p.athlete_id = '') AND p.team_id IS NOT NULL AND {in_periods.format(alias="p")}
         GROUP BY 1, 2, 3"""
@@ -865,8 +862,6 @@ def _team_period_source(narrowed: TeamNarrowed) -> tuple[str, list[Any]]:
             "FROM team_games tg JOIN real_games tpl_g ON tpl_g.event_id = tg.event_id AND tpl_g.season = tg.season) tg",
             [],
         )
-    from association.query.player_games import PERIOD_PLAYS_COLUMNS  # call time: see team_period_line_sql
-
     line = team_period_line_sql(periods, f"SELECT DISTINCT tg.event_id, tg.season FROM team_games tg WHERE {base}", plays=narrowed.period_plays)
     covered = "tg.event_id IN (SELECT DISTINCT tpl_cov.event_id FROM shot_chart tpl_cov WHERE tpl_cov.season = tg.season)"
 

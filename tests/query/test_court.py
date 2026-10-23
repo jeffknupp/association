@@ -5,7 +5,8 @@ import re
 
 import pytest
 
-from association.query.court import HOOP_X, HOOP_Y, THREE_POINT_RADIUS, render_court_html
+from association.nba.court import HOOP_X, HOOP_Y, THREE_POINT_RADIUS
+from association.query.court import render_court_html
 
 
 def _arc_params(d: str) -> tuple[float, float, float, int, int, float, float]:

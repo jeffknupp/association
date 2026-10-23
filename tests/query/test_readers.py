@@ -15,6 +15,7 @@ import pytest
 from routed import answered_as, measure_of, planned_answer, planned_query, said
 
 from association.fetch.repairs import real_games
+from association.nba import shot_value
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
@@ -3395,7 +3396,7 @@ def test_shot_distance_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc
     )
     refused = shot_distance(sc_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(shot_value=3), span=Span(season=2002)))
     assert "avg_feet" not in refused.data
-    assert (refused.text or "").startswith(shotchart.UNSEPARABLE_SHOT_VALUES[2002])
+    assert (refused.text or "").startswith(shot_value.UNSEPARABLE_SHOT_VALUES[2002])
     assert shot_distance(sc_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=2002))).data["attempts"] == 2
 
 
@@ -3403,7 +3404,7 @@ def test_shot_distance_says_when_a_seasons_shot_values_are_derived(sc_ctx: Answe
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2022,2,'e9',1,'6:00',TRUE,'Jump Shot',25,26,0,'makes 26-foot three point jumper')")
     threes = shot_distance(sc_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(shot_value=3), span=Span(season=2022)))
     assert threes.data["attempts"] == 1
-    assert shotchart.DERIVED_SHOT_VALUES[2022] in (threes.text or "")
+    assert shot_value.DERIVED_SHOT_VALUES[2022] in (threes.text or "")
     # A question about all shots does not rest on the derivation, so says nothing.
     assert "Note" not in (shot_distance(sc_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=2022))).text or "")
 
@@ -3417,7 +3418,7 @@ def test_shot_chart_draws_threes_espn_left_unlabeled(sc_ctx: AnswerContext) -> N
 def test_shot_chart_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: AnswerContext) -> None:
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',TRUE,'Jump Shot',25,25,0,'made 25 ft Three Point Jumper.')")
     result = shot_chart(sc_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(shot_value=3), span=Span(season=2002)))
-    assert (result.text or "").startswith(shotchart.UNSEPARABLE_SHOT_VALUES[2002])
+    assert (result.text or "").startswith(shot_value.UNSEPARABLE_SHOT_VALUES[2002])
     assert not list(sc_ctx.out_dir.glob("*.html"))
 
 

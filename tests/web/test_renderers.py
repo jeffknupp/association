@@ -258,7 +258,7 @@ def ctx(tmp_path: Path) -> AnswerContext:
         "('e2','10','11',2026,2,'away',11,31,28,14,44,88)"
     )
     # shot_chart backs period_split and shot_distance. Coordinates are feet
-    # from the rim (25, 0) - see court.HOOP_Y - not the baseline.
+    # from the rim (25, 0) - see nba.court.HOOP_Y - not the baseline.
     con.execute(
         "CREATE TABLE shot_chart (event_id VARCHAR, athlete_id VARCHAR, season INTEGER, season_type INTEGER, period INTEGER, made BOOLEAN, "
         "shot_type VARCHAR, points_attempted INTEGER, description VARCHAR, coordinate_x DOUBLE, coordinate_y DOUBLE)"

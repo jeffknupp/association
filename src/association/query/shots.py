@@ -12,11 +12,11 @@ rebuild a quarter's points from it (:mod:`association.query.player_games`,
 :mod:`association.query.team_games`), a join inside their own statements,
 and the name resolver reads who has a row (``entities.narrow_to_available``).
 
-What a shot is worth is read by :data:`~association.query.shotchart.SHOT_VALUE_SQL`,
+What a shot is worth is read by :data:`~association.nba.shot_value.SHOT_VALUE_SQL`,
 never ``points_attempted`` (0 there means unlabeled, not zero points;
 ``DATA.md``), and where it is on the floor by the court's own geometry
-(:data:`~association.query.court.HAS_POSITION_SQL`,
-:data:`~association.query.court.SHOT_DISTANCE_SQL`, with the rim at
+(:data:`~association.nba.court.HAS_POSITION_SQL`,
+:data:`~association.nba.court.SHOT_DISTANCE_SQL`, with the rim at
 ``(25, 0)``). Both fragments stay where they are: the value is read by the
 player-games relation's period rebuild too
 (:mod:`association.query.player_games`) and its per-season refusals and
@@ -33,12 +33,12 @@ from typing import Any
 
 import duckdb
 
+from association.nba.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
+from association.nba.shot_value import SHOT_VALUE_SQL
 from association.query.conditions import BoxSource
-from association.query.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
 from association.query.player_games import Narrowed, games_subquery
 from association.query.player_relation import ResolvedSpan
 from association.query.season_line import Statement
-from association.query.shotchart import SHOT_VALUE_SQL
 
 
 def _values(con: duckdb.DuckDBPyConnection, statement: Statement) -> list[tuple[Any, ...]]:
@@ -141,7 +141,7 @@ def chart_shots(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int | N
     """The located shots a chart draws, in a total order: each one's
     position (``coordinate_x``, ``coordinate_y``), whether it went in, its
     type, period, clock, game and season, and its value
-    (:data:`~association.query.shotchart.SHOT_VALUE_SQL`, ``None`` where
+    (:data:`~association.nba.shot_value.SHOT_VALUE_SQL`, ``None`` where
     nothing establishes it) - over a season and its type, or the games
     ``pinned`` (the season and type ``None`` then), of one value or every
     shot but free throws.

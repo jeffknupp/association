@@ -2,8 +2,11 @@
 
 The season calendar and US Eastern game dates (:mod:`~association.nba.season`),
 the names each franchise played under (:mod:`~association.nba.franchises`),
-the season each table's data starts in (:mod:`~association.nba.coverage`), and
-ESPN Analytics' NetPoints play-type categories (:mod:`~association.nba.netpoints`).
+the season each table's data starts in (:mod:`~association.nba.coverage`),
+ESPN Analytics' NetPoints play-type categories (:mod:`~association.nba.netpoints`),
+ESPN's shot coordinate frame (:mod:`~association.nba.court`), what a shot is
+worth (:mod:`~association.nba.shot_value`) and a player's line in a quarter or
+half rebuilt from the shots and plays (:mod:`~association.nba.period_line`).
 
 Both :mod:`association.fetch` and :mod:`association.query` read these, and the
 two may not import each other (the import contracts in ``pyproject.toml``), so

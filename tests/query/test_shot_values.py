@@ -13,8 +13,8 @@ import re
 import duckdb
 import pytest
 
-from association.query.court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL, SHOT_DISTANCE_SQL
-from association.query.shotchart import SHOT_VALUE_SQL, TEXT_NAMES_EVERY_THREE_UNTIL, UNSEPARABLE_SHOT_VALUES
+from association.nba.court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL, SHOT_DISTANCE_SQL
+from association.nba.shot_value import SHOT_VALUE_SQL, TEXT_NAMES_EVERY_THREE_UNTIL, UNSEPARABLE_SHOT_VALUES
 
 # (season, x, y, points_attempted, shot_type, description) - real rows: a
 # corner three, a three from the top, a long two just inside the line and a

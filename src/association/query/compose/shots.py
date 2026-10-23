@@ -38,6 +38,7 @@ from typing import Any, Literal
 import duckdb
 
 from association.nba.coverage import COVERAGE
+from association.nba.shot_value import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query import reading
 from association.query.conditions import box_source
 from association.query.court import render_court_html
@@ -64,7 +65,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
 from association.query.result import Chart, Decided, Narrowing, OnDate, Part, Refusal, Result, Scalar, ShotValue, Span, Unanswered, Window
 from association.query.season_line import season_redirect, seasons_played
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
-from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES, resolve_chart_player
+from association.query.shotchart import resolve_chart_player
 from association.query.shots import chart_shots, distance, narrowed_games
 
 
@@ -192,7 +193,7 @@ def _shots_career_floor(con: duckdb.DuckDBPyConnection, player: Entity, season_t
 
 
 def _shot_distance_unseparable(player: Entity, span: ResolvedSpan, shot_value: int | None, period: str, kind: str) -> Refusal | None:
-    """The refusal in place of an answer, where :data:`~association.query.shotchart.UNSEPARABLE_SHOT_VALUES`
+    """The refusal in place of an answer, where :data:`~association.nba.shot_value.UNSEPARABLE_SHOT_VALUES`
     makes one named season's twos and threes unreadable - or ``None``. A
     career's ``season`` is None, so a career sum leaves such shots out
     instead (ISSUES.md tracks that gap)."""
@@ -378,7 +379,7 @@ def _shot_value_noun(shot_value: int | None) -> str:
 def _shot_chart_refusal(shot_value: int | None, season: int | None, name: str) -> Refusal | None:
     """The refusal to draw, where the shot value says so - a free throw (no
     court position worth drawing) or a season in
-    :data:`~association.query.shotchart.UNSEPARABLE_SHOT_VALUES` - or ``None``."""
+    :data:`~association.nba.shot_value.UNSEPARABLE_SHOT_VALUES` - or ``None``."""
     if shot_value == 1:
         return Refusal(kind="free_throw_chart")
     kind = _shot_value_noun(shot_value)

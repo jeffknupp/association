@@ -12,7 +12,7 @@ table in the code.
 
     python scripts/check_team_period_lines.py [--db-path ./nba.duckdb]
 
-Run it after editing ``team_period_line_sql``, ``player_games.period_line_sql``
+Run it after editing ``team_period_line_sql``, ``nba.period_line.period_line_sql``
 (the team line sums it) or ``TEAM_PERIOD_AGREEMENT``, and after a pull that
 re-fetches play-by-play. It fails when a season the table leaves out (read as
 99%+) measures under 99%, or when a listed season moved by more than half a

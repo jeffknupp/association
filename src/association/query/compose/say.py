@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from association.nba.coverage import unavailable
+from association.nba.shot_value import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query.answer import Answer, Artifact
 from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.entities import MAX_CLARIFY_CANDIDATES
@@ -116,7 +117,6 @@ from association.query.season_line import (
     SHOOTING_STATS,
 )
 from association.query.season_text import MONTH_NAMES, SEASON_TYPE_NAMES, season_label, season_phrase
-from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
 
 from .logs import LOG_COLUMNS, LOG_PERCENTAGES, log_key

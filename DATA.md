@@ -1169,7 +1169,7 @@ measured. Count foul-outs from the box score.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**
   (`plays` and `shot_chart` both reproduced exactly).
 - **How we handle it:** the period line leaves a missed heave out of its
-  attempts (`player_games.period_line_sql`); the shot chart and shot-distance
+  attempts (`nba.period_line.period_line_sql`); the shot chart and shot-distance
   reads still count it.
 - **Tracked in:** ISSUES.md, "The 2026 shot chart holds more shots than the box
   score" (#15).
@@ -1208,7 +1208,7 @@ measured. Count foul-outs from the box score.
   98.3-99.9% (2026: 95.2% before `Traveling`, 99.7% after).
 - **Does a refetch fix it?** untested; it is how the play types are named,
   not a gap in a pull.
-- **How we handle it:** `player_games.period_line_sql` counts by these rules;
+- **How we handle it:** `nba.period_line.period_line_sql` counts by these rules;
   `fetch/repairs/reconstructed_box` (the empty 2013-18 box scores) still uses
   the older `%Turnover%` / `%Foul%` rules.
 - **Tracked in:** ISSUES.md, "The empty-box rebuild counts turnovers and
@@ -1649,7 +1649,7 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
   came back as "No 3-point shots".
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull.**
 - **How we handle it:** **never filter `points_attempted` for a shot's value.**
-  `shotchart.SHOT_VALUE_SQL` derives it: the label where there is one, else
+  `nba.shot_value.SHOT_VALUE_SQL` derives it: the label where there is one, else
   `shot_type` for a free throw, else the description where it says "three
   point" or "two point", else — through 2012, whose descriptions name every
   three — a two, else the shot's position against the line. Counted against the
@@ -1665,7 +1665,7 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
   the baseline breaks nothing visibly — distances stay plausible, just three
   feet short, and a court drawn around the same wrong point looks
   self-consistent.
-- **Evidence:** the rim is at `(25, 0)` (`court.HOOP_X`, `court.HOOP_Y`). Most
+- **Evidence:** the rim is at `(25, 0)` (`nba.court.HOOP_X`, `nba.court.HOOP_Y`). Most
   shot descriptions carry their own distance ("makes 26-foot three point
   jumper"), and from 2002 through 2012 that distance equals
   `round(hypot(x - 25, y))` for all 1.3 million of them; later seasons agree to
