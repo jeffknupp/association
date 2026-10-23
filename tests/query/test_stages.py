@@ -18,9 +18,12 @@ from association.query.agent import Agent
 from association.query.answer import Answer, Artifact, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
+from association.query.compose.say import say
 from association.query.decisions import Decision
 from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Cause, Cuts, Measure, PointDeclined, PointShape, Reading, Span
 from association.query.reading import Subject as Who
+from association.query.result import Clarify, LogFacts, Narrowing, Part, Refusal, Result, Rows, Window
+from association.query.result import Span as ResultSpan
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
 
@@ -114,6 +117,22 @@ def test_a_point_the_compiler_has_none_of_says_why() -> None:
     whole = snapshot(_reading(), _answer(), planned=plan_point(_reading()))["reading"]
     assert whole["point_verdict"] == "read" and whole["asked"] == {"relation": "player_seasons", "shape": "scalar", "by": "line"}
     assert whole["point"] is not None and (whole["point"]["shape"], whole["point"]["by"]) == ("scalar", "total")
+
+
+def test_a_refusal_found_at_run_is_recorded_by_its_kind() -> None:
+    """A read's refusal, a question back and a read that found no rows are
+    each answered "fast", like an answer; the answer record says which kind
+    of refusal it is (``Answer.refusal``), and an answer records none -
+    what the research harness's ``fluent()`` reads (ISSUES #531)."""
+    refused = say(Refusal(kind="name_unmatched", facts={"asked": "jokic"}))
+    asked = say(Clarify(asked="brown", candidates=("Jaylen Brown", "Bruce Brown")))
+    no_rows = Refusal(kind="no_games_in_season", facts={"player": "Nikola Jokic", "season": 2026, "narrowing": ""})
+    empty = say(
+        Result(subject="Nikola Jokic", relation="player", span=ResultSpan(season=2026), narrowing=Narrowing(), window=Window(limit=10), parts=(Part(body=Rows()),), facts=LogFacts(), empty=no_rows)
+    )
+    assert (refused.refusal, asked.refusal, empty.refusal) == ("name_unmatched", "clarify", "no_games_in_season")
+    assert [snapshot(_reading(), each, planned=plan_point(_reading()))["answer"]["refusal"] for each in (refused, asked, empty)] == ["name_unmatched", "clarify", "no_games_in_season"]
+    assert _snapshot()["answer"]["refusal"] is None
 
 
 def test_plain_values_are_the_same_on_every_run() -> None:

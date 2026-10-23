@@ -1561,12 +1561,19 @@ def say(result: Result | Refusal | Clarify) -> Answer:
     .. versionchanged:: 5.0.0
        Chooses the sayer from the body alone (2026-10-05), where it read
        the span's source and the relation as well.
+
+    .. versionchanged:: 7.0.0
+       The answer carries the cause it refuses by (``Answer.refusal``): a
+       Refusal's kind, a Clarify's ``"clarify"``, an empty read's reason.
     """
     if isinstance(result, Refusal):
         return say_refusal(result)
     if isinstance(result, Clarify):
         return say_clarify(result)
-    return _sayer(result)(result)
+    said = _sayer(result)(result)
+    # A read that found nothing is said by its shape's sayer, and refuses by
+    # its reason all the same (Answer.refusal).
+    return said if result.empty is None else replace(said, refusal=result.empty.kind)
 
 
 # --- a record over a line ----------------------------------------------------------
@@ -5903,7 +5910,7 @@ def say_refusal(refusal: Refusal) -> Answer:
     .. versionadded:: 5.0.0
     """
     message = refusal_phrase(refusal.kind, refusal.facts)
-    return Answer(data={**refusal.shown, **dict.fromkeys(refusal.under, message)}, text=message)
+    return Answer(data={**refusal.shown, **dict.fromkeys(refusal.under, message)}, text=message, refusal=refusal.kind)
 
 
 def say_clarify(asked: Clarify) -> Answer:
@@ -5920,7 +5927,7 @@ def say_clarify(asked: Clarify) -> Answer:
     else:
         message = clarification(asked.asked, candidates, asked.kind, asked.active)
         shown = {"ambiguous": asked.asked, "candidates": candidates} if asked.shown is None else dict(asked.shown)
-    return Answer(data={**shown, **dict.fromkeys(asked.under, message)}, text=message)
+    return Answer(data={**shown, **dict.fromkeys(asked.under, message)}, text=message, refusal="clarify")
 
 
 # --- the sayer table: the body decides -----------------------------------------

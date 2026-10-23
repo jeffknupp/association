@@ -205,3 +205,13 @@ class Answer:
     #:
     #: .. versionadded:: 7.0.0
     alternatives: tuple[Alternative, ...] = ()
+    #: The cause this answer refuses by, where it is a refusal the sayer
+    #: worded rather than an answer: a read's or a reading's
+    #: :class:`~association.query.result.Refusal` kind, the reason a read
+    #: that found no rows gives (``Result.empty``), ``"clarify"`` for a
+    #: question back (:class:`~association.query.result.Clarify`) - or
+    #: None. A refusal found at RUN is ``answered_by="fast"`` like an
+    #: answer, so this is the one value that tells the two apart.
+    #:
+    #: .. versionadded:: 7.0.0
+    refusal: str | None = None
