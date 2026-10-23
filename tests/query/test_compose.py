@@ -2447,6 +2447,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "window_ends_contradict": {"ends": ["last 5", "first games"]},
     "window_per_season": {"window": "first 10 game", "per": "every season"},
     "ranking_unit": {"metric": "avg_points", "rate": "/ 90"},
+    "no_career_ranking": {"metric": "netpoints_per_100"},
     "needs_stat": {"shape": GAME_HIGHS},
     "unknown_stat": {"shape": LINE_RUNS, "stat": "double_double"},
     "needs_threshold": {"shape": LINE_RECORD, "stat": "points"},
@@ -2524,7 +2525,7 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
             if isinstance(value, DeclineReason):
                 # A reason is a key the sayer words: its phrase is in the sentence.
                 assert decline_reason_phrase(value) in said, (kind, value, said)
-            elif isinstance(value, str) and kind not in ("unknown_stat", "needs_threshold", "ranking_unit", "team_streak_of_stat", "team_boolean_count") and value != "under":
+            elif isinstance(value, str) and kind not in ("unknown_stat", "needs_threshold", "ranking_unit", "no_career_ranking", "team_streak_of_stat", "team_boolean_count") and value != "under":
                 assert value in said, (kind, value, said)
     assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).text == "A matchup needs two players, and none was read."
     # A shape's decline, said word for word.
@@ -2556,6 +2557,22 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
     )
     assert not reading.has_point and reading.point_verdict == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
     assert refusal_result(reading.point_verdict).text == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."
+
+
+def test_a_career_ranking_of_a_metric_ranked_season_by_season_is_the_readings_cause(cx_ctx: AnswerContext) -> None:
+    """ "who led the league in adjusted netpoints of all time": the season
+    line ranks NetPoints per 100 possessions one season at a time, so the
+    career ranking is the point reader's cause (``no_career_ranking``), said
+    by the planner - where the ranking's reader declined with the relation's
+    error text ("relation: Error: 'netpoints_per_100' has no career
+    ranking"). A season named ranks it."""
+    measure = Measure(key="netpoints", as_typed="netpoints_per_100", how="per_100")
+    career = with_point("adjusted netpoints of all time", Reading(**(Reading(measure=measure, span=Span(career=True))).filters(), asked=PLAYER_RANKING, subject=Subject("everyone")))
+    assert career.point_verdict == Cause(kind="no_career_ranking", facts={"metric": "netpoints_per_100"})
+    said = refusal_result(career.point_verdict).text
+    assert said.startswith("There is no career ranking of NetPoints per 100 possessions:") and "Error" not in said
+    season = with_point("adjusted netpoints in 2026", Reading(**(Reading(measure=measure, span=Span(season=2026))).filters(), asked=PLAYER_RANKING, subject=Subject("everyone")))
+    assert season.has_point
 
 
 def test_a_team_season_readers_decline_is_a_cause_the_planner_says() -> None:

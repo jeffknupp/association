@@ -1113,7 +1113,7 @@ ollama, and it narrows a relation only through the shared steps.
   point reader refuses (a ranking by a stat nothing ranks, a shape over a
   line missing its stat, its number or its subject, a matchup without two
   players, ...), the Reading carries a `reading.Cause` - a kind from the
-  closed `CAUSES` (67 kinds) and plain facts - and the planner says it
+  closed `CAUSES` (68 kinds) and plain facts - and the planner says it
   (`compose.plan.refusal_result`): the reader builds no sentence, and a new
   cause is an entry in `CAUSES` and a phrase in the sayer. It is raised as
   `reading.PointRefused`, a kind of `Unsupported`, so a shared helper the

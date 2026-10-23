@@ -1384,6 +1384,7 @@ CAUSES: frozenset[str] = frozenset(
         "ranking_floor_unit",
         "minimum_unranked",
         "ranking_unit",
+        "no_career_ranking",
         "needs_stat",
         "unknown_stat",
         "needs_threshold",
@@ -1482,7 +1483,9 @@ missing thing, never only the slot"):
   floor stated for a point that ranks no players (``minimum_unranked``:
   ``unit``, ``count``); a
   season-line ranking in a unit its metric has no form of
-  (``ranking_unit``: ``metric``, ``rate``);
+  (``ranking_unit``: ``metric``, ``rate``); a career ranking of a metric
+  the season line ranks season by season only (``no_career_ranking``:
+  ``metric``);
 - a shape over a line on a stat - a single-game high, a record or a count
   of games over a line, a streak, a log kept past a number - with no stat
   read (``needs_stat``: ``shape``), a stat with no per-game column

@@ -22,8 +22,10 @@ from association.query.compose.plan import cells_unhonored
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
-from association.query.reading import GAME_HIGHS, GAMES_COUNTED, PLAYER_RANKING, Line, Measure, PointShape, Reading, Span, Unsupported, Window
+from association.query.parse import with_point
+from association.query.reading import GAME_HIGHS, GAMES_COUNTED, PLAYER_RANKING, Cause, Line, Measure, PointShape, Reading, Span, Unsupported, Window
 from association.query.reading import Subject as Who
+from association.query.subject import Subject as ReadSubject
 
 game_highs = answered_as(GAME_HIGHS)
 games_counted = answered_as(GAMES_COUNTED)
@@ -200,12 +202,20 @@ def test_a_career_postseason_leaves_out_the_copied_postseasons(career_ctx: Answe
         {"measure": measure_of("points"), "span": Span(season=2015, career=True)},  # since 2015? through it? only it?
         {"who": Who(kind="team", teams=("Warriors",)), "measure": measure_of("points"), "span": Span(career=True)},  # a franchise's list is a different pool
         {"measure": measure_of("points", beside=("minutes",)), "span": Span(career=True)},
-        {"measure": measure_of("ts_pct"), "span": Span(career=True)},  # needs team context no season row carries
     ],
 )
 def test_a_career_ranking_refuses_what_it_cannot_answer(career_ctx: AnswerContext, scope: dict[str, Any]) -> None:
     with pytest.raises(Unsupported):
         player_ranking(career_ctx, Reading(**scope))
+
+
+def test_a_career_ranking_of_a_metric_with_no_career_form_is_the_readings_cause() -> None:
+    """True shooting needs team context no season row carries: the point
+    reader refuses its career ranking by the ``no_career_ranking`` cause,
+    which the planner says, where the ranking's reader declined it with the
+    relation's error text (moved here from the reader's declines above)."""
+    reading = with_point("ts% of all time", Reading(**(Reading(measure=measure_of("ts_pct"), span=Span(career=True))).filters(), asked=PLAYER_RANKING, subject=ReadSubject("everyone")))
+    assert reading.point_verdict == Cause(kind="no_career_ranking", facts={"metric": "ts_pct"})
 
 
 @pytest.mark.parametrize("shape", [PLAYER_RANKING, GAMES_COUNTED, GAME_HIGHS])

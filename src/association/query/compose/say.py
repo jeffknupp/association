@@ -770,6 +770,17 @@ def _window_per_season(window: str, per: str) -> str:
     return f"A window of games in each season ({window!r} {per}) is read by nothing here yet - name one season for its {window}, or ask for the seasons whole."
 
 
+def _no_career_ranking(metric: str) -> str:
+    """The refusal for a career ranking of a metric ranked one season at a
+    time (the ``no_career_ranking`` cause): its label, why, and the wording
+    that ranks it - where the reader's decline printed the relation's error
+    text ("relation: Error: 'netpoints_per_100' has no career ranking")."""
+    return (
+        f"There is no career ranking of {LEADERBOARD_METRICS[metric].label}: it is ranked one season at a time, since it needs team context a season's rows do not carry "
+        "or its data begins too recently to span a career. Name a season to rank it in."
+    )
+
+
 def _ranking_unit(metric: str, rate: Any) -> str:
     """The refusal for a ranking in a unit the metric has no form of,
     naming the forms THIS metric has ("who were the top 10 in defensive
@@ -5776,6 +5787,7 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     ),
     "own_alignment": lambda facts: _own_alignment(facts["alignment"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
+    "no_career_ranking": lambda facts: _no_career_ranking(facts["metric"]),
     "single_season_ranking": lambda facts: _single_season_ranking(facts["words"]),
     "ranking_needs_stat": lambda _facts: _ranking_needs_stat(),
     "subject_not_read": lambda facts: _subject_not_read(facts["opponent"]),

@@ -61,7 +61,7 @@ from association.query.measures import (
     stat_measure,
     streak_column,
 )
-from association.query.metrics import PER_GAME_MIN_GAMES, SEASON_FIGURES, qualifies_by
+from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, SEASON_FIGURES, qualifies_by
 from association.query.period import PeriodRead
 from association.query.reading import (
     DEFAULT_GAME_LOG_LIMIT,
@@ -625,6 +625,27 @@ def _games_played_minimum(scope: Filtered) -> int | None:
     return scope.minimum.count
 
 
+def _leaderboard_season_line_refused(scope: Filtered, metric: str) -> None:
+    """What the season line's ranking of ``metric`` refuses by a cause the
+    planner says: a unit the metric has no form of, and a career it has no
+    form of. Split out of :func:`_leaderboard_season_line` for the
+    complexity gate, in the order it ran."""
+    unit = scope.measure.unit if scope.measure is not None else None
+    if unit is not None and unit != "total":
+        # A unit the metric has no form of ("who were the top 10 in
+        # defensive netpoints / 90"): the ranking's refusal, naming the
+        # forms THIS metric has (the planner's sentence) - "total" is a
+        # season total, the one other form every metric's rate reads.
+        raise PointRefused(Cause(kind="ranking_unit", facts={"metric": metric, "rate": unit}))
+    if scope.span.career and scope.span.season is None and scope.who.team is None and LEADERBOARD_METRICS[metric].career is None:
+        # A metric with no career form ("who led the league in adjusted
+        # netpoints of all time"): the season line ranks it season by
+        # season and no further, so the ranking's refusal names the metric
+        # - where its reader declined with the relation's error text,
+        # "relation: Error: 'netpoints_per_100' has no career ranking".
+        raise PointRefused(Cause(kind="no_career_ranking", facts={"metric": metric}))
+
+
 def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """A ranking of players' own point (``PLAYER_RANKING``): a ranking of
     the league or a team over the SEASON LINE -
@@ -667,13 +688,7 @@ def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question
         return None
     if measure is not None and stat_measure(scope.measure) not in (None, measure):
         return None
-    unit = scope.measure.unit if scope.measure is not None else None
-    if unit is not None and unit != "total":
-        # A unit the metric has no form of ("who were the top 10 in
-        # defensive netpoints / 90"): the ranking's refusal, naming the
-        # forms THIS metric has (the planner's sentence) - "total" is a
-        # season total, the one other form every metric's rate reads.
-        raise PointRefused(Cause(kind="ranking_unit", facts={"metric": metric, "rate": unit}))
+    _leaderboard_season_line_refused(scope, metric)
     return Reading(
         **scope.filters(),
         read_as=PLAYER_RANKING,
