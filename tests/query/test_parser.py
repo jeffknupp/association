@@ -1915,3 +1915,20 @@ def test_a_counts_career_the_point_reader_reads_is_the_parsers_span_decision(con
     assert career in reading.decisions
     named = _read(con, f"{question.rstrip('?')} in 2024", names, stat)
     assert career not in named.decisions
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "stat"),
+    [
+        ("how many 20+ point games did SGA have in the past two seasons?", ["SGA"], "points"),
+        ("jayson tatum's games against the knicks in the last 5 years", ["jayson tatum", "knicks"], ""),
+    ],
+)
+def test_a_range_named_is_no_career_the_words_imply(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str) -> None:
+    """A range of seasons the words name is what is read, so no career of
+    decision D13 is decided beside it: "No season was named, so this reads
+    his career" was said over "the past two seasons" (the corpus's two SGA
+    counts, the feed's "hornets on the road vs magic last 2 seasons")."""
+    reading = _read(con, question, names, stat)
+    assert reading.span.since is not None
+    assert not any(each.stage == "parser" and each.field == "span" for each in reading.decisions)

@@ -23650,13 +23650,6 @@
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
      "reason": "the words 'in the last two years' name player_seasons/split/season, and the grammar's rules declined it"
-    },
-    {
-     "stage": "parser",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -23839,13 +23832,6 @@
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
      "reason": "the words 'in the last 5 years' name player_seasons/split/season, and the grammar's rules declined it"
-    },
-    {
-     "stage": "parser",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {

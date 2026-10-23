@@ -967,7 +967,10 @@ def _tagged_decisions(span: SpanRead, question: str, scope: Reading) -> tuple[De
     near spelling of "quarter" read as the word where a quarter stands on
     the Reading (ISSUES.md #457)."""
     found: list[Decision] = []
-    if span.implied:
+    if span.implied and scope.span.since is None:
+        # Not beside a range the words named ("how many 20+ point games did
+        # SGA have in the past two seasons"): the range is what is read, and
+        # "No season was named, so this reads his career" was said over it.
         found.append(Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"))
     near = respelled(question)
     if near is not None and (scope.period is not None or any(line.period is not None for line in scope.lines)):
