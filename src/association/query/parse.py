@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from association.nba.season import current_season
 from association.query import lexicon, measure, names
 from association.query.calendar import HOLIDAYS
 from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
@@ -61,6 +62,7 @@ from association.query.reading import (
     TEAM_PERIOD_TOTAL,
     TEAM_RANKING,
     TEAM_RECORD,
+    Alternative,
     Cause,
     Claim,
     Companion,
@@ -967,7 +969,10 @@ def _tagged_decisions(span: SpanRead, question: str, scope: Reading) -> tuple[De
     near spelling of "quarter" read as the word where a quarter stands on
     the Reading (ISSUES.md #457)."""
     found: list[Decision] = []
-    if span.implied:
+    if span.implied and scope.span.since is None:
+        # Not beside a range the words named ("how many 20+ point games did
+        # SGA have in the past two seasons"): the range is what is read, and
+        # "No season was named, so this reads his career" was said over it.
         found.append(Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)"))
     near = respelled(question)
     if near is not None and (scope.period is not None or any(line.period is not None for line in scope.lines)):
@@ -1198,7 +1203,7 @@ def _reading(
         # single season is read by nothing, the feed sample's FS114).
         refused, unsupported = aged, tuple(cause for cause in unsupported if cause is not aged)
     found = list(claimed_once([*found, *defaulted_claims]))
-    return replace(
+    read = replace(
         pointed,
         refused=refused,
         unsupported=unsupported,
@@ -1209,6 +1214,75 @@ def _reading(
         # question as it was asked (the fold keeps every position).
         unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], read_by_model, model_stat),
     )
+    return replace(read, alternatives=_reading_alternatives(index, asked, read))
+
+
+def _reading_alternatives(index: names.NameIndex, question: str, reading: Reading) -> tuple[Alternative, ...]:
+    """The other readings of a span the words left open, each as the asker's
+    own words with the span stated (decision D23's pilot, on D13's class):
+    where the words imply the career (the parser's ``span`` decision), the
+    current season ("... in 2026", the wording the D13 sentence names) and,
+    for one player's figure against an opponent, his latest meeting
+    ("... in his last game", the yardstick's F028, whose key reads the most
+    recent meeting) - neither where a player named has no game this season
+    (the season would say only that: "LaMarcus Aldridge has no games in the
+    2026 regular season", beside "lamarcus aldridge vs marc gasol"); where
+    no season is named and the current one is read, the career. None where
+    the words named the span, a window of games (the newest N are no
+    season's), a day or an ordinal season, or where no point was read: each
+    is a question the words already settled. A game of a series ("game 4")
+    keeps the career: the season's game 4s are no narrower a question than
+    his career's. The answering loop reads each wording again before it
+    offers one (``agent._offered``)."""
+    if not reading.has_point or reading.refused is not None or reading.defaulted is not None:
+        return ()
+    cuts, span = reading.cuts, reading.span
+    if cuts.date is not None or cuts.season_n is not None or reading.window.count is not None:
+        return ()
+    season = current_season()
+    if any(each.stage == "parser" and each.field == "span" and each.after == "career" for each in reading.decisions):
+        if cuts.game_n is not None or any(_inactive(index, (player,)) for player in reading.who.players):
+            return ()
+        found = [Alternative(kind="span", read="career", instead="season", season=season, question=_alternative_worded(question, f"in {season}"))]
+        if _alternative_latest(question, reading):
+            found.append(Alternative(kind="span", read="career", instead="latest", season=None, question=_alternative_worded(question, "in his last game")))
+        return tuple(found)
+    if span.named or span.both or reading.read_as.relation == "team_snapshots" or lexicon.SEASON_WORDS.search(question):
+        # (A season named relatively and read as the default - "this
+        # postseason" - is a season the words named: no career beside it.)
+        return ()
+    whose = _ALTERNATIVE_CAREER_WORDS.get(reading.who.kind, "of all time")
+    return (Alternative(kind="span", read="season", instead="career", season=season, question=_alternative_worded(question, whose)),)
+
+
+#: The words that ask a career, by whose it is (the subject's kind), "of all
+#: time" for anyone else: each read by the span tagger as every season on
+#: record. Not a bare "all time": after a companion's name it was read into
+#: the name ("Celtics record without Tatum and Brown all time" spelled the
+#: second "brown", the reader case companions_are_the_subject_readings#1).
+_ALTERNATIVE_CAREER_WORDS: dict[str, str] = {"player": "over his career"}
+
+
+def _alternative_latest(question: str, reading: Reading) -> bool:
+    """Whether the latest meeting is the other reading of a career D13's
+    versus words imply: one player's figure (a stat named, no log asked by
+    its key or its words, no game's high) against one opponent - "how many
+    points did jokic score in the 3rd quarter against boston" is his last
+    meeting's quarter as reasonably as his career's (the yardstick's F028,
+    whose key reads the most recent); his highest-scoring game against them,
+    or their games listed, has no latest meeting to be instead."""
+    if reading.who.kind != "player" or reading.cuts.opponent is None or reading.measure is None:
+        return False
+    return reading.asked not in (PLAYER_LOG, GAME_HIGHS) and lexicon.LOG_WORDS.search(question) is None
+
+
+def _alternative_worded(question: str, stated: str) -> str:
+    """``question`` with the words ``stated`` (a span) added at its end,
+    before any closing punctuation: the asker's own question, asked of the
+    other span."""
+    body = question.rstrip()
+    closing = body[len(body.rstrip("?.! ")) :]
+    return f"{body[: len(body) - len(closing)]} {stated}{closing}"
 
 
 def _reading_high_by_points(question: str, reading: Reading, pointed: Reading, found: list[Claim], names: tuple[str, ...], stat: str) -> tuple[Reading, list[Claim]]:

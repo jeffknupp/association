@@ -139,11 +139,18 @@ def content_words(question: str, names: list[str], stat: str) -> list[tuple[int,
 
 def _probed(record: dict[str, Any]) -> dict[str, Any]:
     """A read's record as the deletion probe compares it: without the
-    Reading's own unread words, which a deleted word always moves."""
+    Reading's own unread words, which a deleted word always moves, and
+    without each alternative's ready question - the question's own words
+    with a span added (decision D23), which a deleted word moves as surely;
+    what each alternative reads (``read``, ``instead``, ``season``) stays
+    compared."""
     reading = record.get("reading")
-    if not isinstance(reading, dict) or "unread" not in reading:
+    if not isinstance(reading, dict):
         return record
-    return {**record, "reading": {key: value for key, value in reading.items() if key != "unread"}}
+    probed = {key: value for key, value in reading.items() if key != "unread"}
+    if isinstance(probed.get("alternatives"), list):
+        probed["alternatives"] = [{key: value for key, value in each.items() if key != "question"} if isinstance(each, dict) else each for each in probed["alternatives"]]
+    return {**record, "reading": probed}
 
 
 def stated_unread(whole: dict[str, Any]) -> list[str] | None:

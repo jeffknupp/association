@@ -714,6 +714,21 @@ It is elimination, not the prominence tiebreak: two namesakes who both
 played are asked about. Before extending the rule to another open slot,
 check both conditions. (history)
 
+**The wording that reaches the alternative is offered as a question, and
+only where it reaches it** (decision D23's pilot, on the span). Where the
+span is defaulted - D13's career, or the current season read with no
+season named - the parser writes each other reading as the asker's own
+words with the span stated (`Reading.alternatives`, a `reading.Alternative`:
+"... in 2026", "... over his career", "... of all time", "... in his last
+game"); the answering loop reads each wording again with the question's
+own names and stat and offers it (`Answer.alternatives`, the page's
+buttons, the CLI's "Also:" lines) only where that reading is exactly the
+alternative's span over every other filter as it stood
+(`Alternative.reached_by`) and plans to a query. A button that re-asks the
+question answered, or asks one nothing here answers, is worse than none.
+A new class of alternative comes with the detection its class needs, never
+as a free value.
+
 **A question too short to be one is refused unread** (Jeff's rule):
 fewer than `parse.MIN_QUESTION_WORDS` (three) words is the `too_short`
 cause (`parse.too_short`), which `Agent.ask` asks before the normalizer (no
@@ -1101,7 +1116,7 @@ ollama, and it narrows a relation only through the shared steps.
   point reader refuses (a ranking by a stat nothing ranks, a shape over a
   line missing its stat, its number or its subject, a matchup without two
   players, ...), the Reading carries a `reading.Cause` - a kind from the
-  closed `CAUSES` (67 kinds) and plain facts - and the planner says it
+  closed `CAUSES` (68 kinds) and plain facts - and the planner says it
   (`compose.plan.refusal_result`): the reader builds no sentence, and a new
   cause is an entry in `CAUSES` and a phrase in the sayer. It is raised as
   `reading.PointRefused`, a kind of `Unsupported`, so a shared helper the
@@ -1146,8 +1161,8 @@ ollama, and it narrows a relation only through the shared steps.
   text, the data, the files), returned by the sayer and the compiler's own
   sentence, is stamped by the answering loop with the question, the path,
   the timing, the decisions and the planned shape, and answered `"fast"`
-  with the name readings and the coverage caveat attached - including a
-  clarification or a "no match".
+  with the name readings, the coverage caveat and the alternatives it
+  offers attached - including a clarification or a "no match".
 
 **A shape is a reader and a sayer, and nothing else answers it.** What
 travels between them is typed:

@@ -136,7 +136,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many 30 point games in 2026"
+    }
+   ]
   }
  },
  {
@@ -260,7 +269,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Who led the league in scoring in the playoffs of all time?"
+    }
+   ]
   }
  },
  {
@@ -455,7 +473,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "show me stats for sixers when maxey scored 20+ points of all time"
+    }
+   ]
   }
  },
  {
@@ -588,7 +615,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "what was steph curry's avg 3pt shot distance over his career"
+    }
+   ]
   }
  },
  {
@@ -1905,7 +1941,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Show me Wembanyama's defensive fingerprint chart over his career"
+    }
+   ]
   }
  },
  {
@@ -2030,7 +2075,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "plot Jokic's offensive fingerprint over his career"
+    }
+   ]
   }
  },
  {
@@ -2144,7 +2198,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "plot Jokic's fingerprint over his career"
+    }
+   ]
   }
  },
  {
@@ -2260,7 +2323,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare Jokic's offensive and defensive fingerprint over his career"
+    }
+   ]
   }
  },
  {
@@ -2375,7 +2447,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "plot Jokic's fingerprint on that end over his career"
+    }
+   ]
   }
  },
  {
@@ -2489,7 +2570,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "plot Jokic's fingerprint over his career"
+    }
+   ]
   }
  },
  {
@@ -2603,7 +2693,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "plot Osman's fingerprint over his career"
+    }
+   ]
   }
  },
  {
@@ -2727,7 +2826,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who leads the league in defensive rebounds of all time?"
+    }
+   ]
   }
  },
  {
@@ -2883,7 +2991,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "points per quarter for Luka over his career"
+    }
+   ]
   }
  },
  {
@@ -3037,7 +3154,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Jokic points by quarter over his career"
+    }
+   ]
   }
  },
  {
@@ -3343,7 +3469,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "How many points did Jokic score in the 3rd quarter over his career?"
+    }
+   ]
   }
  },
  {
@@ -3657,7 +3792,23 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "How many points did Embiid score in the 4th quarter against Boston in 2026?"
+    },
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "latest",
+     "season": null,
+     "question": "How many points did Embiid score in the 4th quarter against Boston in his last game?"
+    }
+   ]
   }
  },
  {
@@ -3820,7 +3971,23 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "How many points did Jokic score in the 3rd quarter against Boston in 2026?"
+    },
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "latest",
+     "season": null,
+     "question": "How many points did Jokic score in the 3rd quarter against Boston in his last game?"
+    }
+   ]
   }
  },
  {
@@ -3969,7 +4136,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "How many points did the 76ers score in the 3rd quarter against Boston of all time?"
+    }
+   ]
   }
  },
  {
@@ -4246,7 +4422,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "how many points does Curry average over his career?"
+    }
+   ]
   }
  },
  {
@@ -4416,7 +4601,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "How many times has Wembanyama fouled out of a game in 2026"
+    }
+   ]
   }
  },
  {
@@ -4586,7 +4780,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how often does Embiid foul out in 2026?"
+    }
+   ]
   }
  },
  {
@@ -4754,7 +4957,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "games where Jokic fouled out in 2026"
+    }
+   ]
   }
  },
  {
@@ -4878,7 +5090,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who commits the most fouls of all time?"
+    }
+   ]
   }
  },
  {
@@ -4996,7 +5217,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare sga and embiid of all time"
+    }
+   ]
   }
  },
  {
@@ -5125,7 +5355,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who scores more, sga or embiid of all time?"
+    }
+   ]
   }
  },
  {
@@ -5254,7 +5493,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare sga and embiid on rebounding of all time"
+    }
+   ]
   }
  },
  {
@@ -6373,7 +6621,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "curry's shot chart from his home games over his career"
+    }
+   ]
   }
  },
  {
@@ -7225,7 +7482,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Sga record 36 plus points over his career"
+    }
+   ]
   }
  },
  {
@@ -9036,7 +9302,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Warriors record on the road of all time"
+    }
+   ]
   }
  },
  {
@@ -9336,7 +9611,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "How far away does Wembanyama shoot from over his career?"
+    }
+   ]
   }
  },
  {
@@ -9557,7 +9841,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Nikola Jokic home and away splits over his career"
+    }
+   ]
   }
  },
  {
@@ -11165,7 +11458,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "embiid games since 1/26 over his career"
+    }
+   ]
   }
  },
  {
@@ -11339,7 +11641,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "curry games where he went 7/14 from three over his career"
+    }
+   ]
   }
  },
  {
@@ -11895,7 +12206,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "curry's shot chart for the all-star game over his career"
+    }
+   ]
   }
  },
  {
@@ -12182,7 +12502,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Celtics record without Tatum and Brown of all time"
+    }
+   ]
   }
  },
  {
@@ -12375,7 +12704,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Podziemski game log without curry over his career"
+    }
+   ]
   }
  },
  {
@@ -12500,7 +12838,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "most games without a turnover of all time"
+    }
+   ]
   }
  },
  {
@@ -12901,7 +13248,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Nikola Jokic home and away splits over his career"
+    }
+   ]
   }
  },
  {
@@ -13053,7 +13409,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Joe Ingles stats when starting vs coming off the bench over his career"
+    }
+   ]
   }
  },
  {
@@ -13283,7 +13648,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Giannis Antetokounmpo stats by month over his career"
+    }
+   ]
   }
  },
  {
@@ -13506,7 +13880,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Tatum stats in wins vs losses over his career"
+    }
+   ]
   }
  },
  {
@@ -13614,7 +13997,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "which team has the fewest turnovers of all time"
+    }
+   ]
   }
  },
  {
@@ -13845,7 +14237,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "worst three point shooting team of all time"
+    }
+   ]
   }
  },
  {
@@ -13953,7 +14354,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "team with the most threes of all time"
+    }
+   ]
   }
  },
  {
@@ -14367,7 +14777,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "which team scores the most points per game of all time"
+    }
+   ]
   }
  },
  {
@@ -14477,7 +14896,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "which team has the most threes in a playoff game of all time"
+    }
+   ]
   }
  },
  {
@@ -14762,7 +15190,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "rj barrett 4th qtr log of all time"
+    }
+   ]
   }
  },
  {
@@ -15074,7 +15511,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "tatum first half stats over his career"
+    }
+   ]
   }
  },
  {
@@ -15229,7 +15675,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "harrison barnes 1st q stats over his career"
+    }
+   ]
   }
  },
  {
@@ -15521,7 +15976,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "76ers 4th qtr points vs boston of all time"
+    }
+   ]
   }
  },
  {
@@ -16654,7 +17118,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Chris Paul playoff game 7 record over his career"
+    }
+   ]
   }
  },
  {
@@ -16814,7 +17287,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "jokic stats in the second round over his career"
+    }
+   ]
   }
  },
  {
@@ -17117,7 +17599,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Joe Ingles stats when starting vs coming off the bench over his career"
+    }
+   ]
   }
  },
  {
@@ -17253,7 +17744,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "luka td3s home in 2026"
+    }
+   ]
   }
  },
  {
@@ -17524,7 +18024,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "celtics best nba record since january 31st of all time"
+    }
+   ]
   }
  },
  {
@@ -17878,7 +18387,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "bam adebayo 30 point games in march in 2026"
+    }
+   ]
   }
  },
  {
@@ -23025,7 +23543,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "most triple doubles since 12/13 of all time"
+    }
+   ]
   }
  },
  {
@@ -23650,13 +24177,6 @@
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
      "reason": "the words 'in the last two years' name player_seasons/split/season, and the grammar's rules declined it"
-    },
-    {
-     "stage": "parser",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -23839,13 +24359,6 @@
      "before": "player_seasons/split/season",
      "after": "player_games/rows/date",
      "reason": "the words 'in the last 5 years' name player_seasons/split/season, and the grammar's rules declined it"
-    },
-    {
-     "stage": "parser",
-     "field": "span",
-     "before": null,
-     "after": "career",
-     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
    "point": {
@@ -24522,7 +25035,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "how does wemby add value over his career"
+    }
+   ]
   }
  },
  {
@@ -24645,7 +25167,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Show me Wembanyama's defensive fingerprint chart over his career"
+    }
+   ]
   }
  },
  {
@@ -25178,7 +25709,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Sga record 36 plus points over his career"
+    }
+   ]
   }
  },
  {
@@ -25314,7 +25854,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "most 40 point games in a row of all time"
+    }
+   ]
   }
  },
  {
@@ -25500,7 +26049,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "most 3 point makes in a game in 2026"
+    }
+   ]
   }
  },
  {
@@ -26274,7 +26832,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "games with less than 20 points in 2026"
+    }
+   ]
   }
  },
  {
@@ -26427,7 +26994,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "most games with fewer than 5 turnovers in 2026"
+    }
+   ]
   }
  },
  {
@@ -26777,7 +27353,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "mikal bridges game log with less than 15 fga and with less than 35 minutes over his career"
+    }
+   ]
   }
  },
  {
@@ -26941,7 +27526,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "curry games with 30 minutes or less in 2026"
+    }
+   ]
   }
  },
  {
@@ -27132,7 +27726,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "paul reed gamelog with 25 minutes over his career"
+    }
+   ]
   }
  },
  {
@@ -27663,7 +28266,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "paul reed gamelog with 25 minutes over his career"
+    }
+   ]
   }
  },
  {
@@ -27852,7 +28464,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "forwards with 20+ mins vs gsw log of all time"
+    }
+   ]
   }
  },
  {
@@ -28124,6 +28745,15 @@
       "situation": "back to backs",
       "reads_as": "other"
      }
+    }
+   ],
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Celtics record on back to backs of all time"
     }
    ]
   }
@@ -28411,7 +29041,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "76ers record in october of all time"
+    }
+   ]
   }
  },
  {
@@ -28548,7 +29187,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Knicks record vs the east of all time"
+    }
+   ]
   }
  },
  {
@@ -28681,6 +29329,15 @@
       "situation": "since the all-star break",
       "reads_as": "other"
      }
+    }
+   ],
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "best record since the all-star break of all time"
     }
    ]
   }
@@ -29068,7 +29725,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "lebron record against eastern conference teams over his career"
+    }
+   ]
   }
  },
  {
@@ -29205,7 +29871,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Knicks record vs the east of all time"
+    }
+   ]
   }
  },
  {
@@ -29380,7 +30055,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "jokic ppg in the west over his career"
+    }
+   ]
   }
  },
  {
@@ -29517,7 +30201,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "celtics record in the atlantic division of all time"
+    }
+   ]
   }
  },
  {
@@ -29701,6 +30394,15 @@
       "situation": "division",
       "reads_as": "alignment"
      }
+    }
+   ],
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "lebron in the division these days over his career"
     }
    ]
   }
@@ -30049,7 +30751,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "garland on mondays game log of all time"
+    }
+   ]
   }
  },
  {
@@ -30550,7 +31261,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "anthony davis stats on christmas in 2026"
+    }
+   ]
   }
  },
  {
@@ -31032,6 +31752,15 @@
       "reads_as": "other"
      }
     }
+   ],
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "paolo banchero since returning from injury over his career"
+    }
    ]
   }
  },
@@ -31209,7 +31938,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on mlk day in 2026"
+    }
+   ]
   }
  },
  {
@@ -31386,7 +32124,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on martin luther king day in 2026"
+    }
+   ]
   }
  },
  {
@@ -31564,7 +32311,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on martin luther king jr. day in 2026"
+    }
+   ]
   }
  },
  {
@@ -31740,7 +32496,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on valentine's day in 2026"
+    }
+   ]
   }
  },
  {
@@ -31916,7 +32681,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on valentines day in 2026"
+    }
+   ]
   }
  },
  {
@@ -32092,7 +32866,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on new year's eve in 2026"
+    }
+   ]
   }
  },
  {
@@ -32268,7 +33051,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on christmas eve in 2026"
+    }
+   ]
   }
  },
  {
@@ -32444,7 +33236,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on new years day in 2026"
+    }
+   ]
   }
  },
  {
@@ -32620,7 +33421,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on new year's in 2026"
+    }
+   ]
   }
  },
  {
@@ -32805,7 +33615,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "anthony davis stats on christmas in 2026"
+    }
+   ]
   }
  },
  {
@@ -33048,7 +33867,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron james Christmas Day game record in 2026"
+    }
+   ]
   }
  },
  {
@@ -33225,7 +34053,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron stats on thanksgiving in 2026"
+    }
+   ]
   }
  },
  {
@@ -37431,7 +38268,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who led the league in adjusted netpoints of all time?"
+    }
+   ]
   }
  },
  {
@@ -37557,7 +38403,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who led the league in netpoints adjusted per possesion of all time"
+    }
+   ]
   }
  },
  {
@@ -39011,7 +39866,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "How many 20+ point 5+ assist games did luka have in 2026?"
+    }
+   ]
   }
  },
  {
@@ -39184,7 +40048,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "How many games did luka have with 20+ points and 5+ assists in 2026?"
+    }
+   ]
   }
  },
  {
@@ -39766,7 +40639,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who led the league in defensive netpoints of all time"
+    }
+   ]
   }
  },
  {
@@ -39934,7 +40816,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many times has embiid fouled out in 2026?"
+    }
+   ]
   }
  },
  {
@@ -40559,7 +41450,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many 50 point games were there in 2026"
+    }
+   ]
   }
  },
  {
@@ -40888,7 +41788,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many 30 point games does jokic have in 2026"
+    }
+   ]
   }
  },
  {
@@ -41073,7 +41982,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many games with 5+ blocks has wemby had in 2026"
+    }
+   ]
   }
  },
  {
@@ -42288,7 +43206,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Ayton stats in game 4 playoff games over his career"
+    }
+   ]
   }
  },
  {
@@ -42459,7 +43386,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Ayton stats in game 4 playoff games over his career"
+    }
+   ]
   }
  },
  {
@@ -42756,7 +43692,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "lebron in game 7s over his career"
+    }
+   ]
   }
  },
  {
@@ -43575,7 +44520,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Best NBA record since January 31st of all time"
+    }
+   ]
   }
  },
  {
@@ -43765,7 +44719,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "lebron points after march 1 over his career"
+    }
+   ]
   }
  },
  {
@@ -44132,6 +45095,15 @@
       "reads_as": "other"
      }
     }
+   ],
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "curry stats on february 31 over his career"
+    }
    ]
   }
  },
@@ -44305,7 +45277,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "keon ellis stats vs trailblazers in 2026"
+    }
+   ]
   }
  },
  {
@@ -44476,7 +45457,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "De'angelo russell vs pistons in 2026"
+    }
+   ]
   }
  },
  {
@@ -44659,7 +45649,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "Kd games vs wizards in 2026"
+    }
+   ]
   }
  },
  {
@@ -44842,7 +45841,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "embid vs bucks gamelog in 2026"
+    }
+   ]
   }
  },
  {
@@ -45027,7 +46035,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "kon kneuppel log vs okc in 2026"
+    }
+   ]
   }
  },
  {
@@ -45230,7 +46247,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "jay huff game log vs Embiid in 2026"
+    }
+   ]
   }
  },
  {
@@ -45401,7 +46427,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "mathurin v det in 2026"
+    }
+   ]
   }
  },
  {
@@ -45583,7 +46618,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "sam hauser v mil in 2026"
+    }
+   ]
   }
  },
  {
@@ -45754,7 +46798,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "pascal vs orlando in 2026"
+    }
+   ]
   }
  },
  {
@@ -45925,7 +46978,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "Amén Thomson vs toronto in 2026"
+    }
+   ]
   }
  },
  {
@@ -46247,7 +47309,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "luka td3s home in 2026"
+    }
+   ]
   }
  },
  {
@@ -46404,7 +47475,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Duncan Robison 1q log over his career"
+    }
+   ]
   }
  },
  {
@@ -46546,7 +47626,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Devin Vassell nba player per game stats 1q over his career"
+    }
+   ]
   }
  },
  {
@@ -47186,7 +48275,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "most 40 point games in a row of all time"
+    }
+   ]
   }
  },
  {
@@ -47802,7 +48900,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "game score nba leader of all time"
+    }
+   ]
   }
  },
  {
@@ -48072,7 +49179,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "pacers score of all time"
+    }
+   ]
   }
  },
  {
@@ -48195,7 +49311,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "what was the score of the game of all time"
+    }
+   ]
   }
  },
  {
@@ -48329,7 +49454,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Total points scored by the toronto raptors of all time"
+    }
+   ]
   }
  },
  {
@@ -48712,7 +49846,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who led the league in points per game of all time"
+    }
+   ]
   }
  },
  {
@@ -48841,7 +49984,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare durant and lebron in game score of all time"
+    }
+   ]
   }
  },
  {
@@ -49032,7 +50184,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "luka ft log over his career"
+    }
+   ]
   }
  },
  {
@@ -49514,7 +50675,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron vs kawhi head to head in 2026"
+    }
+   ]
   }
  },
  {
@@ -49662,7 +50832,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "magic johnson vs larry bird head to head in 2026"
+    }
+   ]
   }
  },
  {
@@ -49952,7 +51131,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare curry and lebron vs the celtics of all time"
+    }
+   ]
   }
  },
  {
@@ -50083,7 +51271,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare magic johnson and larry bird of all time"
+    }
+   ]
   }
  },
  {
@@ -50377,7 +51574,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Jokic's scoring by year over his career"
+    }
+   ]
   }
  },
  {
@@ -51512,7 +52718,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many times has embiid fouled out in 2026?"
+    }
+   ]
   }
  },
  {
@@ -51707,7 +52922,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "what was the sixers record when maxey scored 15+ points of all time?"
+    }
+   ]
   }
  },
  {
@@ -52097,7 +53321,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "sixers record when maxey had 12+ boards of all time"
+    }
+   ]
   }
  },
  {
@@ -52292,7 +53525,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "sixers record when maxey had 20+ points and 5+ assists of all time"
+    }
+   ]
   }
  },
  {
@@ -52447,7 +53689,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "what was the celtics record when they scored 120 points of all time"
+    }
+   ]
   }
  },
  {
@@ -52617,7 +53868,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many times has embiid fouled out in 2026?"
+    }
+   ]
   }
  },
  {
@@ -52918,7 +54178,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "jamal murray games with 2 threes including playoffs in 2026"
+    }
+   ]
   }
  },
  {
@@ -54157,7 +55426,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "who had the most assists in a single game and how many did he have in 2026"
+    }
+   ]
   }
  },
  {
@@ -54652,7 +55930,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Duncan Robison 1q log over his career"
+    }
+   ]
   }
  },
  {
@@ -54803,7 +56090,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "rj barrett 4th qtr log of all time"
+    }
+   ]
   }
  },
  {
@@ -54976,7 +56272,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "harrison barnes 1st quarter stats each game vs magic in 2026"
+    }
+   ]
   }
  },
  {
@@ -55147,7 +56452,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "victor wembanyama vs sacramento first half log in 2026"
+    }
+   ]
   }
  },
  {
@@ -55318,7 +56632,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "Kd vs clippers 2h at home gamelog in 2026"
+    }
+   ]
   }
  },
  {
@@ -55502,7 +56825,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "scottie barnes stats 2nd half log without rj over his career"
+    }
+   ]
   }
  },
  {
@@ -55639,7 +56971,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "nba playerspoints by quarter average of all time"
+    }
+   ]
   }
  },
  {
@@ -55795,7 +57136,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "points per quarter for Luka over his career"
+    }
+   ]
   }
  },
  {
@@ -56189,7 +57539,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "knicks 1st quarter scoring leaders playoffs of all time"
+    }
+   ]
   }
  },
  {
@@ -56433,7 +57792,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "knicks 1st quarter scoring leaders playoffs of all time"
+    }
+   ]
   }
  },
  {
@@ -56715,7 +58083,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who scored the most in the 1st quarter, jokic or embiid of all time"
+    }
+   ]
   }
  },
  {
@@ -56868,7 +58245,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "duren v nets 1h gameloh in 2026"
+    }
+   ]
   }
  },
  {
@@ -57018,7 +58404,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "scottie barnes stats 2nd half log over his career"
+    }
+   ]
   }
  },
  {
@@ -57166,7 +58561,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "kd rebounds 4th quarter over his career"
+    }
+   ]
   }
  },
  {
@@ -57321,7 +58725,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "rj barrett 4th qtr log over his career"
+    }
+   ]
   }
  },
  {
@@ -57478,7 +58891,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "vj edgecombe 1st quarter scoring by game over his career"
+    }
+   ]
   }
  },
  {
@@ -57629,7 +59051,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Devin Vassell nba player per game stats 1q over his career"
+    }
+   ]
   }
  },
  {
@@ -58186,7 +59617,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "how many points does embiid average over his career"
+    }
+   ]
   }
  },
  {
@@ -59296,7 +60736,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "sga 2p pct over his career"
+    }
+   ]
   }
  },
  {
@@ -59454,7 +60903,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "sga 2pt pct over his career"
+    }
+   ]
   }
  },
  {
@@ -59588,7 +61046,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "sga 2-point field goal percentage over his career"
+    }
+   ]
   }
  },
  {
@@ -60484,7 +61951,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "sga's 42 point game in 2026"
+    }
+   ]
   }
  },
  {
@@ -60613,7 +62089,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare sga and embiid on 2pt percentage of all time"
+    }
+   ]
   }
  },
  {
@@ -61099,7 +62584,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who led the league in scoring of all time"
+    }
+   ]
   }
  },
  {
@@ -61225,7 +62719,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who lead the league in 3 point percentage of all time"
+    }
+   ]
   }
  },
  {
@@ -61358,7 +62861,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "how far away does wembanyama shoot from over his career"
+    }
+   ]
   }
  },
  {
@@ -61991,7 +63503,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "show me the 76ers record when both Embiid and Paul George played in 2026"
+    }
+   ]
   }
  },
  {
@@ -62175,7 +63696,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "show me PHI record with Embiid and Paul George in 2026"
+    }
+   ]
   }
  },
  {
@@ -62360,7 +63890,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "PHI record when Embiid and Paul George play in 2026"
+    }
+   ]
   }
  },
  {
@@ -62544,7 +64083,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "PHI record when Embiid with Paul George in 2026"
+    }
+   ]
   }
  },
  {
@@ -62934,7 +64482,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "show me stats for sixers when maxey scored 20+ points of all time"
+    }
+   ]
   }
  },
  {
@@ -63127,7 +64684,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "maxey stats in games with 20+ points over his career"
+    }
+   ]
   }
  },
  {
@@ -63844,7 +65410,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "celtics vs knicks 2nd half scoring of all time"
+    }
+   ]
   }
  },
  {
@@ -64009,7 +65584,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "players with the highest scoring triple doubles of all time"
+    }
+   ]
   }
  },
  {
@@ -64829,7 +66413,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "most field goals made per attempt of all time"
+    }
+   ]
   }
  },
  {
@@ -64952,7 +66545,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who has the most threes of all time"
+    }
+   ]
   }
  },
  {
@@ -65084,7 +66686,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "curry's twos and threes by distance over his career"
+    }
+   ]
   }
  },
  {
@@ -65220,7 +66831,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "curry's 3pt percentage over his career"
+    }
+   ]
   }
  },
  {
@@ -65353,7 +66973,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "what was steph curry's avg 3pt shot distance over his career"
+    }
+   ]
   }
  },
  {
@@ -65485,7 +67114,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "how far does curry shoot his twos from over his career"
+    }
+   ]
   }
  },
  {
@@ -65617,7 +67255,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "curry's 3pt shot distance over his career"
+    }
+   ]
   }
  },
  {
@@ -65753,7 +67400,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "how many points per game do the celtics score of all time"
+    }
+   ]
   }
  },
  {
@@ -66172,7 +67828,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many playoff games has embiid won in 2026?"
+    }
+   ]
   }
  },
  {
@@ -66620,7 +68285,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Ayton stats in game 4 playoff games over his career"
+    }
+   ]
   }
  },
  {
@@ -67649,7 +69323,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "PHI record when Embiid and Paul George played in 2026"
+    }
+   ]
   }
  },
  {
@@ -67846,7 +69529,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "Payton Prichard stats vs 76ers at home including playoffs game log in 2026"
+    }
+   ]
   }
  },
  {
@@ -68196,7 +69888,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "steph curry record vs lebron regular season without kd in 2026"
+    }
+   ]
   }
  },
  {
@@ -68526,7 +70227,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "curry vs lebron game log in 2026"
+    }
+   ]
   }
  },
  {
@@ -68837,7 +70547,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Victor wembanyama stats when playing 20 or more minutes playoffs over his career"
+    }
+   ]
   }
  },
  {
@@ -68972,7 +70691,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "nba plus minus per game leaders minimum 100 games played in 2026"
+    }
+   ]
   }
  },
  {
@@ -69202,7 +70930,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "who has the worst fg% with atleast 1000 fg attempted of all time"
+    }
+   ]
   }
  },
  {
@@ -69500,7 +71237,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many 40 point playoff games does kobe have in 2026"
+    }
+   ]
   }
  },
  {
@@ -69670,7 +71416,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many 40 point home games does kobe have in 2026"
+    }
+   ]
   }
  },
  {
@@ -70305,7 +72060,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "victor wembanyama record when playing 30 or more minutes over his career"
+    }
+   ]
   }
  },
  {
@@ -70778,7 +72542,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "lakers record vs the nuggest of all time"
+    }
+   ]
   }
  },
  {
@@ -70907,7 +72680,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "sam hauser vs hawes in 2026"
+    }
+   ]
   }
  },
  {
@@ -71086,7 +72868,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "most points in a single game on the 76ers in 2026"
+    }
+   ]
   }
  },
  {
@@ -71721,7 +73512,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "what was the knicks highest scoring game in 2026"
+    }
+   ]
   }
  },
  {
@@ -72130,7 +73930,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "nba most playoff games with 2+ block and 2+ steals in 2026"
+    }
+   ]
   }
  },
  {
@@ -72456,7 +74265,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many 30 point games did maxey have without embiid in 2026"
+    }
+   ]
   }
  },
  {
@@ -72618,7 +74436,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "maxey points with and without embiid over his career"
+    }
+   ]
   }
  },
  {
@@ -72804,7 +74631,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "d'angelo russell vs pistons as a laker in 2026"
+    }
+   ]
   }
  },
  {
@@ -73504,7 +75340,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Plot Curry's threes over his career"
+    }
+   ]
   }
  },
  {
@@ -73811,7 +75656,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "points per quarter for Luka over his career"
+    }
+   ]
   }
  },
  {
@@ -74107,7 +75961,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "micheal jordan shot chart over his career"
+    }
+   ]
   }
  },
  {
@@ -74277,7 +76140,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "dwayne wade stats vs nets in 2026"
+    }
+   ]
   }
  },
  {
@@ -74760,7 +76632,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "zach lavine vs magic on bulls in 2026"
+    }
+   ]
   }
  },
  {
@@ -74928,7 +76809,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "jokic vs golden state warriors in 2026"
+    }
+   ]
   }
  },
  {
@@ -75278,7 +77168,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron best scoring game in 2026"
+    }
+   ]
   }
  },
  {
@@ -75469,7 +77368,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "luka highest scoring games vs bucks in 2026"
+    }
+   ]
   }
  },
  {
@@ -75669,7 +77577,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron highest scoring game for cleveland in 2026"
+    }
+   ]
   }
  },
  {
@@ -76306,7 +78223,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "most 3s made in a single game by a team in 2026"
+    }
+   ]
   }
  },
  {
@@ -77051,7 +78977,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "maxey points when embiid doesnt start in 2026"
+    }
+   ]
   }
  },
  {
@@ -77267,7 +79202,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "maxey game log when embiid starts in 2026"
+    }
+   ]
   }
  },
  {
@@ -77470,7 +79414,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "76ers record when they score 120 points when embiid starts in 2026"
+    }
+   ]
   }
  },
  {
@@ -77674,7 +79627,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "celtics record when they score 120 and tatum plays in 2026"
+    }
+   ]
   }
  },
  {
@@ -77870,7 +79832,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "sixers record when 30 points from embiid of all time"
+    }
+   ]
   }
  },
  {
@@ -79178,7 +81149,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "how many 40 point finals games does kobe have in 2026"
+    }
+   ]
   }
  },
  {
@@ -80140,7 +82120,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "lebron record vs t wolves in 2026"
+    }
+   ]
   }
  },
  {
@@ -80455,7 +82444,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "compare luka's and sga's net points of all time"
+    }
+   ]
   }
  },
  {
@@ -80594,7 +82592,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "how many points has curry scored since he joined the Warriors of all time"
+    }
+   ]
   }
  },
  {
@@ -81130,7 +83137,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "portis vs wizards as buck in 2026"
+    }
+   ]
   }
  },
  {
@@ -81314,7 +83330,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "kyrie irving in nets stats vs magic in 2026"
+    }
+   ]
   }
  },
  {
@@ -81498,7 +83523,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "jalen brunson home stats with knicks vs hawks in 2026"
+    }
+   ]
   }
  },
  {
@@ -81687,7 +83721,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "anthony edwards log with at least 50 points over his career"
+    }
+   ]
   }
  },
  {
@@ -81837,7 +83880,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "james harden stats with no paul george over his career"
+    }
+   ]
   }
  },
  {
@@ -82274,7 +84326,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "miles bridges stats vs raptors second half in 2026"
+    }
+   ]
   }
  },
  {
@@ -82424,7 +84485,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "derrick white playoff stats this seasond over his career"
+    }
+   ]
   }
  },
  {
@@ -82561,7 +84631,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "players with most most 25 point season of all time"
+    }
+   ]
   }
  },
  {
@@ -82738,7 +84817,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "highest scoring games of 76ers players in 2026"
+    }
+   ]
   }
  },
  {
@@ -83436,7 +85524,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "stephen curry 50 point games in 2026"
+    }
+   ]
   }
  },
  {
@@ -83570,7 +85667,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "KEVIN GARNETT VS TIM DUNCAN GAMES in 2026"
+    }
+   ]
   }
  },
  {
@@ -83848,7 +85954,16 @@
     },
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "ADs record with lebron in 2026"
+    }
+   ]
   }
  },
  {
@@ -84027,7 +86142,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "most points in a single game on the magic in 2026"
+    }
+   ]
   }
  },
  {
@@ -84666,7 +86790,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "Caleb martin ecf over his career"
+    }
+   ]
   }
  },
  {
@@ -85384,7 +87517,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "toronto raptors points in the paint of all time"
+    }
+   ]
   }
  },
  {
@@ -85546,7 +87688,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "lebron james first quater log over his career"
+    }
+   ]
   }
  },
  {
@@ -85880,7 +88031,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "James harden rebound and assist vs POR in 2026"
+    }
+   ]
   }
  },
  {
@@ -86046,7 +88206,16 @@
      "until": null
     }
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "Giannis first half points rebounds assists gamelog vs washington in 2026"
+    }
+   ]
   }
  },
  {
@@ -87560,7 +89729,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "season",
+     "instead": "career",
+     "season": 2026,
+     "question": "james harden stats with no paul george over his career"
+    }
+   ]
   }
  },
  {
@@ -87998,7 +90176,16 @@
     "available": null,
     "subject_span": null
    },
-   "point_verdict": "read"
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "read": "career",
+     "instead": "season",
+     "season": 2026,
+     "question": "least games played with lakers in 2026"
+    }
+   ]
   }
  },
  {

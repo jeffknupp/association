@@ -621,7 +621,7 @@ def refusal_of(cause: Cause) -> Refusal:
 
     .. versionadded:: 5.0.0
     """
-    if cause.kind in ("shot_distance_ranking", "ranking_unit"):
+    if cause.kind in ("shot_distance_ranking", "ranking_unit", "no_career_ranking"):
         return Refusal(kind=cause.kind, facts=cause.facts, under=("message", "headline"))
     if cause.kind in ("ranking_floor_unit", "minimum_unranked"):
         return Refusal(kind=cause.kind, facts=cause.facts, shown={"floor": {"unit": cause.facts["unit"], "count": cause.facts["count"]}})

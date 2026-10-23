@@ -47,8 +47,13 @@ url = f"http://127.0.0.1:{server.server_address[1]}/index.html"
 STUB = """
 window.EventSource = class {
   constructor(u) { this.ls = {}; setTimeout(() => {
+    const asked = decodeURIComponent(String(u).split("question=")[1] || "");
+    window.__asked = (window.__asked || []).concat([asked]);
+    // A question ending "games" is offered the other reading of its span
+    // (decision D23), as the server's answer event carries it.
+    const alternatives = /games$/.test(asked) ? [{kind: "span", read: "career", instead: "season", season: 2026, question: asked + " in 2026"}] : [];
     const payload = JSON.stringify({text: "an answer", answered_by: "fast", shape: {relation: "player_seasons", shape: "ranking", by: "player"},
-      timing: {total_seconds: 0.5}, data: {}, artifacts: [], history_file: "stub-0000000000000000.log"});
+      timing: {total_seconds: 0.5}, data: {}, artifacts: [], history_file: "stub-0000000000000000.log", alternatives});
     (this.ls["answer"] || []).forEach(f => f({data: payload}));
   }, 5); }
   addEventListener(n, f) { (this.ls[n] = this.ls[n] || []).push(f); }
@@ -204,6 +209,25 @@ with sync_playwright() as p:
     page.click("#forget")
     page.wait_for_selector("#input")
     check("forgetting empties the thread and the page", len(page.query_selector_all(".turn")) == 0 and page.query_selector("#empty") is not None, len(page.query_selector_all(".turn")))
+
+    # An alternative is a button under its answer that asks its ready
+    # question (decision D23); an answer offering none has no row.
+    ask("first question")
+    check("an answer offering no alternative has no button row", not page.query_selector_all(".turn .alternatives"))
+    ask("stephen curry 50 point games")
+    offered = page.query_selector_all(".turn .alternatives button")
+    check("an offered alternative is a button naming its question", [b.inner_text() for b in offered] == ["stephen curry 50 point games in 2026"], [b.inner_text() for b in offered])
+    if offered:
+        offered[0].click()
+        page.wait_for_timeout(120)
+    asked_now = page.evaluate("window.__asked")
+    check("clicking it asks that question", asked_now[-1:] == ["stephen curry 50 point games in 2026"], asked_now)
+    check("its answer is a turn of its own", [q.inner_text() for q in page.query_selector_all(".q")][-1:] == ["stephen curry 50 point games in 2026"])
+    page.reload()
+    page.wait_for_selector("#input")
+    check("a kept turn keeps its button", [b.inner_text() for b in page.query_selector_all(".turn .alternatives button")] == ["stephen curry 50 point games in 2026"])
+    page.click("#forget")
+    page.wait_for_selector("#input")
 
     # Connection indicator and live reload, on pages with a fake clock. A
     # marker set on `window` survives everything except a real reload, which

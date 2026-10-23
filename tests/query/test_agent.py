@@ -486,6 +486,10 @@ def test_a_career_the_words_imply_is_said_with_the_wording_that_asks_one_season(
     said.update(text="No player found matching 'joel embid'.", data={"unmatched": "joel embid", "suggestions": []})
     unmatched = ask_routed(agent, "joel embiid 30 point games", route)
     assert unmatched.text == "No player found matching 'joel embid'."
+    # Nor beside a name several players share, asked back.
+    asked = "'embiid' matches more than one player - did you mean Joel Embiid or Joe Embiid?"
+    said.update(text=asked, data={"ambiguous": "embiid", "candidates": ["Joel Embiid", "Joe Embiid"]})
+    assert ask_routed(agent, "joel embiid 30 point games", route).text == asked
 
 
 def test_a_near_spelling_the_parser_read_as_a_word_is_said(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

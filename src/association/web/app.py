@@ -151,6 +151,24 @@ class ShapeResponse(BaseModel):
     by: str
 
 
+class AlternativeResponse(BaseModel):
+    """One other reading of a default the answer read by, offered as a
+    question that asks it - the wire form of
+    :class:`~association.query.reading.Alternative`: what it changes
+    (``kind``, the span), what the answer ``read`` and what this reads
+    ``instead`` (``career``, ``season`` or ``latest``), the ``season`` either
+    names, and the ready ``question`` the page's button asks.
+
+    .. versionadded:: 7.0.0
+    """
+
+    kind: str
+    read: str
+    instead: str
+    season: int | None
+    question: str
+
+
 class AnswerResponse(BaseModel):
     """An answered question.
 
@@ -168,6 +186,10 @@ class AnswerResponse(BaseModel):
        Adds ``shape``, the planned point's shape, which the page renders by.
        Breaking: ``intent``, the retired intent's name the page rendered by
        until then, is gone.
+
+    .. versionchanged:: 7.0.0
+       Adds ``alternatives``, the other readings of a default span, each a
+       ready question (decision D23).
 
     .. versionchanged:: 4.4.0
        Adds ``history_file``, the basename of the run this answer was recorded
@@ -202,6 +224,12 @@ class AnswerResponse(BaseModel):
     on a refusal, and where the words came to no point.
 
     .. versionadded:: 6.0.0
+    """
+    alternatives: list[AlternativeResponse] = []
+    """The other readings of the default span the answer read by, each a
+    question that asks it - the page's buttons under the answer.
+
+    .. versionadded:: 7.0.0
     """
 
 
@@ -328,6 +356,7 @@ def as_response(answer: Answer, history_file: str | None = None) -> AnswerRespon
         decisions=[DecisionResponse(**d.as_dict()) for d in answer.decisions],
         notes=[AnswerNoteResponse(**n.as_dict()) for n in answer.notes],
         shape=ShapeResponse(relation=answer.shape.relation, shape=answer.shape.shape, by=answer.shape.by) if answer.shape is not None else None,
+        alternatives=[AlternativeResponse(kind=each.kind, read=each.read, instead=each.instead, season=each.season, question=each.question) for each in answer.alternatives],
     )
 
 

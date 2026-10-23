@@ -280,3 +280,27 @@ def test_shrink_keeps_a_questions_own_characters(tmp_path: Path, monkeypatch: py
     text = held.read_text()
     assert "luka dončić 30 points" in text and "\\u" not in text
     assert json.loads(text)["corpus"] == {"unread_words": 1, "unread_numbers": ["luka dončić 30 points"]}
+
+
+def test_an_alternatives_ready_question_is_no_word_the_reading_depends_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An alternative's ready question is the asker's own words with a span
+    added (decision D23), so any word deleted moves it: the probe sets the
+    wording aside and compares what the alternative reads. "practice" stays
+    unread beside a season read by default, as it was before the reading
+    offered the career."""
+    import duckdb
+
+    monkeypatch.setenv("ASSOCIATION_TODAY", "2026-01-01")
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1', 'Stephen Curry')")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.close()
+    recorded = tmp_path / "recorded.jsonl"
+    recorded.write_text(json.dumps({"q": "stephen curry points per game at practice", "out": {"names": ["stephen curry"], "stat": "points"}}) + "\n")
+    out = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(sys, "argv", ["claims_ledger.py", "run", str(out), "--recorded", str(recorded), "--db-path", str(db_path)])
+    assert ledger.main() == 0
+    _meta, row = [json.loads(line) for line in out.read_text().splitlines()]
+    assert "practice" in row["unread"] and "practice" in row["reading_unread"]
