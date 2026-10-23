@@ -2232,6 +2232,23 @@ with nothing to read fills the silence from its own weights), and more data
     opponent, quarters named together refused by name, "kareem abdul
     jabbar". Open for Jeff: whether a round implies the career (FS189).
 
+63. **2016's period reads by per-game completeness (2026-10-23, master
+    `2df2c296`).** Lane p6-complete. The 2016 fault was measured first as
+    absent rows at the source (a live refetch returns the same 477 rows of
+    400827996), per player-game, not per season; `fetch/repairs/plays_complete`
+    records per player-game and stat whether the play-by-play adds up to the
+    box (628,074 rows; 2016 complete on points in 90.4%), and the period log
+    reads count a game of an under-threshold season where every column read
+    adds up, naming the rest per player. The shot frame, a shot's value and
+    the period line's rules moved to `nba/` so fetch and query sum the same
+    line. The lead loaded the table into the warehouse before the merge and
+    re-ran master's baseline on it: 5 corpus and 5 feed answers moved, all
+    toward their keys - F028 and F058 and the sample's FS027 now exact
+    (138/19, 117/26), F059 383 over 28 (the rest the playoffs, #231), FS078
+    7.0 over 32 against the key's 7.0 over 33. Attempts are read by the same
+    flag (the shot table, 89.3% complete in 2016) - the brief had kept them
+    out; the lane measured and the lead agreed.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

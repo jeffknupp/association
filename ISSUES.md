@@ -1916,6 +1916,22 @@ those were found.
 
 ## P3: refusal or gap
 
+### A season's period reads keep games whose play-by-play does not add up to the box score, above the threshold
+- **Found:** 2026-10-23, lane p6-complete (#278), measuring before moving answers.
+- **Evidence:** `player_games.period_counted` applies the per-game completeness flag (`plays_complete`) only to seasons under `PERIOD_REFUSE_BELOW`; of the 75 period-log answers on both populations, 35 keep at least one game whose play-by-play does not add up in a column they read (51 of 2,474 games, 34 of them 2026), with no caveat where the season is not in `PERIOD_RECONCILIATION`.
+- **User sees:** a period figure possibly a play off in that game, said as exact.
+- **Next step:** Jeff's call: apply `period_counted` to every season (35 answers move, each checked against its key), retiring the season table for the per-game fact.
+- **Priority:** P3 pending Jeff's call.
+- **Source:** ESPN's play-by-play; the season table is ours.
+
+### The four-quarters read and the period leaderboard still refuse a season whose reconciliation is under the bar
+- **Found:** 2026-10-23, lane p6-complete (#278), writing `period_counted`.
+- **Evidence:** `compose/periods._period_by_quarter` and `read_period_leaderboard` call `_period_untrusted` and refuse 2016 whole ("jokic points by quarter career" is refused for his 2016 games); neither reads the per-game flag. No population question holds either.
+- **User sees:** a refusal naming 2016.
+- **Next step:** a `Narrowed` clause on `period_incomplete` and the counted note, as the log reads have.
+- **Priority:** P3.
+- **Source:** ours.
+
 ### A round with no season named reads the current season, where the words imply the career: "jimmy butler nba finals stats"
 - **Found:** 2026-10-17, lane p6-round (the playoff round), FS189 against its key.
 - **Evidence:** FS189's key reads Butler's two Finals (2020, 2023: 11 games, 24.1 points); the answer is "No 2026 postseason games found for Jimmy Butler III ... ask for his career". The same on "lebron james win loss record in the finals", "lebron james 4th quarter in all finals", "Caleb martin ecf", "kyrie in nba finals game 7". And the league's "most blocks / steals / free throws / three-pointers in a game 7" is refused: honoring a series game there is one clause, but D13's guard keeps a game of a series off the career "most X in a game" reads, so it would rank 2026's Game 7s alone.
@@ -1978,16 +1994,6 @@ those were found.
 - **Priority:** P3.
 - **Source:** ours.
 - **GitHub:** #513
-
-### A period read leaves 2016 out where the key counts it: "harrison barnes 1st quarter stats each game vs magic" says 24 games of 26
-- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade (the yardstick's F028, F058, F059, each `partial`; the sample's FS027).
-- **Evidence:** the period reads trust a season only where its rebuilt quarter figures agree with the box score often enough (2016 is at 76.5%, under the threshold), leave it out and say so ("Not counted: 2 games from 2016 ..."); the key counts those games.
-- **User sees:** a figure a game or two short, said.
-- **Next step:** Jeff's call: count the untrusted season with its caveat (the figure approximate), or keep it out and said as now; either way the key and the reader agree.
-- **Priority:** P3 - a stated limit, Jeff's policy.
-- **Source:** ours.
-- **Re-measured 2026-10-20 (the lead):** the games are complete for the player asked in all six cases, so the choice is not caveat-or-drop: #278's per-player completeness flag counts them exactly. #504 closes with #278.
-- **GitHub:** #504
 
 ### "shooting percentages" names no measure: "nba current best shooting percentages" is refused for a ranking stat
 - **Found:** 2026-10-17, lane p6-causes, the sample's FS072.
@@ -2672,15 +2678,6 @@ those were found.
 - **Source:** DATA.md, "A play's type does not always say what the box score
   counts it as"
 - **GitHub:** #276
-
-### 2016's period lines leave out games that are complete for the player asked: a per-player, per-stat completeness flag from the box score recovers them
-- **Found:** 2026-09-29, the period relation's team half; **re-measured 2026-10-20 by the lead** (DATA.md, "A team's play-by-play does not add up to its box score in six seasons", the 2016 paragraph) for the yardstick's F028, F058, F059.
-- **Evidence:** the period reads trust a SEASON (`player_games.PERIOD_RECONCILIATION`, 2016 at 76.5%, refused under 90) and drop 2016 whole, saying so. The fault is absent rows, at the source (a refetch returns the same rows), and it is per game and per player: 87.6% of 2016 player-games are complete on points, makes and free throws, 99.3% on rebounds, 90.6% on assists - the box score says which, stat by stat (box figure equals the plays' count). All six 2016 games behind F028, F058 and F059 are complete for their player on points, makes, rebounds and assists (attempts short: the misses are absent too). The score-step repair proposed here before was measured and rejected (recovers ~420 of 2,852 makes, worsens 2015 and 2017).
-- **User sees:** "Not counted: 2 games from 2016" on a figure the warehouse holds exactly; the key counts them.
-- **Next step:** a load-time table beside the rebuild (`fetch/repairs/`): per player-game, per stat, whether the plays agree with the box (`plays_complete`: points/FGM/3PM/FTM, rebounds, assists, steals, blocks, turnovers; attempts counted with blocked shots, whose text has no "misses"); the period reads count a game of an under-threshold season where the asked stats are complete for the player, and say the games and stats left out per player, not per season; a team's period points from the linescores; FG% and attempts stay out for 2016. Then the integer-partition recovery of a team's missing makes per quarter (bounded where not unique) as a second step, if a team question needs it.
-- **Priority:** P2 - a stated limit that is false for most of the games it drops.
-- **Source:** ESPN's 2016 feed (absent rows); the per-season refusal is ours.
-- **GitHub:** #278
 
 ### A team's splits count blank box-score columns from field-goal attempts alone
 - **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); the splits agent, reading `templates/splits.py:609-613` (the count is `compose/team.py`'s `blank` column now, said by `compose.say`); reported, not measured.
