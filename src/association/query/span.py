@@ -450,8 +450,12 @@ def _implied_pair(question: str, context: SpanContext) -> bool:
 
 def _implied_with(question: str, context: SpanContext) -> bool:
     """A companion who played beside the subject: the games the two shared;
-    one who reached a line, in the postseasons the words name."""
-    reached_in_playoffs = context.companion_reached and bool(lexicon.PLAYOFF_WORDS.search(question))
+    one who reached a line, in the postseasons the words name - the
+    postseason alone, not both types ("including the playoffs" holds the
+    word "playoffs" and names no postseason by itself, as the playoff
+    window's rule reads it)."""
+    named = lexicon.PLAYOFF_WORDS.search(question) and not lexicon.BOTH_SEASON_TYPES_WORDS.search(question)
+    reached_in_playoffs = context.companion_reached and bool(named)
     return context.companion_played or reached_in_playoffs
 
 

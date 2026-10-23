@@ -229,6 +229,8 @@ def test_the_words_imply_a_career_where_no_season_is_named(question: str, shape:
         ("jokic last 5 games", PLAYER_LOG, {"player_named": True, "order": "recent", "limit": 5}),
         # A companion's line on this season's games (the yardstick's F087).
         ("what was the sixers record when maxey scored 20+ points?", PLAYER_SPLITS, {"companion_reached": True, "record": True}),
+        # ... with both season types named, which name no postseason by themselves (decision D25's offered wording).
+        ("what was the sixers record when maxey scored 20+ points including the playoffs?", PLAYER_SPLITS, {"companion_reached": True, "record": True}),
         # An absence alone is read over the question's span (D15).
         ("jeremiah fears stats without dejounte murray", PRESENCE_SPLIT, {"player_named": True}),
         # One season asked for, which no career answers.

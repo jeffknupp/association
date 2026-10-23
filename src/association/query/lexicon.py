@@ -2743,6 +2743,7 @@ CONDITION_STAT_WORDS: dict[str, str] = {
 # one: it is Matt Hurt's name).
 NAME_STOPWORDS: frozenset[str] = frozenset(
     "this last in on since during for vs vs. versus against at when while game games single season seasons record stats stat playing played plays from over the a an any his her their "
+    "including excluding playoff playoffs postseason "
     "how what who whose why many much did does do is are was were has have had than to of by not no "
     "out injured sidelined resting rested rests sitting sits sat missing misses missed absent inactive dnp "
     "doesn't didn't don't isn't wasn't aren't weren't doesnt didnt dont isnt wasnt arent werent".split()  # codespell:ignore doesnt,didnt,isnt,wasnt,arent,werent - typed without the apostrophe

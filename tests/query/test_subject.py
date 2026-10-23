@@ -1247,6 +1247,7 @@ def test_a_subject_is_settled_under_the_key_without_reading_a_name_again() -> No
         ("Tatum and Brown", ["Tatum", "Brown"]),
         ("Lebron and AD this season", ["Lebron", "AD"]),
         ("Tatum, Brown and Holiday", ["Tatum", "Brown", "Holiday"]),
+        ("Tatum and Brown including the playoffs", ["Tatum", "Brown"]),  # the season type's words end the name
         ("brandon miller or lamelo", ["brandon miller", "lamelo"]),  # "or" joins as "and" does
         ("and without Tatum", []),  # a joiner with nothing before it names nobody
         ("20+ points", []),
