@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### Several named stats are not read as a list: a line or log falls back to a fixed set of columns, a sum is never computed, and a stat outside the set is refused
+- **Found:** 2026-10-23, the lead, measuring Jeff's question on the Giannis refusal (lane p6-periods' finding 1) over the feed's 42 questions naming two or more stats.
+- **Evidence:** the measure tagger reads one stat; with several named on a line or a log it reads none (`Reading.measure` None) and the line shows its fixed columns (PTS REB AST STL BLK TO FG% 3P% FT%): "Tyus jones points reb ast last 10 games", "westbrook ppg, rpg apg for the lakers". A sum is never computed: "josh hart points + rebounds + assists game log vs boston", "cade cunningham assists+rebounds all-time game log vs 76ers". A named stat outside the fixed set beside another is refused "ask about one stat" (six "curry ... ts% and efg% and turnover percentage" wordings). A filter stat is read as the measure and the display stats dropped ("jalen suggs points+rebounds game log 15+ fga"). "pippen ppg, rpg apg for the bulls" answers the Bulls' team points per game. The period floor checks the fixed line, so "Giannis first half points rebounds assists gamelog vs washington" is refused over field goal attempts. Lines over several stats (counts, rankings: "most games with 20 pts, 10 reb, 5 ast") read correctly. <!-- codespell:ignore hart - Josh Hart, a player -->
+- **User sees:** the named stats only where the fixed set happens to hold them; no sum where one was asked; a refusal for a stat outside the set; one fluent wrong answer (Pippen).
+- **Next step:** the measure tagger reads every named stat into the point's typed `measures` (and "+" between them as a sum, a derived measure), the line and log show the named columns leading, the period floor and bounds read only the named columns, a filter stat stays a filter; Pippen's "for the bulls" reads the player. Each wording a reader case.
+- **Priority:** P1 - the asked stats ignored; one fluent wrong answer.
+- **Source:** ours.
+- **GitHub:** #540
+
 ### A quarter's free-throw percentage is read as points: "jokic 4th quarter free throw shooting percentages" answers his 4th-quarter points
 - **Found:** 2026-10-23, lane p6-periods, reading its moved answers.
 - **Evidence:** four feed wordings ("jokic / lebron / luka / shai 4th quarter free throw shooting percentages") answer the period line led by points; the free-throw-percentage words are not read as the measure on the period read (before and after the lane's change).
