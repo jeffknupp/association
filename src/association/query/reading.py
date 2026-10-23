@@ -1665,18 +1665,22 @@ class LeftOut:
     names: tuple[str, ...] = ()
 
 
-AlternativeKind = Literal["span"]
-"""What an :class:`Alternative` changes: the span alone, for now (decision
-D23's pilot, D13's class - a season against a career). A kind is added
-with the detection its class needs, never as a free value.
+AlternativeKind = Literal["span", "latest", "season_type", "round", "last_season"]
+"""Which default the words left open an :class:`Alternative` reads the
+other way (decision D23, D25): each kind one ambiguous slot, changed alone.
 
-.. versionadded:: 7.0.0
-"""
+- ``span``: no season named - D13's career where the words imply one (the
+  current season instead), or the current season (the career instead);
+- ``latest``: D13's career for one player's figure against an opponent, his
+  latest meeting instead (the yardstick's F028);
+- ``season_type``: no season type named, the regular season read alone
+  (both types instead, "including the playoffs": ISSUES.md #231);
+- ``round``: a round or a game of a series named with no season, the
+  current season's read (his career instead: ISSUES.md #519);
+- ``last_season``: "last season" in the off-season, the season before the
+  one just finished read (the season just finished instead).
 
-SpanAs = Literal["career", "season", "latest"]
-"""A span as an :class:`Alternative` names it: every season on record
-(``career``), one season (``season``, the number beside it), or the most
-recent game the read holds (``latest``: "in his last game").
+A kind is added with the detection its class needs, never as a free value.
 
 .. versionadded:: 7.0.0
 """
@@ -1685,51 +1689,44 @@ recent game the read holds (``latest``: "in his last game").
 @dataclass(frozen=True, kw_only=True)
 class Alternative:
     """The other reasonable reading of a default the words left open,
-    offered as a question that asks it (decision D23, revised 2026-10-23):
-    what the reading ``read`` where no season was named (the career D13's
-    words imply, or the current season), what this one reads
-    ``instead``, the ``season`` either names, and the ready ``question`` -
-    the asker's own words with the span stated, a wording the parser reads
-    to exactly that alternative. Written by the parser's last step where
-    the span is defaulted (``parse._reading_alternatives``); offered only
-    once the answering loop has read the wording again and found it reaches
-    what it says (``agent._offered``).
+    offered as a question that asks it (decision D23, revised 2026-10-23;
+    D25's classes): which default it reads the other way (``kind``), the
+    :class:`Span` it reads instead - what changes, said as the span itself
+    (the seasons, the career, both season types) - and the ready
+    ``question``: the asker's own words with that span stated, a wording the
+    parser reads to exactly that alternative. Written by the parser's last
+    step (``parse._reading_alternatives``); offered only once the answering
+    loop has read the wording again and found it reaches what it says
+    (``agent._offered``).
 
     .. versionadded:: 7.0.0
     """
 
     kind: AlternativeKind
-    read: SpanAs
-    instead: SpanAs
-    season: int | None
+    span: Span
     question: str
 
     def reached_by(self, asked: Filtered, read: Filtered, asked_key: PointShape | None, read_key: PointShape | None) -> bool:
         """Whether ``read`` - the parser's reading of :attr:`question` -
         reads exactly this alternative of ``asked``, the reading it was
-        offered beside: the same key (``read_key`` against ``asked_key``)
-        and every filter as it stood, but the span it states (and, for the
+        offered beside: the same key (``read_key`` against ``asked_key``),
+        every filter as it stood and :attr:`span` as its span (and, for the
         latest game, the one game it keeps). A wording that reads the
         default again, or anything else beside it, re-asks some other
         question, and is never offered.
 
         .. versionadded:: 7.0.0
         """
-        if read_key != asked_key and not (self.instead == "latest" and read_key in (PLAYER_LOG, PERIOD_LOG)):
+        if read_key != asked_key and not (self.kind == "latest" and read_key in (PLAYER_LOG, PERIOD_LOG)):
             # (One game of his, the latest: a log of that game, where the
             # words asked his line or a quarter's figure over the career.)
             return False
         kept = ("who", "cuts", "companions", "lines", "measure", "split", "period", "minimum")
-        if any(getattr(read, name) != getattr(asked, name) for name in kept):
+        if any(getattr(read, name) != getattr(asked, name) for name in kept) or read.span != self.span:
             return False
-        span = read.span
-        if self.instead == "latest":
+        if self.kind == "latest":
             return read.window.count == 1 and read.window.order == "recent"
-        if read.window != asked.window or span.since is not None or span.season_type != asked.span.season_type:
-            return False
-        if self.instead == "season":
-            return span.season == self.season and not span.career
-        return span.career and span.season is None
+        return read.window == asked.window
 
 
 @dataclass(frozen=True)

@@ -6,7 +6,7 @@ import duckdb
 import pyarrow as pa
 import pytest
 
-from association.nba.season import TODAY_ENV, calendar_season, current_season, eastern_date, eastern_date_sql, eastern_day_utc_range, season_on_record, today
+from association.nba.season import TODAY_ENV, calendar_season, current_season, eastern_date, eastern_date_sql, eastern_day_utc_range, off_season, season_on_record, today
 
 
 def test_a_game_is_dated_by_the_day_it_was_played() -> None:
@@ -108,3 +108,22 @@ def test_the_default_season_is_the_latest_on_record_once_the_calendar_passes_it(
     monkeypatch.setenv(TODAY_ENV, "not a date")
     with pytest.raises(ValueError):
         today()
+
+
+@pytest.mark.parametrize(
+    ("day", "on_record", "off"),
+    [
+        ("2026-01-15", None, False),  # mid-season: "last season" is only the one before
+        ("2026-06-30", None, False),
+        ("2026-07-01", None, True),  # the league year turns after the Finals
+        ("2026-09-30", 2026, True),  # the populations' pinned day
+        ("2026-10-15", 2026, True),  # the calendar has turned and no 2027 game is on record yet
+        ("2026-11-15", 2027, False),
+    ],
+)
+def test_the_off_season_runs_from_july_until_a_later_season_is_on_record(monkeypatch: pytest.MonkeyPatch, day: str, on_record: int | None, off: bool) -> None:
+    """Decision D25's "last season": ambiguous only once the season a
+    question naming none reads is over."""
+    monkeypatch.setenv(TODAY_ENV, day)
+    with season_on_record(on_record):
+        assert off_season() is off

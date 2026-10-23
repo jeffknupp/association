@@ -16,6 +16,7 @@ import re
 import secrets
 import threading
 from collections.abc import Iterator
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -154,18 +155,17 @@ class ShapeResponse(BaseModel):
 class AlternativeResponse(BaseModel):
     """One other reading of a default the answer read by, offered as a
     question that asks it - the wire form of
-    :class:`~association.query.reading.Alternative`: what it changes
-    (``kind``, the span), what the answer ``read`` and what this reads
-    ``instead`` (``career``, ``season`` or ``latest``), the ``season`` either
-    names, and the ready ``question`` the page's button asks.
+    :class:`~association.query.reading.Alternative`: which default it reads
+    the other way (``kind``: ``span``, ``latest``, ``season_type``,
+    ``round`` or ``last_season``), the span it reads instead (``span``, the
+    fields of :class:`~association.query.reading.Span`), and the ready
+    ``question`` the page's button asks.
 
     .. versionadded:: 7.0.0
     """
 
     kind: str
-    read: str
-    instead: str
-    season: int | None
+    span: dict[str, int | bool | None]
     question: str
 
 
@@ -188,8 +188,8 @@ class AnswerResponse(BaseModel):
        until then, is gone.
 
     .. versionchanged:: 7.0.0
-       Adds ``alternatives``, the other readings of a default span, each a
-       ready question (decision D23).
+       Adds ``alternatives``, the other readings of a default the words left
+       open, each a ready question (decisions D23, D25).
 
     .. versionchanged:: 4.4.0
        Adds ``history_file``, the basename of the run this answer was recorded
@@ -356,7 +356,7 @@ def as_response(answer: Answer, history_file: str | None = None) -> AnswerRespon
         decisions=[DecisionResponse(**d.as_dict()) for d in answer.decisions],
         notes=[AnswerNoteResponse(**n.as_dict()) for n in answer.notes],
         shape=ShapeResponse(relation=answer.shape.relation, shape=answer.shape.shape, by=answer.shape.by) if answer.shape is not None else None,
-        alternatives=[AlternativeResponse(kind=each.kind, read=each.read, instead=each.instead, season=each.season, question=each.question) for each in answer.alternatives],
+        alternatives=[AlternativeResponse(kind=each.kind, span=asdict(each.span), question=each.question) for each in answer.alternatives],
     )
 
 

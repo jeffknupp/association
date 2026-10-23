@@ -170,6 +170,16 @@ def _shape(line: Line) -> tuple[str | None, str, int | float | bool, str, bool, 
         # "N or fewer"/"N or less" is a line at or under the number (ISSUES.md #325).
         ("warriors' record last season when committing 10 or fewer turnovers", PLAYER_LOG, [("turnovers", "<=", 10, "10 or fewer turnovers", False, True)], None),
         ("lebron games with 12 or less fga", PLAYER_LOG, [("fieldGoalsAttempted", "<=", 12, "12 or less fga", False, True)], None),
+        # The stat's words stop at a word that starts the span or the season type: the line read with "including the
+        # playoffs" is the line read without it (decision D25's offered wording, the yardstick's F149).
+        (
+            "mikal bridges game log with less than 15 fga and with less than 35 minutes including the playoffs",
+            PLAYER_LOG,
+            [("fieldGoalsAttempted", "<", 15, "less than 15 fga", False, True), ("minutes", "<", 35, "less than 35 minutes", False, True)],
+            None,
+        ),
+        ("jokic games with more than 12 rebounds including playoffs", PLAYER_LOG, [("rebounds", ">", 12, "more than 12 rebounds", False, True)], None),
+        ("lebron games with fewer than 3 turnovers last season", PLAYER_LOG, [("turnovers", "<", 3, "fewer than 3 turnovers", False, True)], None),
         ("jokic stats", PLAYER_LINE, [], None),
         # "2pt", "2-point", "2 point" name the two-point shot, as "3 pt" does the three, and a number after "top" is a
         # ranking's count: no line, even under a shape that is one.

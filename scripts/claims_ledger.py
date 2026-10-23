@@ -141,8 +141,8 @@ def _probed(record: dict[str, Any]) -> dict[str, Any]:
     """A read's record as the deletion probe compares it: without the
     Reading's own unread words, which a deleted word always moves, and
     without each alternative's ready question - the question's own words
-    with a span added (decision D23), which a deleted word moves as surely;
-    what each alternative reads (``read``, ``instead``, ``season``) stays
+    with the other reading stated (decisions D23, D25), which a deleted word
+    moves as surely; what each alternative reads (``kind``, ``span``) stays
     compared."""
     reading = record.get("reading")
     if not isinstance(reading, dict):

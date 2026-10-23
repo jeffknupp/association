@@ -51,7 +51,7 @@ window.EventSource = class {
     window.__asked = (window.__asked || []).concat([asked]);
     // A question ending "games" is offered the other reading of its span
     // (decision D23), as the server's answer event carries it.
-    const alternatives = /games$/.test(asked) ? [{kind: "span", read: "career", instead: "season", season: 2026, question: asked + " in 2026"}] : [];
+    const alternatives = /games$/.test(asked) ? [{kind: "span", span: {season: 2026, season_type: 2, both: false, career: false, since: null, until: null}, question: asked + " in 2026"}] : [];
     const payload = JSON.stringify({text: "an answer", answered_by: "fast", shape: {relation: "player_seasons", shape: "ranking", by: "player"},
       timing: {total_seconds: 0.5}, data: {}, artifacts: [], history_file: "stub-0000000000000000.log", alternatives});
     (this.ls["answer"] || []).forEach(f => f({data: payload}));

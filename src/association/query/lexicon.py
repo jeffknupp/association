@@ -2397,7 +2397,11 @@ opponents score 120+") - searched over the words before the line
 # refuses a word it cannot map. The words kept after the number stop at a
 # connective or the next comparison, so "under 14 fta in his whole career"
 # carries "under 14 fta" and "less than 15 fga and with less than 35 minutes"
-# is two lines, not one.
+# is two lines, not one - and at a word that starts the span or the season
+# type ("this", "last", "since", "including", "excluding"): "less than 35
+# minutes including the playoffs" carried "including the" as the stat's
+# words, so the line read with the playoffs was no longer the line read
+# without them (decision D25's offered wording, F149).
 
 SCORED_BEFORE = re.compile(r"\bscor(?:e|es|ed|ing)\s+\Z", re.IGNORECASE)
 """A scoring verb right before a below or above phrase that names no stat
@@ -2407,11 +2411,11 @@ to the phrase.
 .. versionadded:: 7.0.0
 """
 BELOW = re.compile(
-    r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
+    r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more|this|last|since|including|excluding)\b)[a-z][a-z-]*){0,3}"
     r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b"
     # "10 or fewer turnovers", "12 or less fga" (ISSUES.md #325): at or
     # under the number, the stat after the words that say so.
-    r"|\b\d+\s+or\s+(?:fewer|less)\s+(?!(?:and|or|with|in|for|vs|against|on|at|games?|minutes|mins?)\b)[a-z][a-z-]*(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|games?)\b)[a-z][a-z-]*){0,2}",
+    r"|\b\d+\s+or\s+(?:fewer|less)\s+(?!(?:and|or|with|in|for|vs|against|on|at|games?|minutes|mins?)\b)[a-z][a-z-]*(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|games?|this|last|since|including|excluding)\b)[a-z][a-z-]*){0,2}",
     re.IGNORECASE,
 )
 """A line a game is kept under, as worded.
@@ -2458,7 +2462,7 @@ LINE_OVER_OR_AT = re.compile(
     r"(?<!averaged\s)(?<!average\s)(?<!averages\s)(?<!averaging\s)"
     r"\b(?:(?<!no\s)more\s+than|over|above|greater\s+than|exactly)\s+\d+%?"
     r"(?!\s*(?:minutes|mins?|games?|seasons?|years?|times|days|ppg|rpg|apg|spg|bpg|mpg|a\s+game|per\s+game)\b)"
-    r"(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more|per|a|this|last|since)\b)[a-z][a-z%-]*){1,3}",
+    r"(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more|per|a|this|last|since|including|excluding)\b)[a-z][a-z%-]*){1,3}",
     re.IGNORECASE,
 )
 """A line a game is kept over or at, on a stat, as worded.
@@ -2473,7 +2477,7 @@ LINE_OVER_OR_AT = re.compile(
 LINE_AT_LEAST = re.compile(
     r"\b(?:at\s+least\s+\d{1,3}|\d{1,3}\s*(?:\+|\s+plus\b|\s+or\s+more\b))"
     r"(?!\s*(?:minutes|mins?|games?|seasons?|years?|times|days|ppg|rpg|apg|spg|bpg|mpg|a\s+game|per\s+game)\b)"
-    r"(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more|per|a|this|last|since)\b)[a-z][a-z%-]*){1,3}",
+    r"(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more|per|a|this|last|since|including|excluding)\b)[a-z][a-z%-]*){1,3}",
     re.IGNORECASE,
 )
 """A line a game is kept at or over, stated outright on any stat, as worded.
@@ -2739,6 +2743,7 @@ CONDITION_STAT_WORDS: dict[str, str] = {
 # one: it is Matt Hurt's name).
 NAME_STOPWORDS: frozenset[str] = frozenset(
     "this last in on since during for vs vs. versus against at when while game games single season seasons record stats stat playing played plays from over the a an any his her their "
+    "including excluding playoff playoffs postseason "
     "how what who whose why many much did does do is are was were has have had than to of by not no "
     "out injured sidelined resting rested rests sitting sits sat missing misses missed absent inactive dnp "
     "doesn't didn't don't isn't wasn't aren't weren't doesnt didnt dont isnt wasnt arent werent".split()  # codespell:ignore doesnt,didnt,isnt,wasnt,arent,werent - typed without the apostrophe

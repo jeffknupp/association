@@ -77,6 +77,19 @@ def current_season() -> int:
     return min(calendar, on_record) if on_record is not None else calendar
 
 
+def off_season() -> bool:
+    """Whether the season a question naming none is about
+    (:func:`current_season`) is over on today's date: from July 1 of the
+    year it ends in - the league year's turn, after the Finals - until a
+    later season is on record. Then "last season" may mean the season just
+    finished as well as the one before it (decision D25), where during the
+    season it can mean only the one before.
+
+    .. versionadded:: 7.0.0
+    """
+    return today() >= date(current_season(), 7, 1)
+
+
 @contextmanager
 def season_on_record(season: int | None) -> Iterator[None]:
     """While this is entered, :func:`current_season` is no later than
