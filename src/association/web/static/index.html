@@ -1219,10 +1219,13 @@
     const log = table(
       ["date", "result", a, b],
       d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", line(g[a]), line(g[b])]),
+      { tall: true },
     );
     const box = el("div");
     box.appendChild(summary);
-    box.appendChild(el("div", "group-title", "Most recent meetings (points/rebounds/assists)"));
+    // Every meeting (decision D24), or the newest N the words asked for -
+    // the sentence above says which.
+    box.appendChild(el("div", "group-title", "Meetings (points/rebounds/assists)"));
     box.appendChild(log);
     return { caption: firstLine(text), body: box };
   }

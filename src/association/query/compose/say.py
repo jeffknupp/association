@@ -2916,7 +2916,10 @@ def say_player_matchup(result: Result) -> Answer:
         (str(m["day"]), [f"{m['team']} {m['team_score']}-{m['opponent_score']} {m['opponent']}", *(f"{m[side]['points']}/{m[side]['rebounds']}/{m[side]['assists']}" for side in ("a", "b"))])
         for m in detail.rows
     ]
-    answer += "\n\n" + _table(f"Most recent {len(detail.rows)} of {count} (points/rebounds/assists):", ["score", *names], log)
+    # Every meeting, said as the whole, or the newest N the words asked for (D24).
+    listed = len(detail.rows)
+    which = f"Most recent {listed} of {count}" if listed < count else ("The only meeting" if listed == 1 else f"All {listed} meetings")
+    answer += "\n\n" + _table(f"{which} (points/rebounds/assists):", ["score", *names], log)
     answer += f"\n{caveat.strip()}" if caveat else ""
     games = [{"date": str(m["day"]), "won": m["won"], "team_score": m["team_score"], "opponent_score": m["opponent_score"], names[0]: m["a"], names[1]: m["b"]} for m in detail.rows]
     averages = {line["key"]: {k: v for k, v in line.items() if k not in ("key", "wins")} for line in (a, b)}

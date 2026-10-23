@@ -2012,6 +2012,16 @@ def test_a_whole_line_on_one_day_a_year_lists_each_game() -> None:
     assert on("day", (12, 25), Measure(key="points", as_typed="points")).read_as != PLAYER_LOG
 
 
+def test_a_line_against_one_opponent_lists_every_meeting_beneath_it(cx_ctx: AnswerContext) -> None:
+    """Decision D24: the meetings beneath an average against one opponent
+    are every meeting - Fillmore's 22 against Detroit - where the newest
+    five were listed ("Most recent 5 of the 22 meetings")."""
+    against = Reading(who=Who(kind="player", players=("Marcus Fillmore",)), cuts=Cuts(opponent="Detroit Pistons"))
+    said = compose_answer(cx_ctx, PLAYER_LINE, against, "marcus fillmore stats vs detroit")
+    assert said is not None and "All 22 meetings:" in said.text
+    assert len([line for line in said.text.splitlines() if " @ DET " in line or " vs DET " in line]) == 22
+
+
 def test_a_log_shows_every_game_its_reading_selects_and_a_window_only_where_the_words_state_one(cx_ctx: AnswerContext) -> None:
     """Decision D24 (ISSUES #503): a log with no window in its words lists
     EVERY game - Marcus Fillmore's 22, where ten were listed "last 10 of 22"
