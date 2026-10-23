@@ -102,11 +102,14 @@ def _changed_unhonored(alternative: Alternative, read: Reading, planned: Planned
 
 def _read_nothing(composed: Answer) -> bool:
     """Whether ``composed`` read nothing a default could be said of: a
-    refusal or a question back (the sayer's ``message``), or a name that
+    refusal or a question back (the sayer's ``message``), a name that
     matched nobody (``unmatched``: "No player found matching 'bill Russell'
     ...", which carried "(No season was named, so this reads every season
-    on record ...)" beside it)."""
-    return bool({"message", "unmatched"} & set(composed.data or {}))
+    on record ...)" beside it), or a name several players share
+    (``ambiguous``, :func:`~association.query.compose.say.say_clarify`:
+    "'curry' matches more than one player - did you mean Seth Curry or
+    Stephen Curry?", beside which the career was offered)."""
+    return bool({"message", "unmatched", "ambiguous"} & set(composed.data or {}))
 
 
 def _stat_default(reading: Reading, composed: Answer) -> Answer:
