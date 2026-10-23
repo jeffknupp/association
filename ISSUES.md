@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A quarter's free-throw percentage is read as points: "jokic 4th quarter free throw shooting percentages" answers his 4th-quarter points
+- **Found:** 2026-10-23, lane p6-periods, reading its moved answers.
+- **Evidence:** four feed wordings ("jokic / lebron / luka / shai 4th quarter free throw shooting percentages") answer the period line led by points; the free-throw-percentage words are not read as the measure on the period read (before and after the lane's change).
+- **User sees:** a fluent figure for a different stat.
+- **Next step:** the measure tagger reads "free throw (shooting) percentage(s)" on a period question as FT%, which the period line holds (FTM, FTA); a reader case per wording.
+- **Priority:** P1 - a fluent wrong answer.
+- **Source:** ours.
+- **GitHub:** #527
+
 ### A lone word of a name reads the only player on record with it, the rest of the name unread: "tyrese maxi last 5 games vs pistons" answers for Maxi Kleber
 - **Found:** 2026-10-17, lane p6-round (the playoff round), probing its moved readings.
 - **Evidence:** a word that is a whole word of exactly one player's name resolves to him even where the question's other name word belongs to someone else: "tyrese maxi last 5 games vs pistons" answers Maxi Kleber's games ("tyrese" unread), "wilt chamberlain vs kareem stats" Kareem Rush's. A blanket rule breaks right readings ("lebron rookie stats", "zion william"): 288 lone-first-name matches across the 2,698 readings.
