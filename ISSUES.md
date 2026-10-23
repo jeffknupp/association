@@ -1923,6 +1923,7 @@ those were found.
 - **Next step:** Jeff's call: apply `period_counted` to every season (35 answers move, each checked against its key), retiring the season table for the per-game fact.
 - **Priority:** P3 pending Jeff's call.
 - **Source:** ESPN's play-by-play; the season table is ours.
+- **GitHub:** #525
 
 ### The four-quarters read and the period leaderboard still refuse a season whose reconciliation is under the bar
 - **Found:** 2026-10-23, lane p6-complete (#278), writing `period_counted`.
@@ -1931,6 +1932,7 @@ those were found.
 - **Next step:** a `Narrowed` clause on `period_incomplete` and the counted note, as the log reads have.
 - **Priority:** P3.
 - **Source:** ours.
+- **GitHub:** #526
 
 ### A round with no season named reads the current season, where the words imply the career: "jimmy butler nba finals stats"
 - **Found:** 2026-10-17, lane p6-round (the playoff round), FS189 against its key.
