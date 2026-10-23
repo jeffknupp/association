@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from association.nba.season import current_season
+from association.nba.season import current_season, off_season
 from association.query import lexicon, measure, names
 from association.query.calendar import HOLIDAYS
 from association.query.cuts import CutsContext, CutsRead, own_alignment, read_cuts
@@ -63,6 +63,7 @@ from association.query.reading import (
     TEAM_RANKING,
     TEAM_RECORD,
     Alternative,
+    AlternativeKind,
     Cause,
     Claim,
     Companion,
@@ -82,6 +83,7 @@ from association.query.reading import (
     key_path,
 )
 from association.query.reading import Subject as ReadSubject
+from association.query.season_text import season_label
 from association.query.span import SpanContext, SpanRead, needed, read_by, read_span
 from association.query.span import claimed as claimed_once
 from association.query.split import OWN_READ_ROLES, read_split, role_phrases
@@ -1218,41 +1220,103 @@ def _reading(
 
 
 def _reading_alternatives(index: names.NameIndex, question: str, reading: Reading) -> tuple[Alternative, ...]:
-    """The other readings of a span the words left open, each as the asker's
-    own words with the span stated (decision D23's pilot, on D13's class):
-    where the words imply the career (the parser's ``span`` decision), the
-    current season ("... in 2026", the wording the D13 sentence names) and,
-    for one player's figure against an opponent, his latest meeting
-    ("... in his last game", the yardstick's F028, whose key reads the most
-    recent meeting) - neither where a player named has no game this season
-    (the season would say only that: "LaMarcus Aldridge has no games in the
-    2026 regular season", beside "lamarcus aldridge vs marc gasol"); where
-    no season is named and the current one is read, the career. None where
-    the words named the span, a window of games (the newest N are no
-    season's), a day or an ordinal season, or where no point was read: each
-    is a question the words already settled. A game of a series ("game 4")
-    keeps the career: the season's game 4s are no narrower a question than
-    his career's. The answering loop reads each wording again before it
-    offers one (``agent._offered``)."""
+    """The other readings of the defaults the words left open, each as the
+    asker's own words with the other reading stated (decision D23; D25's
+    classes): each ambiguous slot its own alternative, changing that slot
+    alone, so two slots are two questions and never their product - the
+    span (:func:`_reading_alternatives_of_span`), "last season" in the
+    off-season (:func:`_reading_alternatives_of_last_season`) and the season
+    type (:func:`_reading_alternatives_of_season_type`). None where no
+    point was read, a day or an ordinal season is named, or a window of
+    games is (the newest N are no season's, and read both types already,
+    D14): each is a question the words settled. The answering loop reads
+    each wording again before it offers one (``agent._offered``)."""
     if not reading.has_point or reading.refused is not None or reading.defaulted is not None:
         return ()
-    cuts, span = reading.cuts, reading.span
+    cuts = reading.cuts
     if cuts.date is not None or cuts.season_n is not None or reading.window.count is not None:
         return ()
-    season = current_season()
+    spans = _reading_alternatives_of_span(index, question, reading)
+    if any(each.kind == "latest" for each in spans):
+        # His latest meeting reads both season types (decision D14: the last
+        # game is the last he played), so its wording changes the season
+        # type as well as the window: both types offered beside it would be
+        # two alternatives over one slot, the latest's question changing the
+        # other's reading (measured: the 10 answers of the populations that
+        # offered three, all one player's figure against an opponent).
+        return spans
+    return (*spans, *_reading_alternatives_of_last_season(index, question, reading), *_reading_alternatives_of_season_type(question, reading))
+
+
+def _reading_alternatives_of_span(index: names.NameIndex, question: str, reading: Reading) -> tuple[Alternative, ...]:
+    """The other readings of a span no season was named for (D23's pilot,
+    on D13's class): where the words imply the career (the parser's ``span``
+    decision), the current season ("... in 2026", the wording the D13
+    sentence names) and, for one player's figure against an opponent, his
+    latest meeting ("... in his last game", the yardstick's F028, whose key
+    reads the most recent meeting) - neither where a player named has no
+    game this season (the season would say only that: "LaMarcus Aldridge
+    has no games in the 2026 regular season", beside "lamarcus aldridge vs
+    marc gasol"); where no season is named and the current one is read, the
+    career - a ``round`` where a round or a game of a series is named
+    ("jimmy butler nba finals stats", ISSUES.md #519). A game of a series
+    ("game 4") read over the career keeps it: the season's game 4s are no
+    narrower a question than his career's."""
+    span, season = reading.span, current_season()
     if any(each.stage == "parser" and each.field == "span" and each.after == "career" for each in reading.decisions):
-        if cuts.game_n is not None or any(_inactive(index, (player,)) for player in reading.who.players):
+        if reading.cuts.game_n is not None or any(_inactive(index, (player,)) for player in reading.who.players):
             return ()
-        found = [Alternative(kind="span", read="career", instead="season", season=season, question=_alternative_worded(question, f"in {season}"))]
+        found = [Alternative(kind="span", span=replace(span, career=False, season=season), question=_alternative_worded(question, f"in {season}"))]
         if _alternative_latest(question, reading):
-            found.append(Alternative(kind="span", read="career", instead="latest", season=None, question=_alternative_worded(question, "in his last game")))
+            found.append(Alternative(kind="latest", span=replace(span, both=True), question=_alternative_worded(question, "in his last game")))
         return tuple(found)
     if span.named or span.both or reading.read_as.relation == "team_snapshots" or lexicon.SEASON_WORDS.search(question):
         # (A season named relatively and read as the default - "this
         # postseason" - is a season the words named: no career beside it.)
         return ()
     whose = _ALTERNATIVE_CAREER_WORDS.get(reading.who.kind, "of all time")
-    return (Alternative(kind="span", read="season", instead="career", season=season, question=_alternative_worded(question, whose)),)
+    kind: AlternativeKind = "round" if reading.cuts.round is not None or reading.cuts.game_n is not None else "span"
+    return (Alternative(kind=kind, span=replace(span, career=True), question=_alternative_worded(question, whose)),)
+
+
+def _reading_alternatives_of_last_season(index: names.NameIndex, question: str, reading: Reading) -> tuple[Alternative, ...]:
+    """The season just finished, where "last season" (or "last year", "a
+    year ago") was read as the one before it in the off-season
+    (:func:`~association.nba.season.off_season`, decision D25): on the day
+    after a season ends a fan means the season just finished ("egor vs tor
+    last season" for a rookie whose only season is 2026), the convention
+    the one before. Offered as the words with the season written out in
+    their place ("egor vs tor 2025-26 season"); not where a player named has
+    no game in it (the season would say only that)."""
+    season = current_season()
+    if not off_season() or reading.span.season != season - 1:
+        return ()
+    low = question.lower()
+    previous, named = lexicon.PREVIOUS_SEASON.search(low), lexicon.season_named(low)
+    if previous is None or named is None or named != (season - 1, ((previous.start(), previous.end()),)):
+        # (A year the words wrote out is no relative season.)
+        return ()
+    if any(_inactive(index, (player,)) for player in reading.who.players):
+        return ()
+    worded = f"{question[: previous.start()]}{season_label(season)} season{question[previous.end() :]}"
+    return (Alternative(kind="last_season", span=replace(reading.span, season=season), question=worded),)
+
+
+def _reading_alternatives_of_season_type(question: str, reading: Reading) -> tuple[Alternative, ...]:
+    """Both season types, where the words named none and the regular season
+    is read alone (ISSUES.md #231, decision D25): "... including the
+    playoffs", the wording the span tagger reads as both. Not where the
+    words named the regular season or the postseason, or read both."""
+    span = reading.span
+    if span.season_type != 2 or span.both or lexicon.RANGE_REGULAR_SEASON.search(question):
+        return ()
+    if reading.asked == PLAYER_LOG and reading.cuts.opponent is not None and not span.career:
+        # A log against an opponent read over less than a career: both types
+        # named beside an opponent read the log's career as well
+        # (``span._implied_career``'s "log", the Payton Prichard log), so
+        # the wording would change two slots, never this one alone.
+        return ()
+    return (Alternative(kind="season_type", span=replace(span, both=True), question=_alternative_worded(question, "including the playoffs")),)
 
 
 #: The words that ask a career, by whose it is (the subject's kind), "of all

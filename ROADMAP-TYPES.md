@@ -978,27 +978,31 @@ otherwise.
   under the mapping from the old record to the flat one
   (`~/association-research/stages/flatten_map.py`).
 
-- **Declared in code by decision D23's pilot** (2026-10-23, lane p6-alts; a
-  draft change for Jeff's review): `Reading.alternatives: tuple[Alternative,
-  ...]` and `Answer.alternatives`, the other readings of a span the words
-  left open, each offered as a ready question. `Alternative(kind, read,
-  instead, season, question)`: `kind` a closed `AlternativeKind` (`span`
-  alone - a kind comes with the detection its class needs: season type,
-  a round with no season, a bare year pair and "last season" wait for
-  Phase 7's reader), `read` and `instead` a `SpanAs` (`career`, `season`,
-  `latest` - one season's number in `season`, the latest meeting the one
-  newest game), `question` the asker's own words with the span stated.
-  Written by the parser's last step (`parse._reading_alternatives`): the
-  current season and, for one player's figure against an opponent, his
-  latest meeting where D13's career was read; the career where the
-  current season was read by default. Not in the draft, which has no
-  ambiguity on the Reading. The answering loop offers one only where the
-  parser reads its wording again (the question's own names and stat) to
-  exactly that alternative (`Alternative.reached_by`: the key and every
-  other filter as they stood) and it plans to a query - so `Answer.
-  alternatives` is a subset of `Reading.alternatives`, which the stage
-  snapshots record apart. No new `PointShape`, relation or second planned
-  point: an alternative is a question, asked when its button is pressed.
+- **Declared in code by decision D23's pilot, reshaped leaner by D25**
+  (2026-10-23, lanes p6-alts and p6-alts2; Jeff accepted the types in the
+  leaner shape): `Reading.alternatives: tuple[Alternative, ...]` and
+  `Answer.alternatives`, the other readings of a default the words left
+  open, each offered as a ready question. `Alternative(kind, span,
+  question)`: `kind` a closed `AlternativeKind` naming the ambiguous slot -
+  `span` (D13's career against the current season), `latest` (D13's career
+  against one player's latest meeting), `round` (a round or a game of a
+  series read in the current season, #519), `last_season` ("last season"
+  in the off-season, `nba.season.off_season`), `season_type` (the regular
+  season read alone, #231); a kind comes with the detection its class
+  needs (a bare year pair, #507, waits for Phase 7's reader); `span` the
+  `Span` the alternative reads - what changes is said as the span itself
+  (the seasons, the career, both types), never as fields restating it;
+  `question` the asker's own words with the other reading stated.
+  Written by the parser's last step (`parse._reading_alternatives`), each
+  slot its own alternative changing that slot alone (never a product). The
+  answering loop offers one only where the parser reads its wording again
+  (the question's own names and stat) to exactly that alternative
+  (`Alternative.reached_by`: the key, every other filter as it stood, and
+  `span` as the span) and it plans to a query whose reader states the cell
+  it changes - so `Answer.alternatives` is a subset of
+  `Reading.alternatives`, which the stage snapshots record apart. No new
+  `PointShape`, relation or second planned point: an alternative is a
+  question, asked when its button is pressed.
 
 ## What must be decided before which phase
 

@@ -96,13 +96,14 @@ def test_the_answer_carries_the_planned_shape_the_page_renders_by(tmp_path: Path
 
 def test_the_answer_carries_its_alternatives_as_ready_questions(tmp_path: Path) -> None:
     """The other readings of a default span reach the page as values - what
-    each reads and the question its button asks (decision D23) - and as an
+    each reads instead and the question its button asks (decision D23) - and as an
     empty list where the answer offers none."""
-    from association.query.reading import Alternative
+    from association.query.reading import Alternative, Span
 
-    offered = Alternative(kind="span", read="career", instead="season", season=2026, question="stephen curry 50 point games in 2026")
+    offered = Alternative(kind="span", span=Span(season=2026, season_type=2), question="stephen curry 50 point games in 2026")
     body = _client(StubAnswerer(_answer("the answer", alternatives=(offered,))), tmp_path).post("/api/ask", json={"question": "stephen curry 50 point games"}).json()
-    assert body["alternatives"] == [{"kind": "span", "read": "career", "instead": "season", "season": 2026, "question": "stephen curry 50 point games in 2026"}]
+    span = {"season": 2026, "season_type": 2, "both": False, "career": False, "since": None, "until": None}
+    assert body["alternatives"] == [{"kind": "span", "span": span, "question": "stephen curry 50 point games in 2026"}]
     plain = _client(StubAnswerer(), tmp_path).post("/api/ask", json={"question": "who leads the league in assists?"}).json()
     assert plain["alternatives"] == []
 

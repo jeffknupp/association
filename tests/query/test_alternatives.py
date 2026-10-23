@@ -1,5 +1,5 @@
-"""Decision D23's pilot, on D13's class: the other reading of a span the
-words left open, offered as a ready question - the asker's own words with
+"""Decision D23's mechanism, on D13's class and D25's three: the other
+reading of a default the words left open, offered as a ready question - the asker's own words with
 the span stated (``Reading.alternatives``, written by the parser's last
 step) - and offered only where the parser reads that wording to exactly
 that alternative (``Alternative.reached_by``, which the answering loop
@@ -28,7 +28,7 @@ from association.query.entities import find_players, names_of
 from association.query.names import ActivePlayers
 from association.query.normalizer import Normalized
 from association.query.parse import read_route
-from association.query.reading import Alternative, Reading
+from association.query.reading import Alternative, Reading, Span
 
 CASES = load_cases()
 
@@ -38,13 +38,16 @@ def con() -> duckdb.DuckDBPyConnection:
     return warehouse()
 
 
-def _alternatives(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> list[tuple[str, str, str]]:
-    return [(each.read, each.instead, each.question) for each in read(con, question, names, stat).alternatives]
+def _alternatives(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "", kinds: tuple[str, ...] = ("span", "latest", "round")) -> list[tuple[str, str]]:
+    """The alternatives of ``kinds`` the parser writes for ``question``, by
+    kind and wording - the span's by default, the season type's beside them
+    tested on its own."""
+    return [(each.kind, each.question) for each in read(con, question, names, stat).alternatives if each.kind in kinds]
 
 
 def test_a_career_the_words_imply_offers_the_current_season(con: duckdb.DuckDBPyConnection) -> None:
     """D13's career, with the wording its sentence names: "in 2026"."""
-    assert _alternatives(con, "stephen curry 50 point games", ["stephen curry"], "points") == [("career", "season", "stephen curry 50 point games in 2026")]
+    assert _alternatives(con, "stephen curry 50 point games", ["stephen curry"], "points") == [("span", "stephen curry 50 point games in 2026")]
 
 
 def test_a_figure_against_an_opponent_offers_the_latest_meeting_too(con: duckdb.DuckDBPyConnection) -> None:
@@ -52,29 +55,36 @@ def test_a_figure_against_an_opponent_offers_the_latest_meeting_too(con: duckdb.
     is the other reasonable reading (the yardstick's F028, whose key reads
     it), the punctuation kept at the end."""
     assert _alternatives(con, "How many points did Jokic score in the 3rd quarter against Boston?", ["Jokic", "Boston"], "points") == [
-        ("career", "season", "How many points did Jokic score in the 3rd quarter against Boston in 2026?"),
-        ("career", "latest", "How many points did Jokic score in the 3rd quarter against Boston in his last game?"),
+        ("span", "How many points did Jokic score in the 3rd quarter against Boston in 2026?"),
+        ("latest", "How many points did Jokic score in the 3rd quarter against Boston in his last game?"),
     ]
+    # Both season types are not offered beside it: the latest meeting reads both (decision D14), so its question
+    # would change the other's slot (decision D25's guard).
+    assert [each.kind for each in read(con, "How many points did Jokic score in the 3rd quarter against Boston?", ["Jokic", "Boston"], "points").alternatives] == ["span", "latest"]
     # A whole line against a team names no figure: the season alone.
-    assert _alternatives(con, "Dennis Schroeder vs. grizzlies", ["Dennis Schroeder", "grizzlies"]) == [("career", "season", "Dennis Schroeder vs. grizzlies in 2026")]
+    assert _alternatives(con, "Dennis Schroeder vs. grizzlies", ["Dennis Schroeder", "grizzlies"]) == [("span", "Dennis Schroeder vs. grizzlies in 2026")]
     # Nor a game's high, or a log asked by name: no latest meeting is the
     # other reading of either.
-    assert [instead for _, instead, _ in _alternatives(con, "luka highest scoring games vs bucks", ["luka", "bucks"], "points")] == ["season"]
-    assert [instead for _, instead, _ in _alternatives(con, "harrison barnes 1st quarter points each game vs magic", ["harrison barnes", "magic"], "points")] == ["season"]
+    assert [kind for kind, _ in _alternatives(con, "luka highest scoring games vs bucks", ["luka", "bucks"], "points")] == ["span"]
+    assert [kind for kind, _ in _alternatives(con, "harrison barnes 1st quarter points each game vs magic", ["harrison barnes", "magic"], "points")] == ["span"]
 
 
 def test_a_season_read_by_default_offers_the_career(con: duckdb.DuckDBPyConnection) -> None:
     """The current season read where no season is named: his career, or
     every season on record for anyone else."""
-    assert _alternatives(con, "what was steph curry's avg 3pt shot distance", ["steph curry"], "") == [("season", "career", "what was steph curry's avg 3pt shot distance over his career")]
-    assert _alternatives(con, "how many times did the 76ers play boston?", ["76ers", "boston"]) == [("season", "career", "how many times did the 76ers play boston of all time?")]
+    assert _alternatives(con, "what was steph curry's avg 3pt shot distance", ["steph curry"], "") == [("span", "what was steph curry's avg 3pt shot distance over his career")]
+    assert _alternatives(con, "how many times did the 76ers play boston?", ["76ers", "boston"]) == [("span", "how many times did the 76ers play boston of all time?")]
 
 
-def test_a_game_of_a_series_read_in_the_season_offers_the_career(con: duckdb.DuckDBPyConnection) -> None:
-    """ "game 4" narrows the games, not the seasons: the season's game 4s and
-    his career's are the two readings (the yardstick's F150, whose key reads
+def test_a_round_or_a_game_of_a_series_read_in_the_season_offers_the_career(con: duckdb.DuckDBPyConnection) -> None:
+    """ "game 4" and "the finals" narrow the games, not the seasons: the
+    season's and his career's are the two readings (ISSUES.md #519, decision
+    D25: the yardstick's F150 and the feed sample's FS189, whose keys read
     the career)."""
-    assert _alternatives(con, "Ayton stats in game 4 playoff games", ["Ayton"]) == [("season", "career", "Ayton stats in game 4 playoff games over his career")]
+    assert _alternatives(con, "Ayton stats in game 4 playoff games", ["Ayton"]) == [("round", "Ayton stats in game 4 playoff games over his career")]
+    assert _alternatives(con, "jimmy butler nba finals stats", ["jimmy butler"]) == [("round", "jimmy butler nba finals stats over his career")]
+    [career] = read(con, "jimmy butler nba finals stats", ["jimmy butler"]).alternatives
+    assert career.span == Span(season_type=3, career=True)
 
 
 def test_a_player_with_no_game_this_season_is_offered_no_season(con: duckdb.DuckDBPyConnection) -> None:
@@ -89,10 +99,13 @@ def test_a_player_with_no_game_this_season_is_offered_no_season(con: duckdb.Duck
     def read_with(active: frozenset[str]) -> Reading:
         return read_route(replace(index, read_active=lambda: ActivePlayers(season=2026, ids=active)), question, players, "")
 
-    assert read_with(frozenset()).alternatives == ()
-    assert read_with(frozenset({gasol})).alternatives == ()
+    def spans(reading: Reading) -> list[str]:
+        return [each.kind for each in reading.alternatives if each.kind != "season_type"]
+
+    assert spans(read_with(frozenset())) == []
+    assert spans(read_with(frozenset({gasol}))) == []
     everyone = frozenset(each.id for name in players for each in find_players(index.players, name, limit=None))
-    assert [each.instead for each in read_with(everyone).alternatives] == ["season"]
+    assert spans(read_with(everyone)) == ["span"]
 
 
 @pytest.mark.parametrize(
@@ -131,7 +144,7 @@ def test_a_wording_that_reads_the_default_again_is_no_alternative(con: duckdb.Du
     """The guard fails a wording that leaves the span where it was, or moves
     another filter beside it."""
     reading = read(con, "stephen curry 50 point games", ["stephen curry"], "points")
-    same = Alternative(kind="span", read="career", instead="season", season=2026, question="stephen curry 50 point games")
+    same = Alternative(kind="span", span=Span(season=2026, season_type=2), question="stephen curry 50 point games")
     again = read(con, same.question, ["stephen curry"], "points")
     assert not same.reached_by(reading, again, reading.asked, again.asked)
     elsewhere = read(con, "stephen curry 50 point games vs boston in 2026", ["stephen curry", "boston"], "points")
@@ -170,12 +183,12 @@ def test_the_answer_offers_what_its_wording_reaches_and_records_it(tmp_path: Pat
     offered, and a season default the heading names records its own."""
     agent = _agent(tmp_path, monkeypatch, ["stephen curry"], "points")
     answer = agent.ask("stephen curry 50 point games")
-    assert [each.question for each in answer.alternatives] == ["stephen curry 50 point games in 2026"]
+    assert [each.question for each in answer.alternatives] == ["stephen curry 50 point games in 2026", "stephen curry 50 point games including the playoffs"]
     assert answer.text.endswith('(No season was named, so this reads his career - add one, "in 2026", to ask about that season alone.)')
     [implied] = [each for each in answer.decisions if each.kind == "career_implied"]
     assert implied.facts["asks"] == ["stephen curry 50 point games in 2026"]
     line = agent.ask("stephen curry ppg")
-    assert [each.question for each in line.alternatives] == ["stephen curry ppg over his career"]
+    assert [each.question for each in line.alternatives] == ["stephen curry ppg over his career", "stephen curry ppg including the playoffs"]
     [default] = [each for each in line.decisions if each.kind == "season_default"]
     assert default.facts == {"season_type": 2, "asks": ["stephen curry ppg over his career"]} and default.instead_of == ("career",)
     assert not agent.unsaid
@@ -188,7 +201,8 @@ def test_a_wording_nothing_here_answers_is_not_offered(tmp_path: Path, monkeypat
     alternative."""
     agent = _agent(tmp_path, monkeypatch, ["stephen curry", "lebron james"])
     reading_of_it = agent.ask("compare stephen curry and lebron james")
-    assert agent.reading is not None and [each.instead for each in agent.reading.alternatives] == ["career"]
+    assert agent.reading is not None and [each.kind for each in agent.reading.alternatives] == ["span", "season_type"]
+    assert agent.reading.alternatives[0].span.career
     assert reading_of_it.alternatives == ()
 
 
@@ -199,13 +213,13 @@ def test_a_career_the_shapes_reader_does_not_state_is_not_offered(tmp_path: Path
     offered."""
     agent = _agent(tmp_path, monkeypatch, [])
     answer = agent.ask("which team scores the most points per game")
-    assert agent.reading is not None and [each.question for each in agent.reading.alternatives] == ["which team scores the most points per game of all time"]
+    assert agent.reading is not None and [each.question for each in agent.reading.alternatives if each.kind == "span"] == ["which team scores the most points per game of all time"]
     assert answer.alternatives == ()
 
 
 def test_the_cli_prints_each_alternative_beneath_the_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     """The CLI's form of the page's buttons: one "Also:" line each."""
-    alternative = Alternative(kind="span", read="season", instead="career", season=2026, question="stephen curry ppg over his career")
+    alternative = Alternative(kind="span", span=Span(season_type=2, career=True), question="stephen curry ppg over his career")
 
     class Fake:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -218,3 +232,63 @@ def test_the_cli_prints_each_alternative_beneath_the_answer(monkeypatch: pytest.
     result = CliRunner().invoke(cli, ["query", "stephen curry ppg"])
     assert result.exit_code == 0, result.output
     assert result.output.splitlines()[-1] == "Also: stephen curry ppg over his career"
+
+
+def test_the_regular_season_read_by_default_offers_both_season_types(con: duckdb.DuckDBPyConnection) -> None:
+    """No season type named and the regular season read alone: "including
+    the playoffs" (ISSUES.md #231, decision D25; the yardstick's F062,
+    whose key counts 31 games of both types), the span's alternative beside
+    it changing the span alone - two slots, two questions, never their
+    product."""
+    question = "vj edgecombe three points made per game after making one three in first quarter"
+    alternatives = read(con, question, ["vj edgecombe"], "threePointFieldGoalsMade").alternatives
+    assert [(each.kind, each.question) for each in alternatives] == [("span", f"{question} over his career"), ("season_type", f"{question} including the playoffs")]
+    assert alternatives[1].span == Span(season_type=2, both=True)
+    # Over D13's career too (the yardstick's F059: the key's 38 games, 9 of them playoff games).
+    [both] = _alternatives(con, "Kd vs clippers 2h at home gamelog", ["Kd", "clippers"], kinds=("season_type",))
+    assert both == ("season_type", "Kd vs clippers 2h at home gamelog including the playoffs")
+
+
+@pytest.mark.parametrize(
+    ("question", "names"),
+    [
+        # A season type named: the regular season, the postseason, or both.
+        ("jaylen brown vs knicks last season regular season stats", ["jaylen brown"]),
+        ("lebron playoff stats in 2016", ["lebron"]),
+        ("jokic stats in 2024 including the playoffs", ["jokic"]),
+        # A window of the newest games reads both already (decision D14).
+        ("jokic last 5 games", ["jokic"]),
+    ],
+)
+def test_a_season_type_the_words_settled_offers_nothing(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> None:
+    assert _alternatives(con, question, names, kinds=("season_type",)) == []
+
+
+def test_last_season_in_the_off_season_offers_the_season_just_finished(con: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch) -> None:
+    """On the day after a season ends a fan's "last season" is the season
+    just finished, the convention's the one before (decision D25; the feed
+    sample's FS302, a rookie whose only season is 2026): offered with the
+    season written out where "last season" stood. During a season "last
+    season" is only the one before, and nothing is offered."""
+    [finished] = read(con, "egor vs tor last season", ["egor", "tor"]).alternatives[:1]
+    assert (finished.kind, finished.question) == ("last_season", "egor vs tor 2025-26 season")
+    assert finished.span == Span(season=2026, season_type=2)
+    assert _alternatives(con, "nba last season steals leader", kinds=("last_season",)) == [("last_season", "nba 2025-26 season steals leader")]
+    # A year written out is no relative season.
+    assert _alternatives(con, "jokic stats in 2025", ["jokic"], kinds=("last_season",)) == []
+    monkeypatch.setenv("ASSOCIATION_TODAY", "2026-01-15")
+    assert _alternatives(con, "egor vs tor last season", ["egor", "tor"], kinds=("last_season",)) == []
+
+
+def test_each_alternative_changes_its_own_slot_alone(con: duckdb.DuckDBPyConnection) -> None:
+    """Decision D25's guard against a product: an alternative's span differs
+    from the reading's in its own slot only - the seasons, the career or the
+    season type - over every reader case."""
+    for case in CASES:
+        reading = read(con, case["question"], case["names"] or None, case["stat"])
+        for each in reading.alternatives:
+            moved = {name for name in ("season", "career", "both", "since", "until", "season_type") if getattr(each.span, name) != getattr(reading.span, name)}
+            allowed = {"season_type": {"both"}, "last_season": {"season"}, "round": {"career"}, "latest": {"both"}, "span": {"season", "career"}}[each.kind]
+            assert moved and moved <= allowed, (case["question"], each)
+        kinds = [each.kind for each in reading.alternatives]
+        assert not ("latest" in kinds and "season_type" in kinds), case["question"]

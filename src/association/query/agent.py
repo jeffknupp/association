@@ -83,21 +83,32 @@ def _career_implied(reading: Reading, composed: Answer) -> Answer:
         # and `say_clarify`'s data): nothing was read over the career, and a
         # cause such as an unread number is not corrected by naming a season.
         return composed
-    asks = [each.question for each in composed.alternatives if each.read == "career"]
+    asks = [each.question for each in composed.alternatives if each.kind == "latest" or (each.kind == "span" and not each.span.career)]
     return _noted(composed, say_career_implied(reading.who.kind, current_season(), asks))
 
 
 def _changed_unhonored(alternative: Alternative, read: Reading, planned: PlannedQuery) -> bool:
-    """Whether the cell ``alternative`` changes - the career, or the one
-    game a latest meeting keeps - is one its planned shape's reader does not
-    state (:func:`~association.query.compose.plan.cells_unhonored`): the
-    reader steps aside for it, and the answer is the compiler's own
-    sentence or a decline ("which team scores the most points per game of
-    all time": every season of a career cannot be read as a ranking of
-    teams), never the alternative's reading. A named season is no cell."""
-    cell = {"career": "career", "latest": "window"}.get(alternative.instead)
+    """Whether the cell ``alternative`` changes - the career, both season
+    types, or the one game a latest meeting keeps - is one its planned
+    shape's reader does not state
+    (:func:`~association.query.compose.plan.cells_unhonored`): the reader
+    steps aside for it, and the answer is the compiler's own sentence or a
+    decline ("which team scores the most points per game of all time":
+    every season of a career cannot be read as a ranking of teams), never
+    the alternative's reading. A named season is no cell."""
     key = planned_shape(read, planned)
-    return cell is not None and key is not None and any(each == cell for each, _ in cells_unhonored(planned, key))
+    return key is not None and any(each in _changed_cells(alternative) for each, _ in cells_unhonored(planned, key))
+
+
+def _changed_cells(alternative: Alternative) -> frozenset[str]:
+    """The cells ``alternative`` sets that the reading it stands beside did
+    not: the career (a ``span`` or ``round`` read over every season), both
+    season types, and the window a ``latest`` meeting keeps."""
+    if alternative.kind == "latest":
+        return frozenset({"window"})
+    if alternative.kind == "season_type":
+        return frozenset({"both"})
+    return frozenset({"career"}) if alternative.span.career else frozenset()
 
 
 def _read_nothing(composed: Answer) -> bool:
@@ -577,8 +588,8 @@ class Agent:
         return composed
 
     def _offered(self, reading: Reading, composed: Answer, history: RunHistory) -> Answer:
-        """``composed`` carrying the alternatives of its default span that
-        reach what they say (:attr:`Answer.alternatives
+        """``composed`` carrying the alternatives of its defaults that reach
+        what they say (:attr:`Answer.alternatives
         <association.query.answer.Answer.alternatives>`, decision D23):
         each wording the parser wrote (:attr:`Reading.alternatives
         <association.query.reading.Reading.alternatives>`) read again with
@@ -595,12 +606,12 @@ class Agent:
         offered = tuple(each for each in reading.alternatives if self._reaches(reading, each, history))
         if not offered:
             return composed
+        season, season_type = current_season(), reading.span.season_type or 2
         for each in offered:
-            season_type = reading.span.season_type or 2
-            if each.read == "season" and each.season is not None and season_phrase(each.season, season_type) in composed.text:
+            if each.kind in ("span", "round") and each.span.career and season_phrase(season, season_type) in composed.text:
                 # Recorded where the heading names the season it read: the
                 # remark is the heading's own phrase, said already.
-                say_season_default(each.season, season_type, [each.question])
+                say_season_default(season, season_type, [each.question])
         return replace(composed, alternatives=offered)
 
     def _reaches(self, reading: Reading, alternative: Alternative, history: RunHistory) -> bool:

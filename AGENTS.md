@@ -715,16 +715,24 @@ played are asked about. Before extending the rule to another open slot,
 check both conditions. (history)
 
 **The wording that reaches the alternative is offered as a question, and
-only where it reaches it** (decision D23's pilot, on the span). Where the
-span is defaulted - D13's career, or the current season read with no
-season named - the parser writes each other reading as the asker's own
-words with the span stated (`Reading.alternatives`, a `reading.Alternative`:
-"... in 2026", "... over his career", "... of all time", "... in his last
-game"); the answering loop reads each wording again with the question's
-own names and stat and offers it (`Answer.alternatives`, the page's
-buttons, the CLI's "Also:" lines) only where that reading is exactly the
-alternative's span over every other filter as it stood
-(`Alternative.reached_by`) and plans to a query. A button that re-asks the
+only where it reaches it** (decision D23, on the span; D25's three
+classes). Where the words left a default open - D13's career or the
+current season with no season named (`span`, and `latest` for one
+player's figure against an opponent), a round or a game of a series read
+in the current season (`round`), "last season" read as the one before in
+the off-season (`last_season`, `nba.season.off_season`), the regular
+season read alone with no season type named (`season_type`) - the parser
+writes each other reading as the asker's own words with it stated
+(`Reading.alternatives`, a `reading.Alternative(kind, span, question)`,
+the span the alternative reads: "... in 2026", "... over his career",
+"... of all time", "... in his last game", "... 2025-26 season", "...
+including the playoffs"). Each ambiguous slot is its own alternative
+changing that slot alone, never a product of two. The answering loop
+reads each wording again with the question's own names and stat and
+offers it (`Answer.alternatives`, the page's buttons, the CLI's "Also:"
+lines) only where that reading is exactly the alternative's span over
+every other filter as it stood (`Alternative.reached_by`) and plans to a
+query whose reader states the cell it changes. A button that re-asks the
 question answered, or asks one nothing here answers, is worse than none.
 A new class of alternative comes with the detection its class needs, never
 as a free value.
