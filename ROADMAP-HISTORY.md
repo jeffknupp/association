@@ -2292,6 +2292,19 @@ with nothing to read fills the silence from its own weights), and more data
     offered wordings exposed were fixed. #231 and #519 closed as answered
     under D25 (provisional).
 
+67. **Every row of a log (D24; 2026-10-23, master after `72efa203`).** Lane
+    p6-rows: the ten-row default, the fifty-row cap, the five-meeting caps
+    and the league lists' caps are gone - a log reads every row its reading
+    selects, a count only a window the words state; the page scrolls a
+    long table. 15 of the 18 truncated graded logs now list the key's rows
+    (F060 76, FS208 60, F156 16, F147 Davis's six Christmas games); F096,
+    FS331, FS132 now give the key's career figures where they showed the
+    newest ten's averages. The answer records the cause it refuses by
+    (`Answer.refusal`, #531), and the harness's `fluent()` reads it: 82 feed
+    refusals it had counted fluent. All moves fluent to fluent. Found: D24
+    made a misread a hundred times larger - "tim duncan highest career ppg"
+    read as his log, now 1,392 rows (P1).
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

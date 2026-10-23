@@ -46,6 +46,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A question asking one figure is read as the player's whole log, now every game: "tim duncan highest career ppg" lists 1,392 games
+- **Found:** 2026-10-23, lane p6-rows (D24)
+- **Evidence:** five feed wordings are asked as `PLAYER_LOG`: "tim duncan highest career ppg" (1,392 rows), "how many times has kobe play/attempted in his career" (1,344), "anthony edwards highest scoring career" (442), "keon ellis highest ppg vs team" (72), "nolan traore highest ppg vs team" (56); FS039 graded wrong. D24's every-row log made each misread a hundred times larger.
+- **User sees:** a table of every game where one number was asked.
+- **Next step:** the grammar reads "highest ... ppg" (a season's high average) and "how many times ... in his career" (a count) as their shapes, never a log; a reader case per wording.
+- **Priority:** P1 - a fluent wrong answer.
+- **Source:** ours.
+- **GitHub:** #544
+
 ### Several named stats are not read as a list: a line or log falls back to a fixed set of columns, a sum is never computed, and a stat outside the set is refused
 - **Found:** 2026-10-23, the lead, measuring Jeff's question on the Giannis refusal (lane p6-periods' finding 1) over the feed's 42 questions naming two or more stats.
 - **Evidence:** the measure tagger reads one stat; with several named on a line or a log it reads none (`Reading.measure` None) and the line shows its fixed columns (PTS REB AST STL BLK TO FG% 3P% FT%): "Tyus jones points reb ast last 10 games", "westbrook ppg, rpg apg for the lakers". A sum is never computed: "josh hart points + rebounds + assists game log vs boston", "cade cunningham assists+rebounds all-time game log vs 76ers". A named stat outside the fixed set beside another is refused "ask about one stat" (six "curry ... ts% and efg% and turnover percentage" wordings). A filter stat is read as the measure and the display stats dropped ("jalen suggs points+rebounds game log 15+ fga"). "pippen ppg, rpg apg for the bulls" answers the Bulls' team points per game. The period floor checks the fixed line, so "Giannis first half points rebounds assists gamelog vs washington" is refused over field goal attempts. Lines over several stats (counts, rankings: "most games with 20 pts, 10 reb, 5 ast") read correctly. <!-- codespell:ignore hart - Josh Hart, a player -->
@@ -138,6 +147,15 @@ before that commit needs re-checking against the current warehouse.
 
 ## P2: misleading or incomplete
 
+### "stats since 2014", "stats with the clippers", "nba stats" answer one combined line where the per-season rows were asked
+- **Found:** 2026-10-23, lane p6-rows (D24)
+- **Evidence:** the sample's FS096, FS126, FS282, FS378, FS400 are graded partial for "the season-by-season rows asked for are missing".
+- **User sees:** a career line where a season-by-season history was asked.
+- **Next step:** a span or a tenure asked as "stats" reads as the history, the combined line beneath.
+- **Priority:** P2.
+- **Source:** ours.
+- **GitHub:** #545
+
 ### A both-types log of one season with no window mislabels and loses its count: "mikal bridges game log ... including the playoffs" says "last 10 games of the 2026 postseason"
 - **Found:** 2026-10-23, lane p6-alts2 (D25)
 - **Evidence:** `compose/logs._player_log_mixed` cuts each season type at the default limit, keeps no `total_before_window`, and `say.mixed_where` names the type of the rows shown; the key holds 49 games (39 + 10). The offered season-type button reaches the read but not the figure (F149).
@@ -174,15 +192,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #530
 
-### The research harness counts a RUN refusal as fluent, because the snapshot records none
-- **Found:** 2026-10-23, lane p6-periods; the lead measured it
-- **Evidence:** `fluent()` (`~/association-research/reviews/phase5-2026-10-14/harness/fluent.py`, used by `classify82` and `score_keyed`) reads only `answered_by`, `refused` and "Nothing here answers"; 72 of the feed's "fluent" answers at sweep93 are RUN refusals ("No 2026 regular season games found for Damian Lillard", "No player found matching 'mpj'"); a fluent -> refusal move (Giannis's period log) was classed F->F.
-- **User sees:** nothing; the proof's classes miss refusal moves.
-- **Next step:** the stage snapshot records the RUN refusal's kind on the answer (`stages.py`, one field), and `fluent()` reads it.
-- **Priority:** P2 - tooling the proof rests on.
-- **Source:** ours.
-- **GitHub:** #531
-
 ### Team readers rebuild the cuts field by field, so a new cut is dropped silently until each is taught
 - **Found:** 2026-10-17, lane p6-round (the playoff round), fixing `320546c9` ("knicks second round record 2026" answered the postseason's 16-3, the round's 4-0).
 - **Evidence:** `compose/highs.py`, `logs.py`, `periods.py`, `meetings.py` build a team's `Cuts` by naming each field, so a cut added to `reading.Cuts` reaches them only when each is edited; the round was the third such drop (`7ae6a571`: a team's record over a teammate's line kept only venue and opponent).
@@ -209,15 +218,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P2 - wrong causes.
 - **Source:** ours.
 - **GitHub:** #509
-
-### A log shows its newest ten rows, where decision D24 asks every row: "Rudy gobert first half games this season" lists 10 of 76
-- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade: 6 yardstick wordings (F060, F149, F153, F156, F158, F159) and 11 sample ids (FS016, FS058, FS068, FS098, FS132, FS208, FS096, FS126, FS282, FS378, FS400) graded `partial` for showing the newest ten of N; **decided 2026-10-23 (D24, Jeff): every row, the standard retired** - the yardstick's parser32 overrides withdrawn (162 -> 155 of 175).
-- **Evidence:** `reading.DEFAULT_GAME_LOG_LIMIT = 10`, applied in `point.py` (three log points), `compose/team.py` (the team log) and `compose/periods.py` (the period log) through `_clamp_limit`; F147 is a line of averages where the rows were asked.
-- **User sees:** ten rows of N, the total said.
-- **Next step:** the default cap goes - a log reads every row its reading selects, a limit only where the words state a window; the page's renderers show the whole table (scrolling; `page_renders.py` before and after), the CLI prints it; F147's "stats on christmas" lists each game under the line. Every log answer on the populations moves (rows added, figures kept): one enumerated commit, classed.
-- **Priority:** P2 - a partial answer on 17 graded wordings.
-- **Source:** ours.
-- **GitHub:** #503
 
 ### A name is not eliminated by season type: "Leonard final 2013" asks Kawhi Leonard or Meyers Leonard, though only Kawhi played that postseason
 - **Found:** 2026-10-17, lane p6-causes (the sample's FS059); the round half fixed by lane p6-round (`f3190215`: "final" beside a year is the Finals).
@@ -1969,6 +1969,24 @@ those were found.
 
 ## P3: refusal or gap
 
+### A rebuilt game's steals and blocks: the line leaves them out, the log counts them
+- **Found:** 2026-10-23, lane p6-rows (D24)
+- **Evidence:** "anthony davis stats on christmas": the line's per-game steals and blocks over the five games with a box score (1.2, 1.0), the log's over all six (1.7, 1.3) - the 2015 game's rebuilt values read by one reader and not the other.
+- **User sees:** two figures for one stat over one set of games.
+- **Next step:** one rule from `core.unread_on_rebuilt` for both readers.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #546
+
+### A team's per-game quarter breakdown is hidden above 12 games
+- **Found:** 2026-10-23, lane p6-rows (D24)
+- **Evidence:** `say._QUARTER_BREAKDOWN_LIMIT` (12) - a listing cap D24 does not name.
+- **User sees:** no per-game quarter rows for a span over 12 games.
+- **Next step:** Jeff's call: show it whenever asked, as the player's breakdown, or drop the cap under D24.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #547
+
 ### A season-type button often gives the same figures: 188 of 506 "including the playoffs" offers on the feed
 - **Found:** 2026-10-23, lane p6-alts2 (D25)
 - **Evidence:** spans with no postseason game (DeRozan 2025; Sacramento missed the playoffs) offer the season type and answer identically (corpus 42 of 143).
@@ -2989,6 +3007,15 @@ those were found.
 - **GitHub:** #469
 
 ## P4: tooling, docs, low impact
+
+### The page does not render the meetings under a line against one opponent
+- **Found:** 2026-10-23, lane p6-rows (D24)
+- **Evidence:** the meetings are in `data["recent"]`, which no renderer in `web/static/index.html` reads; the key is still named "recent" though it now holds every meeting.
+- **User sees:** the CLI shows the meetings, the page does not.
+- **Next step:** a renderer for the meetings, and the key renamed.
+- **Priority:** P4.
+- **Source:** ours.
+- **GitHub:** #548
 
 ### The web check's documented command no longer launches
 - **Found:** 2026-10-23, lane p6-alts (D23's pilot)
