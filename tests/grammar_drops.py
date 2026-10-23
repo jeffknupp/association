@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from association.query import lexicon, parse
-from association.query.reading import Cause, PointDeclined, Reading
+from association.query.reading import Cause, Reading
 from association.query.subject import question_supports
 
 FAMILY: dict[str, str] = {
@@ -97,7 +97,7 @@ def kept(reading: Reading) -> set[str]:
 def caused(reading: Reading) -> bool:
     """Whether the reading carries a cause the planner says before any
     reader runs or in the point's place: a dropped value there is said."""
-    return isinstance(reading.point_verdict, (Cause, PointDeclined)) or reading.refused is not None
+    return isinstance(reading.point_verdict, Cause) or reading.refused is not None
 
 
 @contextmanager

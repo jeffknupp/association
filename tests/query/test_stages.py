@@ -19,7 +19,7 @@ from association.query.answer import Answer, Artifact, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Cause, Cuts, Measure, PointDeclined, PointShape, Reading, Span
+from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Cause, Cuts, Measure, PointShape, Reading, Span
 from association.query.reading import Subject as Who
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
@@ -101,15 +101,16 @@ def test_a_question_nothing_read_has_no_reading_or_query() -> None:
 
 
 def test_a_point_the_compiler_has_none_of_says_why() -> None:
-    declined = Reading(asked=SHOT_CHART, point_verdict=PointDeclined("no player subject"))
-    assert snapshot(declined, _answer(), planned=plan_point(declined))["query"] == {"declined": "no player subject"}
+    # A Reading whose point was never read: no reading of it.
+    declined = Reading(asked=SHOT_CHART)
+    assert snapshot(declined, _answer(), planned=plan_point(declined))["query"] == {"declined": "the compiler has no reading of this point"}
     refused = Reading(asked=PLAYER_RANKING, point_verdict=Cause(kind="no_ranking_measure", facts={"stat": "bench points"}))
     said = "No ranking reads 'bench points' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
     assert snapshot(refused, _answer(), planned=plan_point(refused))["query"] == {"refused": {"message": said, "stat": "bench points"}, "said": said}
     # The reader's own verdict is on the reading record too, so a decline
     # that moves between the reader and the planner with the same sentence
     # is a difference in the reading stage, not only in the query's.
-    assert snapshot(declined, _answer(), planned=plan_point(declined))["reading"]["point_verdict"] == {"why": "no player subject"}
+    assert snapshot(declined, _answer(), planned=plan_point(declined))["reading"]["point_verdict"] is None
     assert snapshot(refused, _answer(), planned=plan_point(refused))["reading"]["point_verdict"] == {"kind": "no_ranking_measure", "facts": {"stat": "bench points"}}
     whole = snapshot(_reading(), _answer(), planned=plan_point(_reading()))["reading"]
     assert whole["point_verdict"] == "read" and whole["asked"] == {"relation": "player_seasons", "shape": "scalar", "by": "line"}

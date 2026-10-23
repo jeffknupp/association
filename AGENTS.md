@@ -179,8 +179,8 @@ The rules:
     `--values-only` (sentences left out) is only for a change the roadmap
     allows to reword an answer. One permitted move (Jeff's): a
     decline the user sees becoming a `reading.Cause` the planner says -
-    which moves the point reader's verdict (`Reading.point_verdict`, a
-    `PointDeclined` -> a `Cause`) and the answer's `answered_by` - is done as ONE
+    which moves the reading's verdict (a decline -> a `Cause` on
+    `Reading.point_verdict`) and the answer's `answered_by` - is done as ONE
     commit of its own, every moved reading and answer enumerated in the
     commit message and `CHANGES.md` (the population, the count, before
     and after), the sentence identical or the change named. A decline or
@@ -1084,8 +1084,9 @@ never reads the question. **One Reading per question**: the point reader
 (`point.read_point`) writes the point's filters and its own fields
 (`reading.POINT_FIELDS`: `read_as`, `measures`, `predicates`, `limit`, ...)
 onto the parser's Reading, and its verdict is ONE field,
-`Reading.point_verdict` - `"read"` (`Reading.has_point`), a
-`reading.PointDeclined` with why, or the `Cause` it refuses by; `None`
+`Reading.point_verdict` - `"read"` (`Reading.has_point`) or the `Cause`
+it refuses by (`reading.PointVerdict`, decision D25: every point it does
+not read is a `PointRefused` with its cause, never a sentence); `None`
 before the point is read. Where the point reader moves a filter (a career
 "how many times" implies, a line's stat), the Reading holds the moved one,
 which is what the planner plans. No Reading nests another. A caller with a

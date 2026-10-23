@@ -912,13 +912,16 @@ def test_the_teammate_repeated_as_the_player_is_not_a_subject(league: AnswerCont
 
 
 def test_a_with_and_without_split_needs_a_teammate(league: AnswerContext) -> None:
-    with pytest.raises(Unsupported):
-        presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), span=Span(season_type=2)))
+    """No teammate read: refused for the name missing (``name_missing``)."""
+    said = presence_split(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), span=Span(season_type=2)))
+    assert said.text == "Nothing here answers this question as a record with and without named players: it needs a teammate's name, and none was read."
 
 
 def test_three_names_and_no_without_is_not_guessed(league: AnswerContext) -> None:
-    with pytest.raises(Unsupported):
-        presence_split(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown", "Journeyman Guy"), teams=("Boston Celtics",)), span=Span(season_type=2)))
+    """ "record when A and B and C play" is a split nobody has defined:
+    refused (``no_reading_of_point``), never guessed at."""
+    said = presence_split(league, Reading(who=Who(kind="pair", players=("Jayson Tatum", "Jaylen Brown", "Journeyman Guy"), teams=("Boston Celtics",)), span=Span(season_type=2)))
+    assert said.text == "Nothing here answers this question as a record with and without named players: a record with and without named players has no reading of this point."
 
 
 # ---------------- a record over a line ----------------

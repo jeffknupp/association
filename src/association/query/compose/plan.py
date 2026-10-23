@@ -28,7 +28,6 @@ from association.query.reading import (
     DeclineReason,
     Filtered,
     Measure,
-    PointDeclined,
     PointShape,
     Reading,
     ShapeCells,
@@ -661,7 +660,7 @@ def plan_point(reading: Reading) -> Verdict:
     planned onto its relation, once, by the answering loop - never by the
     parser, which only reads. The parser's own verdict stands where it read
     no point (:attr:`~association.query.reading.Reading.point_verdict`: a
-    :class:`~association.query.reading.PointDeclined` or a cause); the planner's
+    cause); the planner's
     refusal of a narrowing the relation cannot honor is a decline, with
     its reason.
 
@@ -691,7 +690,8 @@ def plan_point(reading: Reading) -> Verdict:
     if isinstance(verdict, Cause):
         return refusal_of(verdict)
     if verdict != "read":
-        return Unsupported(verdict.why if isinstance(verdict, PointDeclined) else NO_READING)
+        # No point read yet (a Reading built by hand): no reading of it.
+        return Unsupported(NO_READING)
     try:
         query = plan(reading)
     except Unsupported as exc:

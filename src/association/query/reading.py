@@ -1557,9 +1557,10 @@ missing thing, never only the slot"):
   ``period``, ``half``), a quarter as a condition with no line
   (``period_as_condition``: ``shape``), a team's quarter of a stat
   nothing holds (``team_period_stat``: ``shape``, ``stat``), bench points
-  (``bench_points``: ``shape``), a team's total of its players'
-  triple-doubles (``team_boolean_count``: ``shape``, ``stat``). The page
-  shows the kind beside the sentence (``refused``);
+  (``bench_points``: ``shape``). The page shows the kind beside the
+  sentence (``refused``), as it does for a team's total of its players'
+  triple-doubles, the point reader's refusal (``team_boolean_count``:
+  ``shape``, ``stat``);
 - a narrowing the point's shape cannot honor beyond its relation's cells
   (``cannot_honor``: ``shape``, the ``cells`` it sets as the words
   asked them, ``without`` - ``player`` or ``team or player`` where the
@@ -1616,19 +1617,6 @@ class Cause:
             raise ValueError(f"{self.kind!r} is not a cause a point reading refuses by: {sorted(CAUSES)}")
 
 
-@dataclass(frozen=True)
-class PointDeclined:
-    """The point reader read no point of the question
-    (:attr:`Reading.point_verdict`): ``why``, the decline's sentence, which
-    the planner's decline carries
-    (:func:`~association.query.compose.plan.plan_point`).
-
-    .. versionadded:: 7.0.0
-    """
-
-    why: str
-
-
 POINT_FIELDS: tuple[str, ...] = ("read_as", "measures", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span", "relation")
 """The fields of a :class:`Reading` the point reader writes beside the
 filters (:func:`~association.query.point.read_point`): what the point is
@@ -1640,10 +1628,11 @@ point reader's.
 """
 
 
-PointVerdict = Literal["read"] | PointDeclined | Cause
+PointVerdict = Literal["read"] | Cause
 """What the point reader came to (:attr:`Reading.point_verdict`): the point
-read (``"read"``: the Reading is the point), no reading of it
-(:class:`PointDeclined`) or a refusal by a :class:`Cause`.
+read (``"read"``: the Reading is the point), or the :class:`Cause` it
+refuses by - every point it does not read, a key and plain facts, never a
+sentence (decision D25).
 
 .. versionadded:: 7.0.0
 """
@@ -2275,9 +2264,9 @@ class Reading(Filtered):
     #: where the Reading IS the compiler's point - its filters as the point
     #: reader read them (its span may carry a career the question's "ever" or
     #: "how many times" implies) and the point's own fields beside them
-    #: (:data:`POINT_FIELDS`) - :class:`PointDeclined` with why where the
-    #: compiler has no reading of the point, or the :class:`Cause` the
-    #: reading refuses by (a stat nothing ranks, a floor no ranking applies),
+    #: (:data:`POINT_FIELDS`) - or the :class:`Cause` the reading refuses by
+    #: (a stat nothing ranks, a floor no ranking applies, a player's line
+    #: with no player),
     #: which the planner says
     #: (:func:`~association.query.compose.plan.refusal_result`). ``None``
     #: before the point is read: a Reading the parser is still reading, or

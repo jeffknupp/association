@@ -961,9 +961,12 @@ otherwise.
   `limit`, `minimum_games`, `available`, `subject_span`, `relation`) onto
   the parser's Reading, and `Reading.point`, `point_declined` and
   `point_refusal` are one field, `Reading.point_verdict: PointVerdict |
-  None`, where `PointVerdict = Literal["read"] | PointDeclined | Cause`
-  (`PointDeclined(why)`, the decline's sentence; `None` before the point is
-  read). Not in the draft, which has no verdict on the Reading: it is the
+  None`, where `PointVerdict = Literal["read"] | Cause` (`None` before the
+  point is read; decision D25, 2026-10-23: the `PointDeclined(why)` the
+  lane declared, the sentence of an `Unsupported` the point reader raised,
+  went - every point the reader does not read is refused by a cause, on
+  the populations the six team totals of players' triple- and
+  double-doubles, now `team_boolean_count` at the point). Not in the draft, which has no verdict on the Reading: it is the
   place `Reading.refused` was waiting for (above), kept apart from it
   because a refusal the words come to is planned ahead of the point's own.
   Measured before the change over the 2,698 readings and the 578 reader

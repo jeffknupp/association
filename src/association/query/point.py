@@ -4,9 +4,9 @@ through a prompt - move the measure or the shape off the default point of
 what the words ask (:func:`default_point`; the aggregate is the planner's,
 ``compose.plan.aggregate_of``). :func:`read_point` is the parser's last step
 (``parse.with_point``): it writes the point into the Reading, or why there
-is none - a decline (:class:`~association.query.reading.Unsupported`) or a
-refusal's cause (:class:`~association.query.reading.PointRefused`) the
-planner says. Nothing here plans, runs or words an answer.
+is none - a refusal's cause (:class:`~association.query.reading.PointRefused`,
+its :class:`~association.query.reading.Cause`) the planner says. Nothing here
+plans, runs or words an answer.
 
 .. versionadded:: 4.4.0
 
@@ -112,11 +112,9 @@ from association.query.reading import (
     PointShape,
     Reading,
     Span,
-    Unsupported,
     Window,
     _career_scope,
     _clamp_limit,
-    key_path,
     on_a_declared_relation,
     period_narrowing,
     scope_reads_box_scores,
@@ -852,7 +850,7 @@ def _move_player_history(asked: PointShape | None, scope: Filtered, career: Filt
         # A stat named that neither the season line nor the games carry
         # ("shot_distance"): refused - never drawn as the points history the
         # default measure below would read in its place.
-        raise Unsupported(f"no per-season history for stat {scope.measure.as_typed!r}")
+        raise PointRefused(Cause(kind="no_season_column", facts={"shape": SEASON_HISTORY, "stat": scope.measure.as_typed}))
     del career  # the season line reads the question's own span; the planner's game-level point widens it
     # No stat named: the whole line season by season (ISSUES.md #387), where
     # the default measure answered points by season.
@@ -880,7 +878,7 @@ def _compare_point(scope: Filtered) -> Reading:
     .. versionadded:: 5.0.0
     """
     if len(set(scope.who.players)) < 2:
-        raise Unsupported("a comparison needs at least two distinct player names")
+        raise PointRefused(Cause(kind="matchup_needs_two", facts={"names": list(dict.fromkeys(scope.who.players))}))
     return Reading(**scope.filters(), read_as=PLAYER_COMPARISON, measures=(), group="player", predicates=[])
 
 
@@ -902,7 +900,7 @@ def _default_game_log(scope: Filtered) -> Reading:
     names its game outright, so the span is the career and the season is the
     date's."""
     if not _named_player_in(scope):
-        raise Unsupported("a team's log is the team relation's")
+        raise PointRefused(Cause(kind="team_relations_question", facts={"shape": PLAYER_LOG}))
     # A yes/no stat of a game ("lebron james triple double log", the feed
     # sample's FS073) keeps the games it holds in, where it was refused as a
     # stat the log has no column for.
@@ -945,7 +943,7 @@ def _default_player_stat(scope: Filtered) -> Reading:
     games with averages beneath - the shape the question has - so the point
     is ``PLAYER_LOG``'s."""
     if not _named_player_in(scope):
-        raise Unsupported("a player's line needs a player")
+        raise PointRefused(Cause(kind="name_missing", facts={"shape": PLAYER_LINE, "needs": "player"}))
     col = stat_column(scope.measure)
     measures = [col] if col else list(STAT_LINE)
     if scope.window.count or scope.window.order:
@@ -969,7 +967,7 @@ def _default_player_splits(scope: Filtered) -> Reading:
     ``started``) while the category shown is still starter/bench; by venue it
     read the half's games split by home/away instead."""
     if not _named_player_in(scope):
-        raise Unsupported("a team's splits are the team relation's")
+        raise PointRefused(Cause(kind="team_relations_question", facts={"shape": PLAYER_SPLITS}))
     group: Group = "starter" if scope.split in ("starter_bench", "starter", "bench") else "venue"
     return Reading(**scope.filters(), read_as=PLAYER_SPLITS, measures=_measured(*SPLIT_LINE), group=group, predicates=[], available=BOX_SCORES)
 
@@ -983,7 +981,7 @@ def _default_record_when(scope: Filtered) -> Reading:
     threshold = threshold_of(scope)
     if not _named_player_in(scope):
         # read_point reads a named player's moves only; a caller's mistake.
-        raise Unsupported("a record over a line needs a player, a stat and a positive threshold here")
+        raise PointRefused(Cause(kind="name_missing", facts={"shape": LINE_RECORD, "needs": "player"}))
     stat = _named_stat(scope)
     if col is None and stat and stat.strip():
         raise PointRefused(Cause(kind="unknown_stat", facts={"shape": LINE_RECORD, "stat": stat}))
@@ -1016,7 +1014,7 @@ def _default_period_split(scope: Filtered) -> Reading:
     player is settled over the shot table, and over his career when a date
     names the game."""
     if not _named_player_in(scope):
-        raise Unsupported("a player's quarter or half needs a player")
+        raise PointRefused(Cause(kind="name_missing", facts={"shape": PERIOD_LOG, "needs": "player"}))
     measure = period_split_measure(scope.measure)
     date = scope.cuts.date
     if period_narrowing(scope) is None:
@@ -1057,7 +1055,7 @@ def _default_threshold_count(scope: Filtered) -> Reading:
     col = stat_column(scope.measure)
     threshold = threshold_of(scope)
     if not _named_player_in(scope):
-        raise Unsupported("a league-wide count is not on the one-player relation")
+        raise PointRefused(Cause(kind="name_missing", facts={"shape": GAMES_COUNTED, "needs": "player"}))
     if threshold is None and relation_lines(scope):
         # Refuses (PointRefused) by the fact missing: a phrase naming no
         # stat, a stat with no per-game column.
@@ -1067,7 +1065,11 @@ def _default_threshold_count(scope: Filtered) -> Reading:
         # The reason the count gives, where it has one (a threshold of 0
         # counts every game; no stat it keeps a line on), by its cause.
         threshold_count_line(scope)
-        raise Unsupported("a count over a line refuses; nothing to compare")
+        if col is None:
+            raise PointRefused(Cause(kind="needs_stat", facts={"shape": GAMES_COUNTED}))
+        if threshold is None:
+            raise PointRefused(Cause(kind="needs_threshold", facts={"shape": GAMES_COUNTED, "stat": col}))
+        raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"shape": GAMES_COUNTED, "threshold": threshold}))
     # A below/above phrase on the threshold's own number and stat - or
     # holding its words ("games with under 14 fta": the pair "14 fta" inside
     # the phrase, the model's stat another) - IS the count, misread as a
@@ -1091,7 +1093,7 @@ def _default_single_game_high(scope: Filtered) -> Reading:
     if col is None:
         raise PointRefused(Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": stat}) if stat else Cause(kind="needs_stat", facts={"shape": GAME_HIGHS}))
     if not _named_player_in(scope):
-        raise Unsupported("a single game's high needs a named player here")
+        raise PointRefused(Cause(kind="name_missing", facts={"shape": GAME_HIGHS, "needs": "player"}))
     return Reading(
         **scope.filters(),
         read_as=GAME_HIGHS,
@@ -1114,7 +1116,7 @@ def _streak_season(scope: Filtered) -> int | None:
     span = scope.span
     if span.since:
         if span.season:
-            raise Unsupported(f"since {span.since} and the {span.season} season at once")
+            raise PointRefused(Cause(kind="span_and_season", facts={"shape": LINE_RUNS, "season": span.season, "since": span.since}))
         return None
     if span.season is not None:
         return span.season
@@ -1211,7 +1213,11 @@ def _default_with_without(scope: Filtered) -> Reading:
         texts = list(dict.fromkeys(n.strip() for n in scope.who.players))
         team_named = scope.who.team is not None
         if not ((team_named and len(texts) == 1) or (not team_named and len(texts) == 2)):
-            raise Unsupported(f"a with/without split needs exactly one teammate, got {texts!r}")
+            # None read is a missing name; three or more ("record when A and B
+            # and C play") is a split nobody has defined.
+            if not texts:
+                raise PointRefused(Cause(kind="name_missing", facts={"shape": PRESENCE_SPLIT, "needs": "teammate"}))
+            raise PointRefused(Cause(kind="no_reading_of_point", facts={"shape": PRESENCE_SPLIT, "planned": PRESENCE_SPLIT}))
     return Reading(**scope.filters(), read_as=PRESENCE_SPLIT, measures=_RECORD, group="presence", predicates=[], relation="team")
 
 
@@ -1381,7 +1387,7 @@ def default_point(asked: PointShape | None, scope: Filtered) -> Reading:
     """
     reader = None if asked is None else DEFAULT_POINTS.get(asked)
     if reader is None:
-        raise Unsupported(f"no default point for {key_path(asked)}")
+        raise PointRefused(Cause(kind="no_shape", facts={"shape": asked}))
     return replace(reader(scope), asked=asked)
 
 
@@ -1700,7 +1706,7 @@ def read_point(reading: Reading, question: str) -> Reading:
     scope = _season_lines_refused(reading.asked, question, scope)
     try:
         point = _players_counted(scope, question, subject) if reading.asked == PLAYERS_COUNTED else _seasons_counted(_read_point(reading.asked, scope, question, subject), reading.asked, question)
-    except Unsupported:
+    except PointRefused:
         if reading.asked not in TEAM_SEASON_POINTS:
             raise
         # No other reading of the point: the team's own season is the
@@ -1744,18 +1750,16 @@ def _leaderboard_declines(scope: Filtered, subject: Subject) -> None:
         # A TEAM's total of its players' triple-doubles ("oklahoma city
         # thunder all-time triple doubles vs west", a ranking with the team
         # named - day5): not a ranking this relation lacks a measure for, but
-        # a team aggregate nothing reads. Declined here, where the subject
-        # is in hand,
-        # so the reading's own cause names it (``team_boolean_count``,
-        # Reading.unsupported, said where the answer side declines) rather
-        # than the ranking's sentence naming the wrong one.
-        raise Unsupported(f"a team's total of its players' {scope.measure.as_typed} is not read")
+        # a team aggregate nothing reads. Refused here, where the subject is
+        # in hand, by its own cause (``team_boolean_count``), rather than the
+        # ranking's sentence naming the wrong one.
+        raise PointRefused(Cause(kind="team_boolean_count", facts={"shape": PLAYER_RANKING, "stat": scope.measure.as_typed}))
     if _named_player_in(scope):
         # A ranking ranks the league or a team, never one named person
         # ("Klay Thompson's 3pt percentage over the past 4 seasons" once
         # landed here and came back with the league's true-shooting leaders,
         # Klay silently dropped).
-        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.who.player!r})")
+        raise PointRefused(Cause(kind="no_player_reading", facts={"player": scope.who.player, "shape": PLAYER_RANKING}))
 
 
 def _team_record_own_line(scope: Filtered) -> Filtered:

@@ -381,17 +381,6 @@ def test_a_championship_question_is_refused_before_a_ranking_answers_it(con: duc
     assert by_question("best record from 2010-11 to 2018-19", TEAM_RANKING, con) is None
 
 
-def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.DuckDBPyConnection) -> None:
-    result = unanswerable(
-        con,
-        PLAYER_RANKING,
-        Reading(who=Who(kind="team", teams=("Los Angeles Lakers",)), measure=Measure(key="triple_double", as_typed="triple_double"), span=Span(career=True)),
-        "los angeles lakers all-time triple doubles vs west",
-    )
-    assert result is not None and result.data["refused"] == "team_boolean_count" and "team's total" in result.text
-    assert unanswerable(con, PLAYER_RANKING, Reading(measure=Measure(key="triple_double", as_typed="triple_double")), "who has the most triple doubles this season") is None
-
-
 @pytest.mark.parametrize(
     ("question", "fact", "words"),
     [

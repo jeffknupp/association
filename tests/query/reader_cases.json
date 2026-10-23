@@ -30227,7 +30227,7 @@
  },
  {
   "name": "a_minutes_floor_is_a_line#1",
-  "why": "A minutes floor is a line on the games (minutes at least N), never a situation: on a player's log and on a position group's. The third question, under a model name the words never held, is declined as a ranking about one named player.",
+  "why": "A minutes floor is a line on the games (minutes at least N), never a situation: on a player's log and on a position group's. The third question, under a model name the words never held, is refused as a ranking about one named player (no_player_reading).",
   "question": "paul reed gamelog with 25 minutes",
   "names": [
    "Paul Reed"
@@ -30444,7 +30444,7 @@
  },
  {
   "name": "a_minutes_floor_is_a_line#2",
-  "why": "A minutes floor is a line on the games (minutes at least N), never a situation: on a player's log and on a position group's. The third question, under a model name the words never held, is declined as a ranking about one named player.",
+  "why": "A minutes floor is a line on the games (minutes at least N), never a situation: on a player's log and on a position group's. The third question, under a model name the words never held, is refused as a ranking about one named player (no_player_reading).",
   "question": "forwards with 20+ mins vs gsw log",
   "names": [
    "Paul Reed"
@@ -30647,7 +30647,7 @@
  },
  {
   "name": "a_minutes_floor_is_a_line#3",
-  "why": "A minutes floor is a line on the games (minutes at least N), never a situation: on a player's log and on a position group's. The third question, under a model name the words never held, is declined as a ranking about one named player.",
+  "why": "A minutes floor is a line on the games (minutes at least N), never a situation: on a player's log and on a position group's. The third question, under a model name the words never held, is refused as a ranking about one named player (no_player_reading).",
   "question": "curry stats in games with at least 30 minutes played",
   "names": [
    "Paul Reed"
@@ -30767,7 +30767,15 @@
    ],
    "point": null,
    "point_verdict": {
-    "why": "a leaderboard cannot answer about one named player ('Paul Reed')"
+    "kind": "no_player_reading",
+    "facts": {
+     "player": "Paul Reed",
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
    }
   }
  },
@@ -33791,7 +33799,15 @@
    ],
    "point": null,
    "point_verdict": {
-    "why": "a leaderboard cannot answer about one named player ('LeBron James')"
+    "kind": "no_player_reading",
+    "facts": {
+     "player": "LeBron James",
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
    },
    "refused": {
     "kind": "non_calendar_situation",
@@ -46082,7 +46098,15 @@
    ],
    "point": null,
    "point_verdict": {
-    "why": "a leaderboard cannot answer about one named player ('LeBron James')"
+    "kind": "no_player_reading",
+    "facts": {
+     "player": "LeBron James",
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
    }
   }
  },
@@ -47494,7 +47518,15 @@
    ],
    "point": null,
    "point_verdict": {
-    "why": "a leaderboard cannot answer about one named player ('Desmond Bane')"
+    "kind": "no_player_reading",
+    "facts": {
+     "player": "Desmond Bane",
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
    }
   }
  },
@@ -61607,7 +61639,10 @@
    ],
    "point": null,
    "point_verdict": {
-    "why": "no default point for none"
+    "kind": "no_shape",
+    "facts": {
+     "shape": null
+    }
    }
   }
  },
@@ -64436,7 +64471,15 @@
    ],
    "point": null,
    "point_verdict": {
-    "why": "a leaderboard cannot answer about one named player ('Joel Embiid')"
+    "kind": "no_player_reading",
+    "facts": {
+     "player": "Joel Embiid",
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
    }
   }
  },
@@ -64543,7 +64586,15 @@
    ],
    "point": null,
    "point_verdict": {
-    "why": "a leaderboard cannot answer about one named player ('Joel Embiid')"
+    "kind": "no_player_reading",
+    "facts": {
+     "player": "Joel Embiid",
+     "shape": {
+      "relation": "player_seasons",
+      "shape": "ranking",
+      "by": "player"
+     }
+    }
    }
   }
  },

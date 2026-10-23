@@ -2028,11 +2028,9 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
 def test_a_teams_total_of_triple_doubles_is_declined_for_the_readings_cause(cx_ctx: AnswerContext) -> None:
     """ "oklahoma city thunder all-time triple doubles vs west" (day5): a team
     subject on a ranking of players with a boolean stat is a team aggregate nothing
-    reads - declined here, so the reading's ``team_boolean_count`` cause names it
-    instead of the ranking's "no ranking reads triple_double"."""
-    from association.query.compose.core import Unsupported
-
-    with pytest.raises(Unsupported, match="team's total"):
+    reads - refused by its own cause, ``team_boolean_count``, instead of the
+    ranking's "no ranking reads triple_double"."""
+    with pytest.raises(PointRefused) as refused:
         move_point(
             cx_ctx.con,
             PLAYER_RANKING,
@@ -2040,6 +2038,9 @@ def test_a_teams_total_of_triple_doubles_is_declined_for_the_readings_cause(cx_c
             "golden state warriors all-time triple doubles vs west",
             Subject("team", teams=("Golden State Warriors",)),
         )
+    assert refused.value.cause == Cause(kind="team_boolean_count", facts={"shape": PLAYER_RANKING, "stat": "triple_double"})
+    said = refusal_result(refused.value.cause)
+    assert said.data is not None and said.data["refused"] == "team_boolean_count" and "team's total" in said.text
 
 
 # ---------------------------------------------------------------------------
@@ -2124,8 +2125,9 @@ def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player
         default_point(GAME_HIGHS, Reading(who=Who(kind="player", players=("Brice Sensabaugh",)), measure=Measure(as_typed="asistss")))
     assert unknown.value.cause == Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": "asistss"})
     assert refusal_result(unknown.value.cause).text == "A single-game high cannot rank games by 'asistss' - only by a box-score stat each game has a number for."
-    with pytest.raises(Unsupported, match="needs a named player"):
+    with pytest.raises(PointRefused) as nobody:
         default_point(GAME_HIGHS, Reading(measure=Measure(key="points", as_typed="points")))
+    assert nobody.value.cause == Cause(kind="name_missing", facts={"shape": GAME_HIGHS, "needs": "player"})
 
 
 def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(cx_ctx: AnswerContext) -> None:
@@ -2159,15 +2161,10 @@ def test_a_history_naming_no_stat_is_the_whole_line_and_says_so(cx_ctx: AnswerCo
 def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(cx_ctx: AnswerContext) -> None:
     """ "shot_distance" has no per-season column and no game-level measure:
     it is declined, never drawn as the player's POINTS by season, a stat
-    named and silently replaced."""
-    why: list[str] = []
-    assert (
-        compose_answer(
-            cx_ctx, SEASON_HISTORY, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="shot_distance", as_typed="shot_distance")), "", declined=why.append
-        )
-        is None
-    )
-    assert why == ["no per-season history for stat 'shot_distance'"]
+    named and silently replaced: refused by the cause the point reader
+    comes to (``no_season_column``), said by the planner."""
+    refused = compose_answer(cx_ctx, SEASON_HISTORY, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="shot_distance", as_typed="shot_distance")), "")
+    assert refused is not None and refused.text == "Nothing here answers this question as a season-by-season history: no per-game column for stat 'shot_distance'."
 
 
 # ---------------------------------------------------------------------------

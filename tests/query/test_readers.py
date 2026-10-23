@@ -2194,12 +2194,8 @@ def test_a_name_with_nothing_near_it_is_refused_by_name(ps_con: AnswerContext) -
 
 
 def test_player_comparison_needs_two_distinct_players(ps_con: AnswerContext) -> None:
-    with pytest.raises(Unsupported):
-        player_comparison(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",))))
-    with pytest.raises(Unsupported):
-        player_comparison(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",))))
-    with pytest.raises(Unsupported):
-        player_comparison(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",))))
+    said = player_comparison(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",))))
+    assert said.text == "A matchup needs two players, and only Luka Doncic was read."
 
 
 def test_player_comparison_reports_a_player_with_no_rows_rather_than_dropping_them(ps_con: AnswerContext) -> None:
@@ -3559,8 +3555,8 @@ def test_season_history_refuses_a_stat_it_has_no_history_for(ps_con: AnswerConte
     its place. A history naming no stat at all is the points default, stated
     in its heading
     (test_compose.test_a_history_naming_no_stat_is_points_and_says_so)."""
-    with pytest.raises(Unsupported, match="no per-season history for stat 'shot_distance'"):
-        season_history(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",)), measure=Measure(key="shot_distance", as_typed="shot_distance")))
+    said = season_history(ps_con, Reading(who=Who(kind="player", players=("Luka Doncic",)), measure=Measure(key="shot_distance", as_typed="shot_distance")))
+    assert said.text == "Nothing here answers this question as a season-by-season history: no per-game column for stat 'shot_distance'."
 
 
 def test_season_history_asks_on_an_ambiguous_player(ps_con: AnswerContext) -> None:
@@ -3588,8 +3584,8 @@ def test_player_ranking_refuses_when_a_player_is_named(lb_con: AnswerContext) ->
     """A ranking ranks the league or a team, never one named person: a
     question about Klay Thompson is not answered with the league's
     true-shooting leaders, Klay silently dropped."""
-    with pytest.raises(Unsupported):
-        player_ranking(lb_con, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="points", as_typed="points")))
+    said = player_ranking(lb_con, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="points", as_typed="points")))
+    assert (said.text or "").startswith("This was read as a question about Klay Thompson, a player, but a ranking of players has no reading for one")
 
 
 def test_player_ranking_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_con: AnswerContext) -> None:
@@ -3601,10 +3597,10 @@ def test_player_ranking_refuses_a_shot_distance_ranking_naming_the_real_cause(lb
     from `shot_chart`."""
     result = player_ranking(lb_con, Reading(measure=Measure(key="shot_distance", as_typed="shot_distance")))
     assert result.text == "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
-    # Given a named player, the compiler refuses the named player in the
-    # ranking's own words.
-    with pytest.raises(Unsupported, match="one named player"):
-        player_ranking(lb_con, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="points", as_typed="points")))
+    # Given a named player, the ranking refuses the named player
+    # (``no_player_reading``).
+    said = player_ranking(lb_con, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=Measure(key="points", as_typed="points")))
+    assert "about Klay Thompson, a player" in (said.text or "")
 
 
 # ---------------- a player's NetPoints ratings ----------------

@@ -73,12 +73,10 @@ from association.query.reading import (
     Line,
     Measure,
     Minimum,
-    PointDeclined,
     PointRefused,
     PointShape,
     Reading,
     Span,
-    Unsupported,
     Window,
     key_path,
 )
@@ -1416,10 +1414,8 @@ def with_point(question: str, reading: Reading) -> Reading:
     """``reading`` with the compiler's point read from the question's words
     onto it (:func:`~association.query.point.read_point`; its
     :attr:`~association.query.reading.Reading.point_verdict` ``"read"``) - or
-    with why there is none: no reading of the point
-    (:class:`~association.query.reading.PointDeclined`), or a refusal the
-    reading itself comes to (its :class:`~association.query.reading.Cause`,
-    which the planner says). Read here,
+    with why there is none: the refusal the reading comes to (its
+    :class:`~association.query.reading.Cause`, which the planner says). Read here,
     once, so nothing after the parser reads the question; the point is
     PLANNED after the parser, once, by the answering loop
     (:func:`~association.query.compose.plan.plan_point`), which is where a
@@ -1446,10 +1442,8 @@ def with_point(question: str, reading: Reading) -> Reading:
     try:
         return read_point(reading, question)
     except PointRefused as exc:
-        # Before the decline: a refusal with a cause is a kind of decline.
+        # Every point the reader does not read is refused by a cause.
         return replace(reading, point_verdict=exc.cause)
-    except Unsupported as exc:
-        return replace(reading, point_verdict=PointDeclined(str(exc)))
 
 
 # --- What the words name that nothing reads ------------------------------------
@@ -1973,8 +1967,9 @@ def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Ca
     are: a playoff round, a situation nothing reads (an age, an unread
     conference phrase, anything else), a stat a quarter's line does not
     rebuild, a quarter as a condition with no line, a team's quarter of a
-    stat nothing holds, bench points, a team's total of its players'
-    triple-doubles. Recognized whatever answers: the answering loop says
+    stat nothing holds, bench points (a team's total of its players'
+    triple-doubles is the point reader's own cause,
+    ``point._leaderboard_declines``). Recognized whatever answers: the answering loop says
     the first only where the answer side declined and the coverage floor
     did not refuse - a question the compiler answers is answered (the
     Reading's :attr:`~association.query.reading.Reading.unsupported`).
@@ -1988,7 +1983,6 @@ def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Ca
         _unsupported_period_as_condition(question, reading),
         _unsupported_team_period_stat(reading),
         _unsupported_bench_points(question, reading),
-        _unsupported_team_boolean_count(reading),
     )
     return tuple(cause for cause in found if cause is not None)
 
@@ -2081,27 +2075,6 @@ def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
     # words, and the measure's "points" twice over).
     named = reading.measure is not None and reading.measure.key == "points" and any(c.what == "measure" for c in reading.claims)
     return Cause(kind="bench_points", facts={"shape": reading.asked}) if named and lexicon.BENCH_WORD.search(question) else None
-
-
-def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
-    """A team's count of its players' triple-doubles or double-doubles, as a
-    ranking with the team filed: "oklahoma city thunder all-time triple
-    doubles vs west" reads as ``PLAYER_RANKING`` with ``team`` and ``stat:
-    triple_double``, and the ranking's decline would name the wrong cause
-    ("no ranking reads triple_double") - one player's triple-doubles ARE
-    counted; what is not read is the team's aggregate of them."""
-    scope, subject = reading, reading.subject
-    measure = scope.measure
-    if (
-        reading.asked != PLAYER_RANKING
-        or measure is None
-        or measure.key not in ("triple_double", "double_double")
-        or subject is None
-        or subject.kind not in ("team", "team_players")
-        or scope.who.team is None
-    ):
-        return None
-    return Cause(kind="team_boolean_count", facts={"shape": reading.asked, "stat": measure.as_typed})
 
 
 def _reading_from_route_left_out(players: names.PlayerIndex, question: str, reading: Reading) -> LeftOut | None:
