@@ -57,6 +57,10 @@ def test_a_figure_against_an_opponent_offers_the_latest_meeting_too(con: duckdb.
     ]
     # A whole line against a team names no figure: the season alone.
     assert _alternatives(con, "Dennis Schroeder vs. grizzlies", ["Dennis Schroeder", "grizzlies"]) == [("career", "season", "Dennis Schroeder vs. grizzlies in 2026")]
+    # Nor a game's high, or a log asked by name: no latest meeting is the
+    # other reading of either.
+    assert [instead for _, instead, _ in _alternatives(con, "luka highest scoring games vs bucks", ["luka", "bucks"], "points")] == ["season"]
+    assert [instead for _, instead, _ in _alternatives(con, "harrison barnes 1st quarter points each game vs magic", ["harrison barnes", "magic"], "points")] == ["season"]
 
 
 def test_a_season_read_by_default_offers_the_career(con: duckdb.DuckDBPyConnection) -> None:
@@ -186,6 +190,17 @@ def test_a_wording_nothing_here_answers_is_not_offered(tmp_path: Path, monkeypat
     reading_of_it = agent.ask("compare stephen curry and lebron james")
     assert agent.reading is not None and [each.instead for each in agent.reading.alternatives] == ["career"]
     assert reading_of_it.alternatives == ()
+
+
+def test_a_career_the_shapes_reader_does_not_state_is_not_offered(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ranking of teams states no career (its row's ``TEAM_RANKING_CAREER``):
+    "of all time" reads the career and plans, and the reader would decline
+    it - "every season of a career cannot be read here" - so it is not
+    offered."""
+    agent = _agent(tmp_path, monkeypatch, [])
+    answer = agent.ask("which team scores the most points per game")
+    assert agent.reading is not None and [each.question for each in agent.reading.alternatives] == ["which team scores the most points per game of all time"]
+    assert answer.alternatives == ()
 
 
 def test_the_cli_prints_each_alternative_beneath_the_answer(monkeypatch: pytest.MonkeyPatch) -> None:

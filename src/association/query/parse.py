@@ -1244,7 +1244,7 @@ def _reading_alternatives(index: names.NameIndex, question: str, reading: Readin
         if cuts.game_n is not None or any(_inactive(index, (player,)) for player in reading.who.players):
             return ()
         found = [Alternative(kind="span", read="career", instead="season", season=season, question=_alternative_worded(question, f"in {season}"))]
-        if _alternative_latest(reading):
+        if _alternative_latest(question, reading):
             found.append(Alternative(kind="span", read="career", instead="latest", season=None, question=_alternative_worded(question, "in his last game")))
         return tuple(found)
     if span.named or span.both or reading.read_as.relation == "team_snapshots" or lexicon.SEASON_WORDS.search(question):
@@ -1263,13 +1263,17 @@ def _reading_alternatives(index: names.NameIndex, question: str, reading: Readin
 _ALTERNATIVE_CAREER_WORDS: dict[str, str] = {"player": "over his career"}
 
 
-def _alternative_latest(reading: Reading) -> bool:
+def _alternative_latest(question: str, reading: Reading) -> bool:
     """Whether the latest meeting is the other reading of a career D13's
-    versus words imply: one player's figure (a stat named, no log asked)
-    against one opponent - "how many points did jokic score in the 3rd
-    quarter against boston" is his last meeting's quarter as reasonably as
-    his career's (the yardstick's F028, whose key reads the most recent)."""
-    return reading.who.kind == "player" and reading.cuts.opponent is not None and reading.measure is not None and reading.asked != PLAYER_LOG
+    versus words imply: one player's figure (a stat named, no log asked by
+    its key or its words, no game's high) against one opponent - "how many
+    points did jokic score in the 3rd quarter against boston" is his last
+    meeting's quarter as reasonably as his career's (the yardstick's F028,
+    whose key reads the most recent); his highest-scoring game against them,
+    or their games listed, has no latest meeting to be instead."""
+    if reading.who.kind != "player" or reading.cuts.opponent is None or reading.measure is None:
+        return False
+    return reading.asked not in (PLAYER_LOG, GAME_HIGHS) and lexicon.LOG_WORDS.search(question) is None
 
 
 def _alternative_worded(question: str, stated: str) -> str:

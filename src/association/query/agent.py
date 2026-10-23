@@ -30,7 +30,7 @@ from association.query.reading import PLAYER_ASKS, Cause, PointShape, ShapeDecli
 from association.query.result import Refusal
 
 from .answer import Answer, AnsweredBy, Timing
-from .compose.plan import PlannedQuery, Verdict, plan_point, planned_shape, refusal_result
+from .compose.plan import PlannedQuery, Verdict, cells_unhonored, plan_point, planned_shape, refusal_result
 from .compose.say import nothing_answers, say, say_career_implied, say_left_out, say_season_default, say_spelling_read, say_stat_default
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, names_of
@@ -85,6 +85,19 @@ def _career_implied(reading: Reading, composed: Answer) -> Answer:
         return composed
     asks = [each.question for each in composed.alternatives if each.read == "career"]
     return _noted(composed, say_career_implied(reading.who.kind, current_season(), asks))
+
+
+def _changed_unhonored(alternative: Alternative, read: Reading, planned: PlannedQuery) -> bool:
+    """Whether the cell ``alternative`` changes - the career, or the one
+    game a latest meeting keeps - is one its planned shape's reader does not
+    state (:func:`~association.query.compose.plan.cells_unhonored`): the
+    reader steps aside for it, and the answer is the compiler's own
+    sentence or a decline ("which team scores the most points per game of
+    all time": every season of a career cannot be read as a ranking of
+    teams), never the alternative's reading. A named season is no cell."""
+    cell = {"career": "career", "latest": "window"}.get(alternative.instead)
+    key = planned_shape(read, planned)
+    return cell is not None and key is not None and any(each == cell for each, _ in cells_unhonored(planned, key))
 
 
 def _read_nothing(composed: Answer) -> bool:
@@ -597,7 +610,8 @@ class Agent:
 
         assert self._normalized is not None
         read = read_route(names_of(self.con), alternative.question, self._normalized.names, self._normalized.stat)
-        reached = alternative.reached_by(reading, read, reading.asked, read.asked) and isinstance(plan_point(read), PlannedQuery)
+        planned = plan_point(read)
+        reached = alternative.reached_by(reading, read, reading.asked, read.asked) and isinstance(planned, PlannedQuery) and not _changed_unhonored(alternative, read, planned)
         history.log(f"  -> (alternative) {'offered' if reached else 'not offered'}: {alternative.question!r}")
         return reached
 

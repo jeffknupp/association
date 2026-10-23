@@ -56280,13 +56280,6 @@
      "instead": "season",
      "season": 2026,
      "question": "harrison barnes 1st quarter stats each game vs magic in 2026"
-    },
-    {
-     "kind": "span",
-     "read": "career",
-     "instead": "latest",
-     "season": null,
-     "question": "harrison barnes 1st quarter stats each game vs magic in his last game"
     }
    ]
   }
@@ -56467,13 +56460,6 @@
      "instead": "season",
      "season": 2026,
      "question": "victor wembanyama vs sacramento first half log in 2026"
-    },
-    {
-     "kind": "span",
-     "read": "career",
-     "instead": "latest",
-     "season": null,
-     "question": "victor wembanyama vs sacramento first half log in his last game"
     }
    ]
   }
@@ -56654,13 +56640,6 @@
      "instead": "season",
      "season": 2026,
      "question": "Kd vs clippers 2h at home gamelog in 2026"
-    },
-    {
-     "kind": "span",
-     "read": "career",
-     "instead": "latest",
-     "season": null,
-     "question": "Kd vs clippers 2h at home gamelog in his last game"
     }
    ]
   }
@@ -77397,13 +77376,6 @@
      "instead": "season",
      "season": 2026,
      "question": "luka highest scoring games vs bucks in 2026"
-    },
-    {
-     "kind": "span",
-     "read": "career",
-     "instead": "latest",
-     "season": null,
-     "question": "luka highest scoring games vs bucks in his last game"
     }
    ]
   }
@@ -88242,13 +88214,6 @@
      "instead": "season",
      "season": 2026,
      "question": "Giannis first half points rebounds assists gamelog vs washington in 2026"
-    },
-    {
-     "kind": "span",
-     "read": "career",
-     "instead": "latest",
-     "season": null,
-     "question": "Giannis first half points rebounds assists gamelog vs washington in his last game"
     }
    ]
   }
