@@ -166,11 +166,11 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #509
 
-### A log asked game by game shows its newest ten: "Rudy gobert first half games this season" lists 10 of 76
-- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade: 6 yardstick wordings (F060, F149, F153, F156, F158, F159) and 11 sample ids (FS016, FS058, FS068, FS098, FS132, FS208, FS096, FS126, FS282, FS378, FS400) were graded `partial` for showing the newest ten of N rows where the reading asked every game; held at the yardstick's standing standard (correct with N said) for the run-to-run comparison.
-- **Evidence:** the log's default limit is ten; "each game", "every game", "game log", "gamelog" and a count of games asked ("last 15 games") are the wordings that want all N.
-- **User sees:** a log cut at ten with the total said - fine for a bare log, short where every game was asked.
-- **Next step:** a log whose words ask each game or name a count shows every row up to a page's worth (the web page paginates; the CLI prints all), with the limit a window of the words alone.
+### A log shows its newest ten rows, where decision D24 asks every row: "Rudy gobert first half games this season" lists 10 of 76
+- **Found:** 2026-10-17, the lead, the Phase 6 step 5 re-grade: 6 yardstick wordings (F060, F149, F153, F156, F158, F159) and 11 sample ids (FS016, FS058, FS068, FS098, FS132, FS208, FS096, FS126, FS282, FS378, FS400) graded `partial` for showing the newest ten of N; **decided 2026-10-23 (D24, Jeff): every row, the standard retired** - the yardstick's parser32 overrides withdrawn (162 -> 155 of 175).
+- **Evidence:** `reading.DEFAULT_GAME_LOG_LIMIT = 10`, applied in `point.py` (three log points), `compose/team.py` (the team log) and `compose/periods.py` (the period log) through `_clamp_limit`; F147 is a line of averages where the rows were asked.
+- **User sees:** ten rows of N, the total said.
+- **Next step:** the default cap goes - a log reads every row its reading selects, a limit only where the words state a window; the page's renderers show the whole table (scrolling; `page_renders.py` before and after), the CLI prints it; F147's "stats on christmas" lists each game under the line. Every log answer on the populations moves (rows added, figures kept): one enumerated commit, classed.
 - **Priority:** P2 - a partial answer on 17 graded wordings.
 - **Source:** ours.
 - **GitHub:** #503
