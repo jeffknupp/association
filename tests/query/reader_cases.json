@@ -75105,9 +75105,7 @@
    },
    "minimum": null,
    "unread": [
-    "record",
-    "regular",
-    "season"
+    "record"
    ],
    "subject": {
     "kind": "pair",

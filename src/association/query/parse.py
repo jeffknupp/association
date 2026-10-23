@@ -1204,22 +1204,22 @@ def _reading(
         # 30 point games by a 35 year old in a season" was told the best
         # single season is read by nothing, the feed sample's FS114).
         refused, unsupported = aged, tuple(cause for cause in unsupported if cause is not aged)
-    found = list(claimed_once([*found, *defaulted_claims]))
-    read = replace(
-        pointed,
-        refused=refused,
-        unsupported=unsupported,
-        left_out=left_out,
-        defaulted=defaulted,
+    read = replace(pointed, refused=refused, unsupported=unsupported, left_out=left_out, defaulted=defaulted)
+    # The other readings of the defaults the words left open, with the words
+    # that kept one from being offered (the regular season named outright).
+    alternatives, guarded = _reading_alternatives(index, asked, read)
+    found = list(claimed_once([*found, *defaulted_claims, *guarded]))
+    return replace(
+        read,
+        alternatives=alternatives,
         claims=tuple(found),
         # The words nothing claimed, by the claims ledger's rule, over the
         # question as it was asked (the fold keeps every position).
         unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], read_by_model, model_stat),
     )
-    return replace(read, alternatives=_reading_alternatives(index, asked, read))
 
 
-def _reading_alternatives(index: names.NameIndex, question: str, reading: Reading) -> tuple[Alternative, ...]:
+def _reading_alternatives(index: names.NameIndex, question: str, reading: Reading) -> tuple[tuple[Alternative, ...], tuple[Claim, ...]]:
     """The other readings of the defaults the words left open, each as the
     asker's own words with the other reading stated (decision D23; D25's
     classes): each ambiguous slot its own alternative, changing that slot
@@ -1230,12 +1230,14 @@ def _reading_alternatives(index: names.NameIndex, question: str, reading: Readin
     point was read, a day or an ordinal season is named, or a window of
     games is (the newest N are no season's, and read both types already,
     D14): each is a question the words settled. The answering loop reads
-    each wording again before it offers one (``agent._offered``)."""
+    each wording again before it offers one (``agent._offered``). Returned
+    with the claims of the words that kept one from being written, which the
+    reading depends on as surely as on the words of one written."""
     if not reading.has_point or reading.refused is not None or reading.defaulted is not None:
-        return ()
+        return (), ()
     cuts = reading.cuts
     if cuts.date is not None or cuts.season_n is not None or reading.window.count is not None:
-        return ()
+        return (), ()
     spans = _reading_alternatives_of_span(index, question, reading)
     if any(each.kind == "latest" for each in spans):
         # His latest meeting reads both season types (decision D14: the last
@@ -1244,8 +1246,9 @@ def _reading_alternatives(index: names.NameIndex, question: str, reading: Readin
         # two alternatives over one slot, the latest's question changing the
         # other's reading (measured: the 10 answers of the populations that
         # offered three, all one player's figure against an opponent).
-        return spans
-    return (*spans, *_reading_alternatives_of_last_season(index, question, reading), *_reading_alternatives_of_season_type(question, reading))
+        return spans, ()
+    season_type, guarded = _reading_alternatives_of_season_type(question, reading)
+    return (*spans, *_reading_alternatives_of_last_season(index, question, reading), *season_type), guarded
 
 
 def _reading_alternatives_of_span(index: names.NameIndex, question: str, reading: Reading) -> tuple[Alternative, ...]:
@@ -1302,21 +1305,26 @@ def _reading_alternatives_of_last_season(index: names.NameIndex, question: str, 
     return (Alternative(kind="last_season", span=replace(reading.span, season=season), question=worded),)
 
 
-def _reading_alternatives_of_season_type(question: str, reading: Reading) -> tuple[Alternative, ...]:
+def _reading_alternatives_of_season_type(question: str, reading: Reading) -> tuple[tuple[Alternative, ...], tuple[Claim, ...]]:
     """Both season types, where the words named none and the regular season
     is read alone (ISSUES.md #231, decision D25): "... including the
     playoffs", the wording the span tagger reads as both. Not where the
-    words named the regular season or the postseason, or read both."""
+    words named the regular season (claimed: the words that settled the
+    type, which the span's own claim gives up where the regular season is
+    also the default) or the postseason, or read both."""
     span = reading.span
-    if span.season_type != 2 or span.both or lexicon.RANGE_REGULAR_SEASON.search(question):
-        return ()
+    if span.season_type != 2 or span.both:
+        return (), ()
+    regular = lexicon.RANGE_REGULAR_SEASON.search(question)
+    if regular is not None:
+        return (), (Claim(regular.start(), regular.end(), "season_type"),)
     if reading.asked == PLAYER_LOG and reading.cuts.opponent is not None and not span.career:
         # A log against an opponent read over less than a career: both types
         # named beside an opponent read the log's career as well
         # (``span._implied_career``'s "log", the Payton Prichard log), so
         # the wording would change two slots, never this one alone.
-        return ()
-    return (Alternative(kind="season_type", span=replace(span, both=True), question=_alternative_worded(question, "including the playoffs")),)
+        return (), ()
+    return (Alternative(kind="season_type", span=replace(span, both=True), question=_alternative_worded(question, "including the playoffs")),), ()
 
 
 #: The words that ask a career, by whose it is (the subject's kind), "of all
