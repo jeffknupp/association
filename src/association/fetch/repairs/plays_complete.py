@@ -1,4 +1,4 @@
-"""Whether a player's play-by-play adds up to his box score, game by game and
+"""How far a player's play-by-play falls from his box score, game by game and
 stat by stat: the ``plays_complete`` table.
 
 A quarter's or a half's line is rebuilt from the shots and the plays
@@ -7,10 +7,11 @@ serves splits a box score by period. Its one independent check is the game
 it belongs to: summed over every period, overtime included, the rebuilt line
 must equal the player's box score. Where it does, nothing he did in that
 game is missing from the plays; where it does not, some of it is, and no
-period of that game can be read for that stat.
+period of that game can be read exactly for that stat - and by how much it
+falls short (or over) is a bound on every period's figure in that game.
 
 That is a fact about ONE player's game, and the period reads used to judge a
-whole SEASON instead (``query.player_games.PERIOD_RECONCILIATION``): 2016's
+whole SEASON instead (``PERIOD_RECONCILIATION``, retired 2026-10-23): 2016's
 per-period points agree with ESPN's quarter scores in 76.5% of team-quarters,
 under the 90% the reads refuse below, so every 2016 game was left out. But
 2016's fault is rows ABSENT at the source (``DATA.md``, "A team's
@@ -24,10 +25,11 @@ as well as any season's.
 
 One row per played player-game (``minutes`` recorded, not ``did_not_play``)
 in a game the shot table covers, keyed ``event_id``, ``season``,
-``athlete_id``, with ``season_type`` and one BOOLEAN per
+``athlete_id``, with ``season_type`` and one BIGINT per
 :data:`~association.nba.period_line.PERIOD_COLUMNS` column, named by
-:func:`~association.nba.period_line.complete_column` (``points_complete``): whether the period line summed over the whole game
-equals the box score's figure. A game with no row - one the shot table does
+:func:`~association.nba.period_line.gap_column` (``points_gap``): the box
+score's figure less the period line's summed over the whole game - 0 where
+they agree. A game with no row - one the shot table does
 not cover, or a line rebuilt from the plays because ESPN's box score is
 empty (:mod:`association.fetch.repairs.reconstructed_box`, whose figures are
 the plays' own and so check nothing) - is unknown, never complete.
@@ -46,7 +48,7 @@ import logging
 
 import duckdb
 
-from association.nba.period_line import PERIOD_COLUMNS, PLAYS_COMPLETE, complete_column, period_line_sql
+from association.nba.period_line import PERIOD_COLUMNS, PLAYS_COMPLETE, gap_column, period_line_sql
 
 log: logging.Logger = logging.getLogger("association.fetch.repairs.plays_complete")
 
@@ -68,9 +70,14 @@ def plays_complete_sql() -> str:
     shot is complete.
 
     .. versionadded:: 7.0.0
+
+    .. versionchanged:: 7.0.0
+       Each column is the signed gap (``points_gap``), where it was whether
+       the two agree (``points_complete``): the period reads say how far a
+       figure may be off.
     """
     line = period_line_sql(None, "SELECT DISTINCT event_id, season FROM shot_chart")
-    flags = ",\n            ".join(f"(COALESCE(l.{c}, 0) = b.{c}) AS {complete_column(c)}" for c in PERIOD_COLUMNS)
+    flags = ",\n            ".join(f"CAST(b.{c} - COALESCE(l.{c}, 0) AS BIGINT) AS {gap_column(c)}" for c in PERIOD_COLUMNS)
     return f"""
         WITH l AS ({line})
         SELECT b.event_id, b.season, b.season_type, b.athlete_id,

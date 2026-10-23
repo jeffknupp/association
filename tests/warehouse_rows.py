@@ -42,3 +42,38 @@ def insert_rows(con: duckdb.DuckDBPyConnection, table: str, rows: Iterable[Seque
         con.execute(f"INSERT INTO {table} SELECT * FROM {view}")
     finally:
         con.unregister(view)
+
+
+def plays_all_complete(con: duckdb.DuckDBPyConnection) -> None:
+    """The completeness table a period read bounds its games by
+    (``nba.period_line.PLAYS_COMPLETE``), as a view saying every played
+    player-game in a game the shot table covers adds up to its box score in
+    every column - a gap of 0, on the rows the load-time build writes
+    (``fetch.repairs.plays_complete``) - for a fixture whose period figures
+    are not the point. A view, so a game a test inserts later is covered
+    too; a test about a game that does not add up materializes it
+    (:func:`plays_short`).
+    """
+    from association.nba.period_line import PERIOD_COLUMNS, PLAYS_COMPLETE, gap_column
+
+    gaps = ", ".join(f"CAST(0 AS BIGINT) AS {gap_column(c)}" for c in PERIOD_COLUMNS)
+    con.execute(
+        f"CREATE OR REPLACE VIEW {PLAYS_COMPLETE} AS SELECT b.event_id, b.season, b.season_type, b.athlete_id, {gaps} "
+        "FROM player_game_log b WHERE b.minutes IS NOT NULL AND NOT b.did_not_play "
+        "AND b.event_id IN (SELECT DISTINCT cov.event_id FROM shot_chart cov WHERE cov.season = b.season)"
+    )
+
+
+def plays_short(con: duckdb.DuckDBPyConnection, short: dict[tuple[str, str], dict[str, int]]) -> None:
+    """Materialize :func:`plays_all_complete`'s view as the table it stands
+    for, with each ``(event_id, athlete_id)`` in ``short`` falling from its
+    box score by the gap given per column (the box score less the plays, as
+    ``plays_complete`` writes it for a game missing plays at the source)."""
+    from association.nba.period_line import PLAYS_COMPLETE, gap_column
+
+    con.execute(f"CREATE TABLE _plays_complete AS SELECT * FROM {PLAYS_COMPLETE}")
+    con.execute(f"DROP VIEW {PLAYS_COMPLETE}")
+    con.execute(f"ALTER TABLE _plays_complete RENAME TO {PLAYS_COMPLETE}")
+    for (event, athlete), gaps in short.items():
+        for column, gap in gaps.items():
+            con.execute(f"UPDATE {PLAYS_COMPLETE} SET {gap_column(column)} = ? WHERE event_id = ? AND athlete_id = ?", [gap, event, athlete])

@@ -18,12 +18,13 @@ Two shapes, two statements, both the compiler's:
 
 The refusals come in order: a season whose shots carry no value is refused
 before any name is resolved
-(:func:`~association.query.player_games.period_distrust`); in any other
-season whose per-period figures cannot be trusted each game is counted
-where the player's play-by-play adds up to his box score in the columns
-read (:func:`~association.query.player_games.period_counted`), the rest
-left out and said, and the read refused only where no game is left - a
-date's one game included.
+(:func:`~association.query.player_games.period_unseparable`); in any season
+each game is counted where the player's play-by-play adds up to his box
+score in the columns read
+(:func:`~association.query.player_games.period_counted`), the rest left out
+and said, and the read refused only where no game is left - a date's one
+game included - or where the warehouse holds no record of which games add
+up.
 
 .. versionadded:: 5.0.0
 """
@@ -49,23 +50,21 @@ from association.query.notes import Note
 from association.query.player_games import (
     BOTH_SEASON_TYPES,
     PERIOD_COLUMNS,
-    PERIOD_INCOMPLETE,
+    PERIOD_GAPS,
     PERIOD_LOG_COLUMNS,
+    PERIOD_MISSING_ABOVE,
     PERIOD_PLAYS_COLUMNS,
     PERIOD_RATES,
-    PERIOD_REFUSE_BELOW,
     REGULATION_QUARTERS,
     Narrowed,
     PeriodCounted,
     most_games,
-    period_agreement_across,
-    period_agreement_notes,
     period_columns,
     period_counted,
-    period_distrust,
     period_quarter,
     period_ranking,
     period_rate,
+    period_unseparable,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of, without_notes
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, Filtered, Measure, PointShape, Unsupported, _clamp_limit, period_narrowing
@@ -91,7 +90,7 @@ from association.query.result import (
     Window,
 )
 from association.query.season_text import season_phrase
-from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games
+from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TEAM_PERIOD_REFUSE_BELOW, TeamNarrowed, period_games
 from association.query.team_relation import scoped_team, team_games
 
 from .core import Compiled, Query, compile_over, compile_query, rows_of
@@ -100,10 +99,10 @@ from .team import TeamQuery
 #: What the per-period log reads beside the fixed columns: the period's whole
 #: line, the opponent as the game's own season named it, and the game's
 #: season type, which a read over both types counts each of.
-_PERIOD_LOG_MEASURES: list[str] = [*PERIOD_COLUMNS, "opponent_name", "season_type", PERIOD_INCOMPLETE]
+_PERIOD_LOG_MEASURES: list[str] = [*PERIOD_COLUMNS, "opponent_name", "season_type", PERIOD_GAPS]
 
-#: The columns a whole line shows (``_period_full_line``), each of which a
-#: game of an untrusted season must add up in to be counted
+#: The columns a whole line shows (``_period_full_line``), each of which the
+#: answer bounds by what a game's plays miss
 #: (:func:`~association.query.player_games.period_counted`): the line, and
 #: every shooting split's makes and attempts.
 _PERIOD_FULL_LINE_COLUMNS: tuple[str, ...] = tuple(dict.fromkeys([*PERIOD_LOG_COLUMNS, *(column for rate in PERIOD_RATES.values() for column in rate)]))
@@ -116,8 +115,9 @@ def read_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unan
     that (a predicate, another skeleton, a measure the point did not plan),
     and the compiler's own sentence answers; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is a
-    refusal - a season whose figures cannot be trusted, a column this
-    warehouse cannot rebuild, the relation's own.
+    refusal - a season whose shots carry no value, games whose plays miss
+    too often to bound the figure, a column this warehouse cannot rebuild,
+    the relation's own.
 
     .. versionadded:: 5.0.0
 
@@ -135,18 +135,11 @@ def read_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unan
     return _period_log(con, q)
 
 
-def _period_untrusted(season: int, measure: str) -> Unanswered | None:
-    """The refusal for a season whose per-period ``measure`` cannot be
-    trusted, or None."""
-    distrust = period_distrust(season, measure)
-    return Refusal(kind="period_untrusted", facts=distrust, shown={"season": distrust["season"]}) if distrust is not None else None
-
-
 def _period_unseparable(season: int, measure: str) -> Unanswered | None:
     """The refusal for a season whose shots carry no value
     (``UNSEPARABLE_SHOT_VALUES``), which no game's check can lift, or None."""
-    distrust = period_distrust(season, measure)
-    return Refusal(kind="period_untrusted", facts=distrust, shown={"season": distrust["season"]}) if distrust is not None and distrust["unseparable"] else None
+    facts = period_unseparable(season, period_columns(measure))
+    return Refusal(kind="period_untrusted", facts=facts, shown={"season": season}) if facts is not None else None
 
 
 def _period_where(scope: Filtered, narrowed: Narrowed) -> tuple[tuple[Cell, ...], tuple[str, ...]]:
@@ -199,8 +192,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     across = _period_across_seasons(scope)
     if scope.cuts.date is None and not across:
         # Only a season whose shots carry no value is refused unread: in any
-        # other untrusted season each game is counted on its own check
-        # (``_period_log_rows``).
+        # other each game is counted on its own check (``_period_log_rows``).
         refused = _period_unseparable(scope.span.season or current_season(), measure)
         if refused is not None:
             return refused
@@ -215,67 +207,100 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     compiled = compile_query(con, read if asked_games is None else replace(read, limit=asked_games[1], direction="desc" if asked_games[0] == "recent" else "asc"))
     if compiled.player is None:
         return None
-    settled = _period_log_rows(scope, sorted(rows_of(con, compiled), key=lambda row: row["day"]), measure, whose=compiled.player.name)
+    settled = _period_log_rows(scope, sorted(rows_of(con, compiled), key=lambda row: row["day"]), measure, whose=compiled.player.name, checked=compiled.narrowed.period_checked, period_label=asked[1])
     if isinstance(settled, Unanswered):
         return settled
-    rows, season, left_out, checked = settled
+    rows, season, left_out = settled
     where = _period_where(scope, compiled.narrowed)
     if not rows:
         redirected = _period_redirect(con, read, compiled, asked[1], measure)
         if redirected is not None:
             return redirected
-    return _period_log_result(con, compiled, scope, rows, season, asked[1], measure, where, cut=asked_games is not None, left_out=left_out, checked=checked)
+    return _period_log_result(con, compiled, scope, rows, season, asked[1], measure, where, cut=asked_games is not None, left_out=left_out)
 
 
-def _period_log_rows(scope: Filtered, rows: list[dict[str, Any]], measure: str, *, whose: str) -> tuple[list[dict[str, Any]], int, list[Note], frozenset[int]] | Unanswered:
-    """The games a period log reads, the season it is labeled and caveated
-    by where it is one, the notes on the games left out, and the untrusted
-    seasons whose kept games were each checked complete - or the refusal
-    where no game can be counted.
+def _period_log_rows(scope: Filtered, rows: list[dict[str, Any]], measure: str, *, whose: str, checked: bool, period_label: str) -> tuple[list[dict[str, Any]], int, list[Note]] | Unanswered:
+    """The games a period log reads, the season it is labeled by where it
+    is one and the notes on what each game's plays miss - or the refusal
+    where the games cannot be read. ``checked``: the warehouse holds the
+    completeness table (:data:`~association.nba.period_line.PLAYS_COMPLETE`,
+    built at load time); without it nothing says how far a game's plays
+    fall from its box score, and a read that found games is refused by that
+    cause, named.
 
-    In a season whose per-period figures cannot be trusted a game is
-    counted on its own check (:func:`~association.query.player_games.period_counted`):
-    the asked stat's columns, or a whole line's where no stat was named.
-    Before 2026-10-23 such a season was refused, or left out of a read
-    across seasons, whole - every 2016 game, though 90% of them add up."""
+    Every game is counted (:func:`~association.query.player_games.period_counted`),
+    and each column the answer shows - the asked stat's, or a whole line's
+    where no stat was named - is bounded by what the plays miss of it; where
+    more of the games miss in one of them than
+    :data:`~association.query.player_games.PERIOD_MISSING_ABOVE` allows, the
+    read is refused by that column and share. Until 2026-10-23 a season was
+    trusted or not whole (``PERIOD_RECONCILIATION``): under the bar its
+    games were each checked and the rest left out, over it every game was
+    counted and the season's agreement said beside the figure."""
     season = scope.span.season or current_season()
     if scope.cuts.date is not None and rows:
         # The season a date's game actually falls in, read off the row itself
         # rather than the slot: an explicit year in the question ("... on
         # november 11 2019") can name a date the season slot disagrees with.
         season = int(rows[0]["season"])
+    if rows and not checked:
+        return Refusal(kind="period_unchecked", facts={})
     columns = period_columns(measure) if spelled(scope.measure) is not None else _PERIOD_FULL_LINE_COLUMNS
-    counted = period_counted(rows, measure, columns)
-    if rows and not counted.kept:
-        # Nothing to count: refused as the season always was, naming the
-        # first season a game was left out of.
-        first = min(int(row["season"]) for row in [*counted.incomplete, *counted.unchecked])
-        facts = period_distrust(first, measure)
-        assert facts is not None  # a game is left out only of an untrusted season
+    counted = period_counted(rows, columns)
+    refused = _period_unread_games(counted, columns, whose)
+    if refused is not None:
+        return refused
+    return counted.kept, season, _period_bound_notes(counted, columns, period_label, whose)
+
+
+def _period_unread_games(counted: PeriodCounted, columns: tuple[str, ...], whose: str | None) -> Refusal | None:
+    """The refusal where the games read cannot be: every one of a season
+    whose shots carry no value, named as the season always was, or more of
+    them missing in a column asked for than
+    :data:`~association.query.player_games.PERIOD_MISSING_ABOVE` allows,
+    named by the column and the share - or None."""
+    if counted.unseparable and not counted.kept:
+        first = min(int(row["season"]) for row in counted.unseparable)
+        facts = period_unseparable(first, columns)
+        assert facts is not None  # a game is left out only of such a season
         return Refusal(kind="period_untrusted", facts=facts, shown={"season": first})
-    return counted.kept, season, _period_left_out(counted, columns, whose), counted.checked
+    short = counted.too_short(columns)
+    if short is None:
+        return None
+    return Refusal(kind="period_incomplete", facts={**short, "whose": whose})
 
 
-def _period_left_out(counted: PeriodCounted, columns: tuple[str, ...], whose: str) -> list[Note]:
-    """The notes on the games a period read left out: those of a season
-    nothing checks, by season (as a whole untrusted season always was), and
-    those whose play-by-play does not add up to the box score in a column
-    read, by player and column."""
+def _period_bound_notes(counted: PeriodCounted, columns: tuple[str, ...], period_label: str | None, whose: str | None) -> list[Note]:
+    """The notes on a period read's games: those of a season whose shots
+    carry no value, left out by season; for each column the answer shows
+    whose plays miss in some game, how far the figure may be off - the
+    sizes of the gaps summed - and in which games, each gap signed (the box
+    score less the plays: positive where the plays hold less); and those
+    counted whose box score is rebuilt from the plays, with nothing to check
+    them by. A column whose every game adds up says nothing."""
     notes: list[Note] = []
-    if counted.unchecked:
-        notes.append(Note("games_unseen", {"games": len(counted.unchecked), "why": "period_untrusted", "seasons": sorted({int(row["season"]) for row in counted.unchecked})}))
-    if counted.incomplete:
-        seasons = sorted({int(row["season"]) for row in counted.incomplete})
-        notes.append(Note("games_unseen", {"games": len(counted.incomplete), "why": "period_incomplete", "seasons": seasons, "columns": counted.incomplete_columns(columns), "whose": whose}))
+    if counted.unseparable:
+        notes.append(Note("games_unseen", {"games": len(counted.unseparable), "why": "period_unseparable", "seasons": sorted({int(row["season"]) for row in counted.unseparable})}))
+    for column in PERIOD_COLUMNS:
+        gaps = counted.gaps(column) if column in columns else []
+        if gaps:
+            facts = {"period": period_label, "column": column, "bound": sum(abs(gap) for _, gap in gaps), "dates": [_period_game_date(row) for row, _ in gaps], "gaps": [gap for _, gap in gaps]}
+            notes.append(Note("period_bound", {**facts, "whose": whose}))
+    if counted.rebuilt:
+        notes.append(Note("lines_rebuilt", {"games": len(counted.rebuilt), "what": "period", "whose": whose}))
     return notes
+
+
+def _period_game_date(row: dict[str, Any]) -> str:
+    """A game's Eastern date, as the log and the notes name it."""
+    return str(eastern_date(row["day"]))
 
 
 def _period_across_seasons(scope: Filtered) -> bool:
     """Whether the read covers more than one season - a career or a range
     (decisions D13, D14: "kyrie Irving second half stats vs denver" is his
-    career against Denver) - so that each season it touches is caveated
-    season by season, and a season under the trusted line refused only where
-    no game of it can be counted (``_period_log_rows``)."""
+    career against Denver) - so that no one season is refused unread: each
+    game is counted on its own check (``_period_log_rows``)."""
     return scope.cuts.date is None and (scope.span.career or scope.span.since is not None)
 
 
@@ -335,29 +360,25 @@ def _period_log_result(
     cut: bool,
     fallback: Decided | None = None,
     left_out: list[Note] | None = None,
-    checked: frozenset[int] = frozenset(),
 ) -> Result | Unanswered:
     """The games read, the figures over them and the caveats - or, with no
     games, the Result the sayer says "no games found" from. ``fallback`` is
     the redirect's decision (:class:`~association.query.result.Decided`),
     carried on ``Result.decisions``; ``cut``, whether the games are the
-    count the words asked; ``left_out``, the notes on the games of an
-    untrusted season left out; ``checked``, the untrusted seasons whose
-    games were counted each on its own check, whose season-wide agreement
-    caveat is not theirs. A read over both season
-    types counts the games of each (``Rows.by_season_type``), and a read
-    across seasons is caveated by every season it holds and labeled by its
-    first and last (decisions D13, D14)."""
+    count the words asked; ``left_out``, the notes on the games left out or
+    counted unchecked. A read over both season types counts the games of
+    each (``Rows.by_season_type``), and a read across seasons is labeled by
+    its first and last (decisions D13, D14)."""
     assert compiled.player is not None
     games = _period_games(rows, measure)
     if games and _period_unread(games, measure):
         return Refusal(kind="period_unread", facts={"measure": measure})
-    about, seasons = _period_log_span(compiled.span, scope, rows, season, fallback=fallback)
+    about = _period_log_span(compiled.span, scope, rows, season, fallback=fallback)
     season_type = about.season_type
     # A log asked for (the measure's per-game `how`), and whether a stat was named at all.
     per_game = scope.measure is not None and scope.measure.how == "per_game"
     named = spelled(scope.measure)
-    notes = _period_log_notes(con, compiled, [season for season in seasons if season not in checked], measure, full_line=named is None, left_out=left_out or []) if games else []
+    notes = _period_log_notes(con, compiled, left_out=left_out or []) if games else []
     cells, also = where
     facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, also=also, cut=cut)
     # The log beneath a per-game figure: the newest N, or the first N.
@@ -378,26 +399,22 @@ def _period_log_result(
     )
 
 
-def _period_log_span(span: ResolvedSpan | None, scope: Filtered, rows: list[dict[str, Any]], season: int, *, fallback: Decided | None) -> tuple[Span, list[int]]:
-    """The span a period log is labeled by and the seasons it is caveated
-    by: across seasons, every season its games are from (decisions D13,
-    D14); else the one season - the redirect's, where ``fallback`` moved it,
-    in its own type."""
+def _period_log_span(span: ResolvedSpan | None, scope: Filtered, rows: list[dict[str, Any]], season: int, *, fallback: Decided | None) -> Span:
+    """The span a period log is labeled by: across seasons, the first and
+    last its games are from (decisions D13, D14); else the one season - the
+    redirect's, where ``fallback`` moved it, in its own type."""
     if fallback is None and span is not None and span.season is None and scope.cuts.date is None:
-        seasons = sorted({int(row["season"]) for row in rows})
-        return _period_across_span(span, seasons, span.season_type), seasons
+        return _period_across_span(span, sorted({int(row["season"]) for row in rows}), span.season_type)
     season_type = span.season_type if span is not None and fallback is None else scope.span.season_type or 2
-    return Span(season=season, season_type=season_type, date=None if fallback else scope.cuts.date), [season]
+    return Span(season=season, season_type=season_type, date=None if fallback else scope.cuts.date)
 
 
-def _period_log_notes(con: duckdb.DuckDBPyConnection, compiled: Compiled, seasons: list[int], measure: str, *, full_line: bool, left_out: list[Note]) -> list[Note]:
-    """A period log's remarks: the agreement caveat of the seasons the games
-    are from, said once (measured per season; a whole line's names every column, since
-    the line is shown beneath the figure where no stat was named,
-    ``_period_full_line``), the games a read across seasons left out, and
-    what "without" was taken to mean (decision D15)."""
+def _period_log_notes(con: duckdb.DuckDBPyConnection, compiled: Compiled, *, left_out: list[Note]) -> list[Note]:
+    """A period log's remarks: the games left out or counted unchecked
+    (each game checked on its own, :func:`_period_log_rows`), and what
+    "without" was taken to mean (decision D15)."""
     assert compiled.player is not None
-    notes = period_agreement_across(seasons, measure, full_line=full_line) + left_out
+    notes = list(left_out)
     if compiled.narrowed.without and compiled.span is not None:
         notes += without_notes(con, compiled.player, compiled.span, compiled.narrowed)
     return notes
@@ -458,8 +475,9 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
 
     Only when the season was never named (``span.defaulted``) and the
     question asked for a window; the found games are answered ONLY when
-    they land in exactly one season, since the caveat is measured per
-    season - ``None`` falls back to the plain "no games" answer.
+    they land in exactly one season (the rule from when a period's caveat
+    was measured per season, kept: the answer is labeled by that season) -
+    ``None`` falls back to the plain "no games" answer.
     """
     scope, player, span = read, compiled.player, compiled.span
     assert player is not None
@@ -476,15 +494,15 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
     if len(seasons) != 1:
         return None
     (season,) = seasons
-    counted = _period_log_rows(scope, rows, measure, whose=player.name)
+    counted = _period_log_rows(scope, rows, measure, whose=player.name, checked=widened.narrowed.period_checked, period_label=period_label)
     if isinstance(counted, Unanswered):
         return counted
-    rows, _, left_out, checked = counted
+    rows, _, left_out = counted
     if _period_unread(_period_games(rows, measure), measure):
         return None
     where = _period_where(scope, widened.narrowed)
     fallback = Decided(kind="season_fallback", field="season", chose=season, before=span.season, facts={"games": len(rows), "season_type": span.season_type})
-    return _period_log_result(con, widened, scope, rows, season, period_label, measure, where, cut=True, fallback=fallback, left_out=left_out, checked=checked)
+    return _period_log_result(con, widened, scope, rows, season, period_label, measure, where, cut=True, fallback=fallback, left_out=left_out)
 
 
 # --- the four quarters side by side ------------------------------------------------------
@@ -493,14 +511,15 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
 def _period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """A named player's four quarters side by side (#162): his per-game
     figure and total in each quarter over the same games - the compiler's
-    ``grouped``-by-``period`` read, executed."""
+    ``grouped``-by-``period`` read, executed - each quarter's figure bounded
+    by what each game's plays miss against its box score."""
     scope = q
     measure = period_split_measure(scope.measure)
     if q.measures != [measure]:
         return None
     across = _period_across_seasons(scope)
     if scope.cuts.date is None and not across:
-        refused = _period_untrusted(scope.span.season or current_season(), measure)
+        refused = _period_unseparable(scope.span.season or current_season(), measure)
         if refused is not None:
             return refused
     compiled = compile_query(con, q)
@@ -509,9 +528,9 @@ def _period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     rows = rows_of(con, compiled)
     seasons = sorted({int(season) for row in rows for season in row.get("seasons") or []}) if across else None
     for season in seasons or []:
-        # One table over every season, so a season that cannot be trusted
-        # refuses the whole, named, rather than being summed in.
-        refused = _period_untrusted(season, measure)
+        # One table over every season, so a season whose shots carry no
+        # value refuses the whole, named, rather than being summed in.
+        refused = _period_unseparable(season, measure)
         if refused is not None:
             return refused
     return _period_quarters_result(compiled, scope, rows, measure, seasons)
@@ -520,8 +539,8 @@ def _period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
 def _period_quarters_result(compiled: Compiled, scope: Filtered, rows: list[dict[str, Any]], measure: str, seasons: list[int] | None = None) -> Result | Unanswered:
     """The four quarters from the compiled statement's rows, with the
     remarks - :func:`_period_by_quarter`'s tail. ``seasons`` are the seasons
-    a read across them holds (decision D13), each caveated, the span
-    labeled by its first and last."""
+    a read across them holds (decision D13), the span labeled by its first
+    and last."""
     assert compiled.player is not None
     by_quarter = {int(row["group"]): row for row in rows}
     games = max((int(row["games"]) for row in rows), default=0)
@@ -530,13 +549,18 @@ def _period_quarters_result(compiled: Compiled, scope: Filtered, rows: list[dict
     season = _period_quarters_season(scope, rows, measure) if games and seasons is None else scope.span.season or current_season()
     if isinstance(season, Unanswered):
         return season
+    notes: list[Note] = []
+    if games:
+        bounded = _period_quarters_bounded(compiled, rows, measure)
+        if isinstance(bounded, Unanswered):
+            return bounded
+        notes = [Note("definition", {"term": "overtime_excluded"}), *bounded]
     narrowed = compiled.narrowed
     cells, also = _period_where(scope, narrowed)
     facts = PeriodFacts(stat=measure, also=also, games=games)
     # The compiler's window cut these games (the same N in every quarter).
     window = Window(limit=narrowed.window[1], ascending=narrowed.window[0] == "first") if narrowed.window is not None else None
     quarters = tuple(_period_quarter(by_quarter.get(quarter, {}), quarter, measure) for quarter in REGULATION_QUARTERS) if games else ()
-    notes = _period_quarters_notes(seasons if seasons is not None else [season], measure) if games else []
     about = _period_quarters_span(compiled.span, scope, seasons, season)
     return Result(
         subject=compiled.player.name,
@@ -550,6 +574,25 @@ def _period_quarters_result(compiled: Compiled, scope: Filtered, rows: list[dict
     )
 
 
+def _period_quarters_bounded(compiled: Compiled, rows: list[dict[str, Any]], measure: str) -> list[Note] | Unanswered:
+    """The four quarters' games - the same in every quarter, each with its
+    gap against its box score (the compiled read's ``period_games``) -
+    counted as a one-quarter read counts them
+    (:func:`~association.query.player_games.period_counted`): the notes
+    bounding each figure, or the refusal where the warehouse cannot say, or
+    more of the games miss in the stat than the floor allows."""
+    assert compiled.player is not None
+    games = [dict(game) for game in (rows[0].get("period_games") or [])] if rows else []
+    if games and not compiled.narrowed.period_checked:
+        return Refusal(kind="period_unchecked", facts={})
+    columns = period_columns(measure)
+    counted = period_counted(games, columns)
+    refused = _period_unread_games(counted, columns, compiled.player.name)
+    if refused is not None:
+        return refused
+    return _period_bound_notes(counted, columns, None, compiled.player.name)
+
+
 def _period_quarters_span(span: ResolvedSpan | None, scope: Filtered, seasons: list[int] | None, season: int) -> Span:
     """The span the four quarters are labeled by: across ``seasons`` (a
     career or a range, decision D13), or the one season."""
@@ -558,22 +601,15 @@ def _period_quarters_span(span: ResolvedSpan | None, scope: Filtered, seasons: l
     return Span(season=season, season_type=scope.span.season_type or 2, date=scope.cuts.date)
 
 
-def _period_quarters_notes(seasons: list[int], measure: str) -> list[Note]:
-    """The four quarters' remarks: that overtime is no quarter, and the
-    agreement caveat of the seasons the games are from, said once."""
-    return [Note("definition", {"term": "overtime_excluded"}), *period_agreement_across(seasons, measure)]
-
-
 def _period_quarters_season(scope: Filtered, rows: list[dict[str, Any]], measure: str) -> int | Unanswered:
-    """The season the four quarters are labeled and caveated by: the one
-    asked, or - for a date - the season the dated game falls in, read off
-    the rows as the one-quarter read does, and refused off it where its
-    figures cannot be trusted - never "2026 regular season on 2014-11-01",
-    caveated by 2026's agreement (ISSUES.md #302)."""
+    """The season the four quarters are labeled by: the one asked, or - for
+    a date - the season the dated game falls in, read off the rows as the
+    one-quarter read does, and refused off it where its shots carry no
+    value - never "2026 regular season on 2014-11-01" (ISSUES.md #302)."""
     if scope.cuts.date is None:
         return scope.span.season or current_season()
     season = int(min(row["first_season"] for row in rows if row["first_season"] is not None))
-    refused = _period_untrusted(season, measure)
+    refused = _period_unseparable(season, measure)
     return refused if refused is not None else season
 
 
@@ -698,7 +734,7 @@ def _team_quarter_points_rebuilt(team: Entity, games: list[dict[str, Any]], seas
     play-by-play holds NULL, never a zero: it is left out and counted, and
     when no game has any the question is refused on that cause; a season
     whose team-games rebuild this column right under
-    :data:`~association.query.player_games.PERIOD_REFUSE_BELOW` refuses the
+    :data:`~association.query.team_games.TEAM_PERIOD_REFUSE_BELOW` refuses the
     whole question, naming the season. Points are the linescore's, and pass
     through untouched."""
     if measure == "points":
@@ -711,7 +747,7 @@ def _team_quarter_points_rebuilt(team: Entity, games: list[dict[str, Any]], seas
     if reached and not known:
         return Refusal(kind="team_period_unread", facts={"team": team.name, "measure": measure}, shown={"team": team.name})
     listed = sorted((season, pct) for season, pct in weak.items() if pct is not None)
-    refused = [(season, pct) for season, pct in listed if pct < PERIOD_REFUSE_BELOW]
+    refused = [(season, pct) for season, pct in listed if pct < TEAM_PERIOD_REFUSE_BELOW]
     if refused:
         return Refusal(
             kind="team_period_untrusted",
@@ -727,8 +763,8 @@ def _team_quarter_points_notes(measure: str, listed: list[tuple[int, float]], *,
     and each listed season's measured agreement."""
     notes = [Note("games_unseen", {"games": missing, "of": reached, "why": "no_play_by_play"})] if missing else []
     if listed:
-        facts = {"seasons": [season for season, _ in listed], "pct": [pct for _, pct in listed], "columns": list(period_columns(measure)), "stat": measure, "what": "team_period_rebuilt"}
-        notes.append(Note("rebuilt_agreement", facts))
+        seasons, pcts = [season for season, _ in listed], [pct for _, pct in listed]
+        notes.append(Note("rebuilt_agreement", {"seasons": seasons, "pct": pcts, "columns": list(period_columns(measure)), "stat": measure, "what": "team_period_rebuilt"}))
     return notes
 
 
@@ -879,7 +915,9 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result 
     the relation itself. The denominator is games PLAYED; a per-game
     average needs a minimum (the season's per-game qualifier, or half of
     the most anyone played in a pool narrowed to an opponent or a venue);
-    the season's measured accuracy caveats or refuses it. A
+    each shown player's figure is bounded by what his games' plays miss
+    of the box score, and refused where more than one game in ten of the
+    pool's miss. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is a
     refusal.
 
@@ -901,9 +939,9 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result 
         return Refusal(kind="period_rank_rate", facts={"measure": measure}, shown={"stat": measure})
     season = scope.span.season or current_season()
     season_type = scope.span.season_type or 2
-    distrust = period_distrust(season, measure)
-    if distrust is not None:
-        return Refusal(kind="period_untrusted", facts=distrust, shown={"season": distrust["season"]})
+    refused = _period_unseparable(season, measure)
+    if refused is not None:
+        return refused
     span = span_of(reading.Span(season=season), "player_game_log", season_type=season_type)
     minimum = PER_GAME_MIN_POSTSEASON_GAMES if season_type == POSTSEASON else PER_GAME_MIN_GAMES
     asked = period_narrowing(scope)
@@ -916,17 +954,43 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result 
         return Refusal(kind="period_rank_unread", facts={"measure": measure})
     minimum, most = _period_leaderboard_minimum(con, narrowed, scope, minimum)
     rows = period_ranking(con, narrowed, measure, minimum=minimum, limit=_clamp_limit(scope.window.count), rebuilt=box_source(con).rebuilt)
-    leaders = tuple({"player": name, "games": int(games), measure: int(total), "average": round(float(average), 1)} for name, games, total, average in rows)
+    bounded = _period_leaderboard_bounded(narrowed.period_checked, [(row[0], *row[4:]) for row in rows], measure, asked[1])
+    if isinstance(bounded, Unanswered):
+        return bounded
+    leaders = tuple({"player": name, "games": int(games), measure: int(total), "average": round(float(average), 1)} for name, games, total, average, *_ in rows)
     return Result(
         subject=narrowed.team.name if narrowed.team is not None else "",
         relation="everyone",
         span=Span(season=season, season_type=season_type),
         narrowing=_period_leaderboard_narrowing(narrowed, asked[1]),
         parts=(Part(body=Grouped(by="player", rows=leaders, ranked_by=measure)),),
-        notes=tuple(period_agreement_notes(season, measure)),
+        notes=tuple(bounded),
         decisions=(_period_leaderboard_decided(minimum, most),),
         facts=PeriodRankingFacts(measure=measure, minimum=minimum, most=most),
     )
+
+
+def _period_leaderboard_bounded(checked: bool, rows: list[tuple[Any, ...]], measure: str, period_label: str | None) -> list[Note] | Unanswered:
+    """What the plays miss of a ranking's ``measure``, from each ranked
+    player's (name, checked, missing, bound, pool_checked, pool_missing):
+    the refusal where the warehouse cannot say, or where more of the pool's
+    games miss than :data:`~association.query.player_games.PERIOD_MISSING_ABOVE`
+    allows, by the column and the share; else the note bounding each shown
+    player's figure whose plays miss in some game. Every game is counted, as
+    a player's own read counts it. ``checked``: the warehouse holds the
+    completeness table."""
+    if rows and not checked:
+        return Refusal(kind="period_unchecked", facts={})
+    if not rows:
+        return []
+    pool_checked, pool_missing = int(rows[0][4] or 0), int(rows[0][5] or 0)
+    if pool_checked and pool_missing > PERIOD_MISSING_ABOVE * pool_checked:
+        return Refusal(kind="period_incomplete", facts={"column": measure, "missing": pool_missing, "games": pool_checked, "whose": None})
+    short = [(str(name), int(missing), int(bound)) for name, _checked, missing, bound, *_ in rows if missing]
+    if not short:
+        return []
+    facts = {"period": period_label, "column": measure, "names": [name for name, _, _ in short], "games": [n for _, n, _ in short], "gaps": [bound for _, _, bound in short]}
+    return [Note("period_bound", facts)]
 
 
 def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Filtered, minimum: int) -> Result | Unanswered:
@@ -937,23 +1001,28 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: Resolve
     says so (yardstick-v2 F048, "nba playerspoints by quarter average")."""
     per_quarter: dict[str, dict[int, tuple[int, float]]] = {}
     names: dict[str, str] = {}
+    # What the plays miss of each player's points: whole-game gaps, the same
+    # in every quarter, so read off the first quarter's read.
+    gaps: dict[str, tuple[Any, ...]] = {}
     rebuilt = box_source(con).rebuilt
     most: int | None = None
     narrowing = Narrowing()
     team = None
+    checked = False
     for quarter in REGULATION_QUARTERS:
         narrowed = league_games(con, span, replace(scope, period=reading.Period(number=quarter)), position=None)
         if isinstance(narrowed, Unanswered):
             return narrowed
-        team = narrowed.team
+        team, checked = narrowed.team, narrowed.period_checked
         if quarter == REGULATION_QUARTERS[0]:
             # The pool is the same games in every quarter, so the share is
             # read once (#185).
             minimum, most = _period_leaderboard_minimum(con, narrowed, scope, minimum)
             narrowing = _period_leaderboard_narrowing(narrowed, None)
-        for athlete, name, games, average in period_quarter(con, narrowed, minimum=minimum, rebuilt=rebuilt):
+        for athlete, name, games, average, *missed in period_quarter(con, narrowed, minimum=minimum, rebuilt=rebuilt):
             names[athlete] = name
             per_quarter.setdefault(athlete, {})[quarter] = (int(games), float(average))
+            gaps.setdefault(athlete, (name, *missed))
     whole = {athlete: quarters for athlete, quarters in per_quarter.items() if len(quarters) == len(REGULATION_QUARTERS)}
     ranked = sorted(whole, key=lambda athlete: (-sum(avg for _, avg in whole[athlete].values()), names[athlete]))
     limit = _clamp_limit(scope.window.count, default=_PERIOD_LEADERBOARD_BY_QUARTER_LIMIT)
@@ -961,14 +1030,16 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: Resolve
         {"player": names[a], "games": whole[a][1][0], **{f"q{q}": round(whole[a][q][1], 2) for q in REGULATION_QUARTERS}, "total": round(sum(avg for _, avg in whole[a].values()), 2)}
         for a in ranked[:limit]
     )
-    season = span.season or current_season()
+    bounded = _period_leaderboard_bounded(checked, [gaps[a] for a in ranked[:limit]] if ranked else list(gaps.values())[:1], "points", None)
+    if isinstance(bounded, Unanswered):
+        return bounded
     return Result(
         subject=team.name if team is not None else "",
         relation="everyone",
         span=Span(season=span.season, season_type=span.season_type),
         narrowing=narrowing,
         parts=(Part(body=Grouped(by="player", rows=leaders, ranked_by="quarters")),),
-        notes=(Note("definition", {"term": "overtime_excluded"}), *period_agreement_notes(season, "points")),
+        notes=(Note("definition", {"term": "overtime_excluded"}), *bounded),
         decisions=(
             _period_leaderboard_decided(minimum, most),
             Decided(kind="cut", field="limit", chose=len(leaders), before=scope.window.count, facts={"total": len(ranked)}),

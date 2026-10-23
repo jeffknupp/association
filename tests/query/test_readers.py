@@ -13,10 +13,11 @@ from typing import Any
 import duckdb
 import pytest
 from routed import answered_as, measure_of, planned_answer, planned_query, said
+from warehouse_rows import plays_all_complete, plays_short
 
 from association.fetch.repairs import real_games
 from association.nba import shot_value
-from association.nba.period_line import PLAYS_COMPLETE, complete_column
+from association.nba.period_line import PLAYS_COMPLETE
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
@@ -39,7 +40,7 @@ from association.query.entities import MAX_CANDIDATES, Availability, Entity, col
 from association.query.measures import PERIOD_RATE_STATS
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
-from association.query.player_games import BOTH_SEASON_TYPES, PERIOD_COLUMNS, PERIOD_RATES, Narrowed, period_distrust
+from association.query.player_games import BOTH_SEASON_TYPES, PERIOD_COLUMNS, PERIOD_RATES, Narrowed, period_columns, period_unseparable
 from association.query.player_relation import empty_box_scores, scoped_games, scoped_player, span_of
 from association.query.point import default_point
 from association.query.reading import (
@@ -4496,6 +4497,7 @@ def pg_ctx(tmp_path: Path) -> AnswerContext:
         ],
     )
     real_games.build_table(c, {"games", "teams"})
+    plays_all_complete(c)
     return AnswerContext(con=c, out_dir=tmp_path)
 
 
@@ -4610,6 +4612,7 @@ def ps_redirect_ctx(tmp_path: Path) -> AnswerContext:
         "INSERT INTO shot_chart VALUES ('1', ?, 2, ?, '1', 1, '10:00', TRUE, 'Jump Shot', 25, ?, ?, 'a shot')",
         [(s - 1, "e1", 22, 3), (s - 1, "e1", 23, 2), (s - 1, "e2", 23, 2), (s, "e3", 23, 2)],
     )
+    plays_all_complete(c)
     return AnswerContext(con=c, out_dir=tmp_path)
 
 
@@ -5951,6 +5954,7 @@ def period_ctx(tmp_path: Path) -> AnswerContext:
         "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id "
         "LEFT JOIN teams o ON o.team_id = CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END"
     )
+    plays_all_complete(c)
     return AnswerContext(con=c, out_dir=tmp_path / "out")
 
 
@@ -6023,57 +6027,117 @@ def test_a_season_whose_shots_cannot_be_valued_is_refused(period_ctx: AnswerCont
     assert "cannot be answered for 2002" in answer
 
 
+#: The 2016 games :func:`_period_2016` writes: 21, each a made three in
+#: the first quarter, tipping 2015-11-10 to 2015-11-30 (00:30Z, so the
+#: Eastern date before).
+_GAMES_2016 = [f"e16_{n:02d}" for n in range(21)]
+
+
 def _period_2016(con: duckdb.DuckDBPyConnection, *, checked: bool) -> None:
-    """Three of Curry's 2016 games, each a made three in the first quarter: in
-    e16a his play-by-play adds up to his box score; in e16b it does not on
-    points (a make absent from the plays, 2016's fault); in e16c it does not
-    on 3-point attempts alone (Kevin Durant's 2016-04-01 against the
-    Clippers). ``checked`` writes the completeness table that says so."""
-    for event, day in (("e16a", "2015-11-10T00:30Z"), ("e16b", "2015-11-12T00:30Z"), ("e16c", "2015-11-14T00:30Z")):
-        con.execute("INSERT INTO games VALUES (?,2016,2,?,'9','13',110,100,'9')", [event, day])
+    """Twenty-one of Curry's 2016 games, each a made three in the first
+    quarter, whose play-by-play adds up to his box score but in two: e16_01
+    is short a make (2016's fault: 3 points, a field goal and a 3-pointer
+    absent from the plays), and e16_02 a 3-point attempt (Kevin Durant's
+    2016-03-31 against the Clippers). And this season's e1, whose plays hold
+    a rebound his box score does not. ``checked`` keeps the completeness
+    table that says so; without it the warehouse holds none."""
+    for n, event in enumerate(_GAMES_2016):
+        con.execute("INSERT INTO games VALUES (?,2016,2,?,'9','13',110,100,'9')", [event, f"2015-11-{10 + n}T00:30Z"])
         con.execute("INSERT INTO player_box_stats VALUES (?,2016,2,'9','1',FALSE,30)", [event])
         con.execute("INSERT INTO shot_chart VALUES ('1',2016,2,?,'9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [event])
-    if checked:
-        flags = ", ".join(f"{complete_column(c)} BOOLEAN" for c in PERIOD_COLUMNS)
-        con.execute(f"CREATE TABLE {PLAYS_COMPLETE} (event_id VARCHAR, season BIGINT, season_type BIGINT, athlete_id VARCHAR, {flags})")
-        short = {"e16a": (), "e16b": ("points", "fieldGoalsMade", "threePointFieldGoalsMade"), "e16c": ("threePointFieldGoalsAttempted",)}
-        for event, columns in short.items():
-            values = [c not in columns for c in PERIOD_COLUMNS]
-            con.execute(f"INSERT INTO {PLAYS_COMPLETE} VALUES (?,2016,2,'1',{', '.join('?' for _ in PERIOD_COLUMNS)})", [event, *values])
+    if not checked:
+        con.execute(f"DROP VIEW {PLAYS_COMPLETE}")
+        return
+    plays_short(con, {("e16_01", "1"): {"points": 3, "fieldGoalsMade": 1, "threePointFieldGoalsMade": 1}, ("e16_02", "1"): {"threePointFieldGoalsAttempted": 1}, ("e1", "1"): {"rebounds": -1}})
 
 
-def test_an_untrusted_season_counts_the_games_whose_plays_add_up_and_says_the_rest(period_ctx: AnswerContext) -> None:
-    """2016 reconciles at 76.5% - one quarter in four - because rows are
-    absent from its plays at the source, and a game counts where the
-    player's own plays add up to his box score in the stat asked
-    (``plays_complete``, ISSUES.md #278): e16a is counted, e16b left out and
-    said, by player and stat - where until 2026-10-23 the season was refused
-    whole. 2004 is 95.7%, which is worth answering with the figure attached
-    rather than withholding. `PERIOD_REFUSE_BELOW` sits between them on
-    purpose."""
+def test_every_game_counts_and_what_its_plays_miss_bounds_the_figure(period_ctx: AnswerContext) -> None:
+    """Every game a period read selects is counted, whatever the season
+    (ISSUES.md #278, #525): where a game's play-by-play does not add up to
+    his box score in a column the answer shows, the figure in that column is
+    off by at most the gap, and the answer says so, per column, once - where
+    until 2026-10-23 a 2016 game that did not add up was left out, and any
+    other season's agreement was said beside the figure (2004's "96% of the
+    time")."""
     _period_2016(period_ctx.con, checked=True)
     asked = Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2016, season_type=2), period=Period(number=1))
     answer = period_log(period_ctx, asked)
-    assert [g["date"] for g in answer.data["games"]] == ["2015-11-09", "2015-11-13"]
-    assert answer.data["total"] == 6
-    assert "(Not counted: 1 of Stephen Curry's games from 2016, whose play-by-play does not add up to his box score in points.)" in (answer.text or "")
-    # A whole line reads every column it shows: the game short a 3-point
-    # attempt is left out of it, and said.
+    assert answer.data["games_played"] == 21 and answer.data["total"] == 63
+    assert "(1st-quarter points may be short by up to 3: on 2015-11-10 the play-by-play holds 3 points fewer than Stephen Curry's box score.)" in (answer.text or "")
+    assert "attempts" not in (answer.text or ""), "a column the answer does not show is not bounded"
+    # A whole line bounds every column it shows whose plays miss.
     line = period_log(period_ctx, replace(asked, measure=None))
-    assert [g["date"] for g in line.data["games"]] == ["2015-11-09"]
-    assert "(Not counted: 2 of Stephen Curry's games from 2016, whose play-by-play does not add up to his box score in points, field goals, 3-pointers and 3-point attempts.)" in (line.text or "")
-    # The counted game is checked whole, so the season's agreement caveat is not its own.
-    assert "76%" not in (answer.text or "") and "77%" not in (answer.text or "")
+    assert line.data["games_played"] == 21
+    assert "(1st-quarter 3-point attempts may be short by up to 1: on 2015-11-11 the play-by-play holds one 3-point attempt fewer than Stephen Curry's box score.)" in (line.text or "")
+    assert "% of the time" not in (answer.text or "") + (line.text or "")
     caveated = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=2004, season_type=2), period=Period(number=1))).text or ""
-    assert "96% of the time" in caveated, "a poor season answers, and says how poor"
+    assert "% of the time" not in caveated
 
 
-def test_an_untrusted_season_nothing_checks_is_refused(period_ctx: AnswerContext) -> None:
+def test_the_bound_over_several_games_sums_their_gaps(period_ctx: AnswerContext) -> None:
+    """Two games short in one column: the bound is the gaps' sizes summed,
+    each game named with what the plays hold, "off" where one is short and
+    the other over."""
+    _period_2016(period_ctx.con, checked=True)
+    period_ctx.con.execute("UPDATE plays_complete SET points_gap = -2 WHERE event_id = 'e16_05'")
+    asked = Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2016, season_type=2), period=Period(number=1))
+    assert "(1st-quarter points may be off by up to 5 over 2 games where the play-by-play does not add up to Stephen Curry's box score: 2015-11-10 (3 fewer) and 2015-11-14 (2 more).)" in (
+        period_log(period_ctx, asked).text or ""
+    )
+
+
+def test_more_games_missing_a_column_asked_than_the_floor_allows_is_refused(period_ctx: AnswerContext) -> None:
+    """Where more than one game in ten of those read miss in a column the
+    question asks for (``PERIOD_MISSING_ABOVE``), the bound is no longer a
+    few plays and the read is refused by the column and the share: this
+    season's whole line holds e1, whose plays hold a rebound the box score
+    does not - 1 of 5 games - while his points, which do not show rebounds,
+    are answered. A date's one game short in the stat asked is refused the
+    same way."""
+    _period_2016(period_ctx.con, checked=True)
+    this = Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=SEASON, season_type=2), period=Period(number=1))
+    assert period_log(period_ctx, this).text == (
+        "Per-quarter rebounds cannot be answered here: in 1 of the 5 games read (20%), Stephen Curry's play-by-play does not add up to the box score in rebounds - "
+        "more than one game in ten, too many to bound the figure by."
+    )
+    points = period_log(period_ctx, replace(this, measure=Measure(key="points", as_typed="points")))
+    assert points.data["games_played"] == 5 and points.data["total"] == 12 and "may be" not in (points.text or "")
+    dated = Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points"), cuts=Cuts(date="2015-11-10"), period=Period(number=1))
+    assert period_log(period_ctx, dated).text == (
+        "Per-quarter points cannot be answered here: in the one game read, Stephen Curry's play-by-play does not add up to the box score in points - "
+        "more than one game in ten, too many to bound the figure by."
+    )
+
+
+def test_the_four_quarters_count_every_game_and_bound_each_quarter(period_ctx: AnswerContext) -> None:
+    """A player's four quarters count every game, as one quarter's read does
+    (ISSUES.md #526: "jokic points by quarter career" was refused for his
+    2016 games): a game whose plays miss bounds every quarter's figure, and
+    more than one game in ten missing in the stat refuses them by the column
+    and the share."""
+    _period_2016(period_ctx.con, checked=True)
+    asked = Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2016, season_type=2))
+    quarters = period_log(period_ctx, asked)
+    assert quarters.data["quarters"][0]["games"] == 21
+    assert "(Per-quarter points may be short by up to 3: on 2015-11-10 the play-by-play holds 3 points fewer than Stephen Curry's box score.)" in (quarters.text or "")
+    period_ctx.con.execute("UPDATE plays_complete SET points_gap = 2 WHERE event_id IN ('e16_07', 'e16_08')")
+    assert period_log(period_ctx, asked).text == (
+        "Per-quarter points cannot be answered here: in 3 of the 21 games read (14.3%), Stephen Curry's play-by-play does not add up to the box score in points - "
+        "more than one game in ten, too many to bound the figure by."
+    )
+
+
+def test_a_warehouse_with_no_completeness_table_is_refused_by_that_cause(period_ctx: AnswerContext) -> None:
     """A warehouse without the completeness table has nothing to count a
-    2016 game by: the season is refused, as it always was."""
+    game by, in any season: the read is refused, naming the warehouse, not a
+    season - and a read that found no game at all still says so."""
     _period_2016(period_ctx.con, checked=False)
     asked = Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(season=2016, season_type=2), period=Period(number=1))
-    assert "cannot be answered for 2016" in (period_log(period_ctx, asked).text or "")
+    assert period_log(period_ctx, asked).text == (
+        "Per-quarter figures cannot be answered from this warehouse: it holds no record of which games' play-by-play adds up to the box score (built by `association data load`)."
+    )
+    none = period_log(period_ctx, replace(asked, span=Span(season=2010, season_type=2)))
+    assert none.data["games_played"] == 0
 
 
 def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximated(period_ctx: AnswerContext) -> None:
@@ -6140,11 +6204,11 @@ def test_a_rate_is_refused_where_either_of_its_columns_is() -> None:
     assert set(PERIOD_RATE_STATS.values()) == set(PERIOD_RATES)
     for made, attempted in PERIOD_RATES.values():
         assert made in PERIOD_COLUMNS and attempted in PERIOD_COLUMNS
-    refused = period_distrust(2002, "three_pct")
+    refused = period_unseparable(2002, period_columns("three_pct"))
     assert refused is not None and refused["column"] == "threePointFieldGoalsMade" and refused["unseparable"]
     assert "cannot be answered for 2002" in refusal_phrase("period_untrusted", refused)
-    assert period_distrust(2002, "ft_pct") is None
-    assert period_distrust(SEASON, "fg_pct") is None
+    assert period_unseparable(2002, period_columns("ft_pct")) is None
+    assert period_unseparable(SEASON, period_columns("fg_pct")) is None
 
 
 def test_period_ranking_does_not_rank_a_shooting_percentage(period_ctx: AnswerContext) -> None:
@@ -6182,29 +6246,32 @@ def test_a_period_read_says_the_team_its_games_were_cut_to(period_ctx: AnswerCon
 
 
 def _period_across_seasons_fixture(con: Any) -> None:
-    """Beside the fixture's games: a 2016 game, a season whose per-period
-    points agree with ESPN's quarter scores too seldom to answer (76.5%), and
-    a postseason game this season - each with one first-quarter three."""
+    """Beside the fixture's games: a 2016 game, a 2002 game (a season whose
+    shots carry no value) and a postseason game this season - each with one
+    first-quarter three."""
     con.execute("INSERT INTO games VALUES ('e16',2016,2,'2015-11-05T00:30Z','9','13',110,100,'9')")
     con.execute("INSERT INTO player_box_stats VALUES ('e16',2016,2,'9','1',FALSE,30)")
     con.execute("INSERT INTO shot_chart VALUES ('1',2016,2,'e16','9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
+    con.execute("INSERT INTO games VALUES ('e02',2002,2,'2001-11-05T00:30Z','9','13',110,100,'9')")
+    con.execute("INSERT INTO player_box_stats VALUES ('e02',2002,2,'9','1',FALSE,30)")
+    con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e02','9',1,'10:00',TRUE,'Jump Shot',25,26,0,'26-foot jumper')")
     con.execute("INSERT INTO games VALUES ('p1',?,3,?,'9','2',110,100,'9')", [SEASON, f"{SEASON}-04-25T00:30Z"])
     con.execute("INSERT INTO player_box_stats VALUES ('p1',?,3,'9','1',FALSE,30)", [SEASON])
     con.execute("INSERT INTO shot_chart VALUES ('1',?,3,'p1','9',1,'10:00',TRUE,'Jump Shot',25,26,0,'26-foot jumper')", [SEASON])
 
 
-def test_a_period_read_across_seasons_caveats_each_and_leaves_an_untrusted_one_out(period_ctx: AnswerContext) -> None:
+def test_a_period_read_across_seasons_counts_each_game_and_leaves_an_unvalued_season_out(period_ctx: AnswerContext) -> None:
     """Decision D13 ("kyrie Irving second half stats vs denver" is his career
     against Denver, FS027): a quarter over every season reads them all,
-    labeled by the first and last, each season's agreement said - and a
-    season whose figures cannot be trusted (2016) is left out and said,
-    rather than refusing the whole or summing it in."""
+    labeled by the first and last, each game counted on its own check - 2016's
+    included - and a season whose shots carry no value (2002) left out and
+    said, rather than refusing the whole or summing it in."""
     _period_across_seasons_fixture(period_ctx.con)
     result = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), span=Span(career=True), period=Period(number=1)))
     answer = result.text or ""
-    assert answer.startswith("Stephen Curry scored 15 points in the 1st quarter over 6 games of his career (2004-2026 regular seasons), averaging 2.5.")
-    assert "In 2004 that sum matches ESPN's own quarter scores 96% of the time" in answer
-    assert "(Not counted: 1 game from 2016, whose per-quarter figures rebuilt from play-by-play agree with the official ones too seldom to answer.)" in answer
+    assert answer.startswith("Stephen Curry scored 18 points in the 1st quarter over 7 games of his career (2004-2026 regular seasons), averaging 2.6.")
+    assert "% of the time" not in answer
+    assert "(Not counted: 1 game from 2002, whose shots cannot be told apart as twos or threes.)" in answer
 
 
 def test_a_period_stretch_reads_both_season_types_and_says_each(period_ctx: AnswerContext) -> None:
@@ -6233,7 +6300,7 @@ def test_four_quarters_across_seasons_refuse_a_season_that_cannot_be_trusted(per
     assert (clean.text or "").startswith("Stephen Curry, points per game by quarter in his career (2004-2026 regular seasons) (6 games):")
     _period_across_seasons_fixture(period_ctx.con)
     refused = period_log(period_ctx, Reading(who=who, span=Span(career=True)))
-    assert refused.text == "Per-quarter scoring cannot be answered for 2016: its per-period points agree with ESPN's own quarter scores only 76% of the time."
+    assert (refused.text or "").startswith("Per-quarter scoring cannot be answered for 2002: ESPN did not label 2002's shots")
 
 
 def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx: AnswerContext) -> None:
@@ -6315,6 +6382,9 @@ def test_a_rebuilt_games_quarters_are_read_like_any_others(period_ctx: AnswerCon
         Reading(who=Who(kind="player", players=("Stephen Curry",)), measure=Measure(key="turnovers", as_typed="turnovers"), span=Span(season=SEASON, season_type=2), period=Period(number=1)),
     )
     assert one.data["total"] == 2 and one.data["games_played"] == 5, "a quarter of the rebuilt game counts as any other quarter does"
+    # Nothing checks a rebuilt game's plays (it has no box score of its own),
+    # and the answer says so rather than counting it as checked.
+    assert "(Counted unchecked: 1 of Stephen Curry's games, whose box score ESPN served empty - his line there is rebuilt from the same play-by-play, so nothing checks it.)" in (one.text or "")
 
 
 def test_a_period_logs_narrowings_and_spans_are_stated() -> None:
@@ -6393,18 +6463,20 @@ def test_a_date_with_no_game_says_which_date_was_empty(period_ctx: AnswerContext
     assert quarters == "No games found for Stephen Curry on 2019-07-04."
 
 
-def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_ctx: AnswerContext) -> None:
-    """The accuracy refusal is read off the game a date finds, not assumed
-    from a season defaulted to "now" - so a date from 2004 (labeled
-    `PERIOD_RECONCILIATION`) is caveated even with no season named at all."""
+def test_a_date_reads_the_season_of_the_game_it_finds(period_ctx: AnswerContext) -> None:
+    """The season is read off the game a date finds, not assumed from a
+    season defaulted to "now" - and the game is counted on its own check, so
+    a date from 2004 (once caveated by `PERIOD_RECONCILIATION`'s 95.7%) is
+    answered with no season's agreement beside it."""
     answer = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(date="2003-11-04"), period=Period(number=1))).text or ""
-    assert "96% of the time" in answer
+    assert answer.startswith("Stephen Curry scored 3 points in the 1st quarter vs the Los Angeles Lakers on 2003-11-04 (2004 regular season).")
+    assert "% of the time" not in answer
     # The four quarters of that one game the same way (ISSUES.md #302): read
-    # as the game's own season, read off its row, and caveated by that
-    # season's agreement - never "the 2026 regular season on 2003-11-04".
+    # as the game's own season, read off its row - never "the 2026 regular
+    # season on 2003-11-04" - and with no season's agreement beside them.
     quarters = period_log(period_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(date="2003-11-04")))
     assert quarters.data["season"] == 2004 and (quarters.text or "").startswith("Stephen Curry, points per game by quarter in the 2004 regular season on 2003-11-04 (1 games):")
-    assert "96% of the time" in (quarters.text or "")
+    assert "% of the time" not in (quarters.text or "")
 
 
 def test_a_career_read_of_a_period_sums_every_season_over_the_relations_games(period_ctx: AnswerContext) -> None:
@@ -6512,7 +6584,30 @@ def period_rank_ctx(tmp_path: Path) -> AnswerContext:
         "FROM player_box_stats pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
     )
+    plays_all_complete(c)
     return AnswerContext(con=c, out_dir=tmp_path)
+
+
+def test_a_period_ranking_bounds_each_shown_players_figure_and_refuses_a_pool_too_short(period_rank_ctx: AnswerContext) -> None:
+    """The ranking counts every game, as a player's own read does (ISSUES.md
+    #526): where a shown player's plays miss in the stat ranked, his figure
+    is bounded, by player; where more than one game in ten of the pool's
+    (the qualifying players', 12 here) miss, the ranking is refused by the
+    column and the share - where until 2026-10-23 a season under the bar
+    (2016) was refused whole, and every other was caveated by its agreement."""
+    c = period_rank_ctx.con
+    plays_short(c, {("p1", "1"): {"points": 2}})
+    asked = Reading(span=Span(season=SEASON, season_type=3), period=Period(number=1))
+    result = period_ranking(period_rank_ctx, asked)
+    assert [row["player"] for row in result.data["leaders"]] == ["Ace Scorer", "Role Player"]
+    assert "(1st-quarter points may be off where a player's play-by-play does not add up to his box score: Ace Scorer's by up to 2 (1 game).)" in (result.text or "")
+    quarters = period_ranking(period_rank_ctx, Reading(span=Span(season=SEASON, season_type=3)))
+    assert "(Per-quarter points may be off where a player's play-by-play does not add up to his box score: Ace Scorer's by up to 2 (1 game).)" in (quarters.text or "")
+    c.execute("UPDATE plays_complete SET points_gap = 3 WHERE athlete_id = '2' AND event_id IN ('p1', 'p2')")
+    assert period_ranking(period_rank_ctx, asked).text == (
+        "Per-quarter points cannot be answered here: in 3 of the 12 games read (25%), the play-by-play does not add up to the box score in points - "
+        "more than one game in ten, too many to bound the figure by."
+    )
 
 
 def test_a_period_ranking_averages_over_games_played_not_games_scored_in(period_rank_ctx: AnswerContext) -> None:

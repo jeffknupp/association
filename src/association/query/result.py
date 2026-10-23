@@ -878,6 +878,8 @@ RUN_CAUSES: frozenset[str] = frozenset(
         "shot_distance_unseparable",
         "fingerprint_on_a_date",
         "period_untrusted",
+        "period_incomplete",
+        "period_unchecked",
         "period_unread",
         "team_period_unknown",
         "team_period_unread",

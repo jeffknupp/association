@@ -50,7 +50,20 @@ from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
 from association.query.measures import GAME_COLUMNS, LABEL_MEASURES
 from association.query.measures import LINE as LINE
 from association.query.notes import Note, note
-from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
+from association.query.player_games import (
+    PERIOD_COLUMNS,
+    PERIOD_GAPS,
+    PERIOD_RATES,
+    REBUILT_STATS,
+    REGULATION_QUARTERS,
+    Narrowed,
+    aggregate_sql,
+    games_subquery,
+    grouped_sql,
+    named,
+    paired_rows_sql,
+    rows_sql,
+)
 from association.query.player_relation import (
     RELATION_SCOPING,
     ResolvedSpan,
@@ -131,11 +144,11 @@ DERIVED: dict[str, str] = {
     # The game's season type, a label of the game as ``won`` is: a period's
     # log over both types counts the games of each (decision D14).
     "season_type": "pgl.season_type",
-    # The columns a period-narrowed game's play-by-play does not add up in
-    # against his box score (``player_games.PERIOD_INCOMPLETE``), a label of
-    # the game the period log counts it by (``player_games.period_counted``);
+    # How far a period-narrowed game's play-by-play falls from his box
+    # score in each column (``player_games.PERIOD_GAPS``), a label of the
+    # game the period log bounds its figure by (``player_games.period_counted``);
     # only a period's relation carries it.
-    "period_incomplete": "pgl.period_incomplete",
+    "period_gaps": "pgl.period_gaps",
 }
 """A measure name that is not a stored column, and the SQL that computes it per game.
 
@@ -557,7 +570,7 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
 #: rebuilds, and the measures computed only from them (a rate is a ratio of
 #: the period's sums; a game's result is the game's).
 _PERIOD_READABLE: frozenset[str] = (
-    frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home"} | {"opponent_name", "season_type", "period_incomplete"}
+    frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home"} | {"opponent_name", "season_type", "period_gaps"}
 )
 
 
@@ -971,10 +984,12 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     .. versionadded:: 5.0.0
     """
     # The game's own season beside the quarters: a date names one game,
-    # whose season the answer is labeled and caveated by.
-    # Every season the games are from, for a read across seasons, which is
-    # caveated - or refused - season by season.
-    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt), "MIN(pgl.season) AS first_season", "LIST(DISTINCT pgl.season) AS seasons"]
+    # whose season the answer is labeled by. Every season the games are
+    # from, for a read across seasons. And each game's day, season and gap
+    # against its box score (``player_games.PERIOD_GAPS``), the same games
+    # in every quarter, which the reader bounds the figures by.
+    games = f"LIST(struct_pack(day := {EASTERN}, season := pgl.season, {PERIOD_GAPS} := pgl.{PERIOD_GAPS}) ORDER BY {EASTERN}) AS period_games"
+    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt), "MIN(pgl.season) AS first_season", "LIST(DISTINCT pgl.season) AS seasons", games]
     parts: list[str] = []
     params: list[Any] = []
     for quarter in REGULATION_QUARTERS:
@@ -983,6 +998,10 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
         sql, each_params = aggregate_sql(each, [f'{quarter} AS "group"', *selects], rebuilt=rebuilt)
         parts.append(f"SELECT * FROM ({sql})")
         params += each_params
+        # Whether the four reads' games carry their gaps (the warehouse holds
+        # the completeness table), which the reader bounds them by - said
+        # on the games' own narrowing, the one the Compiled hands back.
+        narrowed.period_checked = each.period_checked
     return Compiled(" UNION ALL ".join(parts) + ' ORDER BY "group"', params, player, span, narrowed, rebuilt, list(q.measures))
 
 
