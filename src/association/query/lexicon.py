@@ -3291,12 +3291,15 @@ question (ISSUES.md #390).
 
 OWN_BEST_SEASON = re.compile(
     r"\bbest\s+(?:season|year)s?\b"
+    # "tim duncan highest career ppg": his best average across his seasons
+    # (ISSUES.md #544), which the log's "highest" listed as every game.
+    r"|\b(?:highest|best|most|lowest|worst)\s+career\s+(?:ppg|rpg|apg|spg|bpg|mpg|averages?)\b"
     r"|\b(?:most|highest|best|fewest|lowest|worst)\b.{0,60}?(?:\b(?:in|for|during|of)\s+(?:a|one|1|any)\s+(?:single[- ])?(?:(?:regular|playoffs?)[- ]|post)?season\b|\bsingle[- ](?:post)?season\b)",
     re.IGNORECASE,
 )
 """One player's best season across his career asked: "best season",
-"best year", or a superlative over "a (single) season" or "a single
-postseason" - which no reader takes, refused by name where no season is
+"best year", a superlative over "a (single) season" or "a single
+postseason", or over his career's average ("highest career ppg") - which no reader takes, refused by name where no season is
 named (``point._own_best_season_refused``, the ``own_best_season`` cause).
 
 .. versionadded:: 7.0.0"""
@@ -3625,8 +3628,15 @@ CHILD_SINGLE_GAME_HIGH = ask(
     # ranked - never his season line or his log by date. "single game triple doubles"
     # is a count of triple-doubles - every one is one game's - never a
     # single game's high of a yes/no measure (ISSUES.md #265). Only beside "scoring": "highest
-    # win% games" is a ranking of players by a rate over games.
-    r"|\b(?:best|highest)\s+scoring\s+games?\b"
+    # win% games" is a ranking of players by a rate over games. "anthony
+    # edwards highest scoring career" is his career's scoring high, which
+    # the log's "highest" listed as every game of his career (ISSUES.md #544).
+    r"|\b(?:best|highest)\s+scoring\s+(?:games?|career)\b"
+    # "shai gilgeous-alexander highest assist games": his games ranked by
+    # the stat the plural names (ISSUES.md #544), never his line - and not a
+    # count or a rate the plural follows ("highest win% games", "the highest
+    # number of 30+ point games").
+    r"|\bhighest\s+(?:assist|rebound|steal|block|point|three)s?\s+games\b"
     # "top 5 games", "best 3 games", "top 10 rebounding games" and "best
     # game(s)": his games ranked by the measure, the highs - never the newest
     # games, which "steph curry top 5 games this season" listed (ISSUES.md
@@ -3795,6 +3805,16 @@ SUBJECT_WORDS: frozenset[str] = frozenset({"who", "what", "which", "that", "he",
 
 .. versionadded:: 6.0.0
 """
+VERSUS_PLACEHOLDERS: frozenset[str] = frozenset({"team", "teams", "opponent", "opponents"})
+"""Words after a versus word that stand for a team without naming one
+("keon ellis highest ppg vs team", ISSUES.md #544): the opponent the
+question needs and does not name, refused by the word
+(``subject.versus_word_unread``) - never the player's games against
+everybody.
+
+.. versionadded:: 7.0.0
+"""
+
 NOT_A_SUBJECT: frozenset[str] = SUBJECT_WORDS | frozenset(
     {
         # A stat's own name sits before "10+ rebound games" in "the most 30+
@@ -5165,12 +5185,15 @@ LOG_ROW = row(r"\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b
 """
 PLAYER_LOG_ROW = row(
     r"\b(game ?log|gamelog|logs?|last " + COUNT + r" games|each game|game by game|box scores?|(?<!per )games? (with|where|in which|against|vs)"
-    r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
+    r"|most .* in a game|career high|best game|single game"
     r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d)\b"
 )
 """A player's games rather than his line in words: a log word, one game.
 The window words stay for a form the window tagger does not type ("final
-games"); a typed one stands as the typed value.
+games"); a typed one stands as the typed value. Not a bare "highest" nor
+"how many games/times" (ISSUES.md #544): a superlative names one figure (a
+child's high, a best season refused by name) and "how many" a count (a
+child's count over a line, or the line's games), never every game listed.
 
 .. versionadded:: 6.0.0
 """

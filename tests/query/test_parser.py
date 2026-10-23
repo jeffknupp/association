@@ -599,7 +599,7 @@ def test_each_move_of_the_key_off_the_grammars_parent_is_a_decision(con: duckdb.
     route = _route(con, "How many times did embiid score 30+ points", ["embiid"], "points")
     career = Decision("parser", "span", None, "career", "no season named, and the words imply the career (decision D13)")
     assert route.decisions == (
-        Decision("parser", "asked", "player_games/rows/date", "player_games/scalar/count", "the words 'How many times did embiid score 30+' name player_games/scalar/count"),
+        Decision("parser", "asked", "player_seasons/scalar/line", "player_games/scalar/count", "the words 'How many times did embiid score 30+' name player_games/scalar/count"),
         career,
     )
     route = _route(con, "rebounds allowed per team", [], "rebounds")

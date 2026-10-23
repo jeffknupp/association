@@ -1121,6 +1121,9 @@ def _versus_word_names_something(players: names.PlayerIndex, teams: names.TeamIn
     ordinary or a short word, a nickname or a team's word, a word of a name
     the reading holds ("jokic vs wemby": the pair), a team or a player on
     record, exactly or by a near spelling (:func:`versus_word_unread`)."""
+    if word in lexicon.VERSUS_PLACEHOLDERS:
+        # "vs team": a slot left unfilled, which names nobody to narrow by.
+        return False
     if len(word) < 4 or word in _dictionary() or word in lexicon.NOT_A_SUBJECT or word in PLAYER_NICKNAMES or is_team_name(word):
         return True
     if any(question_supports(name, word) for name in (*reading.who.players, *(c.player for c in reading.companions))):
