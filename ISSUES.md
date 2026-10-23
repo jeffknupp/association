@@ -127,16 +127,6 @@ before that commit needs re-checking against the current warehouse.
 - **Priority:** P1 - a narrower question answered fluently; 3 of the 2,082.
 - **GitHub:** #441
 
-### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
-- **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
-- **Evidence:** `live_day10.jsonl` (bcf30a8): the router files `head_to_head` (team PHI, opponent BOS); the reading's rule "a player's record against a team, not two teams meeting" (`subject._decide_intent`) reroutes to `with_without` with `without=[Joel Embiid]`, and the template answers "Philadelphia 76ers with and without Joel Embiid vs the Boston Celtics, 2026 regular season: out 2 1-1, played 2 1-1". The key (blind, reading a, dominant): the 76ers went 4-2 in the 6 games Embiid played vs Boston in 2025-26 - 2 regular-season meetings and playoff Games 4-7 (he has no box row for Games 1-3). Two faults: the SHAPE (a split with an "out" row nobody asked for, where the question is his games and their record - dates, outcomes, and reasonably his line in each), and the SCOPE ("this year" narrowed to the regular season by the unstated-season-type default, `_validate_season_type`; `season_type_unstated` widens only "last N games" and "including playoffs" wordings today).
-- **User sees:** a fluent table about a different question, with the right numbers for the narrower scope it states - which is why the blind grader passed all five wordings; re-graded wrong on Jeff's call (overrides run day10). Day10 is 160/175 and families 150/166 after the re-grade.
-- **Parser path (2026-09-27, plan item 6 steps b-d):** the SHAPE is fixed - the parser reads a player's record with no companion as `player_splits` ("Joel Embiid vs the Boston Celtics, splits, 2026 regular season (2 games he played) ... W-L 1-1"), graded correct in `live_parser1`-`3` under Jeff's 2026-09-27 instruction to score the season type as the regular-season default, and the router reader that still answered the with/without split is gone (step d). The SCOPE half (regular season only) is the deferred season-type decision, unchanged.
-- **Next step:** two decisions for the parser (ROADMAP: the consolidation). Shape: a player set against a team is his games narrowed by opponent - the player-games relation, rows with W/L and his line plus the tally - never the team's with/without split (the reroute rule goes; the compiler's rows shape with a record summary is the nearest thing today). Scope: "this year" / "this season" with no type named reads both types and says so, the way `season_type_unstated` already does for "last N games" - a policy for every question, to confirm with Jeff, since the regular-season default is what every per-game average answers under today.
-- **Priority:** P1 - a different question answered fluently (tagged at Phase 5's close, 2026-10-14: the review found it untagged in the P1 section).
-- **Source:** ours, not ESPN's.
-- **GitHub:** #231
-
 ### A question naming no season defaults to 2026 where its words read the career: the remainder after D13's first pass
 - **Found:** 2026-10-15, the feed sample's grading (Phase 6, step 1), the lead's hand pass; Jeff's ruling D13 the same day. Rewritten 2026-10-16 by lane p6-span, which read the career for ten wording classes (`span.IMPLIED_CAREERS`, `CHANGES.md`): of the sample's 54 verdicts in the class (`season-default` and its log variant), 41 now read the span the key reads; lane p6-d15 read FS225 and FS032 (D14 and D15) and the period reads' careers (FS027, FS177, FS354: `point._PERIOD_GAMES_ASKS`, `compose.periods` across seasons) and said the career as the default it is (the `career_implied` decision), and FS391 ("jalen brown vs pacer playoff double team") now answers his 8 playoff games against Indiana fluently past "double team", a defense nothing in the warehouse records (the key's own reading: not answerable as asked, then the whole record) - no meaning class holds the word.
 - **Evidence (what remains, the sample's ids):** one season asked across years, which no reader takes (FS162 "michael jordan's best season", FS332 "highest plus minus season by an active player", FS327 "... on a season": #441's shape for players); a team's all-time roster ranking (FS214 "least games played with lakers"); a floor of attempts one season could hold (FS310 "worst 3pt% with atleast 1000 3pt attempted": Harden attempted 1,028 in 2018-19, so the floor alone does not imply the career); an active player's playoff log (FS043 "anthony edward's playoff game log": the newest 10 rows are 2026's either way, the key's 52-game career a page further); a first name nobody resolves before "vs" (FS095 "ron artest vs carmelo anthony": Metta World Peace's old name, guarded so his career is not answered for Carmelo alone).
@@ -147,6 +137,15 @@ before that commit needs re-checking against the current warehouse.
 - **GitHub:** #470
 
 ## P2: misleading or incomplete
+
+### A both-types log of one season with no window mislabels and loses its count: "mikal bridges game log ... including the playoffs" says "last 10 games of the 2026 postseason"
+- **Found:** 2026-10-23, lane p6-alts2 (D25)
+- **Evidence:** `compose/logs._player_log_mixed` cuts each season type at the default limit, keeps no `total_before_window`, and `say.mixed_where` names the type of the rows shown; the key holds 49 games (39 + 10). The offered season-type button reaches the read but not the figure (F149).
+- **User sees:** a postseason heading over a both-types read, no "of 49".
+- **Next step:** with D24's every-row log (lane p6-rows) check the heading names both types and the count.
+- **Priority:** P2.
+- **Source:** ours.
+- **GitHub:** #541
 
 ### A franchise career ranking is declined at RUN, not by the planner: "Most reb by a hawk player history of all time" says "Nothing here answers"
 - **Found:** 2026-10-23, lane p6-alts (D23's pilot)
@@ -1970,6 +1969,24 @@ those were found.
 
 ## P3: refusal or gap
 
+### A season-type button often gives the same figures: 188 of 506 "including the playoffs" offers on the feed
+- **Found:** 2026-10-23, lane p6-alts2 (D25)
+- **Evidence:** spans with no postseason game (DeRozan 2025; Sacramento missed the playoffs) offer the season type and answer identically (corpus 42 of 143).
+- **User sees:** a button that changes nothing.
+- **Next step:** offer the season type only where the span holds a postseason game (one warehouse read in the answering loop).
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #542
+
+### The offered-wording guard checks the parse and the plan, not the answer: 7 buttons lead to a decline
+- **Found:** 2026-10-23, lane p6-alts2 (D25)
+- **Evidence:** 2 season-type offers ("knicks record by month 2024 2025 including the playoffs": "a month split has no combined-season-type form yet") and 5 span offers from the pilot ("76ers leaders in 3s of all time": franchise career leaderboards) answer with a decline.
+- **User sees:** a button that leads to a refusal.
+- **Next step:** run the reader's step-aside check (or answer the alternative) before offering it.
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #543
+
 ### The period floor refuses over a column the words did not ask: "Giannis first half points rebounds assists gamelog vs washington" is refused for field goal attempts
 - **Found:** 2026-10-23, lane p6-periods (keep-and-bound, #525/#526)
 - **Evidence:** a list of three stats is read as the whole line, so the floor (more than one game in ten missing) reads every column: 5 of 37 games miss on FGA.
@@ -2014,15 +2031,6 @@ those were found.
 - **Priority:** P3.
 - **Source:** ours.
 - **GitHub:** #536
-
-### A round with no season named reads the current season, where the words imply the career: "jimmy butler nba finals stats"
-- **Found:** 2026-10-17, lane p6-round (the playoff round), FS189 against its key.
-- **Evidence:** FS189's key reads Butler's two Finals (2020, 2023: 11 games, 24.1 points); the answer is "No 2026 postseason games found for Jimmy Butler III ... ask for his career". The same on "lebron james win loss record in the finals", "lebron james 4th quarter in all finals", "Caleb martin ecf", "kyrie in nba finals game 7". And the league's "most blocks / steals / free throws / three-pointers in a game 7" is refused: honoring a series game there is one clause, but D13's guard keeps a game of a series off the career "most X in a game" reads, so it would rank 2026's Game 7s alone.
-- **User sees:** a refusal pointing at the career wording, where the career was what was asked.
-- **Next step:** Jeff's call under D13 - whether a named round (and a game of a series) implies the career (`span.IMPLIED_CAREERS`); then the game-7 clause.
-- **Priority:** P3 pending Jeff's call.
-- **Source:** ours.
-- **GitHub:** #519
 
 ### When the recorded reply names nobody, a name only the words hold is not read: "dirk 2011 finals stats" is refused "No player or team is read"
 - **Found:** 2026-10-17, lane p6-round (the playoff round), reading the round's refusals.
