@@ -1,7 +1,7 @@
 """The period relation: a quarter or a half as a narrowing
 of the player-games relation, its line rebuilt from the shots and the plays.
 
-The rules each have a measured reason (``player_games.PERIOD_AGREEMENT`` and
+The rules each have a measured reason (``fetch.repairs.plays_complete`` and
 the comment above ``period_line_sql``); each test here pins one of them with a
 row in the shape of the real play that taught it.
 """
@@ -21,7 +21,7 @@ from test_readers import team_period_total
 from association.fetch.repairs import real_games
 from association.nba.period_line import period_line_sql
 from association.query.answer import AnswerContext
-from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, most_games, period_quarter, period_ranking, rows_sql
+from association.query.player_games import PERIOD_COLUMNS, Narrowed, aggregate_sql, most_games, period_quarter, period_ranking, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.reading import (
     TEAM_MEETINGS,
@@ -238,11 +238,13 @@ def test_the_leagues_period_reads_are_the_relations_own(con: duckdb.DuckDBPyConn
     quarter's stat, one quarter of the points-by-quarter table, and the most
     games anyone played in a narrowed pool - each over the quarter's own
     rebuilt line (g1's first quarter 4 points, g2's none), never the box
-    score's 40."""
+    score's 40. Beside each figure, what the plays miss of it (the
+    fixture's warehouse holds no completeness table, so nothing is checked:
+    0 checked, 0 missing, a 0 bound, and the pool's two counts)."""
     narrowed = _narrowed(con, (1,), "1st quarter")
-    assert period_ranking(con, narrowed, "points", minimum=1, limit=10, rebuilt=False) == [("Player One", 2, 4, 2.0)]
+    assert period_ranking(con, narrowed, "points", minimum=1, limit=10, rebuilt=False) == [("Player One", 2, 4, 2.0, 0, 0, 0, 0, 0)]
     assert period_ranking(con, narrowed, "points", minimum=3, limit=10, rebuilt=False) == [], "two games never reach a three-game minimum"
-    assert period_quarter(con, narrowed, minimum=2, rebuilt=False) == [("1", "Player One", 2, 2.0)]
+    assert period_quarter(con, narrowed, minimum=2, rebuilt=False) == [("1", "Player One", 2, 2.0, 0, 0, 0, 0, 0)]
     assert most_games(con, narrowed, rebuilt=False) == 2
     nobody = Narrowed(base=["pgl.athlete_id = ?"], base_params=["nobody"])
     assert most_games(con, nobody, rebuilt=False) == 0, "an empty pool is no games, not an error"
@@ -271,13 +273,6 @@ def test_period_is_a_relation_cell_and_every_exclusion_says_why() -> None:
         assert "half" not in row.unstated, f"{shape}: a half is the period cell, not a cell of its own"
         if "period" in row.unstated:
             assert row.unstated["period"].strip(), f"{shape} excludes period without a reason"
-
-
-def test_the_agreement_table_names_only_period_columns_and_real_percentages() -> None:
-    assert set(PERIOD_AGREEMENT) <= set(PERIOD_COLUMNS)
-    for column, seasons in PERIOD_AGREEMENT.items():
-        for season, pct in seasons.items():
-            assert season >= 2002 and 0 < pct < 99.05, f"{column} {season}: {pct} (the table lists seasons under 99% only)"
 
 
 def test_the_compiler_refuses_a_period_read_of_a_column_no_play_splits() -> None:
@@ -526,24 +521,3 @@ def test_a_teams_period_total_refuses_a_shooting_percentage_where_a_column_it_di
     )
     assert "total" not in result.data
     assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.text or "") and "free throws and free throw attempts match" in (result.text or "")
-
-
-def test_the_period_caveats_of_several_seasons_are_said_once() -> None:
-    """The widening checks' caveat_repeated ("kyrie Irving second half stats vs
-    denver" said five per-season caveats): a period read over several
-    seasons says each kind of caveat once, over the seasons it holds, each
-    column at its lowest agreement among them; one season's is its own."""
-    from association.query.compose.say import note_phrase
-    from association.query.player_games import period_agreement_across, period_agreement_notes
-
-    assert period_agreement_across([2017], "points", full_line=True) == period_agreement_notes(2017, "points", full_line=True)
-    notes = period_agreement_across([2017, 2018, 2019, 2017], "points", full_line=True)
-    rebuilt = [note for note in notes if note.facts["what"] == "period_rebuilt"]
-    assert len(rebuilt) == 1
-    facts = rebuilt[0].facts
-    assert facts["seasons"] == [2017, 2018, 2019]
-    assert dict(zip(facts["columns"], facts["pct"], strict=True))["rebounds"] == min(PERIOD_AGREEMENT["rebounds"][s] for s in (2017, 2018, 2019))
-    said = note_phrase(rebuilt[0])
-    assert said.startswith(
-        "(Rebuilt from play-by-play rather than an official per-quarter box score. In 2017, 2018 and 2019 a game's figures rebuilt this way match its box score at least this often: "
-    )

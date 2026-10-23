@@ -42,7 +42,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
-from association.nba.period_line import PERIOD_PLAYS_COLUMNS, PLAYS_COMPLETE, complete_column, period_line_sql
+from association.nba.period_line import PERIOD_PLAYS_COLUMNS, PLAYS_COMPLETE, gap_column, period_line_sql
 from association.nba.season import eastern_date_sql, eastern_day_utc_range
 from association.nba.shot_value import UNSEPARABLE_SHOT_VALUES
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, alignment_clause, calendar_clause
@@ -50,7 +50,6 @@ from association.query.measures import PERIOD_COLUMNS as PERIOD_COLUMNS
 
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
-from .notes import Note
 from .reading import STARTER_SIDES as STARTER_SIDES  # the one table, on the reader's side; a split names one half of it
 from .reading import PlayoffRound
 from .team_games import round_clause, round_phrase, series_game_clause
@@ -186,87 +185,6 @@ is refused (it is not in :data:`PERIOD_COLUMNS`).
 """
 
 
-# Measured by `period_line_sql` over EVERY period of each game,
-# against the game's own box score: 628,103 player-games in 2002-2026 (both
-# season types; played, and in a game the shot table covers). Nothing in the
-# source splits a box score by period, so this is the only independent check a
-# non-points period figure has - a play credited to the wrong period would
-# still sum right, but a play mis-typed or mis-credited, which is what actually
-# goes wrong, does not. Only the seasons under 99% are listed; the rest run
-# 99.0-100.0%. The worst cells have causes, not noise: before 2006 a play's
-# second participant (the assister, the stealer, the blocker) is mostly
-# absent, so 2002-2005 assists land right about 31% of the time; 2002 is half
-# a season of play-by-play with no shot values at all (UNSEPARABLE_SHOT_VALUES);
-# 2016's scoring plays carry the `Not Available` type `reconstructed_box`
-# records. Points are ALSO checked per period against ESPN's own linescores
-# (`PERIOD_RECONCILIATION`, below), which is the stricter test and the
-# one a points answer is caveated by.
-PERIOD_AGREEMENT: dict[str, dict[int, float]] = {
-    "points": {2002: 27.2, 2003: 93.7, 2004: 98.2, 2005: 97.7, 2006: 97.6, 2013: 97.4, 2016: 90.4},
-    "fieldGoalsMade": {2002: 92.3, 2003: 94.5, 2004: 98.6, 2005: 98.1, 2006: 98.1, 2013: 97.9, 2016: 90.4},
-    "fieldGoalsAttempted": {2002: 89.9, 2003: 91.7, 2004: 96.6, 2005: 95.6, 2006: 96.0, 2013: 97.1, 2016: 89.3, 2017: 98.6},
-    "threePointFieldGoalsMade": {2002: 97.5, 2003: 98.7},
-    "threePointFieldGoalsAttempted": {2002: 95.1, 2003: 97.3},
-    "freeThrowsMade": {2002: 95.8, 2003: 97.2},
-    "freeThrowsAttempted": {2002: 92.4, 2003: 96.1, 2004: 98.5, 2005: 95.9, 2006: 95.4},
-    "rebounds": {2002: 92.3, 2003: 93.7, 2004: 97.6, 2005: 96.9, 2006: 97.4, 2013: 97.7, 2017: 95.9, 2018: 98.5, 2019: 98.4},
-    "offensiveRebounds": {2002: 76.9, 2003: 96.5, 2004: 98.5, 2005: 97.9, 2006: 98.4, 2013: 98.9, 2017: 98.7},
-    "defensiveRebounds": {2002: 74.6, 2003: 95.1, 2004: 98.8, 2005: 98.4, 2006: 98.5, 2013: 98.6, 2017: 97.0},
-    "assists": {2002: 30.3, 2003: 30.3, 2004: 31.2, 2005: 31.8, 2006: 87.8, 2013: 98.6, 2016: 93.5, 2017: 98.9},
-    "steals": {2002: 51.7, 2003: 51.6, 2004: 50.9, 2005: 53.3, 2006: 91.5, 2013: 98.7, 2017: 97.4, 2018: 98.5},
-    "blocks": {2002: 68.9, 2003: 69.3, 2004: 69.0, 2005: 69.9, 2006: 94.5, 2017: 98.7},
-    "turnovers": {2002: 89.5, 2003: 95.0, 2004: 87.3, 2005: 94.1, 2006: 96.1, 2007: 98.3, 2008: 98.7, 2013: 98.8, 2016: 94.5},
-    "fouls": {2002: 92.9, 2003: 94.6, 2004: 98.4, 2005: 97.6, 2006: 96.8, 2013: 99.0, 2018: 97.6},
-}
-"""Per :data:`PERIOD_COLUMNS` column, per season, the percentage of
-player-games whose period lines, summed over the whole game, equal the box
-score exactly - for the seasons under 99% only. A period answer reading a
-column in a listed season says so, and refuses under 90%;
-``scripts/check_period_lines.py`` re-measures it against a built warehouse.
-
-.. versionadded:: 5.0.0
-"""
-
-
-# Per-period points are summed from `shot_chart`, and how closely that sums to
-# ESPN's own linescore is a property of the SEASON, not of the method. Measured
-# over every regular season, one row per team-quarter, against
-# `games.home_linescores`/`away_linescores`: the percentage of team-quarters
-# where the sum is EXACTLY the official figure. Only the seasons below 99% are
-# listed; the other nineteen run 99.2-100.0%.
-#
-# The two bad ones have known causes rather than being noise. 2002 cannot be
-# answered at all - it is `UNSEPARABLE_SHOT_VALUES`, so `SHOT_VALUE_SQL` is
-# NULL for 20,534 of its made shots and a sum over them is meaningless (4.9%).
-# 2016 is the season `fetch/repairs/reconstructed_box` also singles out: its scoring
-# plays carry types no rule can classify, and it reconciles at 76.5%, which is
-# one quarter in four.
-PERIOD_RECONCILIATION: dict[int, float] = {2003: 93.5, 2004: 95.7, 2005: 95.9, 2006: 95.8, 2013: 93.7, 2016: 76.5}
-"""Per-season agreement between summed shot values and ESPN's linescores, for
-the seasons under 99%. Read by the period answers to caveat or refuse.
-
-.. versionadded:: 2.2.0
-
-.. versionchanged:: 5.0.0
-   Lives on the period relation; until Phase 2's step 1 it was
-   ``templates.games.PERIOD_RECONCILIATION``.
-"""
-
-
-PERIOD_REFUSE_BELOW = 90.0
-"""Below this agreement a period answer is refused rather than caveated.
-
-Set between 2016's 76.5% and 2003's 93.5% deliberately: a season that is right
-19 times in 20 is worth answering with a caveat, and one that is wrong in a
-quarter of its quarters is not an answer at all.
-
-.. versionadded:: 2.2.0
-
-.. versionchanged:: 5.0.0
-   Lives on the period relation (was ``templates.games.PERIOD_REFUSE_BELOW``).
-"""
-
-
 PERIOD_RATES: dict[str, tuple[str, str]] = {
     "fg_pct": ("fieldGoalsMade", "fieldGoalsAttempted"),
     "three_pct": ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted"),
@@ -296,8 +214,8 @@ throws, and the columns a whole-line caveat names.
 """
 
 # The columns whose figure needs a shot's VALUE (two or three), which 2002's
-# shots do not carry (UNSEPARABLE_SHOT_VALUES) - refused there like points.
-_PERIOD_SHOT_VALUED = frozenset({"threePointFieldGoalsMade", "threePointFieldGoalsAttempted"})
+# shots do not carry (UNSEPARABLE_SHOT_VALUES).
+_PERIOD_SHOT_VALUED = frozenset({"points", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"})
 
 
 def period_columns(measure: str) -> tuple[str, ...]:
@@ -324,40 +242,37 @@ def period_rate(games: list[dict[str, Any]], measure: str) -> tuple[int, int, fl
     return made, attempted, (made * 100.0 / attempted if attempted else None)
 
 
-def period_distrust(season: int, measure: str) -> dict[str, Any] | None:
-    """Why ``season``'s per-period ``measure`` cannot be trusted enough to
-    answer at all, as plain facts - or None for a season answered (perhaps
-    with a caveat, :func:`period_agreement_notes`). Points by their
-    agreement with ESPN's own quarter scores (:data:`PERIOD_RECONCILIATION`);
-    any other column by how often a game's rebuilt figure equals its box
-    score (:data:`PERIOD_AGREEMENT`); a shot's value in a season that does
-    not carry one (``UNSEPARABLE_SHOT_VALUES``). A rate is refused where
-    either of the columns it divides is. ``unseparable`` marks the last
-    cause, which is said as the points refusal is.
+PERIOD_MISSING_ABOVE = 0.10
+"""Above this share of the games read whose play-by-play does not add up to
+the box score in a column the question asks for, a period answer is refused
+by that column and that share rather than bounded.
 
-    .. versionadded:: 5.0.0
-    """
-    for column in period_columns(measure):
-        if column == "points":
-            agreement = PERIOD_RECONCILIATION.get(season)
-            if season in UNSEPARABLE_SHOT_VALUES or (agreement is not None and agreement < PERIOD_REFUSE_BELOW):
-                return {"season": season, "column": column, "agreement": agreement, "unseparable": season in UNSEPARABLE_SHOT_VALUES}
-            return None
-        agreement = PERIOD_AGREEMENT.get(column, {}).get(season)
-        if agreement is not None and agreement < PERIOD_REFUSE_BELOW:
-            return {"season": season, "column": column, "agreement": agreement, "unseparable": False}
-        if column in _PERIOD_SHOT_VALUED and season in UNSEPARABLE_SHOT_VALUES:
-            return {"season": season, "column": column, "agreement": None, "unseparable": True}
-    return None
+Every game is counted, its gap said (:class:`PeriodCounted`); but where many
+games miss, the ones that miss are the ones richest in the stat (a game with
+no assist always adds up on assists), so the bound stops being a few plays
+and the figure is not an answer. Measured 2026-10-23 over the 628,074 played
+player-games in a covered game (``scripts/check_period_lines.py`` prints the
+table): from 2007 a column misses in at most 4.1% of a season's games (2017's
+rebounds; 2016's points 9.6%, its field goal attempts 10.7%), while 2002-2005
+miss assists in 68-70%, steals in 47-49% and blocks in 30-31%, which stay
+refused - a share of one season, where the floor is read per answer over the
+games it holds. Jeff's ruling (2026-10-23), his to move.
+
+.. versionadded:: 7.0.0
+"""
 
 
-PERIOD_INCOMPLETE = "period_incomplete"
+PERIOD_GAPS = "period_gaps"
 """The column every period-narrowed row carries beside the period's line:
-the :data:`PERIOD_COLUMNS` of that player's game whose line, summed over the
-whole game, does not equal his box score (``[]`` where every one does), or
-NULL where nothing checks the game - read from the completeness table
-(:data:`~association.nba.period_line.PLAYS_COMPLETE`) by
-:func:`period_counted`.
+for each :data:`PERIOD_COLUMNS` column in order, that player's box score
+less his play-by-play summed over the whole game (0 where they agree), read
+from the completeness table (:data:`~association.nba.period_line.PLAYS_COMPLETE`)
+by :func:`period_counted` - or NULL where the game has no row there. The
+table holds every played player-game the period relation reads but a line
+rebuilt from the plays because ESPN served the box score empty (built over
+the same played guard and the same covered games, and rebuilt on every
+load), so where the warehouse holds the table, NULL is that rebuilt line:
+no box score of its own to check the plays against.
 
 .. versionadded:: 7.0.0
 """
@@ -365,121 +280,90 @@ NULL where nothing checks the game - read from the completeness table
 
 @dataclass(frozen=True)
 class PeriodCounted:
-    """A period read's games divided by what can be counted
-    (:func:`period_counted`).
+    """A period read's games, and what each one's play-by-play misses
+    against its box score (:func:`period_counted`).
 
     .. versionadded:: 7.0.0
     """
 
-    #: The games counted: of a season the period's figures can be trusted
-    #: in, or checked complete for the columns read.
+    #: The games counted: every game the read selected but a season whose
+    #: shots carry no value where a column read needs one.
     kept: list[dict[str, Any]]
-    #: The games of an untrusted season whose play-by-play does not add up
-    #: to the box score in a column read.
-    incomplete: list[dict[str, Any]]
-    #: The games of an untrusted season nothing checks: a shot's value the
-    #: season does not carry, or no completeness row (an empty box score, a
-    #: warehouse without the table).
-    unchecked: list[dict[str, Any]]
-    #: The untrusted seasons a kept game is from - each kept on its own
-    #: game's check, so the season's agreement caveat is not theirs.
-    checked: frozenset[int]
+    #: The games of a season whose shots carry no value
+    #: (``UNSEPARABLE_SHOT_VALUES``), where a column read needs one.
+    unseparable: list[dict[str, Any]]
+    #: The kept games whose box score ESPN served empty and the warehouse
+    #: rebuilt from the same plays: counted, with nothing to check them by.
+    rebuilt: list[dict[str, Any]]
 
-    def incomplete_columns(self, columns: tuple[str, ...]) -> list[str]:
-        """The ``columns`` some left-out game's play-by-play does not add up
-        in, in :data:`PERIOD_COLUMNS` order."""
-        short = {column for row in self.incomplete for column in row[PERIOD_INCOMPLETE]}
-        return [column for column in PERIOD_COLUMNS if column in short and column in columns]
+    def gaps(self, column: str) -> list[tuple[dict[str, Any], int]]:
+        """The kept games whose play-by-play does not add up to the box
+        score in ``column``, each with its gap (the box score less the
+        plays): a period's figure in that game is off by at most that much."""
+        at = PERIOD_COLUMNS.index(column)
+        return [(row, int(row[PERIOD_GAPS][at])) for row in self.kept if row.get(PERIOD_GAPS) is not None and row[PERIOD_GAPS][at]]
+
+    def checked(self) -> int:
+        """How many kept games the completeness table checks (all but the
+        rebuilt)."""
+        return len(self.kept) - len(self.rebuilt)
+
+    def too_short(self, columns: tuple[str, ...]) -> dict[str, Any] | None:
+        """The column asked for whose share of checked games that miss is
+        over :data:`PERIOD_MISSING_ABOVE` - the worst, with how many miss of
+        how many - or None."""
+        checked = self.checked()
+        worst = max(((len(self.gaps(column)), column) for column in columns), default=(0, ""))
+        if not checked or worst[0] <= PERIOD_MISSING_ABOVE * checked:
+            return None
+        return {"column": worst[1], "missing": worst[0], "games": checked}
 
 
-def period_counted(rows: list[dict[str, Any]], measure: str, columns: tuple[str, ...]) -> PeriodCounted:
-    """The games of a period read that can be counted for ``measure``, read
-    as ``columns`` (its own, :func:`period_columns`, or a whole line's).
+def period_unseparable(season: int, columns: tuple[str, ...]) -> dict[str, Any] | None:
+    """Why ``season``'s per-period ``columns`` cannot be read at all, as
+    plain facts - a column that needs a shot's value (points, threes) in a
+    season whose shots carry none (``UNSEPARABLE_SHOT_VALUES``) - or None.
+    The one rule the per-game gap cannot replace: a 2002 game's points
+    "add up" only where the unvalued shots happen to cancel out.
 
-    A season whose per-period ``measure`` can be trusted
-    (:func:`period_distrust` is None) keeps every game, as it always has. In
-    one that cannot - 2016's points, whose plays lack rows at the source - a
-    game counts where the player's line summed over the whole game equals
-    his box score in every one of ``columns`` (each row's
-    :data:`PERIOD_INCOMPLETE`): nothing he did in it is missing from the
-    plays, and its quarters read as any season's do (where every player of a
-    2016 team is complete on points, the period line's team-quarters agree
-    with the linescore in 99.98% of 4,544). A season whose shots carry no
-    value (``unseparable``) and a game nothing checks are left out whole.
+    .. versionadded:: 7.0.0
+    """
+    if season not in UNSEPARABLE_SHOT_VALUES:
+        return None
+    for column in columns:
+        if column in _PERIOD_SHOT_VALUED:
+            return {"season": season, "column": column, "unseparable": True}
+    return None
+
+
+def period_counted(rows: list[dict[str, Any]], columns: tuple[str, ...]) -> PeriodCounted:
+    """The games of a period read, read as ``columns`` (the asked stat's,
+    :func:`period_columns`, or a whole line's), and what each one's plays
+    miss.
+
+    Whatever the season, every game counts, and each one's gap against its
+    box score (:data:`PERIOD_GAPS`) bounds how far its period figure can be
+    off: where it adds up, nothing he did in it is missing from the plays
+    (where every player of a 2016 team adds up on points, the period line's
+    team-quarters agree with the linescore in 99.98% of 4,544). Two declared
+    rules cover what the table cannot say: a season whose shots carry no
+    value (:func:`period_unseparable`) is left out where a column read needs
+    one, and a line ESPN served empty (NULL, rebuilt from the same plays) is
+    counted unchecked, as every other read of that game counts it.
 
     .. versionadded:: 7.0.0
     """
     kept: list[dict[str, Any]] = []
-    incomplete: list[dict[str, Any]] = []
-    unchecked: list[dict[str, Any]] = []
-    checked: set[int] = set()
-    distrust = {season: period_distrust(season, measure) for season in {int(row["season"]) for row in rows}}
+    unseparable: list[dict[str, Any]] = []
+    rebuilt: list[dict[str, Any]] = []
     for row in rows:
-        season = int(row["season"])
-        facts = distrust[season]
-        if facts is None:
-            kept.append(row)
-        elif facts["unseparable"] or row.get(PERIOD_INCOMPLETE) is None:
-            unchecked.append(row)
-        elif set(row[PERIOD_INCOMPLETE]) & set(columns):
-            incomplete.append(row)
-        else:
-            kept.append(row)
-            checked.add(season)
-    return PeriodCounted(kept=kept, incomplete=incomplete, unchecked=unchecked, checked=frozenset(checked))
-
-
-def period_agreement_notes(season: int, measure: str, *, full_line: bool = False) -> list[Note]:
-    """The caveats a period answer carries for ``measure`` in ``season``, as
-    notes: points by their per-period agreement with ESPN's own quarter
-    scores (:data:`PERIOD_RECONCILIATION`); any other column by how often a
-    game's rebuilt figure, summed over its periods, equals its box score
-    (:data:`PERIOD_AGREEMENT`). A whole line (``full_line``) names every
-    :data:`PERIOD_LOG_COLUMNS` column the season holds under 99%, after the
-    points' own. Said by ``compose.say.period_caveat``.
-
-    .. versionadded:: 5.0.0
-    """
-    reconciled = PERIOD_RECONCILIATION.get(season)
-    points = [Note("rebuilt_agreement", {"season": season, "pct": reconciled, "columns": ["points"], "what": "period_points_from_shots"})] if reconciled is not None else []
-    if measure == "points" and not full_line:
-        return points
-    columns = PERIOD_LOG_COLUMNS if full_line else period_columns(measure)
-    weak = [(column, PERIOD_AGREEMENT[column][season]) for column in columns if season in PERIOD_AGREEMENT.get(column, {})]
-    notes = points if full_line else []
-    if weak:
-        notes = [*notes, Note("rebuilt_agreement", {"season": season, "columns": [column for column, _ in weak], "pct": [pct for _, pct in weak], "what": "period_rebuilt"})]
-    return notes
-
-
-def period_agreement_across(seasons: list[int], measure: str, *, full_line: bool = False) -> list[Note]:
-    """The caveats a period answer over the games of several seasons carries
-    (:func:`period_agreement_notes`, each season's), said once: each kind
-    with the seasons it holds, every column any of them names (in the
-    order the seasons name them) and, for each, its lowest agreement among
-    them - where a career read said one caveat per season, five times over
-    for "kyrie Irving second half stats vs denver". One season's are its own.
-
-    .. versionadded:: 7.0.0
-    """
-    each = [period_agreement_notes(season, measure, full_line=full_line) for season in sorted(set(seasons))]
-    if len(each) <= 1:
-        return each[0] if each else []
-    merged: list[Note] = []
-    for what in ("period_points_from_shots", "period_rebuilt"):
-        found = [note.facts for notes in each for note in notes if note.facts["what"] == what]
-        if len(found) == 1:
-            merged.append(Note("rebuilt_agreement", found[0]))
+        if period_unseparable(int(row["season"]), columns) is not None:
+            unseparable.append(row)
             continue
-        if not found:
-            continue
-        lowest: dict[str, float] = {}
-        for facts in found:
-            pcts = facts["pct"] if isinstance(facts["pct"], list) else [facts["pct"]]
-            for column, pct in zip(facts["columns"], pcts, strict=True):
-                lowest[column] = min(pct, lowest.get(column, pct))
-        merged.append(Note("rebuilt_agreement", {"seasons": [facts["season"] for facts in found], "columns": list(lowest), "pct": list(lowest.values()), "what": what}))
-    return merged
+        kept.append(row)
+        if row.get(PERIOD_GAPS) is None:
+            rebuilt.append(row)
+    return PeriodCounted(kept=kept, unseparable=unseparable, rebuilt=rebuilt)
 
 
 def _period_source(narrowed: Narrowed) -> tuple[str, list[Any]]:
@@ -520,29 +404,29 @@ def _period_source(narrowed: Narrowed) -> tuple[str, list[Any]]:
     star = f"pgl.* REPLACE ({replaced})" if replaced else "pgl.*"
     extra = "".join(f", {_period_figure(c)} AS {c}" for c in added)
     covered = "pgl.event_id IN (SELECT DISTINCT cov.event_id FROM shot_chart cov WHERE cov.season = pgl.season)"
-    incomplete, checked = _period_incomplete(narrowed.period_checked)
+    gaps, checked = _period_gaps(narrowed.period_checked)
     sql = (
         f"FROM (WITH _period_line AS ({line}) "
-        f"SELECT {star}{extra}, {incomplete} AS {PERIOD_INCOMPLETE} FROM player_game_log pgl "
+        f"SELECT {star}{extra}, {gaps} AS {PERIOD_GAPS} FROM player_game_log pgl "
         "LEFT JOIN _period_line l ON l.event_id = pgl.event_id AND l.season = pgl.season AND l.athlete_id = pgl.athlete_id "
         f"{checked}WHERE {covered}) pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season"
     )
     return sql, list(narrowed.base_params)
 
 
-def _period_incomplete(checked: bool) -> tuple[str, str]:
-    """A period-narrowed row's :data:`PERIOD_INCOMPLETE` - the
-    :data:`PERIOD_COLUMNS` whose whole-game line does not add up to the box
-    score, read from the completeness table
+def _period_gaps(checked: bool) -> tuple[str, str]:
+    """A period-narrowed row's :data:`PERIOD_GAPS` - each
+    :data:`PERIOD_COLUMNS` column's box score less its whole-game line, read
+    from the completeness table
     (:data:`~association.nba.period_line.PLAYS_COMPLETE`) - and the join
     that reads it. NULL where the game has no row there (a line ESPN served
     empty, rebuilt from the very plays it would be checked against) or the
-    warehouse has no such table: unknown, never complete."""
+    warehouse has no such table."""
     if not checked:
-        return "CAST(NULL AS VARCHAR[])", ""
-    short = ", ".join(f"CASE WHEN NOT pc.{complete_column(c)} THEN '{c}' END" for c in PERIOD_COLUMNS)
+        return "CAST(NULL AS BIGINT[])", ""
+    gaps = ", ".join(f"pc.{gap_column(c)}" for c in PERIOD_COLUMNS)
     join = f"LEFT JOIN {PLAYS_COMPLETE} pc ON pc.event_id = pgl.event_id AND pc.season = pgl.season AND pc.athlete_id = pgl.athlete_id "
-    return f"(CASE WHEN pc.event_id IS NULL THEN NULL ELSE list_filter([{short}], x -> x IS NOT NULL) END)", join
+    return f"(CASE WHEN pc.event_id IS NULL THEN NULL ELSE [{gaps}] END)", join
 
 
 def _source(narrowed: Narrowed) -> tuple[str, list[Any]]:
@@ -723,7 +607,7 @@ class Narrowed:
     period_plays: bool = True
     #: Whether the warehouse holds the completeness table
     #: (:data:`~association.nba.period_line.PLAYS_COMPLETE`), which every
-    #: period-narrowed row reads its ``period_incomplete`` from
+    #: period-narrowed row reads its ``period_gaps`` from
     #: (:func:`period_counted`); without it the column is NULL - unknown.
     period_checked: bool = False
     #: The columns ``player_game_log`` actually has, where the caller looked -
@@ -936,7 +820,7 @@ class Narrowed:
         the shot table covers. The row filters still read the whole game
         (see :func:`_period_source`); what a reader SELECTs is the period's.
         ``checked``: the warehouse holds the completeness table each row's
-        ``period_incomplete`` is read from.
+        ``period_gaps`` is read from.
 
         .. versionadded:: 5.0.0
 
@@ -1220,18 +1104,40 @@ def grouped_sql(
     return sql, params
 
 
+def _period_gap_selects(column: str) -> list[str]:
+    """Beside a league-wide period read's per-player figures, what the plays
+    miss of each player's ``column`` (:data:`PERIOD_GAPS`): his games the
+    completeness table checks, those whose play-by-play does not add up, the
+    bound on his total (the sum of the gaps' sizes), and the same two counts
+    over every player the read keeps - the pool a refusal's share is read
+    over (:data:`PERIOD_MISSING_ABOVE`)."""
+    gap = f"pgl.{PERIOD_GAPS}[{PERIOD_COLUMNS.index(column) + 1}]"
+    missing = f"COUNT(*) FILTER (WHERE {gap} <> 0)"
+    return [
+        f"COUNT(pgl.{PERIOD_GAPS}) AS checked",
+        f"{missing} AS missing",
+        f"COALESCE(SUM(ABS({gap})), 0) AS bound",
+        f"SUM(COUNT(pgl.{PERIOD_GAPS})) OVER () AS pool_checked",
+        f"SUM({missing}) OVER () AS pool_missing",
+    ]
+
+
 def period_ranking_sql(narrowed: Narrowed, measure: str, *, minimum: int, limit: int, rebuilt: bool) -> tuple[str, list[Any]]:
-    """(name, games, total, average) per player with ``minimum`` games or
-    more in the period-narrowed relation, best average first - the league's
-    ranking by one quarter's or half's ``measure``, whose played guard and
-    covered-games rule are the denominator.
+    """(name, games, total, average, then :func:`_period_gap_selects`) per
+    player with ``minimum`` games or more in the period-narrowed relation,
+    best average first - the league's ranking by one quarter's or half's
+    ``measure``, whose played guard and covered-games rule are the
+    denominator.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       Each player's gap against his box score beside his figure.
     """
     return grouped_sql(
         narrowed,
         "pgl.athlete_id, pgl.player_name",
-        ["pgl.player_name", "COUNT(*) AS games", f"SUM(pgl.{measure}) AS total", f"AVG(pgl.{measure}) AS average"],
+        ["pgl.player_name", "COUNT(*) AS games", f"SUM(pgl.{measure}) AS total", f"AVG(pgl.{measure}) AS average", *_period_gap_selects(measure)],
         having=f"COUNT(*) >= {int(minimum)}",
         order="average DESC, games DESC, pgl.player_name",
         limit=limit,
@@ -1240,13 +1146,18 @@ def period_ranking_sql(narrowed: Narrowed, measure: str, *, minimum: int, limit:
 
 
 def period_quarter_sql(narrowed: Narrowed, *, minimum: int, rebuilt: bool) -> tuple[str, list[Any]]:
-    """(athlete, name, games, average points) per player with ``minimum``
-    games or more in one quarter of the period-narrowed relation - one of
-    the four reads the league's points-by-quarter table joins by player.
+    """(athlete, name, games, average points, then
+    :func:`_period_gap_selects`) per player with ``minimum`` games or more
+    in one quarter of the period-narrowed relation - one of the four reads
+    the league's points-by-quarter table joins by player.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       Each player's gap against his box score beside his figure.
     """
-    return grouped_sql(narrowed, "pgl.athlete_id, pgl.player_name", ["pgl.athlete_id", "pgl.player_name", "COUNT(*)", "AVG(pgl.points)"], having=f"COUNT(*) >= {int(minimum)}", rebuilt=rebuilt)
+    selects = ["pgl.athlete_id", "pgl.player_name", "COUNT(*)", "AVG(pgl.points)", *_period_gap_selects("points")]
+    return grouped_sql(narrowed, "pgl.athlete_id, pgl.player_name", selects, having=f"COUNT(*) >= {int(minimum)}", rebuilt=rebuilt)
 
 
 def most_games_sql(narrowed: Narrowed, *, rebuilt: bool) -> tuple[str, list[Any]]:
@@ -1274,9 +1185,9 @@ def _period_values(con: duckdb.DuckDBPyConnection, statement: tuple[str, list[An
 
 def period_ranking(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, measure: str, *, minimum: int, limit: int, rebuilt: bool) -> list[tuple[Any, ...]]:
     """The league's ranking by one quarter's or half's ``measure``, read:
-    (name, games, total, average) per player with ``minimum`` games or more
-    in the period-narrowed relation, best average first
-    (:func:`period_ranking_sql`).
+    (name, games, total, average, checked, missing, bound, pool_checked,
+    pool_missing) per player with ``minimum`` games or more in the
+    period-narrowed relation, best average first (:func:`period_ranking_sql`).
 
     .. versionadded:: 6.0.0
     """
@@ -1285,8 +1196,9 @@ def period_ranking(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, measure: 
 
 def period_quarter(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, minimum: int, rebuilt: bool) -> list[tuple[Any, ...]]:
     """One quarter of the league's points-by-quarter table, read: (athlete,
-    name, games, average points) per player with ``minimum`` games or more
-    in the quarter-narrowed relation (:func:`period_quarter_sql`).
+    name, games, average points, checked, missing, bound, pool_checked,
+    pool_missing) per player with ``minimum`` games or more in the
+    quarter-narrowed relation (:func:`period_quarter_sql`).
 
     .. versionadded:: 6.0.0
     """

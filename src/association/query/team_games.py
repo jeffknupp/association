@@ -483,7 +483,7 @@ class TeamNarrowed:
 #   team-games, without them 98.4%.
 # - points are the linescore's, never the shots': it is ESPN's own official
 #   per-period score, where the shots' sum agrees with it in 76.5-99% of
-#   team-quarters by season (`player_games.PERIOD_RECONCILIATION`).
+#   team-quarters by season (measured 2026-09; 2016 the 76.5%).
 #
 # The list itself is the reader's vocabulary (measures.TEAM_PERIOD_COLUMNS,
 # beside the player's PERIOD_COLUMNS): the parser reads it to know a team's
@@ -745,6 +745,18 @@ period answer reading a column in a listed season says so, and refuses under
 90%; ``scripts/check_team_period_lines.py`` re-measures it.
 
 .. versionadded:: 5.0.0
+"""
+
+
+TEAM_PERIOD_REFUSE_BELOW = 90.0
+"""Below this agreement (:data:`TEAM_PERIOD_AGREEMENT`) a team's period
+answer is refused rather than caveated: a season right 19 times in 20 is
+worth answering with the figure attached, one wrong in a quarter of its
+team-games is not. A team's period line has no per-game check yet - a
+player's has (``player_games.PERIOD_GAPS``), and the player reads' season
+threshold (``player_games.PERIOD_REFUSE_BELOW``) went with it.
+
+.. versionadded:: 7.0.0
 """
 
 

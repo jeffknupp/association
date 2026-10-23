@@ -1201,8 +1201,9 @@ measured. Count foul-outs from the box score.
     blocks about 69% (88%, 92% and 95% in 2006, 99%+ from 2007).
 - **Evidence:** measured 2026-09-29 over every player-game 2002-2026 in a
   game the shot table covers (628,103), summed over all periods against the
-  game's box score; the per-season table is `player_games.PERIOD_AGREEMENT`,
-  and `scripts/check_period_lines.py` re-measures it. With the rules above,
+  game's box score; the per-game gap is the load-time table `plays_complete`
+  (`fetch/repairs/plays_complete.py`), and `scripts/check_period_lines.py
+  --print-table` re-measures it per season and column. With the rules above,
   fouls agree with the box score in 99.0-99.9% of player-games from 2007
   (2015: 88.6% before `Shooting Block` was counted, 99.7% after), turnovers
   98.3-99.9% (2026: 95.2% before `Traveling`, 99.7% after).
@@ -1298,11 +1299,13 @@ measured. Count foul-outs from the box score.
 - **How we handle it:** a team's per-quarter points are its linescore's; any
   other team column is caveated with its season's measured agreement and
   refused under 90% (`compose.periods._team_quarter_points_rebuilt`). A
-  player's period figure in a season under 90% counts each game where his
-  play-by-play adds up to his box score in the columns read - the load-time
-  table `plays_complete` (`fetch/repairs/plays_complete.py`), per
-  player-game and per column - and leaves out and names the rest
-  (`player_games.period_counted`, since 2026-10-23).
+  player's period figure, in every season, counts every game and bounds
+  each column it shows by what the plays miss of the box score in each game
+  - the load-time table `plays_complete` (`fetch/repairs/plays_complete.py`),
+  the gap per player-game and per column - naming the games
+  (`player_games.period_counted`); where more than one game in ten of those
+  read miss in a column asked for, it refuses by the column and the share
+  (`player_games.PERIOD_MISSING_ABOVE`, Jeff's ruling of 2026-10-23).
 - **Tracked in:** ISSUES.md, "A quarter or half is answered for a player or
   a team, and for nobody else".
 

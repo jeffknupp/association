@@ -223,14 +223,12 @@ RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
         named_player=frozenset({"companion", "split", "season_n", "line", "game_n"}),
         named_subject=frozenset({"opponent", "venue"}),
     ),
-    # A quarter's or half's accuracy caveat (PERIOD_RECONCILIATION) is measured
-    # per SEASON against ESPN's own linescores, so a read across seasons - a
-    # career, a range, both season types, the last N games across seasons
-    # (decisions D13, D14) - is caveated season by season and labeled by the
-    # seasons and types it holds (`compose.periods`); in a season under
-    # PERIOD_REFUSE_BELOW a game counts where his play-by-play adds up to his
-    # box score in the columns read (`player_games.period_counted`), and the
-    # rest are left out and said. The period
+    # A quarter or half counts each game on its own check - where his
+    # play-by-play adds up to his box score in the columns read
+    # (`player_games.period_counted`), whatever the season - so a read across
+    # seasons - a career, a range, both season types, the last N games across
+    # seasons (decisions D13, D14) - is labeled by the seasons and types it
+    # holds (`compose.periods`), and the games left out are said. The period
     # CONDITION (a quarter conditioning which games count, beside the quarter
     # measured) is excluded from the reader's WORDS, not from the point: it steps
     # aside and the compiler's own sentence, which names both quarters, answers.

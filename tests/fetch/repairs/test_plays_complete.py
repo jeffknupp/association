@@ -19,7 +19,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from association.fetch import warehouse
-from association.nba.period_line import PERIOD_COLUMNS, PLAYS_COMPLETE, complete_column
+from association.nba.period_line import PERIOD_COLUMNS, PLAYS_COMPLETE, gap_column
 
 _EVENT = "400827996"
 _UNCOVERED = "400827997"
@@ -113,13 +113,13 @@ def _write(data_dir: Path, table: str, rows: list[dict[str, Any]]) -> None:
     pq.write_table(pa.Table.from_pylist(rows), d / "f.parquet")
 
 
-def _build(tmp_path: Path, *, with_shots: bool = True) -> duckdb.DuckDBPyConnection:
+def _build(tmp_path: Path, *, with_shots: bool = True, plays: list[dict[str, Any]] | None = None) -> duckdb.DuckDBPyConnection:
     data_dir = tmp_path / "parquet"
     _write(data_dir, "teams", [{"team_id": "28", "abbreviation": "TOR"}, {"team_id": "18", "abbreviation": "NY"}])
     _write(data_dir, "players", [{"athlete_id": row["athlete_id"], "display_name": row["athlete_id"]} for row in _BOX_ROWS])
     _write(data_dir, "games", [{"event_id": event, "season": 2016, "date": "2016-02-23T00:30Z"} for event in (_EVENT, _UNCOVERED)])
     _write(data_dir, "player_box_stats", _BOX_ROWS)
-    _write(data_dir, "plays", _PLAY_ROWS)
+    _write(data_dir, "plays", _PLAY_ROWS if plays is None else plays)
     if with_shots:
         _write(data_dir, "shot_chart", _SHOT_ROWS)
     db_path = tmp_path / "test.duckdb"
@@ -127,26 +127,37 @@ def _build(tmp_path: Path, *, with_shots: bool = True) -> duckdb.DuckDBPyConnect
     return duckdb.connect(str(db_path))
 
 
-def _flags(con: duckdb.DuckDBPyConnection, athlete: str) -> dict[str, bool] | None:
+def _flags(con: duckdb.DuckDBPyConnection, athlete: str) -> dict[str, Any] | None:
     cur = con.execute(f"SELECT * FROM {PLAYS_COMPLETE} WHERE athlete_id = ?", [athlete])
     names = [d[0] for d in cur.description]
     got = cur.fetchone()
     return dict(zip(names, got, strict=True)) if got else None
 
 
-def test_a_made_shot_absent_from_the_plays_leaves_his_points_makes_and_attempts_incomplete(tmp_path: Path) -> None:
+def test_a_made_shot_absent_from_the_plays_leaves_his_points_makes_and_attempts_short(tmp_path: Path) -> None:
+    """The box score less the plays: one make of two points absent, so his
+    points are 2 short, his makes 1 and his attempts 1 (the shot chart holds
+    5 of his 6 attempts)."""
     con = _build(tmp_path)
     patterson = _flags(con, "patterson")
     con.close()
     assert patterson is not None
-    assert not patterson["points_complete"]
-    assert not patterson["fieldGoalsMade_complete"]
-    assert not patterson["fieldGoalsAttempted_complete"]
+    assert (patterson["points_gap"], patterson["fieldGoalsMade_gap"], patterson["fieldGoalsAttempted_gap"]) == (2, 1, 1)
     # What the plays do hold of him adds up: the absent row was a make.
-    assert patterson["rebounds_complete"]
-    assert patterson["defensiveRebounds_complete"]
-    assert patterson["threePointFieldGoalsMade_complete"]
-    assert patterson["freeThrowsMade_complete"]
+    assert patterson["rebounds_gap"] == 0
+    assert patterson["defensiveRebounds_gap"] == 0
+    assert patterson["threePointFieldGoalsMade_gap"] == 0
+    assert patterson["freeThrowsMade_gap"] == 0
+
+
+def test_plays_holding_more_than_the_box_score_are_a_negative_gap(tmp_path: Path) -> None:
+    """The other direction: a rebound the plays credit him that the box score
+    does not (Biyombo's three rebounds in the box, four in the plays) is a
+    gap of -1 - the period figure may be over, not short."""
+    con = _build(tmp_path, plays=[*_PLAY_ROWS, _rebound("biyombo", 9)])
+    biyombo = _flags(con, "biyombo")
+    con.close()
+    assert biyombo is not None and biyombo["rebounds_gap"] == -1 and biyombo["points_gap"] == 0
 
 
 def test_a_teammate_whose_rows_are_all_there_is_complete_in_the_same_game(tmp_path: Path) -> None:
@@ -156,7 +167,7 @@ def test_a_teammate_whose_rows_are_all_there_is_complete_in_the_same_game(tmp_pa
     biyombo = _flags(con, "biyombo")
     con.close()
     assert biyombo is not None
-    assert all(biyombo[complete_column(c)] for c in PERIOD_COLUMNS)
+    assert all(biyombo[gap_column(c)] == 0 for c in PERIOD_COLUMNS)
 
 
 def test_a_player_with_no_shot_and_no_play_is_complete_on_his_zeros(tmp_path: Path) -> None:
@@ -164,7 +175,7 @@ def test_a_player_with_no_shot_and_no_play_is_complete_on_his_zeros(tmp_path: Pa
     powell = _flags(con, "powell")
     con.close()
     assert powell is not None
-    assert all(powell[complete_column(c)] for c in PERIOD_COLUMNS)
+    assert all(powell[gap_column(c)] == 0 for c in PERIOD_COLUMNS)
 
 
 def test_only_played_lines_in_covered_games_have_a_row(tmp_path: Path) -> None:
@@ -188,4 +199,4 @@ def test_the_table_is_skipped_without_the_shot_table(tmp_path: Path) -> None:
 
 def test_a_column_the_period_line_does_not_read_is_refused() -> None:
     with pytest.raises(ValueError, match="minutes"):
-        complete_column("minutes")
+        gap_column("minutes")

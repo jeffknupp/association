@@ -207,22 +207,23 @@ def period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: bool 
 
 PLAYS_COMPLETE = "plays_complete"
 """The load-time table saying, per played player-game and per
-:data:`PERIOD_COLUMNS` column, whether :func:`period_line_sql` summed over
-the whole game equals the box score (built by
+:data:`PERIOD_COLUMNS` column, how far :func:`period_line_sql` summed over
+the whole game falls from the box score (built by
 :mod:`association.fetch.repairs.plays_complete`, read by the period
-relation): where it does, every period of that game can be read for that
-column; where it does not, some of what he did is missing from the plays.
+relation): the box score's figure less the plays' - 0 where they agree,
+positive where the plays hold less than the box score, negative where they
+hold more. A period's figure in that game is off by at most that much.
 
 .. versionadded:: 7.0.0
 """
 
 
-def complete_column(column: str) -> str:
+def gap_column(column: str) -> str:
     """The :data:`PLAYS_COMPLETE` column for a period-line ``column``:
-    ``points`` -> ``points_complete``.
+    ``points`` -> ``points_gap``.
 
     .. versionadded:: 7.0.0
     """
     if column not in PERIOD_COLUMNS:  # written in code: a programming error, not a refusal
         raise ValueError(f"no period-line column {column!r}")
-    return f"{column}_complete"
+    return f"{column}_gap"

@@ -301,6 +301,12 @@ def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
         return _say_lines_unread(facts)
     if facts.get("what") == "single_game":
         return " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
+    if facts.get("what") == "period":
+        # A period read's games whose box score is the plays' own
+        # (``player_games.period_counted``): counted, with nothing to check
+        # the plays against.
+        count = facts["games"]
+        return f"(Counted unchecked: {count} of {facts['whose']}'s games, whose box score ESPN served empty - his line there is rebuilt from the same play-by-play, so nothing checks it.)"
     shown = facts["games"]
     whose = "their" if shown != 1 else "its"
     lost = _joined(["minutes", *dict.fromkeys(_UNREBUILT_WORDS[column] for column in facts.get("columns") or [] if column in _UNREBUILT_WORDS)])
@@ -412,21 +418,11 @@ def _say_games_unseen(facts: dict[str, Any], consequence: str = "") -> str:
         return f"{count} game{'' if count == 1 else 's'} inside that time {'has' if count == 1 else 'have'} no box score, so {consequence}."
     if facts.get("why") == "no_play_by_play":
         return f"{count} of the {facts['of']} games have no play-by-play and are not counted."
-    if facts.get("why") == "period_untrusted":
-        # A read across seasons leaves out a season whose per-period figures
-        # agree with the official ones too seldom to answer (decision D13).
+    if facts.get("why") == "period_unseparable":
+        # A read across seasons leaves out a season whose shots carry no
+        # value, where a column read needs one (decision D13).
         seasons = list(facts["seasons"])
-        return (
-            f"(Not counted: {count} game{'' if count == 1 else 's'} from {_joined([str(season) for season in seasons])}, whose per-quarter figures rebuilt from "
-            f"play-by-play agree with the official ones too seldom to answer.)"
-        )
-    if facts.get("why") == "period_incomplete":
-        # A game of an untrusted season counted on its own check
-        # (``player_games.period_counted``), left out where his play-by-play
-        # does not add up to his box score in a column the answer reads.
-        seasons = list(facts["seasons"])
-        nouns = _joined([period_noun(column, 2) for column in facts["columns"]])
-        return f"(Not counted: {count} of {facts['whose']}'s games from {_joined([str(season) for season in seasons])}, whose play-by-play does not add up to his box score in {nouns}.)"
+        return f"(Not counted: {count} game{'' if count == 1 else 's'} from {_joined([str(season) for season in seasons])}, whose shots cannot be told apart as twos or threes.)"
     if facts.get("what") == "meetings":
         return f" {count} game{'' if count == 1 else 's'} between their teams while both were playing for them {'has' if count == 1 else 'have'} no box score, so a meeting there is not counted."
     if facts.get("why") == "no_box_score":
@@ -625,6 +621,8 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
         return _say_definition(facts, about, placed)
     if each.kind == "lines_rebuilt":
         return _say_lines_rebuilt(facts)
+    if each.kind == "period_bound":
+        return _say_period_bound(facts)
     if each.kind == "stat_withheld":
         return _say_stat_withheld(facts)
     if each.kind == "games_unseen" and "first" in facts:
@@ -676,7 +674,7 @@ def _say_season_note(kind: str, facts: dict[str, Any]) -> str | None:
     the complexity gate, in its order."""
     if kind == "floor" and facts.get("what") == "career_pool":
         return f"Careers that ended before {season_label(facts['first'])} are not in this warehouse, so this is not an all-time list."
-    if kind == "rebuilt_agreement" and facts.get("what") in ("period_points_from_shots", "period_rebuilt", "team_period_rebuilt"):
+    if kind == "rebuilt_agreement" and facts.get("what") == "team_period_rebuilt":
         return _say_period_agreement(facts)
     if kind == "seasons_missing":
         return _say_seasons_missing(facts)
@@ -2037,33 +2035,50 @@ def period_rate_said(made: int, attempted: int, pct: float | None, measure: str)
 
 
 def _say_period_agreement(facts: dict[str, Any]) -> str:
-    if facts["what"] == "team_period_rebuilt":
-        said = ", ".join(f"{pct:.1f}% of the time in {season}" for season, pct in zip(facts["seasons"], facts["pct"], strict=True))
-        return (
-            f"Rebuilt from play-by-play rather than an official per-quarter box score: a team-game's {period_columns_noun(facts['stat'])} rebuilt this way "
-            f"match its box score {said} - treat a single game as approximate."
-        )
-    # One season's caveat, or several seasons' said once with each figure
-    # the lowest among them (``player_games.period_agreement_across``).
-    seasons = [facts["season"]] if "season" in facts else list(facts["seasons"])
-    when, least = _joined([str(season) for season in seasons]), ("" if len(seasons) == 1 else "at least ")
-    if facts["what"] == "period_points_from_shots":
-        pct = facts["pct"][0] if isinstance(facts["pct"], list) else facts["pct"]
-        return (
-            f"(Summed from shot data rather than an official per-quarter box score. In {when} that sum matches ESPN's own "
-            f"quarter scores {least}{pct:.0f}% of the time, so treat a single game as approximate.)"
-        )
-    said = ", ".join(f"{period_noun(column, 2)} {pct:.0f}%" for column, pct in zip(facts["columns"], facts["pct"], strict=True))
+    """A team's period answer's agreement caveat, season by season
+    (``compose.periods._team_quarter_points_notes``)."""
+    said = ", ".join(f"{pct:.1f}% of the time in {season}" for season, pct in zip(facts["seasons"], facts["pct"], strict=True))
     return (
-        f"(Rebuilt from play-by-play rather than an official per-quarter box score. In {when} a game's figures rebuilt this way match its box score "
-        f"{least}this often: {said} - treat a single game as approximate.)"
+        f"Rebuilt from play-by-play rather than an official per-quarter box score: a team-game's {period_columns_noun(facts['stat'])} rebuilt this way "
+        f"match its box score {said} - treat a single game as approximate."
     )
 
 
+#: How many games a period's bound names before it counts the rest.
+_PERIOD_BOUND_SHOWN = 6
+
+
+def _say_period_bound(facts: dict[str, Any]) -> str:
+    """How far a period figure may be off where some game's play-by-play
+    does not add up to the box score in its column
+    (``compose.periods._period_bound_notes``): the gaps' sizes summed, and
+    the games, each with what the plays hold against the box score - or,
+    beneath a ranking, the players shown whose plays miss, each with his
+    bound. "Short" where the plays hold less in every game, "over" where
+    more, "off" where both."""
+    column = facts["column"]
+    head = f"{facts['period'].replace(' ', '-')} {period_noun(column, 2)}" if facts.get("period") else f"Per-quarter {period_noun(column, 2)}"
+    if "names" in facts:
+        players = [f"{name}'s by up to {bound} ({games} game{'' if games == 1 else 's'})" for name, games, bound in zip(facts["names"], facts["games"], facts["gaps"], strict=True)]
+        return f"({head} may be off where a player's play-by-play does not add up to his box score: {_joined(players)}.)"
+    gaps, dates, whose = list(facts["gaps"]), list(facts["dates"]), facts["whose"]
+    way = "short" if all(gap > 0 for gap in gaps) else "over" if all(gap < 0 for gap in gaps) else "off"
+    bound = facts["bound"]
+    if len(gaps) == 1:
+        gap = gaps[0]
+        held = f"{'one' if abs(gap) == 1 else abs(gap)} {period_noun(column, abs(gap))} {'fewer' if gap > 0 else 'more'}"
+        return f"({head} may be {way} by up to {bound}: on {dates[0]} the play-by-play holds {held} than {whose}'s box score.)"
+    each = [f"{day} ({abs(gap)} {'fewer' if gap > 0 else 'more'})" for day, gap in zip(dates, gaps, strict=True)][:_PERIOD_BOUND_SHOWN]
+    if len(gaps) > _PERIOD_BOUND_SHOWN:
+        each.append(f"{len(gaps) - _PERIOD_BOUND_SHOWN} more")
+    return f"({head} may be {way} by up to {bound} over {len(gaps)} games where the play-by-play does not add up to {whose}'s box score: {_joined(each)}.)"
+
+
 def period_caveat(notes: list[Note]) -> str:
-    """A period answer's agreement caveats (``player_games.period_agreement_notes``),
-    phrased and recorded, each on its own indented line - the text the answer
-    appends, empty where the season needs none.
+    """A period answer's remarks (``compose.periods._period_bound_notes``):
+    the games left out, what the plays miss, the games counted unchecked -
+    phrased and recorded, each on its own indented line; the text the answer
+    appends, empty where there is nothing to say.
 
     .. versionadded:: 5.0.0
     """
@@ -2071,19 +2086,29 @@ def period_caveat(notes: list[Note]) -> str:
 
 
 def _say_period_untrusted(facts: Mapping[str, Any]) -> str:
-    """The refusal for a season whose per-period figures cannot be trusted
-    (``player_games.period_distrust``'s facts): a shot's value the season
-    does not carry, points that disagree with ESPN's own quarter scores, or
-    a column whose rebuilt figure disagrees with the box score."""
-    season, column, agreement = facts["season"], facts["column"], facts["agreement"]
-    if facts["unseparable"]:
-        message = f"Per-quarter scoring cannot be answered for {season}: {UNSEPARABLE_SHOT_VALUES[season]}."
-    elif column == "points":
-        message = f"Per-quarter scoring cannot be answered for {season}: its per-period points agree with ESPN's own quarter scores only {agreement:.0f}% of the time."
-    else:
-        noun = period_noun(column, 2)
-        message = f"Per-quarter {noun} cannot be answered for {season}: rebuilt from play-by-play, a game's {noun} match its box score only {agreement:.0f}% of the time."
-    return message
+    """The refusal for a season whose shots carry no value
+    (``player_games.period_unseparable``'s facts), where the column read
+    needs one."""
+    return f"Per-quarter scoring cannot be answered for {facts['season']}: {UNSEPARABLE_SHOT_VALUES[facts['season']]}."
+
+
+def _say_period_incomplete(facts: Mapping[str, Any]) -> str:
+    """The refusal where more of the games read miss in a column asked for
+    than ``player_games.PERIOD_MISSING_ABOVE`` allows: the column, and how
+    many games of how many - a player's, or a ranking's pool."""
+    missing, games, noun = facts["missing"], facts["games"], period_noun(facts["column"], 2)
+    whose = f"{facts['whose']}'s play-by-play" if facts.get("whose") else "the play-by-play"
+    # One decimal where it matters: 7 of 68 is over one game in ten, and "10%" said it was not.
+    share = f"{100.0 * missing / games:.1f}".rstrip("0").rstrip(".")
+    where = "the one game read" if games == 1 else f"{missing:,} of the {games:,} games read ({share}%)"
+    return f"Per-quarter {noun} cannot be answered here: in {where}, {whose} does not add up to the box score in {noun} - more than one game in ten, too many to bound the figure by."
+
+
+def _say_period_unchecked(_facts: Mapping[str, Any]) -> str:
+    """The refusal where the warehouse holds no completeness table
+    (``nba.period_line.PLAYS_COMPLETE``): nothing says which games' quarters
+    can be read."""
+    return "Per-quarter figures cannot be answered from this warehouse: it holds no record of which games' play-by-play adds up to the box score (built by `association data load`)."
 
 
 def _say_period_unread(facts: Mapping[str, Any]) -> str:
@@ -5106,6 +5131,8 @@ _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     ),
     "fingerprint_on_a_date": lambda _facts: "A fingerprint can be drawn for a player's first or most recent game of a season, but not yet for a particular date - ask for their last game instead.",
     "period_untrusted": _say_period_untrusted,
+    "period_incomplete": _say_period_incomplete,
+    "period_unchecked": _say_period_unchecked,
     "period_unread": _say_period_unread,
     "team_period_unknown": _say_team_period_unknown,
     "team_period_unread": _say_team_period_unread,

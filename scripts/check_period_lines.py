@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
-"""Warehouse check for player_games.PERIOD_AGREEMENT.
+"""Warehouse check for the completeness table a player's period reads are
+bounded by (``plays_complete``).
 
 A period's line - a player's first-quarter rebounds, his second-half assists -
 is rebuilt from the shots and the plays (``nba.period_line.period_line_sql``),
 because nothing ESPN serves splits a box score by period. The one independent
 check such a figure has is the game it belongs to: summed over every period,
-overtime included, it has to equal the player's box score. This sums it, per
-season and per column, and compares the share that equals exactly with the
-table in the code.
+overtime included, it has to equal the player's box score, and the gap between
+them bounds every period's figure in that game. The load-time table
+``plays_complete`` holds that gap per player-game and column
+(``fetch.repairs.plays_complete``); this measures it afresh from the plays and
+the box scores and fails where the stored table disagrees - a table built
+before the rules or the plays it sums last changed.
 
-    python scripts/check_period_lines.py [--db-path ./nba.duckdb]
+    python scripts/check_period_lines.py [--db-path ./nba.duckdb] [--print-table]
 
-Run it after editing ``period_line_sql`` or ``PERIOD_AGREEMENT``, and after a
-pull that re-fetches play-by-play. It fails when a season the table leaves out
-(read as 99%+) measures under 99%, or when a listed season moved by more than
-half a point either way - both mean the caveat an answer carries is no longer
-the measured one. Needs a warehouse, no ollama and no network.
+Run it after editing ``period_line_sql``, and after a pull that re-fetches
+play-by-play (``association data load`` rebuilds the table). ``--print-table``
+prints, per season and column, the share of player-games whose plays do not
+add up - what ``player_games.PERIOD_MISSING_ABOVE`` is read against. Needs a
+warehouse, no ollama and no network.
 """
 
 from __future__ import annotations
@@ -26,63 +30,57 @@ import sys
 import duckdb
 
 from association.cli.paths import default_db_path
-from association.nba.period_line import PERIOD_COLUMNS, period_line_sql
-from association.query.player_games import PERIOD_AGREEMENT
-
-# How far a listed figure may drift before the table is stale. A re-fetch of a
-# few games moves a season by hundredths; a changed rule moves it by points.
-TOLERANCE = 0.5
-# A season the table leaves out is claimed to be at least this good.
-LISTED_BELOW = 99.0
+from association.fetch.repairs.plays_complete import plays_complete_sql
+from association.nba.period_line import PERIOD_COLUMNS, PLAYS_COMPLETE, gap_column
 
 
-def measure(con: duckdb.DuckDBPyConnection) -> dict[int, dict[str, float]]:
-    """Per season, per column, the percentage of played player-games (in a game
-    the shot table covers) whose summed period lines equal the box score."""
-    line = period_line_sql(None, "SELECT DISTINCT event_id, season FROM shot_chart")
-    cells = ", ".join(f"100.0 * AVG(CASE WHEN COALESCE(l.{c}, 0) = b.{c} THEN 1 ELSE 0 END) AS {c}" for c in PERIOD_COLUMNS)
-    rows = con.execute(
+def stale(con: duckdb.DuckDBPyConnection) -> tuple[int, int]:
+    """How many player-games the fresh measurement and the stored table
+    disagree on (a row in one and not the other, or any column's gap), and
+    how many the stored table holds."""
+    gaps = ", ".join(gap_column(c) for c in PERIOD_COLUMNS)
+    keys = "event_id, season, athlete_id"
+    row = con.execute(
         f"""
-        WITH l AS ({line}),
-        b AS (
-            SELECT b.* FROM player_box_stats b
-            WHERE b.minutes IS NOT NULL AND NOT b.did_not_play
-              AND b.event_id IN (SELECT DISTINCT cov.event_id FROM shot_chart cov WHERE cov.season = b.season)
-        )
-        SELECT b.season, {cells}
-        FROM b LEFT JOIN l ON l.event_id = b.event_id AND l.season = b.season AND l.athlete_id = b.athlete_id
-        GROUP BY 1 ORDER BY 1
+        WITH fresh AS ({plays_complete_sql()}),
+        stored AS (SELECT {keys}, {gaps} FROM {PLAYS_COMPLETE}),
+        measured AS (SELECT {keys}, {gaps} FROM fresh)
+        SELECT (SELECT COUNT(*) FROM (SELECT * FROM measured EXCEPT ALL SELECT * FROM stored))
+             + (SELECT COUNT(*) FROM (SELECT * FROM stored EXCEPT ALL SELECT * FROM measured)),
+               (SELECT COUNT(*) FROM stored)
         """
-    ).fetchall()
-    return {int(row[0]): dict(zip(PERIOD_COLUMNS, (float(v) for v in row[1:]), strict=True)) for row in rows}
+    ).fetchone()
+    assert row is not None  # two scalar subqueries always return one row
+    return int(row[0]), int(row[1])
 
 
-def problems(measured: dict[int, dict[str, float]]) -> list[str]:
-    """Every cell where the code's table and the warehouse disagree."""
-    found = []
-    for season, by_column in measured.items():
-        for column, pct in by_column.items():
-            listed = PERIOD_AGREEMENT.get(column, {}).get(season)
-            if listed is None and pct < LISTED_BELOW:
-                found.append(f"{season} {column}: measured {pct:.1f}%, not listed (read as {LISTED_BELOW:.0f}%+)")
-            elif listed is not None and abs(listed - pct) > TOLERANCE:
-                found.append(f"{season} {column}: listed {listed:.1f}%, measured {pct:.1f}%")
-    return found
+def table(con: duckdb.DuckDBPyConnection) -> list[tuple[int, list[float]]]:
+    """Per season, per column, the percentage of player-games whose plays do
+    not add up to the box score."""
+    cells = ", ".join(f"100.0 * AVG(CASE WHEN {gap_column(c)} <> 0 THEN 1 ELSE 0 END)" for c in PERIOD_COLUMNS)
+    return [(int(row[0]), [float(v) for v in row[1:]]) for row in con.execute(f"SELECT season, {cells} FROM {PLAYS_COMPLETE} GROUP BY 1 ORDER BY 1").fetchall()]
 
 
 def main() -> int:
     """Measure, compare, and print what disagrees."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--db-path", default=str(default_db_path()))
+    parser.add_argument("--print-table", action="store_true", help="print the share of player-games whose plays do not add up, per season and column")
     args = parser.parse_args()
     con = duckdb.connect(args.db_path, read_only=True)
-    measured = measure(con)
-    found = problems(measured)
-    for line in found:
-        print(line)
-    cells = sum(len(v) for v in measured.values())
-    print(f"{cells - len(found)}/{cells} season-columns agree with PERIOD_AGREEMENT")
-    return 1 if found else 0
+    held = {row[0] for row in con.execute(f"SELECT column_name FROM (DESCRIBE {PLAYS_COMPLETE})").fetchall()}
+    if not {gap_column(c) for c in PERIOD_COLUMNS} <= held:
+        print(f"{PLAYS_COMPLETE} holds no gap columns (built before 7.0.0): rebuild it with `association data load --tables teams` (any load rebuilds it)")
+        return 1
+    if args.print_table:
+        print("season " + " ".join(PERIOD_COLUMNS))
+        for season, shares in table(con):
+            print(season, " ".join(f"{share:.1f}" for share in shares))
+    differ, held = stale(con)
+    print(f"{held - min(differ, held):,}/{held:,} player-games of {PLAYS_COMPLETE} agree with a fresh measurement")
+    if differ:
+        print(f"{differ:,} rows differ: rebuild it with `association data load --tables teams` (any load rebuilds it)")
+    return 1 if differ else 0
 
 
 if __name__ == "__main__":

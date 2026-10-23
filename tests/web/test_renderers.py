@@ -29,6 +29,7 @@ from typing import Any, get_args
 import duckdb
 import pytest
 from routed import Said, planned_answer
+from warehouse_rows import plays_all_complete
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext
@@ -377,6 +378,7 @@ def ctx(tmp_path: Path) -> AnswerContext:
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
+    plays_all_complete(con)
     return AnswerContext(con=con, out_dir=tmp_path / "out")
 
 
