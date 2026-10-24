@@ -2305,6 +2305,20 @@ with nothing to read fills the silence from its own weights), and more data
     made a misread a hundred times larger - "tim duncan highest career ppg"
     read as his log, now 1,392 rows (P1).
 
+68. **Named stats as a list, sums, one-figure questions, the verdict
+    (2026-10-23, master after `e78e1770`).** Lane p6-stats: every stat a
+    line, a log or a period log names is read in the words' order and shown
+    leading (#540, in part); a sum is a log column (`measure.SUMS`); the
+    period floor and bounds read the named columns (the Giannis log, refused
+    over an unasked column, answered); a shared surname with no other name
+    read as typed, a tenure eliminating namesakes ("pippen ... for the
+    bulls" is Scottie Pippen, 376 games - the lead re-checked it against the
+    warehouse); "highest ... ppg" and "how many times ... in his career" no
+    longer read as a log of every game (#544: FS039 now the key's 1,346);
+    the point's verdict is "read" | Cause, `PointDeclined` gone (D25). Keyed
+    score 0 regressions, 8 graded-bad answers moved toward their keys; feed
+    26 refusals answered, each checked against the full-name question.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

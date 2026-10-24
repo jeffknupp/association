@@ -46,21 +46,12 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### A question asking one figure is read as the player's whole log, now every game: "tim duncan highest career ppg" lists 1,392 games
-- **Found:** 2026-10-23, lane p6-rows (D24)
-- **Evidence:** five feed wordings are asked as `PLAYER_LOG`: "tim duncan highest career ppg" (1,392 rows), "how many times has kobe play/attempted in his career" (1,344), "anthony edwards highest scoring career" (442), "keon ellis highest ppg vs team" (72), "nolan traore highest ppg vs team" (56); FS039 graded wrong. D24's every-row log made each misread a hundred times larger.
-- **User sees:** a table of every game where one number was asked.
-- **Next step:** the grammar reads "highest ... ppg" (a season's high average) and "how many times ... in his career" (a count) as their shapes, never a log; a reader case per wording.
-- **Priority:** P1 - a fluent wrong answer.
-- **Source:** ours.
-- **GitHub:** #544
-
-### Several named stats are not read as a list: a line or log falls back to a fixed set of columns, a sum is never computed, and a stat outside the set is refused
-- **Found:** 2026-10-23, the lead, measuring Jeff's question on the Giannis refusal (lane p6-periods' finding 1) over the feed's 42 questions naming two or more stats.
-- **Evidence:** the measure tagger reads one stat; with several named on a line or a log it reads none (`Reading.measure` None) and the line shows its fixed columns (PTS REB AST STL BLK TO FG% 3P% FT%): "Tyus jones points reb ast last 10 games", "westbrook ppg, rpg apg for the lakers". A sum is never computed: "josh hart points + rebounds + assists game log vs boston", "cade cunningham assists+rebounds all-time game log vs 76ers". A named stat outside the fixed set beside another is refused "ask about one stat" (six "curry ... ts% and efg% and turnover percentage" wordings). A filter stat is read as the measure and the display stats dropped ("jalen suggs points+rebounds game log 15+ fga"). "pippen ppg, rpg apg for the bulls" answers the Bulls' team points per game. The period floor checks the fixed line, so "Giannis first half points rebounds assists gamelog vs washington" is refused over field goal attempts. Lines over several stats (counts, rankings: "most games with 20 pts, 10 reb, 5 ast") read correctly. <!-- codespell:ignore hart - Josh Hart, a player -->
-- **User sees:** the named stats only where the fixed set happens to hold them; no sum where one was asked; a refusal for a stat outside the set; one fluent wrong answer (Pippen).
-- **Next step:** the measure tagger reads every named stat into the point's typed `measures` (and "+" between them as a sum, a derived measure), the line and log show the named columns leading, the period floor and bounds read only the named columns, a filter stat stays a filter; Pippen's "for the bulls" reads the player. Each wording a reader case.
-- **Priority:** P1 - the asked stats ignored; one fluent wrong answer.
+### Several named stats outside the fixed line, or a sum beyond a log, are still not read: "stephen curry ts% and efg% this season" is refused "ask about one stat"
+- **Found:** 2026-10-23, the lead, measuring the feed's multi-stat questions (#540); **lane p6-stats fixed the rest** (merged after `e78e1770`): every named stat on a line, a log and a period log is read in the words' order and shown leading, a sum ("points + rebounds + assists") is a column on a log, the period floor and bounds read the named columns (the Giannis log answered: 439 first-half points over 37 games), and "pippen ppg, rpg apg for the bulls" reads Scottie Pippen (376 games, 19.6/6.9/5.4).
+- **Evidence:** what remains - several advanced stats together (TS%, eFG%, usage) are refused "ask about one stat" (`point._WHOLE_LINES[PLAYER_LINE]` lacks them and the season line's advanced reader reads one stat per Result); a sum on a line or a quarter ("lebron pts+reb+ast vs boston") is refused `measures_combined` (the season line has no PRA figure); a list on the by-quarter split reads its first stat only; "lebron pra game log" is the compiler's own sentence, not the log reader.
+- **User sees:** a refusal for advanced stats or a sum asked on a line; a quarter split narrowed to one stat silently.
+- **Next step:** a season-line read of several advanced stats with one sayer; a computed sum on the season line; the by-quarter split reads the list.
+- **Priority:** P2 - the by-quarter split's silent narrowing; the rest refusals by name.
 - **Source:** ours.
 - **GitHub:** #540
 
@@ -1969,6 +1960,24 @@ those were found.
 
 ## P3: refusal or gap
 
+### A nickname given name is not read: "rip hamilton" and "tus jones" ask which of many namesakes
+- **Found:** 2026-10-23, lane p6-stats
+- **Evidence:** "rip" is Richard Hamilton's nickname given name; the surname read (lane p6-stats' namesake rule) lists every Hamilton.
+- **User sees:** a question back where one player is meant.
+- **Next step:** the nickname table reads "rip hamilton" (and similar given-name nicknames).
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #549
+
+### "keon ellis vs team" asks a split by opponent no shape takes
+- **Found:** 2026-10-23, lane p6-stats
+- **Evidence:** FS040's key reads a split of his games by opponent; it is now refused by the word (`opponent_not_read`).
+- **User sees:** a refusal.
+- **Next step:** a split by opponent is a new shape (D11, Jeff's lifting).
+- **Priority:** P3.
+- **Source:** ours.
+- **GitHub:** #550
+
 ### A rebuilt game's steals and blocks: the line leaves them out, the log counts them
 - **Found:** 2026-10-23, lane p6-rows (D24)
 - **Evidence:** "anthony davis stats on christmas": the line's per-game steals and blocks over the five games with a box score (1.2, 1.0), the log's over all six (1.7, 1.3) - the 2015 game's rebuilt values read by one reader and not the other.
@@ -3007,6 +3016,24 @@ those were found.
 - **GitHub:** #469
 
 ## P4: tooling, docs, low impact
+
+### The season line's empty read is not typed as a refusal
+- **Found:** 2026-10-23, lane p6-stats
+- **Evidence:** `say._player_line_empty` answers "Kobe Bryant has no 2026 regular season numbers in the warehouse." with no `Answer.refusal` (the season-line reader sets no `Result.empty`); the log's equivalent carries `no_games_in_span`. The move classifier counts it fluent.
+- **User sees:** nothing; the classes miscount.
+- **Next step:** set `Result.empty` to a `RUN_CAUSES` refusal in the season-line reader.
+- **Priority:** P4.
+- **Source:** ours.
+- **GitHub:** #551
+
+### A stat list on the period log's line beneath the figure is printed unlabelled
+- **Found:** 2026-10-23, lane p6-stats
+- **Evidence:** "REB AST / 5.0 3.2" under a period log's headline.
+- **User sees:** two numbers with abbreviations and no label.
+- **Next step:** label the line ("first-half rebounds and assists a game").
+- **Priority:** P4.
+- **Source:** ours.
+- **GitHub:** #552
 
 ### The page does not render the meetings under a line against one opponent
 - **Found:** 2026-10-23, lane p6-rows (D24)
