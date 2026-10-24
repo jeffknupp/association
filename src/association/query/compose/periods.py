@@ -67,7 +67,7 @@ from association.query.player_games import (
     period_unseparable,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of, without_notes
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, Filtered, Measure, PointShape, Unsupported, _clamp_limit, period_narrowing
+from association.query.reading import STARTER_SIDES, Cuts, Filtered, Measure, PointShape, Unsupported, _clamp_limit, period_narrowing
 from association.query.result import (
     Cell,
     Decided,
@@ -396,8 +396,9 @@ def _period_log_result(
     cells, also = where
     beside = _period_named(scope)[1:]
     facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, beside=beside, also=also, cut=cut)
-    # The log beneath a per-game figure: the newest N, or the first N.
-    window = Window(limit=_clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.window.count, ascending=scope.window.order == "first")
+    # The log beneath a per-game figure: every game, or the newest (or the
+    # first) N where the words state a window (D24).
+    window = Window(limit=scope.window.count, asked=scope.window.count, ascending=scope.window.order == "first")
     by_type = _period_by_type(rows) if season_type == BOTH_SEASON_TYPES else {}
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {}, by_season_type=by_type)
     full = _period_full_line(games, beside if named is not None else None) if games and (named is None or beside) else None

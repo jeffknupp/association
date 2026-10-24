@@ -8,9 +8,9 @@ from dataclasses import replace
 
 from routed import said
 
-from association.query.compose.say import mixed_where, note_phrase, phrase_player_stat, refusal_phrase, say, say_career_implied, say_player_log, say_spelling_read, say_team_log
+from association.query.compose.say import mixed_where, note_phrase, phrase_player_stat, refusal_phrase, say, say_career_implied, say_period_split, say_player_log, say_spelling_read, say_team_log
 from association.query.notes import Note, collect
-from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
+from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, Period, PeriodFacts, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
 
 def _player_result(**changes: object) -> Result:
@@ -626,3 +626,53 @@ def test_a_per_game_figure_rounded_to_zero_is_said_from_its_total() -> None:
     assert "That is 30 of 168 (17.9%)." in said
     none = phrase_player_stat("Tim Duncan", "career", {**values, "threePointFieldGoalsMade": 0}, ["threePointFieldGoalsMade"], when="over his career")
     assert none.startswith("Tim Duncan averaged 0 3-pointers per game")
+
+
+def test_a_period_log_lists_every_game_where_the_words_stated_no_window() -> None:
+    """Decision D24 (ISSUES #503): a quarter's log beneath its figure lists
+    every game the figure is over - twelve here, where the newest ten were
+    listed - and a window the words stated still cuts it."""
+    games = tuple({"date": f"2026-01-{n + 1:02d}", "home_away": "home", "opponent": "Boston Celtics", "points": n} for n in range(12))
+    result = Result(
+        subject="Stephen Curry",
+        relation="player",
+        span=Span(season=2026, season_type=2),
+        narrowing=Narrowing(cells=(Period(label="1st quarter"),)),
+        window=Window(limit=None),
+        parts=(Part(body=Rows(rows=games, summary={"total": 66, "average": 5.5})),),
+        facts=PeriodFacts(stat="points", per_game=True),
+    )
+    every = said(say_period_split(result)).text.split("\n")
+    assert every[0] == "Stephen Curry scored 66 points in the 1st quarter over 12 games of the 2026 regular season, averaging 5.5."
+    assert every[1] == "  1st quarter points, every game:" and len(every) == 14
+    five = said(say_period_split(replace(result, window=Window(limit=5, asked=5)))).text.split("\n")
+    assert five[1] == "  1st quarter points, the 5 most recent:" and len(five) == 7
+
+
+def test_a_matchup_lists_every_meeting_where_the_words_stated_no_count() -> None:
+    """Decision D24: two players' meetings are listed whole beneath their
+    averages - "All 7 meetings" - where the newest five were ("Most recent
+    5 of 7"); a count the words stated still cuts, and says of how many."""
+    from association.query.compose.say import say_player_matchup
+    from association.query.result import Grouped, MatchupFacts, Met
+
+    line = {"minutes": 30.0, "points": 20.0, "rebounds": 5.0, "assists": 4.0, "fg_pct": 50.0}
+    lines = ({"key": "Jay Huff", "wins": 4, **line}, {"key": "Joel Embiid", "wins": 3, **line})
+    side = {"points": 10, "rebounds": 5, "assists": 2}
+    meetings = tuple({"day": f"2026-01-{n + 1:02d}", "team": "IND", "team_score": 110, "opponent_score": 100, "opponent": "PHI", "won": True, "a": side, "b": side} for n in range(7))
+
+    def matchup(shown: int) -> list[str]:
+        result = Result(
+            subject="Jay Huff",
+            relation="player",
+            span=Span(season=2026, season_type=2, phrase="in the 2026 regular season"),
+            narrowing=Narrowing(cells=(Met(other="Joel Embiid"),)),
+            window=Window(limit=shown),
+            parts=(Part(body=Grouped(by="subject", rows=lines)), Part(role="detail", body=Rows(rows=meetings[:shown], total_before_window=7))),
+            facts=MatchupFacts(teammate_games=0),
+        )
+        return said(say_player_matchup(result)).text.splitlines()
+
+    every = matchup(7)
+    assert "All 7 meetings (points/rebounds/assists):" in every and len([x for x in every if x.lstrip().startswith("2026-01-")]) == 7
+    assert "Most recent 3 of 7 (points/rebounds/assists):" in matchup(3)

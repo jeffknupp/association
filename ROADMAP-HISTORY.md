@@ -2276,6 +2276,35 @@ with nothing to read fills the silence from its own weights), and more data
     sentence on a question back, a raw error on a career ranking with no
     career form (`no_career_ranking`, CAUSES 68). No answer regressed.
 
+66. **D25's three classes offered (2026-10-23, master `72efa203`).** Lane
+    p6-alts2: the season type ("including the playoffs"), a named round or a
+    series game with no season ("over his career") and "last season" in the
+    off-season ("2025-26 season") are offered as alternatives beside today's
+    default; `Alternative` reshaped to (kind, Span, question). No answer
+    text, result or plan moved; 0 graded moves. Offers: feed 495 -> 1,040,
+    corpus 135 -> 283; answers offering 2 at most (feed 277, corpus 61) -
+    the first build offered 3 on 10 answers where "his last game" (both
+    types, D14) and "including the playoffs" interacted, so no season type
+    is offered beside a latest meeting. Exit: 14 of 16 offered questions
+    reach the key (F062 2.5/31, F059 38, F150 10 career game 4s, FS189 11
+    Finals games, seven of eight "last season"); F149 waits on D24's
+    every-row log, FS134 on the ranking's qualifier. Three reader bugs the
+    offered wordings exposed were fixed. #231 and #519 closed as answered
+    under D25 (provisional).
+
+67. **Every row of a log (D24; 2026-10-23, master after `72efa203`).** Lane
+    p6-rows: the ten-row default, the fifty-row cap, the five-meeting caps
+    and the league lists' caps are gone - a log reads every row its reading
+    selects, a count only a window the words state; the page scrolls a
+    long table. 15 of the 18 truncated graded logs now list the key's rows
+    (F060 76, FS208 60, F156 16, F147 Davis's six Christmas games); F096,
+    FS331, FS132 now give the key's career figures where they showed the
+    newest ten's averages. The answer records the cause it refuses by
+    (`Answer.refusal`, #531), and the harness's `fluent()` reads it: 82 feed
+    refusals it had counted fluent. All moves fluent to fluent. Found: D24
+    made a misread a hundred times larger - "tim duncan highest career ppg"
+    read as his log, now 1,392 rows (P1).
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14

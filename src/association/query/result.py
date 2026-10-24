@@ -460,13 +460,18 @@ class Part:
 @dataclass(frozen=True, kw_only=True)
 class Window:
     """The window the read applied after every other narrowing: how many
-    rows it kept (``limit``), how many the question asked for (``asked``,
-    ``None`` for a default), and which end of the span it took them from.
+    rows it kept (``limit``; ``None`` for every row the reading selects), how
+    many the question asked for (``asked``, ``None`` for a default), and
+    which end of the span it took them from.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 7.0.0
+       ``limit`` may be ``None``: a log shows every row its reading selects
+       where the words state no window (decision D24).
     """
 
-    limit: int
+    limit: int | None
     asked: int | None = None
     ascending: bool = False
 

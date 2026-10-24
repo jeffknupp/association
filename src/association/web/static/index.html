@@ -246,6 +246,12 @@
       radial-gradient(farthest-side at 0 50%, var(--edge), transparent) left center / 12px 100% no-repeat scroll,
       radial-gradient(farthest-side at 100% 50%, var(--edge), transparent) right center / 12px 100% no-repeat scroll;
   }
+  /* A long log - every game its reading selects, never the newest ten
+     (decision D24) - scrolls inside the answer, its header row kept in
+     view, rather than pushing the conversation off the screen. Every row
+     is in the table: this is a frame, not a cap. */
+  .scroller.tall { max-height: 480px; overflow-y: auto; }
+  .scroller.tall thead th { position: sticky; top: 0; background: var(--panel); }
   .record { display: flex; gap: 22px; align-items: baseline; }
   .record .wl { font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
   .record .pct { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
@@ -875,7 +881,8 @@
       tb.appendChild(tr);
     }
     t.appendChild(tb);
-    const wrap = el("div", "scroller");
+    // `tall`: a log's rows past TALL_ROWS scroll in a frame of their own.
+    const wrap = el("div", opts && opts.tall && rows.length > TALL_ROWS ? "scroller tall" : "scroller");
     wrap.appendChild(t);
     return wrap;
   }
@@ -962,7 +969,7 @@
     // comment - so it neither pads nor gets padded by the literal per-game
     // rows above it (a whole-number "per game"
     // average turned every real game's own point total into "13.0").
-    return table(tableHeaders, rows, { skipPaddingRows: hasAverages ? 1 : 0 });
+    return table(tableHeaders, rows, { skipPaddingRows: hasAverages ? 1 : 0, tall: true });
   }
 
   function sparkline(points) {
@@ -1047,6 +1054,8 @@
   // listing every one (team_quarter_points' original threshold, now shared).
   const MIN_SPARKLINE_POINTS = 2;
   const FOLD_GAMES_OVER = 12;
+  // A log longer than this scrolls in its own frame (table()'s `tall`).
+  const TALL_ROWS = 25;
 
   // Points for a sparkline, keeping only ones with a real finite number - a
   // key mismatch between the data and what a renderer reads it under (see
@@ -1122,7 +1131,7 @@
     // and the reader sends `won: null` for one rather than guessing.
     const body = team
       ? table(["date", "", "opponent", "for", "against"],
-          d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]))
+          d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]), { tall: true })
       : playerLog(d);
     return { caption: firstLine(text), body };
   }
@@ -1135,7 +1144,7 @@
   function figureGamesBody(d, text) {
     if (!d.games.length) return null;
     const side = g => (g.home_away === undefined ? "" : g.home_away === "home" ? "vs " : "at ");
-    const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, side(g) + g.opponent, num(g.points)]));
+    const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, side(g) + g.opponent, num(g.points)]), { tall: true });
     return {
       caption: firstLine(text),
       spark: sparkPoints(d.games, g => ({ label: g.date, value: g.points })),
@@ -1210,10 +1219,13 @@
     const log = table(
       ["date", "result", a, b],
       d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", line(g[a]), line(g[b])]),
+      { tall: true },
     );
     const box = el("div");
     box.appendChild(summary);
-    box.appendChild(el("div", "group-title", "Most recent meetings (points/rebounds/assists)"));
+    // Every meeting (decision D24), or the newest N the words asked for -
+    // the sentence above says which.
+    box.appendChild(el("div", "group-title", "Meetings (points/rebounds/assists)"));
     box.appendChild(log);
     return { caption: firstLine(text), body: box };
   }
@@ -1752,7 +1764,9 @@
       const named = d.rows.some(r => r.player);
       const headers = ["date"].concat(named ? ["player"] : [], ["opp", "W/L"], labels);
       const rows = d.rows.map(r => [r.day].concat(named ? [r.player || ""] : [], [(r.home ? "vs " : "@ ") + (r.opponent || ""), r.won ? "W" : "L"], measures.map(m => measureCell(r[m], m))));
-      return { caption: null, body: table(headers, rows) };
+      // A log (a position's games, the games clearing a set of lines) is
+      // every game its reading selects: a long one scrolls in its frame.
+      return { caption: null, body: table(headers, rows, { tall: true }) };
     }
     if (d.skeleton === "grouped") {
       if (!d.rows.length) return null;

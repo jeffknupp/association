@@ -306,6 +306,11 @@ def snapshot(
        ``planned`` is the Query-or-Cause
        (:data:`~association.query.compose.plan.Verdict`), where it was the
        ``Planned`` record (Phase 4, step 4).
+
+    .. versionchanged:: 7.0.0
+       The answer record holds ``refusal``: the cause the answer refuses by
+       where the sayer worded a refusal (``Answer.refusal``), ``None`` for
+       an answer.
     """
     stated = [decision for decision in answer.decisions if decision.kind]
     return {
@@ -327,6 +332,10 @@ def snapshot(
             "shape": plain(answer.shape, mask=mask),
             "artifacts": [artifact.kind for artifact in answer.artifacts],
             "unanswered": unanswered,
+            # The cause the answer refuses by where it is a refusal the
+            # sayer worded (Answer.refusal) - one found at RUN is answered
+            # "fast" like an answer, and only this tells them apart.
+            "refusal": answer.refusal,
             # The alternatives offered beside the answer - the page's
             # buttons - recorded where it offers one.
             **({"alternatives": plain(answer.alternatives, mask=mask)} if answer.alternatives else {}),

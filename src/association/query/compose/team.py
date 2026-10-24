@@ -516,7 +516,6 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     """
     from association.query.compose.logs import _team_mixed_rows
     from association.query.compose.say import mixed_where
-    from association.query.reading import DEFAULT_GAME_LOG_LIMIT
 
     scope = q
     # One season's window over both types: the span less its career (a
@@ -527,7 +526,8 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     team, span = settled
     if span.season is None:
         raise Unsupported("a career span has no single season to read both season types within")
-    limit = _clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT)
+    # The window the words state, or every game of the season (D24).
+    limit = scope.window.count
     box = _team_total_box(q)
     mixed = _team_mixed_rows(con, team, span.season, opponent=scope.cuts.opponent, venue=scope.cuts.venue, limit=limit, figure=q.measure if box is not None else None)
     if isinstance(mixed, Unanswered):

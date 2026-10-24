@@ -509,7 +509,7 @@ class Agent:
             refused = check_coverage(self._planned_shape(), reading)
             if refused is not None:
                 history.log(f"  -> (coverage) {refused}")
-                return Answer(data={"message": refused, "season": reading.span.season}, text=refused)
+                return Answer(data={"message": refused, "season": reading.span.season}, text=refused, refusal="season_out_of_reach")
             if reading.unsupported:
                 history.log(f"  -> (refusal) {reading.unsupported[0].kind} said before the defaulted word's")
                 return refusal_result(reading.unsupported[0])
@@ -525,7 +525,7 @@ class Agent:
         refused = check_coverage(self._planned_shape(), reading)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
-            return Answer(data={"message": refused, "season": reading.span.season}, text=refused)
+            return Answer(data={"message": refused, "season": reading.span.season}, text=refused, refusal="season_out_of_reach")
         if reading.unsupported:
             # What the words name that nothing reads, said in place of the
             # plain decline - only here, where the answer side declined, so

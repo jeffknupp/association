@@ -31,17 +31,10 @@ from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, _ma
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_relation import condition_scope, no_games
-from association.query.reading import Companion, Filtered, Unsupported, _clamp_limit
+from association.query.reading import Companion, Filtered, Unsupported
 from association.query.result import Grouped, MatchupFacts, Met, Narrowing, Part, Result, Rows, Span, Unanswered, Window
 
 from .core import Compiled, Query, Refused, compile_query, rows_of
-
-MATCHUP_MEETINGS_SHOWN = 5
-"""How many of the newest meetings a matchup lists beneath the averages,
-where the question named no count.
-
-.. versionadded:: 5.0.0
-"""
 
 
 def _pair_covered(scope: Filtered) -> Any:
@@ -117,7 +110,9 @@ def _pair_result(
         {"key": a.name, "wins": wins, **_matchup_line([m["a"] for m in meetings])},
         {"key": b.name, "wins": count - wins, **_matchup_line([m["b"] for m in meetings])},
     )
-    shown = meetings[: _clamp_limit(scope.window.count, MATCHUP_MEETINGS_SHOWN)]
+    # Every meeting beneath the averages, or the newest N where the words
+    # state a count (decision D24: a game-by-game list shows every row).
+    shown = meetings if scope.window.count is None else meetings[: scope.window.count]
     abbr = _names(con, "teams", "team_id", {m["team_id"] for m in shown} | {m["opponent_team_id"] for m in shown}, column="abbreviation")
     rows = tuple(
         {

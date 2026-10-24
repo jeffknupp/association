@@ -3789,7 +3789,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -4143,7 +4143,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -4332,7 +4332,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -12221,7 +12221,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -12421,7 +12421,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -13591,7 +13591,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -16291,7 +16291,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -16629,7 +16629,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -16810,7 +16810,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -19511,7 +19511,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -21342,7 +21342,7 @@
     ],
     "order": "date",
     "direction": "desc",
-    "limit": 25,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -23792,7 +23792,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -25698,7 +25698,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -25880,7 +25880,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -26062,7 +26062,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -26258,7 +26258,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -29450,7 +29450,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -29857,7 +29857,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -30414,7 +30414,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -30636,7 +30636,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -33110,7 +33110,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -33621,9 +33621,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34340,9 +34352,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34543,9 +34567,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34747,9 +34783,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -34949,9 +34997,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35151,9 +35211,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35353,9 +35425,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35555,9 +35639,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35757,9 +35853,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -35959,9 +36067,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36170,9 +36290,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36642,9 +36774,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -36837,9 +36981,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37020,9 +37176,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37203,9 +37371,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37386,9 +37566,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37569,9 +37761,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37752,9 +37956,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -37935,9 +38151,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -38118,9 +38346,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -38301,9 +38541,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -38484,9 +38736,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -38667,9 +38931,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -38850,9 +39126,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -39033,9 +39321,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -39216,9 +39516,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -39400,9 +39712,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -39584,9 +39908,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -39768,9 +40104,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -39952,9 +40300,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -40136,9 +40496,21 @@
    "point": {
     "relation": "player",
     "on": "player_games",
-    "shape": "scalar",
-    "by": "line",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -40719,7 +41091,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -42091,7 +42463,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -46437,7 +46809,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -46622,7 +46994,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -46822,7 +47194,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -47181,7 +47553,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -48056,7 +48428,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -48261,7 +48633,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -48449,7 +48821,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -49068,7 +49440,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -49277,7 +49649,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -49488,7 +49860,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -49717,7 +50089,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -51045,7 +51417,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -51213,7 +51585,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -54007,7 +54379,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -58881,7 +59253,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -60278,7 +60650,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -60468,7 +60840,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -60667,7 +61039,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -60864,7 +61236,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -61061,7 +61433,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -61271,7 +61643,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -62800,7 +63172,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -62976,7 +63348,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -63150,7 +63522,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -63331,7 +63703,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -63514,7 +63886,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -63691,7 +64063,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -66616,7 +66988,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -68283,7 +68655,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -69749,7 +70121,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -69996,7 +70368,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -70225,7 +70597,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -73668,7 +74040,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -74990,7 +75362,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -75182,7 +75554,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -75710,7 +76082,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -77170,7 +77542,7 @@
     "predicates": [],
     "order": "date",
     "direction": "asc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -81741,7 +82113,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -84932,7 +85304,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -85371,7 +85743,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -86286,7 +86658,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -87249,7 +87621,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": null
@@ -88607,7 +88979,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -90121,7 +90493,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -90677,7 +91049,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -90854,7 +91226,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -94432,7 +94804,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -94984,7 +95356,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": {
      "table": "shot_chart"
@@ -98473,7 +98845,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -98703,7 +99075,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {
@@ -98926,7 +99298,7 @@
     "predicates": [],
     "order": "date",
     "direction": "desc",
-    "limit": 10,
+    "limit": null,
     "minimum_games": null,
     "available": null,
     "subject_span": {

@@ -31,10 +31,9 @@ from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import BOTH_SEASON_TYPES, Narrowed
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, log_total, no_narrowed_games, scoped_games, span_of
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, MAX_LIMIT, Cuts, Filtered, Measure, Unsupported, _clamp_limit
+from association.query.reading import Cuts, Filtered, Measure, Unsupported
 from association.query.reading import Line as ReadLine
 from association.query.reading import Span as ReadSpan
-from association.query.reading import Window as ReadWindow
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
 from association.query.season_line import full_line_asked
 from association.query.team_games import TeamNarrowed, unnarrowed_games
@@ -123,12 +122,12 @@ def _pct(made: Any, attempted: Any) -> float | None:
     return 100.0 * made / attempted if made is not None and attempted else None
 
 
-def _merge_season_types[R](rows_by_type: dict[int, list[R]], *, date_of: Callable[[R], Any], limit: int, ascending: bool) -> tuple[list[R], dict[int, int]]:
+def _merge_season_types[R](rows_by_type: dict[int, list[R]], *, date_of: Callable[[R], Any], limit: int | None, ascending: bool) -> tuple[list[R], dict[int, int]]:
     """A "last N games" answer with no season type named reads both types
     separately (each a normal, single-type query) and merges here, by each
     row's date (``date_of``: the compiled row's ``day`` for a player, the
     first column for a team); kept newest (or oldest, for ``ascending``)
-    first, down to ``limit`` overall. Returns the merged rows and how many
+    first, down to ``limit`` overall (every row, for ``None``). Returns the merged rows and how many
     of the kept ones came from each season type - the count a "reasonable
     default" has to show, per AGENTS.md: a user who gets 3 playoff games and
     2 regular-season ones has to be told that split."""
@@ -222,18 +221,7 @@ def _player_narrowing(narrowed: Narrowed) -> Narrowing:
     )
 
 
-def _log_limit(window: ReadWindow) -> int:
-    """How many games a log lists: the count asked, its default ten where
-    none was - or, where an end stands with no count ("for each game",
-    ISSUES.md #402), every game of the span up to the one cap
-    (:data:`~association.query.reading.MAX_LIMIT`); the heading says how
-    many of how many it shows."""
-    if window.order is not None and window.count is None:
-        return MAX_LIMIT
-    return _clamp_limit(window.count, DEFAULT_GAME_LOG_LIMIT)
-
-
-def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int, ascending: bool) -> Result:
+def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int | None, ascending: bool) -> Result:
     """The listing over one season type - the compiled statement's rows -
     and the per-game averages over exactly the rows in it."""
     player, span, narrowed = compiled.player, compiled.span, compiled.narrowed
@@ -273,7 +261,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
     return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts=LogFacts())
 
 
-def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int) -> Result | Unanswered:
+def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int | None) -> Result | Unanswered:
     """A player's "last N games" with no season type named: both types, read
     separately and merged by date. Every other narrowing resolves the same
     under either type, so each type is narrowed exactly as
@@ -377,7 +365,8 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unansw
     if columns is None:
         return None
     headers, needed = columns
-    limit = _log_limit(scope.window)
+    # Every game the reading selects, or the window the words state (D24).
+    limit = scope.window.count
     # The log's point, with the columns it shows as the measures: the rebuilt
     # rule (core._rebuilt_for) is read over the columns shown, as the log's own was.
     log_point = replace(q, measures=[LOG_COLUMNS[h] for h in needed], limit=limit)
@@ -511,14 +500,14 @@ def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: Resolve
     )
 
 
-def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any) -> Result:
+def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int | None, ascending: bool, stat: Any) -> Result:
     """A team's games in ``span``, narrowed as ``narrowed`` already reflects:
     the team compiler's ``rows`` read over the settled team
     (:func:`~association.query.compose.team.compile_team_over`)."""
     team_name = team.name
     rows = rows_of(con, compile_team_over(replace(q, shape="rows"), team, span, narrowed, limit=limit, ascending=ascending, figure=q.measure))
     narrowing = Narrowing(phrase=narrowed.filters(), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue)
-    window = Window(limit=limit, ascending=ascending)
+    window = Window(limit=limit, asked=limit, ascending=ascending)
     if not rows:
         about = Span(season=span.season, season_type=span.season_type, career=span.season is None, date=narrowed.date)
         empty = _team_log_none(con, team_name, span, narrowed)
@@ -536,11 +525,11 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
         since=span.since,
         until=span.until,
     )
-    # How many games the window cut these from, so the heading can say "last
-    # 10 of 82 games" where the read kept fewer than the span holds - the
-    # player log's rule (F149), and ISSUES.md #402: ten games listed where a
-    # season's were asked, with nothing saying the rest were cut. The rows
-    # read applies its own limit, so the narrowed games carry no window.
+    # How many games a window the words stated cut these from, so the heading
+    # can say "last 5 of 82 games" where the read kept fewer than the span
+    # holds - the player log's rule (F149, ISSUES.md #402). With no window
+    # stated the log is every game (decision D24). The rows read applies its
+    # own limit, so the narrowed games carry no window.
     (counted,) = rows_of(con, compile_team_count(narrowed, team, span))
     body = Rows(rows=tuple(games), total_before_window=int(counted["games"]), summary=_team_log_summary(games))
     key = _team_log_figure(q.measure)
@@ -560,11 +549,12 @@ def _team_mixed_rows(
     *,
     opponent: Any,
     venue: Any,
-    limit: int,
+    limit: int | None,
     figure: Measure | None = None,
     lines: tuple[ReadLine, ...] = (),
 ) -> tuple[list[dict[str, Any]], dict[int, int], str] | Unanswered:
-    """A team's newest ``limit`` games of ``season`` over BOTH season types -
+    """A team's newest ``limit`` games of ``season`` (every one, for
+    ``None``) over BOTH season types -
     each type narrowed on its own through
     :func:`~association.query.team_relation.team_games`, compiled as the
     team compiler's ``rows`` read over the settled team
@@ -595,7 +585,7 @@ def _team_log_mixed(
     *,
     opponent: Any,
     venue: Any,
-    limit: int,
+    limit: int | None,
     stat: Any,
     measure: Measure | None = None,
     lines: tuple[ReadLine, ...] = (),
@@ -612,7 +602,7 @@ def _team_log_mixed(
     key = _team_log_figure(measure)
     facts = LogFacts(stat=stat, mixed=True, figure=key, whose=measure.whose if key is not None and measure is not None else "own")
     narrowing = Narrowing(phrase=narrowed_text, opponent=opponent, venue=venue)
-    window = Window(limit=limit, ascending=False)
+    window = Window(limit=limit, asked=limit, ascending=False)
     about = Span(season=season)
     if not rows:
         return Result(
@@ -641,7 +631,7 @@ def _team_log_types(scope: Filtered, asked: ReadSpan) -> tuple[bool, bool]:
     return both, both and not asked.career and not (scope.span.since or scope.span.until or scope.cuts.situation)
 
 
-def _team_log_mixed_of(con: duckdb.DuckDBPyConnection, scope: TeamQuery, asked: ReadSpan, team: Any, *, limit: int, lines: tuple[ReadLine, ...] = ()) -> Result | Unanswered:
+def _team_log_mixed_of(con: duckdb.DuckDBPyConnection, scope: TeamQuery, asked: ReadSpan, team: Any, *, limit: int | None, lines: tuple[ReadLine, ...] = ()) -> Result | Unanswered:
     """One season's "last N games" over both types, merged by date
     (:func:`_team_log_mixed`), over the season the span settles on."""
     resolved_season = span_of(asked.without_range(), "games", season_type=2).season
@@ -673,7 +663,8 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     if refused is not None:
         return refused
     season_type = scope.span.season_type or 2
-    limit = _log_limit(scope.window)
+    # Every game the reading selects, or the window the words state (D24).
+    limit = scope.window.count
     ascending = scope.window.order == "first"
     date = scope.cuts.date
     opponent, venue, without = scope.cuts.opponent, scope.cuts.venue, tuple(c.player for c in scope.companions if c.absent)
