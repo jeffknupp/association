@@ -2319,6 +2319,15 @@ with nothing to read fills the silence from its own weights), and more data
     score 0 regressions, 8 graded-bad answers moved toward their keys; feed
     26 refusals answered, each checked against the full-name question.
 
+69. **Phase 6's closing live run (2026-10-23).** `live_parser33` on
+    `b54047e7`: 164 of 175 questions, 153 of 166 families - from 155 and 144
+    at parser32 under D24 (161, 150 under the retired standard; the phase
+    opened at 167 and 156 under that standard). Blind re-grade of the 66
+    moved graded wordings; 13 unsure settled against the warehouse; 130
+    answers moved only by the week's new record fields (`Answer.alternatives`,
+    `Answer.refusal`, D17's typed leaders) reviewed, grades standing - the
+    scorer compares records, so a new field reads as a move.
+
 
 
 ## AGENTS.md's provenance, folded 2026-10-14
