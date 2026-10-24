@@ -873,7 +873,13 @@ by its `PointShape` key. The populations record the typed Reading
     given-up words `lexicon.GIVEN_UP_VERB`, `GIVEN_UP_KEYS`, a rate) - into
     `reading.Measure` (`key`, `as_typed`, `how`, `unit`, `whose`, `side`,
     `shot_value`, `category`, `won`, `beside`). The model's key is CONTEXT:
-    the words win where they name a measure. `measure.CATALOG` says how each
+    the words win where they name a measure. Several stats named on a
+    player's line, his log or his quarter's games are each read, in the
+    words' order - the first the `key`, the rest `beside` (`measure.listed`,
+    `listed_measures`; a line's own stat, "15+ fga", listed last as the
+    filter it is) - and stats added up ("points + rebounds + assists") are
+    one sum on a log (`measure.SUMS`, declared once: the label, the
+    compiler's derived measure, the log's column). `measure.CATALOG` says how each
     `MeasureKey` is read on each relation and whether it is a yes or a no of
     a game (`yes_no`; the compiler's `BOOLEAN_MEASURES` read from it);
     `measure.ALIASES` holds every spelling, through `key_of`. The answer
