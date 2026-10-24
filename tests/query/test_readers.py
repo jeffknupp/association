@@ -311,6 +311,24 @@ def test_a_game_log_keeps_only_the_games_under_a_line_on_the_stat_the_words_name
     assert (team.text or "").startswith("A team's games carry no minutes game by game"), team.text
 
 
+def test_a_log_of_stats_added_up_shows_each_games_sum_first(pg_ctx: AnswerContext) -> None:
+    """ "points + rebounds + assists game log" (ISSUES.md #540): each game's
+    sum in its own column, first, then its parts - where the log listed the
+    parts and never added them - and its average beneath."""
+    result = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="pra", as_typed="pra", beside=("points", "rebounds", "assists"))))
+    assert result.data["columns"][:4] == ["PRA", "PTS", "REB", "AST"], result.data["columns"]
+    games = result.data["games"]
+    assert games and all(g["pra"] == g["points"] + g["rebounds"] + g["assists"] for g in games)
+    assert result.data["averages"]["pra"] == sum(g["pra"] for g in games) / len(games)
+
+
+def test_a_log_of_several_stats_named_leads_with_them_in_the_words_order(pg_ctx: AnswerContext) -> None:
+    """ "assists and turnovers game log" (ISSUES.md #540): the named columns
+    first, in the words' order, then the line's."""
+    result = player_log(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), measure=Measure(key="assists", as_typed="assists", beside=("turnovers",))))
+    assert result.data["columns"][:3] == ["AST", "TO", "MIN"], result.data["columns"]
+
+
 def test_player_line_averages_over_exactly_the_games_under_a_line(con: AnswerContext) -> None:
     """A line on a box-score column narrows the games the way an opponent
     does, so the average is read from box scores and says what it kept."""
@@ -331,6 +349,23 @@ def test_player_line_averages_over_exactly_the_games_under_a_line(con: AnswerCon
         ),
     )
     assert floor.data["stats"]["gamesPlayed"] == 7  # every fixture game is 30 minutes
+
+
+def test_a_line_of_several_stats_named_says_each_in_the_words_order(pg_ctx: AnswerContext) -> None:
+    """ "podziemski rebounds and points under 100 points" (ISSUES.md #540): the
+    sentence says the stats named, in the words' order - never the fixed
+    points, rebounds and assists."""
+    result = player_line(
+        pg_ctx,
+        Reading(
+            who=Who(kind="player", players=("Brandin Podziemski",)),
+            lines=(Line(measure="points", op="<", value=100, as_typed="under 100 points", narrows=True),),
+            measure=Measure(key="rebounds", as_typed="rebounds", beside=("points",)),
+        ),
+    )
+    headline = (result.text or "").splitlines()[0]
+    assert " rebounds and " in headline and headline.index("rebounds") < headline.index("points"), result.text
+    assert list(result.data["labels"])[:2] == ["avgRebounds", "avgPoints"], result.data
 
 
 def test_defaults_to_the_current_season(con: AnswerContext) -> None:

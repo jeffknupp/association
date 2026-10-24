@@ -98064,5 +98064,901 @@
     }
    ]
   }
+ },
+ {
+  "name": "several_stats_named_are_each_read#1",
+  "why": "ISSUES.md #540: every stat the words name is read, in their order - the first the measure, the rest beside it - and stats added up (\"+\", \"plus\", \"combined\") are one sum on a log, its parts beside it; a line's own stat (\"15+ fga\") is a filter, listed after the rest.",
+  "question": "josh hart points + rebounds + assists game log vs boston",
+  "names": [
+   "josh hart"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Josh Hart"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": "Boston Celtics",
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "pra",
+    "as_typed": "pra",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": [
+     "points",
+     "rebounds",
+     "assists"
+    ]
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "game",
+    "log"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Josh Hart"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": "Boston Celtics",
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Josh Hart']; model players the question supports ['josh hart']; question spells 'josh hart' as 'Josh Hart'; team word 'Boston Celtics'; against 'Boston Celtics'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Josh Hart"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "opponent",
+     "before": null,
+     "after": "Boston Celtics",
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
+    }
+   ],
+   "point": {
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "pra",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    }
+   },
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "span": {
+      "season": 2026,
+      "season_type": 2,
+      "both": false,
+      "career": false,
+      "since": null,
+      "until": null
+     },
+     "question": "josh hart points + rebounds + assists game log vs boston in 2026"
+    },
+    {
+     "kind": "season_type",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": true,
+      "career": true,
+      "since": null,
+      "until": null
+     },
+     "question": "josh hart points + rebounds + assists game log vs boston including the playoffs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "several_stats_named_are_each_read#2",
+  "why": "ISSUES.md #540: every stat the words name is read, in their order - the first the measure, the rest beside it - and stats added up (\"+\", \"plus\", \"combined\") are one sum on a log, its parts beside it; a line's own stat (\"15+ fga\") is a filter, listed after the rest.",
+  "question": "cade cunningham assists+rebounds all-time game log vs 76ers",
+  "names": [
+   "cade cunningham"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Cade Cunningham"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": "Philadelphia 76ers",
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "ra",
+    "as_typed": "ra",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": [
+     "assists",
+     "rebounds"
+    ]
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "game",
+    "log"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Cade Cunningham"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": "Philadelphia 76ers",
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Cade Cunningham']; model players the question supports ['cade cunningham']; question spells 'cade cunningham' as 'Cade Cunningham'; team word 'Philadelphia 76ers'; against 'Philadelphia 76ers'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Cade Cunningham"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "opponent",
+     "before": null,
+     "after": "Philadelphia 76ers",
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "ra",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    }
+   },
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "season_type",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": true,
+      "career": true,
+      "since": null,
+      "until": null
+     },
+     "question": "cade cunningham assists+rebounds all-time game log vs 76ers including the playoffs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "several_stats_named_are_each_read#3",
+  "why": "ISSUES.md #540: every stat the words name is read, in their order - the first the measure, the rest beside it - and stats added up (\"+\", \"plus\", \"combined\") are one sum on a log, its parts beside it; a line's own stat (\"15+ fga\") is a filter, listed after the rest.",
+  "question": "jalen suggs points+rebounds game log 15+ fga",
+  "names": [
+   "jalen suggs"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Jalen Suggs"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "fieldGoalsAttempted",
+     "op": ">=",
+     "value": 15,
+     "period": null,
+     "as_typed": "15+ fga",
+     "keyed": false,
+     "narrows": true,
+     "per": "game",
+     "whose": "own"
+    }
+   ],
+   "measure": {
+    "key": "pr",
+    "as_typed": "pr",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": [
+     "points",
+     "rebounds",
+     "fieldGoalsAttempted"
+    ]
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "game"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Jalen Suggs"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Jalen Suggs']; model players the question supports ['jalen suggs']; question spells 'jalen suggs' as 'Jalen Suggs'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Jalen Suggs"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "relation": "player",
+    "on": "player_games",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "pr",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    }
+   },
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": false,
+      "career": true,
+      "since": null,
+      "until": null
+     },
+     "question": "jalen suggs points+rebounds game log 15+ fga over his career"
+    },
+    {
+     "kind": "season_type",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": true,
+      "career": false,
+      "since": null,
+      "until": null
+     },
+     "question": "jalen suggs points+rebounds game log 15+ fga including the playoffs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "several_stats_named_are_each_read#4",
+  "why": "ISSUES.md #540: every stat the words name is read, in their order - the first the measure, the rest beside it - and stats added up (\"+\", \"plus\", \"combined\") are one sum on a log, its parts beside it; a line's own stat (\"15+ fga\") is a filter, listed after the rest.",
+  "question": "westbrook ppg, rpg apg for the lakers",
+  "names": [
+   "westbrook"
+  ],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Russell Westbrook"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": "Los Angeles Lakers",
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": [
+     "rebounds",
+     "assists"
+    ]
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Russell Westbrook"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": "Los Angeles Lakers",
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Russell Westbrook']; model players the question supports ['westbrook']; question spells 'westbrook' as 'Russell Westbrook'; team word 'Los Angeles Lakers'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Russell Westbrook"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "own_team",
+     "before": null,
+     "after": "Los Angeles Lakers",
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "own_team",
+     "before": null,
+     "after": "Los Angeles Lakers",
+     "reason": "from the question; the model left it out"
+    },
+    {
+     "stage": "subject",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "a team named with no season is a tenure, not \"now\""
+    }
+   ],
+   "point": {
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    }
+   },
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "season_type",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": true,
+      "career": true,
+      "since": null,
+      "until": null
+     },
+     "question": "westbrook ppg, rpg apg for the lakers including the playoffs"
+    }
+   ]
+  }
  }
 ]

@@ -27,7 +27,7 @@ from association.query.lexicon import MEASURE_WORDS
 # (lexicon.TEAM_METRIC_WORDS); the flat table
 # is re-exported here under the name team_metrics keys its catalog by.
 from association.query.lexicon import STAT_ALIASES as STAT_ALIASES
-from association.query.measure import YES_NO_MEASURES, column_name, measure_name, metric_name
+from association.query.measure import SUMS, YES_NO_MEASURES, column_name, measure_name, metric_name
 from association.query.reading import LINE_RUNS, PLAYER_LOG, Cause, Measure, PointRefused
 
 TEAM_PERIOD_COLUMNS: tuple[str, ...] = (
@@ -77,7 +77,7 @@ GAME_COLUMNS: frozenset[str] = frozenset(MEASURE_WORDS.values()) | frozenset(
 """
 
 DERIVED_MEASURES: frozenset[str] = frozenset(
-    {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct", "opponent_name", "season_type", "period_gaps"}
+    {*SUMS, "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct", "opponent_name", "season_type", "period_gaps"}
 )
 """Measures computed from columns per game, by name; the SQL is
 :data:`association.query.compose.core.DERIVED`'s.
@@ -343,6 +343,12 @@ GAME_LOG_STAT_COLUMNS: dict[str, tuple[str, ...]] = {
     "turnovers": ("TO",),
     "fouls": ("PF",),
     "plusMinus": ("+/-",),
+    # A sum named ("points + rebounds + assists", ISSUES.md #540): its own
+    # column, each game's sum.
+    "pra": ("PRA",),
+    "pr": ("PTS+REB",),
+    "pa": ("PTS+AST",),
+    "ra": ("REB+AST",),
     "offensiveRebounds": ("OREB",),
     "defensiveRebounds": ("DREB",),
     "fieldGoalsMade": ("FGM", "FGA"),

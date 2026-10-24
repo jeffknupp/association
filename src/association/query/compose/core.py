@@ -45,7 +45,7 @@ from association.nba.season import current_season, eastern_date_sql
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
 from association.query.entities import BOX_SCORES, GAME_LOGS, Entity, resolved_player, resolved_team
 from association.query.lines import measure_filters
-from association.query.measure import measure_name
+from association.query.measure import SUMS, measure_name
 from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
 from association.query.measures import GAME_COLUMNS, LABEL_MEASURES
 from association.query.measures import LINE as LINE
@@ -123,7 +123,8 @@ COLUMNS: frozenset[str] = GAME_COLUMNS
 
 #: Measures computed from columns, per game.
 DERIVED: dict[str, str] = {
-    "pra": "(pgl.points + pgl.rebounds + pgl.assists)",
+    # A sum of a game's counting stats, each declared once (measure.SUMS).
+    **{key: "(" + " + ".join(f"pgl.{part}" for part in parts) + ")" for key, parts in SUMS.items()},
     "fg_pct": "(pgl.fieldGoalsMade * 100.0 / NULLIF(pgl.fieldGoalsAttempted, 0))",
     "three_pct": "(pgl.threePointFieldGoalsMade * 100.0 / NULLIF(pgl.threePointFieldGoalsAttempted, 0))",
     "ft_pct": "(pgl.freeThrowsMade * 100.0 / NULLIF(pgl.freeThrowsAttempted, 0))",
@@ -570,7 +571,7 @@ def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_ex
 #: rebuilds, and the measures computed only from them (a rate is a ratio of
 #: the period's sums; a game's result is the game's).
 _PERIOD_READABLE: frozenset[str] = (
-    frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home"} | {"opponent_name", "season_type", "period_gaps"}
+    frozenset(PERIOD_COLUMNS) | {*SUMS, "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home"} | {"opponent_name", "season_type", "period_gaps"}
 )
 
 
@@ -793,7 +794,7 @@ def _blanks(q: Query, rebuilt: bool) -> bool:
     return rebuilt and not _period_read(q)
 
 
-_REBUILT_DERIVED: frozenset[str] = frozenset({"double_double", "triple_double", "pra"})
+_REBUILT_DERIVED: frozenset[str] = frozenset({"double_double", "triple_double", *SUMS})
 """The derived measures built only of columns a rebuild gets right
 (:data:`~association.query.player_games.REBUILT_STATS`), read on a rebuilt
 line as its columns are."""

@@ -2551,9 +2551,23 @@ _WHOLE_LINES: dict[PointShape, frozenset[str]] = {
 }
 
 
+def _measure_whole_line_summed(words: MeasureWords, summed: tuple[str, tuple[str, ...], Claim], claims: list[Claim]) -> tuple[str, tuple[str, ...]]:
+    """Stats added up ("points + rebounds + assists game log"): the sum is
+    the measure, each game's, its parts beside it, then any other stat named
+    - where the log listed the parts and never added them.
+    :func:`_measure_whole_line`'s step for a sum."""
+    total, parts, claim = summed
+    claims.append(claim)
+    rest = [stat for stat, at in words.stats if stat not in parts and not (claim.start <= at.start and at.end <= claim.end)]
+    return total, (*parts, *rest)
+
+
 #: The keys whose readers read a list of named stats (``measure.listed``):
 #: a player's line, his log, and his quarter's or half's games.
 _LISTED_LINES: frozenset[PointShape] = frozenset({PLAYER_LINE, PLAYER_LOG, PERIOD_LOG})
+#: The keys whose readers show a sum of stats named (``measure.SUMS``): a
+#: player's log, each game's sum in its own column and the average beneath.
+_SUMMED_LINES: frozenset[PointShape] = frozenset({PLAYER_LOG})
 
 
 def _measure_whole_line(asked: PointShape | None, words: MeasureWords, context: MeasureContext, key: str | None, claims: list[Claim]) -> tuple[str | None, tuple[str, ...]]:
@@ -2568,6 +2582,8 @@ def _measure_whole_line(asked: PointShape | None, words: MeasureWords, context: 
     rebounds game log 15+ fga") is the line's, a filter: listed after the
     others, never the measure. Each stat word is claimed: the reading turns
     on it."""
+    if words.summed is not None and asked in _SUMMED_LINES:
+        return _measure_whole_line_summed(words, words.summed, claims)
     shown = _WHOLE_LINES.get(asked) if asked is not None else None
     if shown is None or len(words.stats) < 2 or not all(stat in shown for stat, _ in words.stats):
         return key, ()

@@ -2541,6 +2541,34 @@ stat, where the model's key stands as it did.
 
 .. versionadded:: 7.0.0
 """
+SUM_PART_WORDS: dict[str, str] = {
+    **dict.fromkeys(("points", "point", "pts", "pt", "ppg"), "points"),
+    **dict.fromkeys(("rebounds", "rebound", "rebs", "reb", "rpg", "boards"), "rebounds"),
+    **dict.fromkeys(("assists", "assist", "asts", "ast", "apg"), "assists"),
+}
+"""The words a sum of counting stats is written in ("pts+reb+ast"), each to
+the stat it names (ISSUES.md #540).
+
+.. versionadded:: 7.0.0
+"""
+SUM_PART = re.compile(r"\b(?:" + "|".join(sorted(SUM_PART_WORDS, key=len, reverse=True)) + r")\b", re.IGNORECASE)
+"""One stat word a sum adds.
+
+.. versionadded:: 7.0.0
+"""
+_SUM_TERM = r"(?:" + "|".join(sorted(SUM_PART_WORDS, key=len, reverse=True)) + r")"
+STAT_SUM = re.compile(
+    rf"\b{_SUM_TERM}(?:\s*(?:\+|\bplus\b)\s*{_SUM_TERM}\b)+"
+    rf"|\b{_SUM_TERM}(?:\s*(?:,|&|\band\b)\s*{_SUM_TERM}\b)+\s+combined\b",
+    re.IGNORECASE,
+)
+"""Counting stats added up: joined by "+" or "plus" ("points + rebounds +
+assists", "assists+rebounds"), or listed and said "combined" - the sum a
+log shows per game (``measure.sum_named``, ISSUES.md #540), never the
+stats apart.
+
+.. versionadded:: 7.0.0
+"""
 _SEASON_STAT = r"(?:ppg|rpg|apg|spg|bpg|mpg|topg|points?|pts|rebounds?|rebs?|boards|assists?|asts?|steals?|stls?|blocks?|blks?|threes|3s|turnovers?|minutes|mins)"
 _SEASON_LEAD = r"(?P<lead>over|more\s+than|above|at\s+least|a\s+minimum\s+of|under|less\s+than|fewer\s+than|below)"
 # A season line read into a typed ``Line`` (``per="season"`` or ``"total"``):

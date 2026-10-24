@@ -42,6 +42,7 @@ from association.query.measure import (
     names_a_stat,
     read_measure,
     stats_named,
+    sum_named,
     team_metric_named,
 )
 from association.query.measures import DERIVED_MEASURES, GAME_COLUMNS, LINE, PERIOD_COLUMNS, SPLIT_LINE, STAT_LINE, log_extras, resolve_metric, stat_column, stat_measure
@@ -146,6 +147,14 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
             Measure(key="points", as_typed="points", how="per_game", beside=("rebounds", "assists")),
         ),
         ("Tyus jones points reb ast last 10 games", PLAYER_LOG, "points", Measure(key="points", as_typed="points", beside=("rebounds", "assists"))),
+        # Stats added up are one sum on a log, its parts beside it (#540).
+        (
+            "josh hart points + rebounds + assists game log vs boston",  # codespell:ignore hart - Josh Hart, a player
+            PLAYER_LOG,
+            None,
+            Measure(key="pra", as_typed="pra", beside=("points", "rebounds", "assists")),
+        ),
+        ("cade cunningham assists+rebounds all-time game log vs 76ers", PLAYER_LOG, None, Measure(key="ra", as_typed="ra", beside=("assists", "rebounds"))),
         ("lebron home and away splits points and assists", PLAYER_SPLITS, None, None),
         ("lebron points and rebounds by season", SEASON_HISTORY, None, None),
         ("celtics points and rebounds per game this season", TEAM_LINE, None, None),
@@ -165,6 +174,17 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
 )
 def test_the_words_read_as_one_measure(question: str, shape: PointShape | None, key: str | None, expected: Measure | None) -> None:
     assert _read(question, shape, key) == expected
+
+
+def test_stats_added_up_are_read_as_their_sum() -> None:
+    """ "+", "plus" or "combined" between counting stats is a sum the catalog
+    declares (``SUMS``, #540); an arithmetic of other measures is none."""
+    asked = "josh hart points + rebounds + assists game log"  # codespell:ignore hart - Josh Hart, a player
+    assert sum_named(asked) == ("pra", ("points", "rebounds", "assists"), Claim(10, 37, "measure"))
+    assert sum_named("pts plus asts")[:2] == ("pa", ("points", "assists"))  # type: ignore[index]
+    assert sum_named("lebron points, rebounds and assists combined")[:2] == ("pra", ("points", "rebounds", "assists"))  # type: ignore[index]
+    assert sum_named("fgm + opp fgm") is None
+    assert sum_named("points and rebounds") is None
 
 
 def test_every_stat_the_words_name_is_read_once_in_order() -> None:

@@ -65,6 +65,11 @@ LOG_COLUMNS: dict[str, str] = {
     "3PA": "threePointFieldGoalsAttempted",
     "FTM": "freeThrowsMade",
     "FTA": "freeThrowsAttempted",
+    # Each game's sum of the stats a question adds up (measure.SUMS).
+    "PRA": "pra",
+    "PTS+REB": "pr",
+    "PTS+AST": "pa",
+    "REB+AST": "ra",
 }
 """A player log's column headers and the relation column behind each.
 

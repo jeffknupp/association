@@ -103,7 +103,7 @@ MeasureKey = Literal[
     "points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls", "minutes",
     "fieldGoalsMade", "fieldGoalsAttempted", "fieldGoalPct", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted", "threePointFieldGoalPct",
     "twoPointFieldGoalPct", "freeThrowsMade", "freeThrowsAttempted", "freeThrowPct", "offensiveRebounds", "defensiveRebounds",
-    "ts_pct", "efg_pct", "usage_pct", "game_score", "plusMinus", "double_double", "triple_double", "fouled_out", "pra", "netpoints",
+    "ts_pct", "efg_pct", "usage_pct", "game_score", "plusMinus", "double_double", "triple_double", "fouled_out", "pra", "pr", "pa", "ra", "netpoints",
     "wins", "losses", "record", "games_played", "shot_distance", "point_differential", "pace", "offensive_rating", "defensive_rating", "net_rating",
     "points_in_paint", "fast_break_points",
 ]  # fmt: skip
@@ -111,6 +111,22 @@ MeasureKey = Literal[
 equal (the catalog is keyed by ``str`` so a Measure's ``key`` indexes it).
 
 .. versionadded:: 6.0.0
+"""
+
+SUMS: dict[str, tuple[str, ...]] = {
+    "pra": ("points", "rebounds", "assists"),
+    "pr": ("points", "rebounds"),
+    "pa": ("points", "assists"),
+    "ra": ("rebounds", "assists"),
+}
+"""The sums of a game's counting stats a question names with "+" ("points +
+rebounds + assists", "pts+reb", "assists+rebounds", ISSUES.md #540): each
+key to the box-score stats it adds, per game - declared once, for the
+catalog's label (:data:`CATALOG`), the compiler's derived measure
+(``compose.core.DERIVED``) and the words that name one
+(:func:`sum_named`).
+
+.. versionadded:: 7.0.0
 """
 
 CATALOG: dict[str, MeasureSpec] = {
@@ -155,7 +171,8 @@ CATALOG: dict[str, MeasureSpec] = {
     "double_double": MeasureSpec(label="double-doubles", measure="double_double", metric="double_doubles", career_metric="double_doubles", yes_no=True),
     "triple_double": MeasureSpec(label="triple-doubles", measure="triple_double", metric="triple_doubles", career_metric="triple_doubles", yes_no=True),
     "fouled_out": MeasureSpec(label="foul-outs", measure="fouled_out", yes_no=True),
-    "pra": MeasureSpec(label="points, rebounds and assists", measure="pra"),
+    # A sum of a game's counting stats (:data:`SUMS`), said by its parts.
+    **{key: MeasureSpec(label=" + ".join(parts), measure=key) for key, parts in SUMS.items()},
     # NetPoints: one key, the side and the rate on the Measure, the metric
     # by the pair (NETPOINTS_METRICS); no game column.
     "netpoints": MeasureSpec(label="NetPoints", metric="netpoints_total", career_metric="netpoints_total"),
@@ -671,6 +688,9 @@ class MeasureWords:
     wins: re.Match[str] | None = None
     #: "total" named, the season ranking's total asked for outright.
     total: re.Match[str] | None = None
+    #: A sum of counting stats named (:func:`sum_named`): its key, its parts
+    #: in the words' order and its characters.
+    summed: tuple[str, tuple[str, ...], Claim] | None = None
 
 
 def stats_named(question: str) -> tuple[tuple[str, Claim], ...]:
@@ -699,6 +719,27 @@ def stats_named(question: str) -> tuple[tuple[str, Claim], ...]:
     for abbreviation in lexicon.PER_GAME_STAT_WORD.finditer(text):
         found.setdefault(lexicon.SEASON_LINE_PER_GAME_WORDS[abbreviation.group(0).lower()], Claim(abbreviation.start(), abbreviation.end(), "measure"))
     return tuple(sorted(found.items(), key=lambda item: item[1].start))
+
+
+def sum_named(question: str) -> tuple[str, tuple[str, ...], Claim] | None:
+    """The sum of counting stats ``question``'s words name - "points +
+    rebounds + assists", "pts+reb", "assists plus rebounds", "points,
+    rebounds and assists combined"
+    (:data:`~association.query.lexicon.STAT_SUM`) - as its key
+    (:data:`SUMS`), its parts in the words' order and the characters that
+    name it; or None, where the words add no two stats or add ones no sum
+    holds.
+
+    .. versionadded:: 7.0.0
+    """
+    found = lexicon.STAT_SUM.search(question)
+    if found is None:
+        return None
+    parts = tuple(dict.fromkeys(lexicon.SUM_PART_WORDS[word.lower()] for word in lexicon.SUM_PART.findall(found.group(0))))
+    key = next((key for key, summed in SUMS.items() if set(summed) == set(parts)), None)
+    if key is None or len(parts) < 2:
+        return None
+    return key, parts, Claim(found.start(), found.end(), "measure")
 
 
 def listed(measure: Measure | None) -> tuple[str, ...]:
@@ -771,6 +812,7 @@ def read_measure(question: str) -> MeasureWords:
         stats=stats_named(question),
         wins=lexicon.PLAYER_WINS.search(question),
         total=lexicon.TOTAL_WORD.search(question),
+        summed=sum_named(question),
     )
 
 
