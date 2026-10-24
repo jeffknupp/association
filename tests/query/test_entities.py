@@ -1415,3 +1415,23 @@ def test_a_former_name_with_no_season_is_the_franchise_under_it() -> None:
     era = former_franchise("bullets")
     assert era is not None and (era.first_season, era.last_season) == (1975, 1997)
     assert former_franchise("hornets") is None and former_franchise("charlotte") is None
+
+
+def test_a_namesake_who_never_played_for_the_team_asked_is_no_answer() -> None:
+    """ "pippen ... for the bulls" (ISSUES.md #540): Scottie Pippen played for
+    the Bulls and Scotty Pippen Jr. never did, so the team his games are read
+    for leaves one - where, with no team, the namesake who still plays was
+    read. Elimination, never a preference: a team neither played for keeps
+    both, as an empty season does."""
+    from association.query.entities import BOX_SCORES
+
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('663', 'Scottie Pippen'), ('4431785', 'Scotty Pippen Jr.')")
+    con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, athlete_id VARCHAR, team_id VARCHAR)")
+    con.execute("INSERT INTO player_box_stats VALUES ('g1', 1997, '663', '4'), ('g2', 2026, '4431785', '29')")
+    with name_index.loaded():
+        assert resolve_player(con, "pippen", BOX_SCORES, None, 2026, team="4") == Entity(id="663", name="Scottie Pippen")
+        assert resolve_player(con, "pippen", BOX_SCORES, None, 2026) == Entity(id="4431785", name="Scotty Pippen Jr.")
+        # A team neither played for eliminates nobody: the season decides, as it did.
+        assert resolve_player(con, "pippen", BOX_SCORES, None, 2026, team="5") == Entity(id="4431785", name="Scotty Pippen Jr.")

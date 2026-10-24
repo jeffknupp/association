@@ -1084,7 +1084,7 @@ def narrow_to_available(
     return [c for c in candidates if c.id in have]
 
 
-def _available_ids(con: duckdb.DuckDBPyConnection, ids: list[str] | None, sources: tuple[Availability, ...], season: int | None, through: int | None) -> set[str]:
+def _available_ids(con: duckdb.DuckDBPyConnection, ids: list[str] | None, sources: tuple[Availability, ...], season: int | None, through: int | None, team: str | None = None) -> set[str]:
     """The ``athlete_id`` of every player with a row in one of ``sources`` -
     among ``ids``, or among everyone where ``ids`` is None (the players
     active in a season, :func:`active_of`) - for ``season``, or up to
@@ -1104,6 +1104,11 @@ def _available_ids(con: duckdb.DuckDBPyConnection, ids: list[str] | None, source
     if through is not None:
         conditions.append("season <= ?")
         params.append(through)
+    if team is not None:
+        # A row for this team (a player's tenure, ``resolve_player``): the
+        # box scores', which carry the team a player played each game for.
+        conditions.append("team_id = ?")
+        params.append(team)
     where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
     union = " UNION ".join(f"SELECT DISTINCT athlete_id FROM {s.table}{where}" for s in sources)
     return {str(row[0]) for row in con.execute(union, params * len(sources)).fetchall()}
@@ -1459,6 +1464,7 @@ def resolve_player(
     available: Availability | tuple[Availability, ...] | None = None,
     season: int | None = None,
     through: int | None = None,
+    team: str | None = None,
 ) -> Resolution:
     """ "Curry" is genuinely ambiguous (Seth and Stephen), and a leaderboard
     row attributed to the wrong one is indistinguishable from a right answer.
@@ -1522,12 +1528,22 @@ def resolve_player(
        A name that matches nobody but is a near spelling of exactly one player
        is that player, reported the same way (:func:`read_near_spelling`),
        where it used to be :class:`NotFound`.
+
+    .. versionchanged:: 7.0.0
+       Takes ``team``, the team the question reads his games for (a tenure,
+       "pippen ... for the bulls"): a namesake with no box score for it
+       cannot be the answer and is eliminated first, as one with no row in
+       the seasons asked is (ISSUES.md #540) - "pippen" for the Bulls is
+       Scottie Pippen, never Scotty Pippen Jr., who last played in 2026.
     """
     if not available:
         return _resolve_player_unnarrowed(con, find_players(players_of(con), text), text)
     everyone = find_players(players_of(con), text, limit=None)
     if len(everyone) < 2:
         return _resolve_player_unnarrowed(con, everyone, text)
+    everyone = _resolve_player_for_team(con, everyone, team)
+    if len(everyone) == 1:
+        return everyone[0]
     # The season a name left open is settled by: the one asked about, else the
     # last season of the span, else now.
     latest = season if season is not None else through if through is not None else current_season()
@@ -1550,6 +1566,17 @@ def resolve_player(
     in_season = {c.id for c in current}
     ordered = current + [c for c in narrowed if c.id not in in_season]
     return Ambiguous(query=text, candidates=[c.name for c in ordered], active=len(current))
+
+
+def _resolve_player_for_team(con: duckdb.DuckDBPyConnection, everyone: list[Entity], team: str | None) -> list[Entity]:
+    """:func:`resolve_player`'s elimination by the team his games are read
+    for (a tenure): the namesakes with a box score for it - or everybody,
+    where nobody has one (as an empty season keeps them) or no team is
+    asked."""
+    if team is None:
+        return everyone
+    have = _available_ids(con, [c.id for c in everyone], (BOX_SCORES,), None, None, team)
+    return [c for c in everyone if c.id in have] or everyone
 
 
 def _resolve_player_unnarrowed(con: duckdb.DuckDBPyConnection, candidates: list[Entity], text: str) -> Resolution:
@@ -1647,6 +1674,7 @@ def resolved_player(
     available: Availability | tuple[Availability, ...],
     season: int | None = None,
     through: int | None = None,
+    team: str | None = None,
 ) -> Entity | Clarify | Refusal:
     """One player, or a clarifying question - the player counterpart
     to resolved_team. Returning the question rather than raising it keeps
@@ -1657,16 +1685,21 @@ def resolved_player(
     where its answer comes from: an ambiguous name is narrowed to the players
     with a row there, for `season` or any season up to `through`, before
     anybody is asked about. See entities.resolve_player - "Curry" this season
-    asked about four men who never played in it and left out Stephen.
+    asked about four men who never played in it and left out Stephen. A
+    ``team`` (an id: the tenure his games are read for) eliminates a
+    namesake who never played for it.
 
     .. versionchanged:: 6.0.0
        A name nothing matches is returned as the ``name_unmatched`` refusal,
        not raised as a decline.
+
+    .. versionchanged:: 7.0.0
+       Takes ``team``.
     """
     if not isinstance(text, str) or not text.strip():
         raise name_missing(needs)
     try:
-        resolution = resolve_player(con, text, available, season, through)
+        resolution = resolve_player(con, text, available, season, through, team)
     except duckdb.CatalogException:
         # The NetPoints tables exist only if that opt-in fetch was run. With
         # nothing to narrow against the name is asked about as it always was,

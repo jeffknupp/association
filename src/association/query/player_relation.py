@@ -805,7 +805,13 @@ def scoped_player(
     season_n = scope.cuts.season_n
     asked = span if span is not None else scope.span
     seasons = span_of(asked.over_career() if season_n else asked, table, season_type=player_relation_season_type(scope))
-    player = resolved_player(con, scope.who.player, needs, available=available, season=seasons.season, through=career_end(seasons.season))
+    # His own team, where the words read his games for one ("pippen ... for
+    # the bulls"): a namesake who never played for it is no answer
+    # (ISSUES.md #540). A team the name does not resolve to is the games'
+    # own refusal, said where they are narrowed.
+    tenure = resolved_team(con, scope.cuts.tenure, season=seasons.season) if scope.cuts.tenure else None
+    team = tenure.id if isinstance(tenure, Entity) else None
+    player = resolved_player(con, scope.who.player, needs, available=available, season=seasons.season, through=career_end(seasons.season), team=team)
     if isinstance(player, Unanswered):
         return player
     settled = settle_ordinal_season(con, player, season_n, seasons)

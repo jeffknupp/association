@@ -1037,7 +1037,9 @@ def test_a_companion_the_model_named_nobody_for_is_read_from_the_question(con: d
         and [(c.player, c.predicate, c.line) for c in s.conditions] == [("maxey", "reached", Line(measure="points", value=20, as_typed="20+ points"))]
         and s.asked == LINE_RECORD
     )
-    assert "companions the model named nobody for ['maxey']" in s.evidence
+    # The shared surname is read from the question as typed (ISSUES.md #540),
+    # and the companion phrase holds him.
+    assert "question names players ['maxey']" in s.evidence
     applied = apply_subject(s, scope, asked=PLAYER_LINE)
     assert applied.asked == LINE_RECORD and applied.dropped == [] and (applied.scope.who.player, applied.scope.who.team, threshold_of(applied.scope)) == ("maxey", "Philadelphia 76ers", 20)
     s = _read(con, "thunder record with jalen williams out", TEAM_RECORD, scope=Reading(who=Who(kind="team", teams=("Oklahoma City Thunder",))))

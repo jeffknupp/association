@@ -16159,9 +16159,9 @@
     "by": "date"
    },
    "who": {
-    "kind": "everyone",
+    "kind": "player",
     "players": [
-     "X"
+     "RJ Barrett"
     ],
     "teams": [],
     "position": null
@@ -16211,13 +16211,12 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "rj",
-    "barrett"
-   ],
+   "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "RJ Barrett"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -16236,23 +16235,37 @@
     "conditions": [],
     "filler": []
    },
-   "misread": [
-    "X"
-   ],
+   "misread": [],
    "decisions": [
     {
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": "model names the question never held ['X']"
+     "after": "player",
+     "reason": "question names players ['RJ Barrett']; model names the question never held ['X']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "RJ Barrett"
+     ],
+     "reason": "from the question's own words"
     },
     {
      "stage": "parser",
      "field": "asked",
-     "before": "player_seasons/ranking/player",
+     "before": "player_games/rows/date",
      "after": "player_periods/rows/date",
      "reason": "the grammar's rules settle it from the question's words"
+    },
+    {
+     "stage": "subject",
+     "field": "player",
+     "before": "X",
+     "after": "RJ Barrett",
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -16304,7 +16317,7 @@
       "since": null,
       "until": null
      },
-     "question": "rj barrett 4th qtr log of all time"
+     "question": "rj barrett 4th qtr log over his career"
     },
     {
      "kind": "season_type",
@@ -46648,13 +46661,15 @@
   "stat": "",
   "expected": {
    "asked": {
-    "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "relation": "player_games",
+    "shape": "rows",
+    "by": "date"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
     "teams": [],
     "position": null
    },
@@ -46690,12 +46705,13 @@
    },
    "minimum": null,
    "unread": [
-    "maxey's",
     "stats"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "maxey"
+    ],
     "teams": [],
     "position": null,
     "opponent": "New York Knicks",
@@ -46706,24 +46722,31 @@
     ],
     "named_season": null,
     "asked": {
-     "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "relation": "player_games",
+     "shape": "rows",
+     "by": "date"
     },
     "asked_reason": null,
     "conditions": [],
     "filler": []
    },
-   "misread": [
-    "Deandre Ayton"
-   ],
+   "misread": [],
    "decisions": [
     {
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": "model names the question never held ['Deandre Ayton']; team word 'New York Knicks'; against 'New York Knicks'"
+     "after": "player",
+     "reason": "question names players ['maxey']; model names the question never held ['Deandre Ayton']; team word 'New York Knicks'; against 'New York Knicks'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "maxey"
+     ],
+     "reason": "from the question's own words"
     },
     {
      "stage": "subject",
@@ -46731,14 +46754,33 @@
      "before": null,
      "after": "New York Knicks",
      "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "player",
+     "before": "Deandre Ayton",
+     "after": "maxey",
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_games",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "rows",
+    "by": "date",
     "measures": [
+     {
+      "key": "minutes",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
      {
       "key": "points",
       "as_typed": null,
@@ -46750,24 +46792,49 @@
       "category": null,
       "won": null,
       "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
      }
     ],
-    "group": "player",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
     "limit": 10,
-    "minimum_games": 20,
+    "minimum_games": null,
     "available": null,
-    "subject_span": null
-   },
-   "point_verdict": "read",
-   "refused": {
-    "kind": "subject_not_read",
-    "facts": {
-     "opponent": "New York Knicks"
+    "subject_span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
     }
-   }
+   },
+   "point_verdict": "read"
   }
  },
  {
@@ -56885,7 +56952,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'Philadelphia 76ers'; companions the model named nobody for ['maxey']"
+     "reason": "question names players ['maxey']; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -57315,7 +57382,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'Philadelphia 76ers'; companions the model named nobody for ['maxey']"
+     "reason": "question names players ['maxey']; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -57536,7 +57603,7 @@
      "field": "kind",
      "before": null,
      "after": "team",
-     "reason": "team word 'Philadelphia 76ers'; companions the model named nobody for ['maxey']"
+     "reason": "question names players ['maxey']; team word 'Philadelphia 76ers'"
     },
     {
      "stage": "subject",
@@ -58845,7 +58912,7 @@
  },
  {
   "name": "a_shared_surname_before_n_point_games#1",
-  "why": "\"murray 30 point games\" keeps \"murray\" as typed on the count (several players share it); \"murray games of 20+ rebounds\" reads nobody and is defaulted past its unread number.",
+  "why": "\"murray 30 point games\" and \"murray games of 20+ rebounds\" keep \"murray\" as typed (several players share it, and the model named nobody): the entity index resolves it where the answer is read (ISSUES.md #540).",
   "question": "murray 30 point games this season",
   "names": [],
   "stat": "points",
@@ -58856,7 +58923,7 @@
     "by": "count"
    },
    "who": {
-    "kind": "everyone",
+    "kind": "player",
     "players": [
      "murray"
     ],
@@ -58919,8 +58986,10 @@
    "minimum": null,
    "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "murray"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -58943,13 +59012,22 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": "the words '30 point games' name player_games/scalar/count"
+     "after": "player",
+     "reason": "question names players ['murray']; the words '30 point games' name player_games/scalar/count"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "murray"
+     ],
+     "reason": "from the question's own words"
     },
     {
      "stage": "parser",
      "field": "asked",
-     "before": "player_seasons/ranking/player",
+     "before": "player_seasons/scalar/line",
      "after": "player_games/scalar/count",
      "reason": "the words '30 point games' name player_games/scalar/count"
     }
@@ -59009,19 +59087,21 @@
  },
  {
   "name": "a_shared_surname_before_n_point_games#2",
-  "why": "\"murray 30 point games\" keeps \"murray\" as typed on the count (several players share it); \"murray games of 20+ rebounds\" reads nobody and is defaulted past its unread number.",
+  "why": "\"murray 30 point games\" and \"murray games of 20+ rebounds\" keep \"murray\" as typed (several players share it, and the model named nobody): the entity index resolves it where the answer is read (ISSUES.md #540).",
   "question": "murray games of 20+ rebounds",
   "names": [],
   "stat": "rebounds",
   "expected": {
    "asked": {
     "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "shape": "scalar",
+    "by": "line"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "murray"
+    ],
     "teams": [],
     "position": null
    },
@@ -59068,12 +59148,13 @@
    },
    "minimum": null,
    "unread": [
-    "murray",
     "games"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "murray"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -59083,8 +59164,8 @@
     "named_season": null,
     "asked": {
      "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "shape": "scalar",
+     "by": "line"
     },
     "asked_reason": null,
     "conditions": [],
@@ -59096,15 +59177,24 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "question names players ['murray']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "murray"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_seasons",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "scalar",
+    "by": "line",
     "measures": [
      {
       "key": "rebounds",
@@ -59119,12 +59209,12 @@
       "beside": []
      }
     ],
-    "group": "player",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": null,
+    "minimum_games": null,
     "available": null,
     "subject_span": null
    },
@@ -59134,8 +59224,8 @@
     "facts": {
      "shape": {
       "relation": "player_seasons",
-      "shape": "ranking",
-      "by": "player"
+      "shape": "scalar",
+      "by": "line"
      },
      "words": [
       "20+"
@@ -59150,20 +59240,22 @@
   }
  },
  {
-  "name": "a_possessive_before_games_of_reads_nobody",
-  "why": "\"murray's games of 20+ rebounds\" reads no player and is defaulted past its unread number \"20+\".",
+  "name": "a_possessive_before_games_of_reads_the_shared_surname",
+  "why": "\"murray's games of 20+ rebounds\" reads \"murray\" as typed, a surname several players share (ISSUES.md #540), and is defaulted past its unread number \"20+\".",
   "question": "murray's games of 20+ rebounds",
   "names": [],
   "stat": "rebounds",
   "expected": {
    "asked": {
     "relation": "player_seasons",
-    "shape": "ranking",
-    "by": "player"
+    "shape": "scalar",
+    "by": "line"
    },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "murray"
+    ],
     "teams": [],
     "position": null
    },
@@ -59210,12 +59302,13 @@
    },
    "minimum": null,
    "unread": [
-    "murray's",
     "games"
    ],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "murray"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -59225,8 +59318,8 @@
     "named_season": null,
     "asked": {
      "relation": "player_seasons",
-     "shape": "ranking",
-     "by": "player"
+     "shape": "scalar",
+     "by": "line"
     },
     "asked_reason": null,
     "conditions": [],
@@ -59238,15 +59331,24 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": ""
+     "after": "player",
+     "reason": "question names players ['murray']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "murray"
+     ],
+     "reason": "from the question's own words"
     }
    ],
    "point": {
-    "relation": "everyone",
+    "relation": "player",
     "on": "player_seasons",
-    "shape": "ranking",
-    "by": "player",
+    "shape": "scalar",
+    "by": "line",
     "measures": [
      {
       "key": "rebounds",
@@ -59261,12 +59363,12 @@
       "beside": []
      }
     ],
-    "group": "player",
+    "group": "none",
     "predicates": [],
-    "order": "measure",
+    "order": "date",
     "direction": "desc",
-    "limit": 10,
-    "minimum_games": 20,
+    "limit": null,
+    "minimum_games": null,
     "available": null,
     "subject_span": null
    },
@@ -59276,8 +59378,8 @@
     "facts": {
      "shape": {
       "relation": "player_seasons",
-      "shape": "ranking",
-      "by": "player"
+      "shape": "scalar",
+      "by": "line"
      },
      "words": [
       "20+"
@@ -60234,9 +60336,9 @@
     "by": "date"
    },
    "who": {
-    "kind": "everyone",
+    "kind": "player",
     "players": [
-     "Duncan Robinson"
+     "RJ Barrett"
     ],
     "teams": [],
     "position": null
@@ -60286,13 +60388,12 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "rj",
-    "barrett"
-   ],
+   "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "RJ Barrett"
+    ],
     "teams": [],
     "position": null,
     "opponent": null,
@@ -60311,23 +60412,37 @@
     "conditions": [],
     "filler": []
    },
-   "misread": [
-    "Duncan Robinson"
-   ],
+   "misread": [],
    "decisions": [
     {
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": "model names the question never held ['Duncan Robinson']"
+     "after": "player",
+     "reason": "question names players ['RJ Barrett']; model names the question never held ['Duncan Robinson']"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "RJ Barrett"
+     ],
+     "reason": "from the question's own words"
     },
     {
      "stage": "parser",
      "field": "asked",
-     "before": "player_seasons/ranking/player",
+     "before": "player_games/rows/date",
      "after": "player_periods/rows/date",
      "reason": "the grammar's rules settle it from the question's words"
+    },
+    {
+     "stage": "subject",
+     "field": "player",
+     "before": "Duncan Robinson",
+     "after": "RJ Barrett",
+     "reason": "the question never names the model's player; it names this one"
     }
    ],
    "point": {
@@ -60379,7 +60494,7 @@
       "since": null,
       "until": null
      },
-     "question": "rj barrett 4th qtr log of all time"
+     "question": "rj barrett 4th qtr log over his career"
     },
     {
      "kind": "season_type",
@@ -90419,10 +90534,16 @@
   "names": [],
   "stat": "",
   "expected": {
-   "asked": null,
+   "asked": {
+    "relation": "player_periods",
+    "shape": "rows",
+    "by": "date"
+   },
    "who": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "sabonis"
+    ],
     "teams": [],
     "position": null
    },
@@ -90438,17 +90559,31 @@
    },
    "companions": [],
    "lines": [],
-   "measure": null,
+   "measure": {
+    "key": null,
+    "as_typed": null,
+    "how": "per_game",
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
    "span": {
     "season": null,
     "season_type": 2,
     "both": false,
-    "career": false,
+    "career": true,
     "since": null,
     "until": null
    },
    "split": null,
-   "period": null,
+   "period": {
+    "number": 1,
+    "half": false
+   },
    "window": {
     "order": null,
     "count": null,
@@ -90457,13 +90592,12 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "log",
-    "sabonis"
-   ],
+   "unread": [],
    "subject": {
-    "kind": "everyone",
-    "players": [],
+    "kind": "player",
+    "players": [
+     "sabonis"
+    ],
     "teams": [],
     "position": null,
     "opponent": "LA Clippers",
@@ -90471,7 +90605,11 @@
     "companions": [],
     "invented": [],
     "named_season": null,
-    "asked": null,
+    "asked": {
+     "relation": "player_periods",
+     "shape": "rows",
+     "by": "date"
+    },
     "asked_reason": "a team's record in the games a player named beside it reached a line",
     "conditions": [],
     "filler": []
@@ -90482,8 +90620,17 @@
      "stage": "subject",
      "field": "kind",
      "before": null,
-     "after": "everyone",
-     "reason": "team word 'LA Clippers'; against 'LA Clippers'"
+     "after": "player",
+     "reason": "question names players ['sabonis']; team word 'LA Clippers'; against 'LA Clippers'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "sabonis"
+     ],
+     "reason": "from the question's own words"
     },
     {
      "stage": "subject",
@@ -90495,18 +90642,82 @@
     {
      "stage": "parser",
      "field": "asked",
-     "before": "player_seasons/ranking/player",
-     "after": "none",
+     "before": "player_games/rows/date",
+     "after": "player_periods/rows/date",
      "reason": "the grammar's rules settle it from the question's words"
+    },
+    {
+     "stage": "parser",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "no season named, and the words imply the career (decision D13)"
     }
    ],
-   "point": null,
-   "point_verdict": {
-    "kind": "period_relations_question",
-    "facts": {
-     "shape": null
+   "point": {
+    "relation": "player",
+    "on": "player_periods",
+    "shape": "rows",
+    "by": "date",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": 10,
+    "minimum_games": null,
+    "available": {
+     "table": "shot_chart"
+    },
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
     }
-   }
+   },
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "span": {
+      "season": 2026,
+      "season_type": 2,
+      "both": false,
+      "career": false,
+      "since": null,
+      "until": null
+     },
+     "question": "1st q log sabonis vs clippers in 2026"
+    },
+    {
+     "kind": "season_type",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": true,
+      "career": true,
+      "since": null,
+      "until": null
+     },
+     "question": "1st q log sabonis vs clippers including the playoffs"
+    }
+   ]
   }
  },
  {
@@ -98957,6 +99168,349 @@
       "until": null
      },
      "question": "westbrook ppg, rpg apg for the lakers including the playoffs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a_shared_surname_with_a_tenure_is_the_namesake_who_played_there",
+  "why": "ISSUES.md #540: \"pippen\" is a surname two players share and the model named nobody: read as typed, never the Bulls' own line; the tenure \"for the bulls\" eliminates Scotty Pippen Jr. where the answer is read. A given name nobody of that surname has (\"billy cunningham\") reads nobody.",
+  "question": "pippen ppg, rpg apg for the bulls",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "pippen"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": "Chicago Bulls",
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "points",
+    "as_typed": "points",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": [
+     "rebounds",
+     "assists"
+    ]
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": true,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "pippen"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": "Chicago Bulls",
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['pippen']; team word 'Chicago Bulls'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "pippen"
+     ],
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "own_team",
+     "before": null,
+     "after": "Chicago Bulls",
+     "reason": "from the question's own words"
+    },
+    {
+     "stage": "subject",
+     "field": "own_team",
+     "before": null,
+     "after": "Chicago Bulls",
+     "reason": "from the question; the model left it out"
+    },
+    {
+     "stage": "subject",
+     "field": "span",
+     "before": null,
+     "after": "career",
+     "reason": "a team named with no season is a tenure, not \"now\""
+    }
+   ],
+   "point": {
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     {
+      "key": "points",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "rebounds",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     },
+     {
+      "key": "assists",
+      "as_typed": null,
+      "how": null,
+      "unit": null,
+      "whose": "own",
+      "side": null,
+      "shot_value": null,
+      "category": null,
+      "won": null,
+      "beside": []
+     }
+    ],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 2,
+     "both": false,
+     "career": true,
+     "since": null,
+     "until": null
+    }
+   },
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "season_type",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": true,
+      "career": true,
+      "since": null,
+      "until": null
+     },
+     "question": "pippen ppg, rpg apg for the bulls including the playoffs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a_shared_surname_with_another_name_reads_nobody",
+  "why": "ISSUES.md #540: \"billy\" is a given name none of the Cunninghams on record has, so \"cunningham\" is no shared surname to read (Billy Cunningham is not on record).",
+  "question": "Billy Cunningham win% per season for games played",
+  "names": [],
+  "stat": "",
+  "expected": {
+   "asked": {
+    "relation": "team_seasons",
+    "shape": "ranking",
+    "by": "team"
+   },
+   "who": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [],
+   "measure": {
+    "key": "record",
+    "as_typed": "win%",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 2,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "minimum": null,
+   "unread": [
+    "cunningham",
+    "per",
+    "season",
+    "games",
+    "played"
+   ],
+   "subject": {
+    "kind": "everyone",
+    "players": [],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "team_seasons",
+     "shape": "ranking",
+     "by": "team"
+    },
+    "asked_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "everyone",
+     "reason": ""
+    }
+   ],
+   "point": {
+    "relation": "team_seasons",
+    "on": "team_seasons",
+    "shape": "ranking",
+    "by": "team",
+    "measures": [],
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": null
+   },
+   "point_verdict": "read",
+   "alternatives": [
+    {
+     "kind": "span",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": false,
+      "career": true,
+      "since": null,
+      "until": null
+     },
+     "question": "Billy Cunningham win% per season for games played of all time"
+    },
+    {
+     "kind": "season_type",
+     "span": {
+      "season": null,
+      "season_type": 2,
+      "both": true,
+      "career": false,
+      "since": null,
+      "until": null
+     },
+     "question": "Billy Cunningham win% per season for games played including the playoffs"
     }
    ]
   }

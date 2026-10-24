@@ -521,6 +521,82 @@ def _question_players(index: names.NameIndex, question: str, routed: list[str], 
     return kept
 
 
+def _question_players_shared(index: names.NameIndex, question: str) -> tuple[list[str], tuple[Claim, ...]]:
+    """A name the question gives that two or more players share - "pippen"
+    (Scottie, and Scotty Pippen Jr.), "booker" - where nothing else names a
+    player and the model copied none: the word as typed, as the model would
+    have copied it, which the entity index resolves where the answer is read
+    (a namesake who played in the seasons or for the team asked, or a
+    question naming each; ``entities.resolve_player``), never the question
+    read as about nobody - "pippen ppg, rpg apg for the bulls" answered the
+    Bulls' own points per game (ISSUES.md #540). Only a word no ordinary
+    word, no team's word and no subject word is (:func:`_question_players`'
+    rule for a single word, "best" being Travis Best's), four letters or
+    more, a surname of every player it names (never a given name: "larry"),
+    and the first such. The word that sets a shared surname aside (the
+    given name of somebody none of them is, "billy" of "billy cunningham")
+    is claimed: the reading of nobody turns on it."""
+    words = _words(question)
+    # A word of a name the question gives whole, which the reading set aside
+    # on purpose ("magic johnson" beside the Magic's word): never half of it.
+    whole = {w.casefold() for name in players_named_in(index.players, question) for w in _words(name)}
+    set_aside: list[Claim] = []
+    for at, word in enumerate(words):
+        sharing = _question_players_shared_by(index, word.casefold(), whole)
+        if not sharing:
+            continue
+        if at and _question_players_shared_other_name(index, words[at - 1].casefold(), sharing):
+            # "billy cunningham", "rick barry": the name of somebody none of
+            # them is, never one of them.
+            given = next((m for m in lexicon.WORD.finditer(question.casefold()) if m.group(0) == words[at - 1].casefold()), None)
+            set_aside.extend([Claim(given.start(), given.end(), "player")] if given is not None else [])
+            continue
+        return _question_players_shared_named(words, at, sharing), ()
+    return [], tuple(set_aside)
+
+
+def _question_players_shared_by(index: names.NameIndex, folded: str, whole: set[str]) -> list[Entity]:
+    """The players whose surname ``folded`` is, where two or more are and it
+    is a word :func:`_question_players_shared` reads - or none."""
+    if len(folded) < 4 or folded in whole or folded in _dictionary() or folded in lexicon.NOT_A_SUBJECT or lexicon.TEAM_SINGULARS.get(folded):
+        return []
+    if is_team_name(folded) or team_named_in(index.teams, folded) is not None:
+        return []
+    sharing = _exact_name_span(index.players, [folded], limit=100)
+    # A surname, never a given name ("larry bird" is no Larry: ISSUES.md
+    # #346 reads nobody there).
+    if len(sharing) < 2 or any(_words(entity.name)[0].casefold() == folded for entity in sharing):
+        return []
+    return sharing
+
+
+def _question_players_shared_named(words: list[str], at: int, sharing: list[Entity]) -> list[str]:
+    """The name a shared surname (``words[at]``) is read as: the one player
+    another word of whose name the question holds ("shaquille o'neal", "rj
+    barrett", whose short words the spans skip), two words of a name several
+    hold as typed ("jalen williams"), or the surname as typed."""
+    word, asked = words[at], {w.casefold() for w in words}
+    beside = [entity for entity in sharing if any(len(w) >= 2 and w.casefold() != word.casefold() and w.casefold() in asked for w in _words(entity.name))]
+    if len(beside) == 1:
+        return [beside[0].name]
+    before = words[at - 1] if at else ""
+    if before and any(before.casefold() == w.casefold() for entity in sharing for w in _words(entity.name)):
+        return [f"{before} {word}"]
+    return [word]
+
+
+def _question_players_shared_other_name(index: names.NameIndex, before: str, sharing: list[Entity]) -> bool:
+    """Whether the word ``before`` a shared surname makes the name somebody
+    none of ``sharing`` is: a given name some player on record has and none
+    of them does, or a team's word - :func:`_question_players_shared`'s
+    guard."""
+    if len(before) < 2 or any(before in (w.casefold() for w in _words(entity.name)) for entity in sharing):
+        return False
+    if lexicon.TEAM_SINGULARS.get(before) or is_team_name(before) or team_named_in(index.teams, before) is not None:
+        return True
+    return any(_words(entity.name)[0].casefold() == before for entity in _exact_name_span(index.players, [before], limit=100))
+
+
 def _question_players_in_full(players: names.PlayerIndex, name: str, q_words: list[str]) -> bool:
     """Whether the question writes a player's name as a name, two of its
     words or more in a row and in its order: "miles bridges", "derrick
@@ -1448,6 +1524,9 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     filler = _filler_names(index, scope, question)
     routed = [p for p in routed if p not in filler]
     named = _question_players(index, question, routed, teams_here)
+    set_aside: tuple[Claim, ...] = ()
+    if not named and not routed:
+        named, set_aside = _question_players_shared(index, question)
     spellings = _spellings(index.players, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
     unrouted = _unrouted_companions(index, question, players, scope)
@@ -1468,7 +1547,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     if unrouted:
         evidence = (*evidence, f"companions the model named nobody for {list(unrouted)}")
     decided = _decide_team_players(index.teams, _decide(players, teams, position, opponent, own_team, companions, evidence, asked, question), question)
-    subject = replace(decided, conditions=conditions, companion_phrases=phrases, claims=(*claims, *_decide_claims(index.teams, decided, question)))
+    subject = replace(decided, conditions=conditions, companion_phrases=phrases, claims=(*claims, *set_aside, *_decide_claims(index.teams, decided, question)))
     # Read, not decided: what the subject's shape settles the words to ask
     # is the parser's step (:func:`child_named`, with the grammar's rules run
     # once under it), and :func:`settle_subject` writes it here.
