@@ -43,7 +43,7 @@ from association.query.conditions import box_source
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.lines import measure_filters
-from association.query.measure import keyed, spelled, spelled_whose
+from association.query.measure import keyed, listed_measures, spelled, spelled_whose
 from association.query.measures import PERIOD_RATE_STATS, period_split_measure, resolve_metric
 from association.query.metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.notes import Note
@@ -186,7 +186,8 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
         quarter = period.number if period is not None and not period.half else None
         half = period.number if period is not None and period.half else None
         raise Unsupported(f"a player's quarter or half needs a period 1-10 or a half 1-2, got period={quarter!r} half={half!r}")
-    measure = period_split_measure(scope.measure)
+    named = _period_named(scope)
+    measure = named[0] if named else period_split_measure(scope.measure)
     if q.measures != [measure]:
         return None
     across = _period_across_seasons(scope)
@@ -219,6 +220,14 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     return _period_log_result(con, compiled, scope, rows, season, asked[1], measure, where, cut=asked_games is not None, left_out=left_out)
 
 
+def _period_named(scope: Filtered) -> tuple[str, ...]:
+    """The period-line measures of the stats the words named, in their order,
+    where they named several (ISSUES.md #540) - each one the period's line
+    rebuilds, or refused by name (``no_period_stat``) - and ``()`` where they
+    named one or none."""
+    return tuple(dict.fromkeys(period_split_measure(each) for each in listed_measures(scope.measure)))
+
+
 def _period_log_rows(scope: Filtered, rows: list[dict[str, Any]], measure: str, *, whose: str, checked: bool, period_label: str) -> tuple[list[dict[str, Any]], int, list[Note]] | Unanswered:
     """The games a period log reads, the season it is labeled by where it
     is one and the notes on what each game's plays miss - or the refusal
@@ -245,7 +254,12 @@ def _period_log_rows(scope: Filtered, rows: list[dict[str, Any]], measure: str, 
         season = int(rows[0]["season"])
     if rows and not checked:
         return Refusal(kind="period_unchecked", facts={})
-    columns = period_columns(measure) if spelled(scope.measure) is not None else _PERIOD_FULL_LINE_COLUMNS
+    # The columns the answer shows, each bounded: the stats named (each of
+    # several, ISSUES.md #540 - "Giannis first half points rebounds
+    # assists" was refused over the field goal attempts of a whole line he
+    # never asked), or the whole line where none is.
+    named = _period_named(scope)
+    columns = tuple(column for each in named for column in period_columns(each)) if named else period_columns(measure) if spelled(scope.measure) is not None else _PERIOD_FULL_LINE_COLUMNS
     counted = period_counted(rows, columns)
     refused = _period_unread_games(counted, columns, whose)
     if refused is not None:
@@ -380,12 +394,13 @@ def _period_log_result(
     named = spelled(scope.measure)
     notes = _period_log_notes(con, compiled, left_out=left_out or []) if games else []
     cells, also = where
-    facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, also=also, cut=cut)
+    beside = _period_named(scope)[1:]
+    facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, beside=beside, also=also, cut=cut)
     # The log beneath a per-game figure: the newest N, or the first N.
     window = Window(limit=_clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.window.count, ascending=scope.window.order == "first")
     by_type = _period_by_type(rows) if season_type == BOTH_SEASON_TYPES else {}
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {}, by_season_type=by_type)
-    full = _period_full_line(games) if games and named is None else None
+    full = _period_full_line(games, beside if named is not None else None) if games and (named is None or beside) else None
     return Result(
         subject=compiled.player.name,
         relation="player",
@@ -436,14 +451,16 @@ def _period_by_type(rows: list[dict[str, Any]]) -> dict[int, int]:
     return dict(sorted(counts.items()))
 
 
-def _period_full_line(games: list[dict[str, Any]]) -> Scalar:
+def _period_full_line(games: list[dict[str, Any]], beside: tuple[str, ...] | None = None) -> Scalar:
     """The period's whole line over ``games``, said beneath its figure where
     the words named no stat (ISSUES.md #471: "lebron james 4th qtr stats
     2026" said his 4th-quarter points alone): each
     :data:`~association.query.player_games.PERIOD_LOG_COLUMNS` column per
     game (``values``; ``None`` where a game's could not be rebuilt), each
     shooting split's makes and attempts summed (``sums``, by the season
-    line's stable keys, which are the period line's own columns)."""
+    line's stable keys, which are the period line's own columns). Where the
+    words named several stats, only the ones ``beside`` the first (ISSUES.md
+    #540): the columns the answer bounded, never the rest of the line."""
 
     def summed(column: str) -> int | None:
         """The column summed over the games, or ``None`` where a game's
@@ -451,8 +468,10 @@ def _period_full_line(games: list[dict[str, Any]]) -> Scalar:
         figures = [g[column] for g in games]
         return None if any(figure is None for figure in figures) else sum(figures)
 
-    values = {column: None if (total := summed(column)) is None else total / len(games) for column in PERIOD_LOG_COLUMNS}
-    sums = {column: summed(column) for rate in PERIOD_RATES.values() for column in rate}
+    counted = PERIOD_LOG_COLUMNS if beside is None else tuple(column for column in beside if column not in PERIOD_RATES)
+    rates = PERIOD_RATES.values() if beside is None else [PERIOD_RATES[column] for column in beside if column in PERIOD_RATES]
+    values = {column: None if (total := summed(column)) is None else total / len(games) for column in counted}
+    sums = {column: summed(column) for rate in rates for column in rate}
     return Scalar(games=len(games), values=values, sums=sums)
 
 
@@ -514,7 +533,8 @@ def _period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     ``grouped``-by-``period`` read, executed - each quarter's figure bounded
     by what each game's plays miss against its box score."""
     scope = q
-    measure = period_split_measure(scope.measure)
+    named = _period_named(scope)
+    measure = named[0] if named else period_split_measure(scope.measure)
     if q.measures != [measure]:
         return None
     across = _period_across_seasons(scope)

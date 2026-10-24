@@ -47,7 +47,7 @@ from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.query import reading
 from association.query.entities import Ambiguous, Availability, Entity, NotFound, resolve_team, resolved_player
-from association.query.measure import spelled
+from association.query.measure import listed, spelled
 from association.query.measures import STAT_LINE
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_FIGURES, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
 from association.query.player_games import season_type_clause
@@ -58,7 +58,7 @@ from association.query.player_relation import ResolvedSpan, scoped_player, span_
 # asked for). Applied to the SQL LIMIT itself as well, so a direct caller's
 # count cannot fetch more; the ranking reader's clamped count
 # (``compose.rankings``) is the only one that reaches here.
-from association.query.reading import MAX_LIMIT, Filtered, Line, ShapeDeclined
+from association.query.reading import MAX_LIMIT, Filtered, Line, Measure, ShapeDeclined
 from association.query.result import Grouped, Unanswered
 
 SEASON_LINES = Availability("player_season_stats_deduped")
@@ -1477,12 +1477,19 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
 
 
 def wanted_stats(scope: Filtered, default: tuple[str, ...] = STAT_LINE) -> list[str]:
-    """The stats to report: the one named, or ``default`` if none was.
+    """The stats to report: the one named, each of several named in the
+    words' order, or ``default`` if none was.
 
     A stat that was NAMED but is not supported must not fall back to the
     default line - that is how "what was Steph Curry's avg 3pt shot distance"
     came back as "26.6 points, 3.6 rebounds and 4.7 assists per game". A
     refusal names the stat; answering a different question is worse."""
+    named = listed(scope.measure)
+    if named:
+        # Several stats named (ISSUES.md #540): each the line has a per-game
+        # column of, in the words' order; a shooting split among them is the
+        # full line's, said beneath (:func:`full_line_asked`).
+        return [stat for stat in named if stat in PLAYER_STAT_COLUMNS] or list(default)
     stat = spelled(scope.measure)
     if stat is None or not stat.strip():
         return list(default)
@@ -1615,15 +1622,19 @@ said with its makes and attempts.
 _HEADLINE_STATS: frozenset[str] = frozenset(STAT_LINE)
 
 
-def full_line_asked(stat: str | None) -> bool:
+def full_line_asked(measure: Measure | None) -> bool:
     """Whether a player's line shows the full box line beside its sentence:
-    where the words named no stat, a shooting percentage, or a box-score
-    stat outside points, rebounds and assists - never for one of those
-    three alone, and never for a computed advanced stat (its own figure
-    with its own volume) or a stat the line has no column for.
+    where the words named no stat, several (the named ones said first, the
+    rest of the line beneath, ISSUES.md #540), a shooting percentage, or a
+    box-score stat outside points, rebounds and assists - never for one of
+    those three alone, and never for a computed advanced stat (its own
+    figure with its own volume) or a stat the line has no column for.
 
     .. versionadded:: 7.0.0
     """
+    if listed(measure):
+        return True
+    stat = spelled(measure)
     if stat is None:
         return True
     return stat not in _HEADLINE_STATS and (stat in SHOOTING_STATS or stat in PLAYER_STAT_COLUMNS)

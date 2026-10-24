@@ -562,12 +562,16 @@ class PeriodFacts:
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 7.0.0
-       Gains ``cut``.
+       Gains ``cut`` and ``beside``.
     """
 
     stat: str
     per_game: bool = False
     full_line: bool = False
+    #: The period-line measures of the other stats the words named beside
+    #: ``stat``, in their order (ISSUES.md #540): said beneath the figure
+    #: and in the log, the whole line's place.
+    beside: tuple[str, ...] = ()
     also: tuple[str, ...] = ()
     games: int = 0
     #: Whether the games are the count the words asked, cut from the end

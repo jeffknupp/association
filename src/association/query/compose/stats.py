@@ -25,7 +25,7 @@ from typing import Any
 import duckdb
 
 from association.nba.season import eastern_date
-from association.query.measure import spelled
+from association.query.measure import listed, spelled
 from association.query.notes import Note
 from association.query.player_relation import box_score_notes_read, narrowed_cells, no_narrowed_games
 from association.query.reading import Aggregate, Unsupported
@@ -58,8 +58,9 @@ def _player_stat_measures(q: Query) -> list[str] | None:
     rate a percentage names, or the stats wanted (the one named, or the
     default line) where they are the point's own - else ``None``, and the
     compiler's sentence answers. A stat with no per-game column is declined:
-    ``None``."""
-    stat = spelled(q.measure)
+    ``None``. Several stats named are the line's own list (ISSUES.md
+    #540)."""
+    stat = None if listed(q.measure) else spelled(q.measure)
     if stat is not None and stat in ADVANCED_STATS:
         return None
     if stat is not None and stat in SHOOTING_STATS:
@@ -117,7 +118,7 @@ def _with_full_line(con: duckdb.DuckDBPyConnection, q: Query, result: Result) ->
     over every game and one with minutes or attempts over the fetched games
     alone, and the full line carries its own count."""
     found = result.scalar
-    if not full_line_asked(spelled(q.measure)) or found is None or not found.games:
+    if not full_line_asked(q.measure) or found is None or not found.games:
         return result
     compiled = compile_query(con, replace(q, aggregate=Aggregate.LINE, measures=[*FULL_LINE_STATS, *(SHOOTING_RATES[name] for name in FULL_LINE_SHOTS)]))
     (line,) = rows_of(con, compiled)
@@ -183,7 +184,7 @@ def _player_stat_result(con: duckdb.DuckDBPyConnection, q: Query, compiled: Comp
     player, span, narrowed = compiled.player, compiled.span, compiled.narrowed
     assert player is not None
     games = int(line["games"] or 0)
-    stat = spelled(q.measure)
+    stat = None if listed(q.measure) else spelled(q.measure)
     facts = LineFacts(stat=stat if stat in SHOOTING_STATS else None, wanted=() if stat in SHOOTING_STATS else tuple(compiled.measures))
     narrowing = Narrowing(
         phrase=narrowed.filters(dated=False),

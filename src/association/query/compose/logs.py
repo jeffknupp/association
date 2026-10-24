@@ -26,7 +26,7 @@ from association.nba.season import eastern_date as _eastern_date
 from association.query.conditions import UNGATED_ON_REBUILD
 from association.query.entities import resolved_team, slot_season
 from association.query.lines import MeasureFilter, measure_filters, threshold_of
-from association.query.measure import spelled
+from association.query.measure import listed, listed_measures, spelled
 from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import BOTH_SEASON_TYPES, Narrowed
@@ -139,9 +139,16 @@ def _merge_season_types[R](rows_by_type: dict[int, list[R]], *, date_of: Callabl
 # --- the player's log ------------------------------------------------------
 
 
-def _player_log_columns(extras: tuple[str, ...]) -> tuple[list[str], list[str]]:
-    """The columns to show and the relation columns fetched behind them."""
-    headers = list(dict.fromkeys([*_LOG_BASE, *extras]))
+#: Each stat's own header on a log: the column it is read from, or the
+#: percentage computed for it.
+_LOG_HEADER_OF: dict[str, str] = {column: header for header, column in LOG_COLUMNS.items()} | {key: header for header, (_, _, key) in LOG_PERCENTAGES.items()}
+
+
+def _player_log_columns(extras: tuple[str, ...], leading: tuple[str, ...] = ()) -> tuple[list[str], list[str]]:
+    """The columns to show and the relation columns fetched behind them:
+    ``leading`` first (the stats the words named, in their order), then the
+    line's four and the extras."""
+    headers = list(dict.fromkeys([*leading, *_LOG_BASE, *extras]))
     # A percentage is never fetched: it is computed from the made/attempted pair
     # behind it, which is fetched whether or not it is shown.
     needed = list(dict.fromkeys([*(h for h in headers if h in LOG_COLUMNS), *(c for h in headers if h in LOG_PERCENTAGES for c in LOG_PERCENTAGES[h][:2])]))
@@ -310,6 +317,29 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
     return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts=LogFacts(mixed=True))
 
 
+def _read_player_log_columns(q: Query) -> tuple[list[str], list[str]] | None:
+    """The columns a player's log shows and the ones fetched behind them, or
+    ``None`` where the log's own words do not say the point: a stat it has
+    no column for, a bare threshold, a measure the words moved in beyond
+    its columns. :func:`read_player_log`'s first step."""
+    named = listed(q.measure)
+    try:
+        # Each stat named adds its columns (ISSUES.md #540), the first's
+        # alone where one is named.
+        extras = tuple(column for each in listed_measures(q.measure) for column in log_extras(each)) if named else log_extras(q.measure)
+        _game_log_lines(q)
+    except Unsupported:
+        return None
+    # The reading's own stat, which the log shows as its extra columns; a
+    # measure the question's words moved in instead is the compiler's point.
+    if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(q.measure)]):
+        return None
+    if full_line_asked(q.measure):
+        extras = (*extras, *_LOG_FULL_LINE)
+    # The stats named lead, in the words' order; the rest of the line after.
+    return _player_log_columns(extras, tuple(_LOG_HEADER_OF[key] for key in named if key in _LOG_HEADER_OF))
+
+
 def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """A named player's log: the compiled statement of the planned point,
     its measures the log's columns (the four of the line and the named
@@ -338,18 +368,10 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unansw
     if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
         return None
     scope = q
-    try:
-        extras = log_extras(scope.measure)
-        _game_log_lines(scope)
-    except Unsupported:
+    columns = _read_player_log_columns(q)
+    if columns is None:
         return None
-    # The reading's own stat, which the log shows as its extra columns; a
-    # measure the question's words moved in instead is the compiler's point.
-    if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.measure)]):
-        return None
-    if full_line_asked(spelled(scope.measure)):
-        extras = (*extras, *_LOG_FULL_LINE)
-    headers, needed = _player_log_columns(extras)
+    headers, needed = columns
     limit = _log_limit(scope.window)
     # The log's point, with the columns it shows as the measures: the rebuilt
     # rule (core._rebuilt_for) is read over the columns shown, as the log's own was.

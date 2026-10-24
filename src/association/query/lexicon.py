@@ -2532,6 +2532,15 @@ SEASON_LINE_PER_GAME_WORDS: dict[str, str] = {"ppg": "points", "rpg": "rebounds"
 
 .. versionadded:: 6.0.0
 """
+PER_GAME_STAT_WORD = re.compile(r"\b(?:" + "|".join(SEASON_LINE_PER_GAME_WORDS) + r")\b", re.IGNORECASE)
+"""A per-game abbreviation as a word ("ppg", "rpg"), which names its stat
+among several a line or a log is asked by ("westbrook ppg, rpg apg for the
+lakers", ISSUES.md #540) - read into the list of named stats
+(``measure.stats_named``), never as the measure of a question naming one
+stat, where the model's key stands as it did.
+
+.. versionadded:: 7.0.0
+"""
 _SEASON_STAT = r"(?:ppg|rpg|apg|spg|bpg|mpg|topg|points?|pts|rebounds?|rebs?|boards|assists?|asts?|steals?|stls?|blocks?|blks?|threes|3s|turnovers?|minutes|mins)"
 _SEASON_LEAD = r"(?P<lead>over|more\s+than|above|at\s+least|a\s+minimum\s+of|under|less\s+than|fewer\s+than|below)"
 # A season line read into a typed ``Line`` (``per="season"`` or ``"total"``):

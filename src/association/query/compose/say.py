@@ -1939,6 +1939,10 @@ def full_line_said(full: Scalar, said: Collection[str], games: int) -> tuple[lis
             cells.append(table_cell(value))
     for name in FULL_LINE_SHOTS:
         shot = SHOOTING_STATS[name]
+        if shot.made_key not in full.sums and shot.attempted_key not in full.sums:
+            # A line of the stats named alone (a period's, ISSUES.md #540),
+            # which read no such split.
+            continue
         made, attempted, pct = _shot_counts(full, shot)
         data |= {shot.made_key: made, shot.attempted_key: attempted, name: None if pct is None else round(pct, 1)}
         if name not in said and shot.made_key not in said:
@@ -2228,11 +2232,49 @@ def _period_side(game: dict[str, Any]) -> str:
     return f"{'vs' if game['home_away'] == 'home' else '@ '} {game['opponent'] or '?':<24}"
 
 
-def _period_log(games: list[dict[str, Any]], period_label: str, label: str, measure: str, *, full_line: bool) -> str:
+#: Each period-line measure's heading where a log shows the stats named
+#: (ISSUES.md #540): the whole line's, the makes and attempts', a rate's.
+_PERIOD_HEADINGS: dict[str, str] = {
+    **dict(zip(PERIOD_LOG_COLUMNS, _PERIOD_LOG_HEADINGS, strict=True)),
+    "fieldGoalsMade": "FGM",
+    "fieldGoalsAttempted": "FGA",
+    "threePointFieldGoalsMade": "3PM",
+    "threePointFieldGoalsAttempted": "3PA",
+    "freeThrowsMade": "FTM",
+    "freeThrowsAttempted": "FTA",
+    "fg_pct": "FG",
+    "three_pct": "3PT",
+    "ft_pct": "FT",
+}
+
+
+def _period_named_cell(game: dict[str, Any], measure: str) -> str:
+    """One named stat's cell in a period log: a column's figure, or a rate's
+    makes and attempts."""
+    if measure in PERIOD_RATE_WORDS:
+        made_column, attempted_column = period_columns(measure)
+        return f"{_period_cell(game[made_column])}-{_period_cell(game[attempted_column])}"
+    return _period_cell(game[measure])
+
+
+def _period_named_log(games: list[dict[str, Any]], period_label: str, label: str, named: tuple[str, ...]) -> str:
+    """The log beneath a period answer naming several stats: each named
+    stat's column, in the words' order (ISSUES.md #540)."""
+    heads = [_PERIOD_HEADINGS.get(each, each) for each in named]
+    widths = [max(len(head), 5 if each in PERIOD_RATE_WORDS else 3) for head, each in zip(heads, named, strict=True)]
+    heading = f"  {'date':<10}  {'':<27} " + " ".join(head.rjust(width) for head, width in zip(heads, widths, strict=True))
+    rows = [f"  {g['date']}  {_period_side(g)} " + " ".join(_period_named_cell(g, each).rjust(width) for each, width in zip(named, widths, strict=True)) for g in games]
+    return f"  {period_label} line, {label}:\n{heading}\n" + "\n".join(rows)
+
+
+def _period_log(games: list[dict[str, Any]], period_label: str, label: str, measure: str, *, full_line: bool, beside: tuple[str, ...] = ()) -> str:
     """The log beneath a period answer: one column (the stat asked about),
-    or - where no stat was named - the period's whole line, with its field
-    goals and free throws as made-attempted, the way a box score prints them.
-    A column the warehouse cannot rebuild (no play-by-play) prints "-"."""
+    each stat named where several were, or - where no stat was named - the
+    period's whole line, with its field goals and free throws as
+    made-attempted, the way a box score prints them. A column the warehouse
+    cannot rebuild (no play-by-play) prints "-"."""
+    if beside:
+        return _period_named_log(games, period_label, label, (measure, *beside))
     if measure in PERIOD_RATE_WORDS:
         made_column, attempted_column = period_columns(measure)
         rows = []
@@ -2286,7 +2328,7 @@ def _period_header(result: Result, games: list[dict[str, Any]], season_label: st
         earliest = window.ascending
         shown = games[:count] if earliest else games[-count:]
         label = "every game" if len(shown) == len(games) else f"the {len(shown)} {'earliest' if earliest else 'most recent'}"
-        header += "\n" + _period_log(shown if earliest else list(reversed(shown)), period_label, label, measure, full_line=facts.full_line)
+        header += "\n" + _period_log(shown if earliest else list(reversed(shown)), period_label, label, measure, full_line=facts.full_line, beside=facts.beside)
     return header
 
 

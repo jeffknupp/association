@@ -134,11 +134,18 @@ def _read(question: str, shape: PointShape | None, key: str | None = None, **con
         ("how many times has embiid fouled out", GAMES_COUNTED, "fouls", measure_of("fouls")),
         ("how many games did embiid play", PLAYER_LINE, "games_played", None),
         ("luka td3s home", PLAYER_LINE, "threePointFieldGoalsMade", measure_of("triple_double")),
-        # Two stats or more a whole line shows read no one measure: the line, the log, the period's log, the splits, the
-        # history and a team's line say them all (#454: "James harden rebound and assist vs POR" answered his rebounds).
-        ("James harden rebound and assist vs POR", PLAYER_LINE, None, None),
-        ("Giannis first half points rebounds assists gamelog vs washington", PERIOD_LOG, None, Measure(how="per_game")),
-        ("Tyus jones points reb ast last 10 games", PLAYER_LOG, "points", None),
+        # Two stats or more a whole line shows: the line, the log and the period's log read each, in the words' order,
+        # the first the measure and the rest beside it (#540); the splits, the history and a team's line read no one
+        # measure and say them all (#454: "James harden rebound and assist vs POR" answered his rebounds).
+        ("James harden rebound and assist vs POR", PLAYER_LINE, None, Measure(key="rebounds", as_typed="rebounds", beside=("assists",))),
+        ("westbrook ppg, rpg apg for the lakers", PLAYER_LINE, None, Measure(key="points", as_typed="points", beside=("rebounds", "assists"))),
+        (
+            "Giannis first half points rebounds assists gamelog vs washington",
+            PERIOD_LOG,
+            None,
+            Measure(key="points", as_typed="points", how="per_game", beside=("rebounds", "assists")),
+        ),
+        ("Tyus jones points reb ast last 10 games", PLAYER_LOG, "points", Measure(key="points", as_typed="points", beside=("rebounds", "assists"))),
         ("lebron home and away splits points and assists", PLAYER_SPLITS, None, None),
         ("lebron points and rebounds by season", SEASON_HISTORY, None, None),
         ("celtics points and rebounds per game this season", TEAM_LINE, None, None),
@@ -165,6 +172,9 @@ def test_every_stat_the_words_name_is_read_once_in_order() -> None:
     characters that name it (#454)."""
     assert [key for key, _ in stats_named("James harden rebound and assist vs POR")] == ["rebounds", "assists"]
     assert [key for key, _ in stats_named("Tyus jones points reb ast pts last 10 games")] == ["points", "rebounds", "assists"]
+    # In the words' order, the per-game abbreviations among them (#540).
+    assert [key for key, _ in stats_named("lebron assists and points")] == ["assists", "points"]
+    assert [key for key, _ in stats_named("westbrook ppg, rpg apg for the lakers")] == ["points", "rebounds", "assists"]
     assert [(key, (claim.start, claim.end)) for key, claim in stats_named("lebron 3 pointers and assists")] == [("threePointFieldGoalsMade", (7, 17)), ("assists", (22, 29))]
     assert stats_named("lebron stats") == ()
 

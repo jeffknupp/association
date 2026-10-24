@@ -599,6 +599,10 @@ class MeasureContext:
     shot_value: int | None = None
     fields: tuple[str, ...] = ()
     line_stat: str | None = None
+    #: The characters the lines tagger claimed: a stat named inside one is
+    #: the line's own ("15+ fga", a filter), never a stat a line or a log
+    #: shows.
+    line_claims: tuple[tuple[int, int], ...] = ()
     keyed_line: bool = False
     order_named: bool = False
 
@@ -670,13 +674,19 @@ class MeasureWords:
 
 
 def stats_named(question: str) -> tuple[tuple[str, Claim], ...]:
-    """Every stat ``question``'s words name, in the order :func:`named`
-    finds them, each once by its catalog key with the characters that name
-    it: the words :func:`named` reads first, then again over the rest with
-    those characters blanked - "rebound and assist" names rebounds, then
-    assists. A word read with no characters to claim ends the reading.
+    """Every stat ``question``'s words name, in the words' order, each once
+    by its catalog key with the characters that name it: the words
+    :func:`named` reads first, then again over the rest with those
+    characters blanked - "rebound and assist" names rebounds, then assists
+    - and each per-game abbreviation ("ppg, rpg apg",
+    :data:`~association.query.lexicon.PER_GAME_STAT_WORD`). A word read with
+    no characters to claim ends the reading.
 
     .. versionadded:: 7.0.0
+
+    .. versionchanged:: 7.0.0
+       In the words' order, where it was the order :func:`named` found
+       them, and with the per-game abbreviations (ISSUES.md #540).
     """
     found: dict[str, Claim] = {}
     text = question
@@ -686,7 +696,32 @@ def stats_named(question: str) -> tuple[tuple[str, Claim], ...]:
             break
         found.setdefault(key_of(key)[0] or key, claim)
         text = text[: claim.start] + " " * (claim.end - claim.start) + text[claim.end :]
-    return tuple(found.items())
+    for abbreviation in lexicon.PER_GAME_STAT_WORD.finditer(text):
+        found.setdefault(lexicon.SEASON_LINE_PER_GAME_WORDS[abbreviation.group(0).lower()], Claim(abbreviation.start(), abbreviation.end(), "measure"))
+    return tuple(sorted(found.items(), key=lambda item: item[1].start))
+
+
+def listed(measure: Measure | None) -> tuple[str, ...]:
+    """The stats a line or a log is asked by where the words name two or
+    more (ISSUES.md #540): the measure's key and the ones beside it
+    (:attr:`~association.query.reading.Measure.beside`), in the words'
+    order - or ``()`` where one stat or none is named.
+
+    .. versionadded:: 7.0.0
+    """
+    if measure is None or measure.key is None or not measure.beside:
+        return ()
+    return (measure.key, *measure.beside)
+
+
+def listed_measures(measure: Measure | None) -> tuple[Measure, ...]:
+    """Each stat :func:`listed` reads, as the
+    :class:`~association.query.reading.Measure` it is named by - its key,
+    whose figure the list's own is.
+
+    .. versionadded:: 7.0.0
+    """
+    return tuple(Measure(key=key, as_typed=key, whose=measure.whose) for key in listed(measure)) if measure is not None else ()
 
 
 def read_measure(question: str) -> MeasureWords:

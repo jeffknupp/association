@@ -31,12 +31,12 @@ import duckdb
 
 from association.nba.season import current_season
 from association.query.entities import Entity
-from association.query.measure import spelled
+from association.query.measure import listed, spelled
 from association.query.measures import stat_measure
 from association.query.netpoints import netpoints_row
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, empty_box_scores
-from association.query.reading import PLAYER_LINE, Unsupported
+from association.query.reading import PLAYER_LINE, Measure, Unsupported
 from association.query.result import Decided, Grouped, LineFacts, Part, Refusal, Result, Scalar, Span, Unanswered
 from association.query.season_line import (
     ADVANCED_STATS,
@@ -127,7 +127,9 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     if not player_line_reads(q):
         return None
     scope = q
-    stat = spelled(scope.measure)
+    # Several stats named are the line's own list (ISSUES.md #540), never
+    # the first of them alone as an advanced or a shooting figure.
+    stat = None if listed(scope.measure) else spelled(scope.measure)
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         wanted_stats(scope)
     subject = line_subject(con, scope)
@@ -146,20 +148,20 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     facts = LineFacts(stat=stat if shooting else None, wanted=tuple(wanted))
     if span.career:
         line = _player_line_career(con, player, span, wanted, shooting, facts)
-        return _with_full_line(line, stat, lambda: _full_line_career(con, player, span.season_type))
+        return _with_full_line(line, scope.measure, lambda: _full_line_career(con, player, span.season_type))
     season_type = scope.span.season_type or 2
     line = _player_line_season(con, player, span, season_type, wanted, shooting, facts)
-    return _with_full_line(line, stat, lambda: _full_line_season(con, player, span.season or current_season(), season_type))
+    return _with_full_line(line, scope.measure, lambda: _full_line_season(con, player, span.season or current_season(), season_type))
 
 
-def _with_full_line(line: Result, stat: str | None, read: Callable[[], Scalar | None]) -> Result:
+def _with_full_line(line: Result, measure: Measure | None, read: Callable[[], Scalar | None]) -> Result:
     """The line with the full box line beside it, as a detail part, where
     the words asked the line rather than one of its headline figures
     (:func:`~association.query.season_line.full_line_asked`) and the line
     found games - the season line's own read of the same season or
     career, so the sentence's figures are the line's as before."""
     found = line.scalar
-    if not full_line_asked(stat) or found is None or not found.games:
+    if not full_line_asked(measure) or found is None or not found.games:
         return line
     full = read()
     return line if full is None else replace(line, parts=(*line.parts, Part(role="detail", body=full)))
@@ -505,7 +507,7 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
     # The whole line where no stat was named, its shooting splits included
     # (ISSUES.md #471: "compare lebron and shai 2026 playoffs" showed no
     # shooting); a named stat narrows the table to it.
-    shots = tuple(SHOOTING_STATS[name] for name in FULL_LINE_SHOTS) if full_line_asked(spelled(scope.measure)) else ()
+    shots = tuple(SHOOTING_STATS[name] for name in FULL_LINE_SHOTS) if full_line_asked(scope.measure) else ()
     lines = _player_compare_lines(con, resolved, wanted, season, season_type, shots)
     parts = [Part(body=Grouped(by="subject", rows=tuple(lines.values())))]
     netpoints = _player_compare_netpoints(con, resolved, season, season_type)

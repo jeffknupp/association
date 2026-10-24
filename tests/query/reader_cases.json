@@ -94462,7 +94462,20 @@
    },
    "companions": [],
    "lines": [],
-   "measure": null,
+   "measure": {
+    "key": "rebounds",
+    "as_typed": "rebounds",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": [
+     "assists"
+    ]
+   },
    "span": {
     "season": null,
     "season_type": 2,
@@ -94543,18 +94556,6 @@
     "by": "line",
     "measures": [
      {
-      "key": "points",
-      "as_typed": null,
-      "how": null,
-      "unit": null,
-      "whose": "own",
-      "side": null,
-      "shot_value": null,
-      "category": null,
-      "won": null,
-      "beside": []
-     },
-     {
       "key": "rebounds",
       "as_typed": null,
       "how": null,
@@ -94610,7 +94611,7 @@
      "question": "James harden rebound and assist vs POR in 2026"
     },
     {
-     "kind": "season_type",
+     "kind": "latest",
      "span": {
       "season": null,
       "season_type": 2,
@@ -94619,7 +94620,7 @@
       "since": null,
       "until": null
      },
-     "question": "James harden rebound and assist vs POR including the playoffs"
+     "question": "James harden rebound and assist vs POR in his last game"
     }
    ]
   }
@@ -94659,8 +94660,8 @@
    "companions": [],
    "lines": [],
    "measure": {
-    "key": null,
-    "as_typed": null,
+    "key": "points",
+    "as_typed": "points",
     "how": "per_game",
     "unit": null,
     "whose": "own",
@@ -94668,7 +94669,10 @@
     "shot_value": null,
     "category": null,
     "won": null,
-    "beside": []
+    "beside": [
+     "rebounds",
+     "assists"
+    ]
    },
    "span": {
     "season": null,
@@ -94691,11 +94695,7 @@
     "by": null
    },
    "minimum": null,
-   "unread": [
-    "points",
-    "rebounds",
-    "assists"
-   ],
+   "unread": [],
    "subject": {
     "kind": "player",
     "players": [

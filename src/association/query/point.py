@@ -39,6 +39,7 @@ from association.query.measure import (
     MeasureWords,
     how_of,
     key_of,
+    listed,
     measured,
     named,
     named_by_a_team_metric,
@@ -49,6 +50,7 @@ from association.query.measures import (
     DERIVED_LINES,
     HISTORY_STATS,
     LINE,
+    PLAYER_STAT_NAMES,
     SPLIT_LINE,
     STAT_LINE,
     TEAM_GAME_MEASURES,
@@ -945,7 +947,10 @@ def _default_player_stat(scope: Filtered) -> Reading:
     if not _named_player_in(scope):
         raise PointRefused(Cause(kind="name_missing", facts={"shape": PLAYER_LINE, "needs": "player"}))
     col = stat_column(scope.measure)
-    measures = [col] if col else list(STAT_LINE)
+    several = listed(scope.measure)
+    # Several stats named: each the line says per game, in the words' order
+    # (ISSUES.md #540) - a shooting split among them is the full line's.
+    measures = ([stat for stat in several if stat in PLAYER_STAT_NAMES] or list(STAT_LINE)) if several else [col] if col else list(STAT_LINE)
     if scope.window.count or scope.window.order:
         return _default_game_log(scope)
     if not (scope_reads_box_scores(scope, measure_filters(scope)) or scope.cuts.date):
@@ -2475,7 +2480,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
         claims.append(words.worded[1])
     key = _measure_key_by_ask(asked, words, context, key, from_words=words.worded is not None)
     key = _measure_key_by_words(asked, words, context, key, claims)
-    key = _measure_whole_line(asked, words, key, claims)
+    key, listed_beside = _measure_whole_line(asked, words, context, key, claims)
     key, unit = _measure_rate(asked, words, key, claims)
     how = _measure_how(asked, words, key, unit, claims)
     of_wins = None
@@ -2485,7 +2490,7 @@ def measure_under(asked: PointShape | None, words: MeasureWords, context: Measur
             claims.append(Claim(words.losing.start(), words.losing.end(), "measure"))
     side = _measure_side(asked, words, context, claims)
     shot_value = _measure_shot_value(asked, words, context, claims)
-    beside = _measure_beside(asked, words, context, claims)
+    beside = listed_beside or _measure_beside(asked, words, context, claims)
     # One claim per stretch read: the grammar and a rule may read the same
     # words ("ts%" is the grammar's key and the advanced metric's word).
     distinct = tuple(dict.fromkeys(claim for claim in claims if claim.end > claim.start))
@@ -2546,22 +2551,41 @@ _WHOLE_LINES: dict[PointShape, frozenset[str]] = {
 }
 
 
-def _measure_whole_line(asked: PointShape | None, words: MeasureWords, key: str | None, claims: list[Claim]) -> str | None:
-    """No one measure where the words name two stats or more on a key that
-    reads a whole line and the whole line shows every one of them
-    (ISSUES.md #454): "James harden rebound and assist vs POR" answered his
-    rebounds alone, "Giannis first half points rebounds assists gamelog vs
-    washington" his first-half rebounds - the line with no stat named says
-    them all. Each stat word is claimed: the reading turns on it."""
+#: The keys whose readers read a list of named stats (``measure.listed``):
+#: a player's line, his log, and his quarter's or half's games.
+_LISTED_LINES: frozenset[PointShape] = frozenset({PLAYER_LINE, PLAYER_LOG, PERIOD_LOG})
+
+
+def _measure_whole_line(asked: PointShape | None, words: MeasureWords, context: MeasureContext, key: str | None, claims: list[Claim]) -> tuple[str | None, tuple[str, ...]]:
+    """Every stat the words name, in their order, where they name two or
+    more on a key that reads a whole line and the line shows every one of
+    them (ISSUES.md #454, #540): the first is the measure and the rest are
+    beside it ("James harden rebound and assist vs POR" is his rebounds and
+    assists, "westbrook ppg, rpg apg" his points, rebounds and assists) -
+    never one of them alone, which answered his rebounds and dropped his
+    assists, and never none, which answered a fixed line whatever was
+    named. A stat named inside a line the lines tagger read ("points and
+    rebounds game log 15+ fga") is the line's, a filter: listed after the
+    others, never the measure. Each stat word is claimed: the reading turns
+    on it."""
     shown = _WHOLE_LINES.get(asked) if asked is not None else None
     if shown is None or len(words.stats) < 2 or not all(stat in shown for stat, _ in words.stats):
-        return key
+        return key, ()
     if key is not None and key_of(key)[0] not in shown:
         # A measure the words name beyond the box-score words (an advanced
         # metric, a team metric's alias) is no stat the whole line shows.
-        return key
+        return key, ()
     claims.extend(claim for _, claim in words.stats)
-    return None
+    own = [stat for stat, claim in words.stats if not any(start <= claim.start and claim.end <= end for start, end in context.line_claims)]
+    if asked not in _LISTED_LINES or not own:
+        # The splits, a history and a team's line read no list, nor a line
+        # whose every stat is a line's own: the whole line, which says every
+        # one of them.
+        return None, ()
+    # The stats named for their own sake first, then a line's own stat - the
+    # figure the games were kept by, shown beside them.
+    listed_stats = [*own, *(stat for stat, _ in words.stats if stat not in own)]
+    return listed_stats[0], tuple(listed_stats[1:])
 
 
 def _measure_how(asked: PointShape | None, words: MeasureWords, key: str | None, unit: str | None, claims: list[Claim]) -> MeasureHow | None:

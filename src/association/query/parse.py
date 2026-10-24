@@ -1011,8 +1011,8 @@ def _tagged_measure_context(settled: Asked, question: str, read: LinesRead, *, s
     (:class:`~association.query.measure.MeasureContext`): the settled key,
     the measure key the rules read (the words' over the model's; a test's
     side, shot value and columns beside it), the stat the lines tagger read
-    beside a line and whether a line is keyed, and whether a game of
-    ordering was named."""
+    beside a line, the characters it read and whether a line is keyed, and
+    whether a game of ordering was named."""
     stat = settled.stat
     return MeasureContext(
         key=stat if isinstance(stat, str) and stat.strip() else None,
@@ -1020,6 +1020,7 @@ def _tagged_measure_context(settled: Asked, question: str, read: LinesRead, *, s
         shot_value=shot_value if isinstance(shot_value, int) and not isinstance(shot_value, bool) else None,
         fields=tuple(fields),
         line_stat=read.stat,
+        line_claims=tuple((claim.start, claim.end) for claim in read.claims),
         keyed_line=any(line.keyed for line in read.lines),
         order_named=any(pattern.search(question) for pattern in lexicon.ORDER_WORDS.values()),
     )
